@@ -47,17 +47,17 @@ func (source ReleaseSource) AssetURL(canonical string) (string, error) {
 	return source.asset.apply(canonical)
 }
 
-// DefaultReleaseSources 返回嵌入构建产物中的默认传输路径。
-func DefaultReleaseSources() []ReleaseSource {
-	sources, err := ParseReleaseSources(embeddedReleaseSources)
+// defaultReleaseSources 返回嵌入构建产物中的默认传输路径。
+func defaultReleaseSources() []ReleaseSource {
+	sources, err := parseReleaseSources(embeddedReleaseSources)
 	if err != nil {
 		panic(fmt.Sprintf("parse embedded release sources: %v", err))
 	}
 	return sources
 }
 
-// ParseReleaseSources 解析 release_sources.txt 格式的传输路径列表。
-func ParseReleaseSources(body []byte) ([]ReleaseSource, error) {
+// parseReleaseSources 解析 release_sources.txt 格式的传输路径列表。
+func parseReleaseSources(body []byte) ([]ReleaseSource, error) {
 	var sources []ReleaseSource
 	seenIDs := make(map[string]struct{})
 	for lineNumber, line := range strings.Split(string(body), "\n") {

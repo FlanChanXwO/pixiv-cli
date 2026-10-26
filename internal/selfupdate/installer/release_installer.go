@@ -39,12 +39,11 @@ type ReleaseInstaller interface {
 	Install(context.Context, release.Release) error
 }
 
-// ReleaseInstallerOptions 允许生产组装与受控测试分别注入信任根和系统依赖。
+// ReleaseInstallerOptions 配置下载传输与信任根。
 // TrustedKeys 只允许 Ed25519 公钥；私钥绝不能进入生产组装或此 API。
 type ReleaseInstallerOptions struct {
 	HTTPClient                 *http.Client
 	TrustedKeys                map[string]ed25519.PublicKey
-	ExecutablePath             func() (string, error)
 	EnablePublicReleaseSources bool
 }
 
@@ -55,10 +54,6 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	executablePath := options.ExecutablePath
-	if executablePath == nil {
-		executablePath = os.Executable
-	}
 	keys := make(map[string]ed25519.PublicKey, len(options.TrustedKeys))
 	for keyID, publicKey := range options.TrustedKeys {
 		keys[keyID] = append(ed25519.PublicKey(nil), publicKey...)
@@ -66,12 +61,12 @@ func NewReleaseInstaller(options ReleaseInstallerOptions) ReleaseInstaller {
 	installer := &releaseInstaller{
 		httpClient:     httpClient,
 		trustedKeys:    keys,
-		executablePath: executablePath,
+		executablePath: os.Executable,
 		goos:           runtime.GOOS,
 		goarch:         runtime.GOARCH,
 	}
 	if options.EnablePublicReleaseSources {
-		installer.sourceSelector = source.NewDefaultReleaseSourceSelector(httpClient)
+		installer.sourceSelector = source.NewReleaseSourceSelector(httpClient)
 	}
 	return installer
 }
@@ -88,9 +83,6 @@ type releaseInstaller struct {
 // Install 下载并验证选中版本的唯一平台资产。任何下载、认证、解包、预检或替换失败
 // 都发生在临时文件阶段，原可执行文件保持不变。
 func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (err error) {
-	if i == nil {
-		return fmt.Errorf("release installer is nil")
-	}
 	if len(i.trustedKeys) == 0 {
 		return fmt.Errorf("trusted release signing key is not configured")
 	}
@@ -101,7 +93,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	if err != nil {
 		return err
 	}
-	targetPath, workDir, err := i.stageRelease(ctx)
+	targetPath, workDir, err := i.stageRelease()
 	if err != nil {
 		return err
 	}
@@ -113,7 +105,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	if err := source.CheckContext(ctx, "preflight downloaded executable"); err != nil {
 		return err
 	}
-	if err := (processReleaseBinaryChecker{}).Check(ctx, candidatePath, rel.TagName); err != nil {
+	if err := checkReleaseBinary(ctx, candidatePath, rel.TagName); err != nil {
 		return fmt.Errorf("preflight downloaded executable %q: %w", candidatePath, err)
 	}
 	return i.replaceExecutable(ctx, targetPath, candidatePath, workDir)
@@ -167,7 +159,7 @@ func (i *releaseInstaller) prepareRelease(ctx context.Context, rel release.Relea
 }
 
 // stageRelease locates the live binary and creates its sibling temporary workspace.
-func (i *releaseInstaller) stageRelease(ctx context.Context) (string, string, error) {
+func (i *releaseInstaller) stageRelease() (string, string, error) {
 	targetPath, err := i.executablePath()
 	if err != nil {
 		return "", "", fmt.Errorf("locate current executable: %w", err)
@@ -194,9 +186,6 @@ func (i *releaseInstaller) cleanupWorkDir(err *error, workDir string) {
 
 // replaceExecutable stages the verified binary next to the target and atomically replaces it.
 func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, candidatePath, workDir string) (err error) {
-	if err := source.CheckContext(ctx, "extract release archive"); err != nil {
-		return err
-	}
 	if err := source.CheckContext(ctx, "stage verified update"); err != nil {
 		return err
 	}
@@ -236,7 +225,7 @@ func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, ca
 	if err := source.CheckContext(ctx, "replace release executable"); err != nil {
 		return err
 	}
-	if err := (releaseFileReplacer{goos: i.goos}).Replace(stagedPath, targetPath); err != nil {
+	if err := i.replaceReleaseFile(stagedPath, targetPath); err != nil {
 		return fmt.Errorf("atomically replace executable %q: %w", targetPath, err)
 	}
 	return nil
@@ -386,9 +375,7 @@ func (i *releaseInstaller) downloadURL(ctx context.Context, asset release.Releas
 	return body, nil
 }
 
-type processReleaseBinaryChecker struct{}
-
-func (processReleaseBinaryChecker) Check(ctx context.Context, executablePath, expectedTag string) error {
+func checkReleaseBinary(ctx context.Context, executablePath, expectedTag string) error {
 	command := exec.CommandContext(ctx, executablePath, "--version")
 	output, err := command.Output()
 	if err != nil {
@@ -401,12 +388,8 @@ func (processReleaseBinaryChecker) Check(ctx context.Context, executablePath, ex
 	return nil
 }
 
-type releaseFileReplacer struct {
-	goos string
-}
-
-func (r releaseFileReplacer) Replace(sourcePath, targetPath string) error {
-	if r.goos == "windows" {
+func (i *releaseInstaller) replaceReleaseFile(sourcePath, targetPath string) error {
+	if i.goos == "windows" {
 		return atomicfile.ReplaceFileWithBackup(sourcePath, targetPath, targetPath+".old")
 	}
 	return atomicfile.ReplaceFile(sourcePath, targetPath)

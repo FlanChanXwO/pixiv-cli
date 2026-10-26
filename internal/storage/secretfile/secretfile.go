@@ -65,10 +65,6 @@ func EnsurePrivateFile(path string, body []byte, mode os.FileMode) (resultErr er
 // 部分完成且恢复也失败，则保留新旧 recovery artifacts，不能由 defer 误删 source。
 // 已提交后的 cleanup/durability 失败返回真实错误，但不会伪装成已经回滚。
 func WritePrivateFile(path string, body []byte, mode os.FileMode) (resultErr error) {
-	commitOutcome := WriteCommitOutcomeNotCommitted
-	defer func() {
-		resultErr = withPrivateFileWriteCommitOutcome(resultErr, commitOutcome)
-	}()
 	targetDirectory := filepath.Dir(path)
 	newDirectories, err := missingDirectoryChain(targetDirectory)
 	if err != nil {
@@ -122,12 +118,6 @@ func WritePrivateFile(path string, body []byte, mode os.FileMode) (resultErr err
 	replacement, replaceErr := atomicfile.ReplacePrivateFile(temporaryPath, path)
 	replaced = replacement.Committed
 	preserveTemporary = replacement.PreserveSource
-	switch {
-	case replacement.Committed:
-		commitOutcome = WriteCommitOutcomeCommitted
-	case replacement.PreserveSource:
-		commitOutcome = WriteCommitOutcomeUnknown
-	}
 	if !replacement.Committed {
 		return replaceErr
 	}

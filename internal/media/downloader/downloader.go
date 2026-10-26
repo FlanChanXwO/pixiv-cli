@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -146,12 +145,12 @@ func (s DownloadService) downloadArtworkIDs(ctx context.Context, client Download
 	if len(artworkIDs) == 0 {
 		return nil
 	}
-	downloader, downloadRequest, err := s.newBatchDownloader(client, request)
+	downloader, err := s.NewBatchDownloader(client, request.DownloadPath, request.FilenameTemplate)
 	if err != nil {
 		return err
 	}
-	downloadRequest.IllustIDs = artworkIDs
-	batch, err := downloader.Download(ctx, downloadRequest)
+	request.IllustIDs = artworkIDs
+	batch, err := downloader.Download(ctx, request)
 	report.Items = append(report.Items, batch.Items...)
 	report.Failures = append(report.Failures, batch.Failures...)
 	report.Warnings = append(report.Warnings, batch.Warnings...)
@@ -234,35 +233,6 @@ func downloadDirectURLs(ctx context.Context, client DownloadTargetClient, rawURL
 	return nil
 }
 
-func (s DownloadService) newBatchDownloader(client DownloadClient, request DownloadRequest) (BatchDownloader, DownloadRequest, error) {
-	if s.NewBatchDownloader == nil {
-		return nil, DownloadRequest{}, errors.New("batch downloader factory is not configured")
-	}
-	if isNilLike(client) {
-		return nil, DownloadRequest{}, errors.New("download operation client is not configured")
-	}
-	if request.Quality == "" {
-		request.Quality = DownloadQualityOriginal
-	}
-	if err := ValidateDownloadQuality(request.Quality); err != nil {
-		return nil, DownloadRequest{}, err
-	}
-	if request.UgoiraFormat == "" {
-		request.UgoiraFormat = UgoiraFormatGIF
-	}
-	if err := ValidateUgoiraFormat(request.UgoiraFormat); err != nil {
-		return nil, DownloadRequest{}, err
-	}
-	downloader, err := s.NewBatchDownloader(client, request.DownloadPath, request.FilenameTemplate)
-	if err != nil {
-		return nil, DownloadRequest{}, err
-	}
-	if isNilLike(downloader) {
-		return nil, DownloadRequest{}, errors.New("batch downloader factory returned nil")
-	}
-	return downloader, request, nil
-}
-
 func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, user pixiv.Reference, appendArtwork func(int64), report *DownloadReport) error {
 	for _, kind := range []pixiv.ArtworkKind{pixiv.ArtworkKindIllustration, pixiv.ArtworkKindManga, pixiv.ArtworkKindUgoira} {
 		if err := ctx.Err(); err != nil {
@@ -315,17 +285,4 @@ func referenceURL(reference pixiv.Reference) string {
 		return ""
 	}
 	return raw
-}
-
-func isNilLike(value any) bool {
-	if value == nil {
-		return true
-	}
-	reflected := reflect.ValueOf(value)
-	switch reflected.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return reflected.IsNil()
-	default:
-		return false
-	}
 }

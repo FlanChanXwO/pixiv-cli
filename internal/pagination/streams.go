@@ -37,10 +37,10 @@ func CollectStreams[T any, C Cursor](ctx context.Context, plan PagePlan, streams
 // cursor。任一流失败都会丢弃整个逻辑页的部分结果。
 func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, streams []Stream[T, C], initial StreamState[C]) ([]T, StreamState[C], PageResult, error) {
 	var zeroState StreamState[C]
-	if err := validateStreamPlan(plan, streams); err != nil {
+	if err := plan.validate(); err != nil {
 		return nil, zeroState, PageResult{}, err
 	}
-	cursors := append([]C(nil), initial.Cursors...)
+	cursors := initial.Cursors
 	if len(cursors) == 0 {
 		cursors = make([]C, len(streams))
 	}
@@ -65,6 +65,9 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 			seen[cursor.String()] = struct{}{}
 			batch, next, err := stream.Fetch(ctx, cursor)
 			if err != nil {
+				return nil, zeroState, PageResult{}, err
+			}
+			if err := ctx.Err(); err != nil {
 				return nil, zeroState, PageResult{}, err
 			}
 			matched, positions, err := selectStreamBatch(batch, stream.Include)
@@ -121,24 +124,6 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 		}
 	}
 	return items, state, result, nil
-}
-
-func validateStreamPlan[T any, C Cursor](plan PagePlan, streams []Stream[T, C]) error {
-	if plan.Skip < 0 {
-		return errors.New("page skip must be zero or positive")
-	}
-	if plan.Limit < 0 {
-		return errors.New("page limit must be zero or positive")
-	}
-	for index, stream := range streams {
-		if stream.Fetch == nil {
-			return fmt.Errorf("stream %d fetch is required", index)
-		}
-		if stream.Checkpoint == nil {
-			return fmt.Errorf("stream %d checkpoint is required", index)
-		}
-	}
-	return nil
 }
 
 func selectStreamBatch[T any](batch []T, include func(T) (bool, error)) ([]T, []int, error) {

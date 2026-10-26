@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+func quantizeFrame(ctx context.Context, frame *image.NRGBA, palette []rgb, hasTransparency bool) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	q, err := newFrameQuantizer(palette, hasTransparency)
+	if err != nil {
+		return nil, err
+	}
+	return q.quantize(ctx, frame)
+}
+
+func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]byte, error) {
+	return q.quantizeInto(ctx, frame, nil)
+}
+
 func TestDitherCancellationAndPaletteSize(t *testing.T) {
 	frame := image.NewNRGBA(image.Rect(0, 0, 7, 5))
 	palette := []rgb{{0, 0, 0}, {255, 255, 255}}

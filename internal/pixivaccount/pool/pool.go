@@ -7,7 +7,6 @@ package pool
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -40,27 +39,13 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !s.Config.Enabled {
-		return errors.New("account pool is disabled")
-	}
-	if s.State == nil {
-		return errors.New("account pool state store is not configured")
-	}
-	if attempt == nil {
-		return errors.New("account pool attempt is not configured")
-	}
-	now := time.Now
-	if s.Now != nil {
-		now = s.Now
-	}
 	attempted := make([]int64, 0)
-	attemptedSet := make(map[int64]struct{})
 	var lastRateLimit error
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		current := now()
+		current := s.Now()
 		account, err := s.State.SelectPixiv(ctx, current.UTC().Unix(), attempted, func(snapshot pixivaccount.PoolSnapshot) (int64, error) {
 			return choose(snapshot, s.Config.Strategy)
 		})
@@ -68,12 +53,6 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 			return mapSelectionError(err, lastRateLimit, current)
 		}
 		userID := account.UserID
-		if userID <= 0 {
-			return errors.New("account pool state store selected an invalid user id")
-		}
-		if _, wasAttempted := attemptedSet[userID]; wasAttempted {
-			return fmt.Errorf("account pool state store selected attempted user id %d", userID)
-		}
 		attemptState := &lifecycle.Attempt{}
 		attemptErr := attempt(ctx, userID, attemptState)
 		if attemptErr == nil {
@@ -91,8 +70,7 @@ func (s Scheduler) Run(ctx context.Context, attempt func(context.Context, int64,
 		}
 		lastRateLimit = attemptErr
 		attempted = append(attempted, userID)
-		attemptedSet[userID] = struct{}{}
-		freezeNow := now()
+		freezeNow := s.Now()
 		if err := s.State.Freeze(ctx, userID, freezeNow.Add(retryAfter).UTC().Unix()); err != nil {
 			return err
 		}

@@ -59,10 +59,6 @@ func openFrameArchive(ctx context.Context, input Input) (*frameArchive, error) {
 
 func (a *frameArchive) Close() error { return a.zip.Close() }
 
-func (a *frameArchive) decode(ctx context.Context, frame Frame) (*image.NRGBA, error) {
-	return a.decodeInto(ctx, frame, nil)
-}
-
 // reuse 必须是调用者已释放的帧；APNG 比较仍在使用的前帧不能传入。
 func (a *frameArchive) decodeInto(ctx context.Context, frame Frame, reuse *image.NRGBA) (*image.NRGBA, error) {
 	if err := ctx.Err(); err != nil {
@@ -96,11 +92,6 @@ func (a *frameArchive) decodeInto(ctx context.Context, frame Frame, reuse *image
 type frameSource struct {
 	data  []byte
 	chunk [32 * 1024]byte
-}
-
-func readFrameSource(ctx context.Context, r io.Reader, file string, declaredSize, limit uint64) ([]byte, error) {
-	var source frameSource
-	return source.read(ctx, r, file, declaredSize, limit)
 }
 
 func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declaredSize, limit uint64) ([]byte, error) {
@@ -156,12 +147,6 @@ func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declar
 			return nil, fmt.Errorf("read frame %q: %w", file, readErr)
 		}
 	}
-}
-
-func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
-	var decoder jpeg.Decoder
-	var header bufio.Reader
-	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
 }
 
 func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *jpeg.Decoder, header *bufio.Reader) (*image.NRGBA, error) {
@@ -265,10 +250,6 @@ func pngDecodedPixelBytes(source []byte) (uint64, error) {
 		channels *= 2
 	}
 	return channels, nil
-}
-
-func frameNRGBA(ctx context.Context, src image.Image) (*image.NRGBA, error) {
-	return frameNRGBAInto(ctx, src, nil)
 }
 
 func frameNRGBAInto(ctx context.Context, src image.Image, dst *image.NRGBA) (*image.NRGBA, error) {

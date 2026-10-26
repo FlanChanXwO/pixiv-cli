@@ -9,6 +9,38 @@ import (
 
 var semanticVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
+// Semantic 保存已校验的版本及其 precedence 字段；通过 Parse 构造。
+type Semantic struct {
+	text       string
+	core       [3]string
+	prerelease []string
+}
+
+// Parse 校验并解析不带 v 前缀的 SemVer，保留原始 build metadata。
+func Parse(text string) (Semantic, error) {
+	if err := Validate(text); err != nil {
+		return Semantic{}, err
+	}
+	core, prerelease := splitVersion(text)
+	return Semantic{text: text, core: core, prerelease: prerelease}, nil
+}
+
+// String 返回不带 v 前缀的 canonical 版本。
+func (v Semantic) String() string { return v.text }
+
+// IsPrerelease 报告该版本是否带有 prerelease 标识符。
+func (v Semantic) IsPrerelease() bool { return len(v.prerelease) > 0 }
+
+// Compare 比较已经通过 Parse 校验的版本，忽略 build metadata。
+func (v Semantic) Compare(other Semantic) int {
+	for index := range v.core {
+		if order := compareNumeric(v.core[index], other.core[index]); order != 0 {
+			return order
+		}
+	}
+	return comparePrerelease(v.prerelease, other.prerelease)
+}
+
 // Validate 要求 version 是不带前导 v 的 semantic version。
 func Validate(version string) error {
 	if !semanticVersionPattern.MatchString(version) {
@@ -21,20 +53,15 @@ func Validate(version string) error {
 // 返回负数、零或正数分别表示 a 低于、等于或高于 b。build metadata 不参与 precedence。
 // 数字 identifier 按规范十进制字符串比较（先长度后字典序），因此任意长度都不会溢出。
 func Compare(a, b string) (int, error) {
-	if err := Validate(a); err != nil {
+	first, err := Parse(a)
+	if err != nil {
 		return 0, err
 	}
-	if err := Validate(b); err != nil {
+	second, err := Parse(b)
+	if err != nil {
 		return 0, err
 	}
-	aCore, aPre := splitVersion(a)
-	bCore, bPre := splitVersion(b)
-	for index := range aCore {
-		if order := compareNumeric(aCore[index], bCore[index]); order != 0 {
-			return order, nil
-		}
-	}
-	return comparePrerelease(aPre, bPre), nil
+	return first.Compare(second), nil
 }
 
 // splitVersion 从已通过 Validate 的 version 拆出三个 core 数字与 prerelease

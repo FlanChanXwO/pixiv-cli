@@ -59,7 +59,7 @@ type Encoder interface {
 	Encode(context.Context, Input) error
 }
 
-func writeTempAnimation(ctx context.Context, outputPath string, encode func(string) error) error {
+func writeTempAnimation(ctx context.Context, outputPath string, encode func(string) error) (resultErr error) {
 	extension := filepath.Ext(outputPath)
 	if extension == "" {
 		return fmt.Errorf("ugoira output path %q has no file extension", outputPath)
@@ -70,13 +70,14 @@ func writeTempAnimation(ctx context.Context, outputPath string, encode func(stri
 	}
 	temporaryPath := outFile.Name()
 	if err := outFile.Close(); err != nil {
-		_ = os.Remove(temporaryPath)
-		return err
+		return errors.Join(err, os.Remove(temporaryPath))
 	}
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(temporaryPath)
+			if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				resultErr = errors.Join(resultErr, err)
+			}
 		}
 	}()
 	if err := encode(temporaryPath); err != nil {

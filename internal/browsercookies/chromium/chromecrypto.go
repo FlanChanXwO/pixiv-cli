@@ -16,9 +16,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
-// peanuts 是 Chromium Linux 旧版 key derivation 使用的固定盐。
-var peanuts = []byte("peanuts")
-
 const (
 	// chromiumPrefixLength 是真实 encrypted_value 的外层版本标记长度。
 	chromiumPrefixLength = 3
@@ -63,17 +60,9 @@ func decryptChromiumCBC(encrypted, key []byte) ([]byte, error) {
 		return nil, browsercookies.ErrEncryptedMalformed
 	}
 	plain := make([]byte, len(ciphertext))
-	iv := bytesRepeat(' ', aes.BlockSize)
+	iv := bytes.Repeat([]byte{' '}, aes.BlockSize)
 	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, ciphertext)
 	return unpadCBC(plain)
-}
-
-func bytesRepeat(value byte, count int) []byte {
-	result := make([]byte, count)
-	for i := range result {
-		result[i] = value
-	}
-	return result
 }
 
 func unpadCBC(plain []byte) ([]byte, error) {

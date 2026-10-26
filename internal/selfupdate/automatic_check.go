@@ -52,9 +52,6 @@ func NewAutomaticUpdateChecker(options AutomaticUpdateCheckerOptions) (*Automati
 // Check 查询稳定版更新，并仅在较新版本存在时返回提示。
 // 开发构建没有发布渠道，必须在读取本机安装来源或访问网络前返回。
 func (c *AutomaticUpdateChecker) Check(ctx context.Context, request AutomaticUpdateRequest) (*AutomaticUpdateNotice, error) {
-	if c == nil {
-		return nil, fmt.Errorf("automatic update checker is nil")
-	}
 	if request.BuildInfo.IsDevelopment() {
 		return nil, nil
 	}

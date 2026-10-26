@@ -15,10 +15,9 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (string, *DownloadWarning, error) {
+func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (outputPath string, warning *DownloadWarning, returnErr error) {
 	data := filenameFields(artwork)
 	basename, generationErr := filename.GenerateChecked(data, 0, b.filenameTemplate)
-	var warning *DownloadWarning
 	if generationErr != nil || basename == "" {
 		fallback, fallbackErr := filename.GenerateChecked(data, 0, "")
 		if fallbackErr != nil {
@@ -53,9 +52,13 @@ func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Ar
 	}
 	zipPath := zipFile.Name()
 	if err := zipFile.Close(); err != nil {
-		return "", warning, err
+		return "", warning, errors.Join(err, os.Remove(zipPath))
 	}
-	defer os.Remove(zipPath)
+	defer func() {
+		if err := os.Remove(zipPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			returnErr = errors.Join(returnErr, err)
+		}
+	}()
 	if _, err := b.client.SaveResource(ctx, archive.Resource.Ref, sdk.SaveOptions{Path: zipPath}); err != nil {
 		return "", warning, err
 	}

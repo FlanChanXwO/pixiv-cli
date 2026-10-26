@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -72,14 +71,7 @@ func directResourceBasename(rawURL string) (string, error) {
 	if err != nil || name == "" || name == "." || name == ".." {
 		return "", errors.New("direct resource URL has no usable basename")
 	}
-	name = filename.Sanitize(name)
-	name = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return '_'
-		}
-		return r
-	}, name)
-	name = strings.TrimRight(name, ". ")
+	name = sanitizeResourceName(name)
 	if name == "" || name == "." || name == ".." {
 		return "", errors.New("direct resource URL has no usable basename")
 	}
@@ -96,6 +88,14 @@ func directResourceBasename(rawURL string) (string, error) {
 	}
 	return stem + "-" + suffix + ext, nil
 }
+
+type redactedResourceError struct {
+	message string
+	cause   error
+}
+
+func (e redactedResourceError) Error() string { return e.message }
+func (e redactedResourceError) Unwrap() error { return e.cause }
 
 func redactDirectResourceError(rawURL string, err error) error {
 	if err == nil {
@@ -117,7 +117,7 @@ func redactDirectResourceError(rawURL string, err error) error {
 	if redacted == message {
 		return err
 	}
-	return errors.New(redacted)
+	return redactedResourceError{message: redacted, cause: err}
 }
 
 func redactDirectResourceQueryParameter(message, key string) string {

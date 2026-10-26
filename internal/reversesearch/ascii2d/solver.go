@@ -1,3 +1,5 @@
+// FlareSolverr control protocol validates clearance-only browser state.
+
 package ascii2d
 
 import (
@@ -16,12 +18,12 @@ import (
 )
 
 var (
-	// ErrSolverUnavailable 表示无法通过 direct control transport 到达配置的 solver。
-	ErrSolverUnavailable = errors.New("ascii2d: FlareSolverr service unavailable")
-	// ErrSolverFailed 表示 solver 已响应，但没有完成 challenge recovery。
-	ErrSolverFailed = errors.New("ascii2d: FlareSolverr could not solve challenge")
-	// ErrMalformedSolverResponse 表示 solver 响应不满足 clearance-only 状态契约。
-	ErrMalformedSolverResponse = errors.New("ascii2d: malformed FlareSolverr response")
+	// errSolverUnavailable 表示无法通过 direct control transport 到达配置的 solver。
+	errSolverUnavailable = errors.New("ascii2d: FlareSolverr service unavailable")
+	// errSolverFailed 表示 solver 已响应，但没有完成 challenge recovery。
+	errSolverFailed = errors.New("ascii2d: FlareSolverr could not solve challenge")
+	// errMalformedSolverResponse 表示 solver 响应不满足 clearance-only 状态契约。
+	errMalformedSolverResponse = errors.New("ascii2d: malformed FlareSolverr response")
 )
 
 const (
@@ -30,20 +32,6 @@ const (
 	flareSolverrMaxTimeout = 180000
 	solverSessionPrefix    = "pixiv-cli-ascii2d-"
 )
-
-// FlareSolverrOptions 描述 ascii2d challenge recovery 使用的独立 solver 服务。
-// ProxyURL 只会作为 sessions.create 的浏览器 upstream proxy 传入，不会改变
-// ascii2d native transport 或 solver control request 的路由。
-type FlareSolverrOptions struct {
-	URL      string
-	ProxyURL string
-}
-
-type solverClientOptions struct {
-	FlareSolverr FlareSolverrOptions
-	HTTPClient   *http.Client
-	SessionName  string
-}
 
 // solverClient 只负责 FlareSolverr v1 control protocol；它不上传图片，也不接触
 // ascii2d 的账号、CSRF 或其他站点 cookie。
@@ -93,39 +81,26 @@ type solverCookie struct {
 	Expiry  json.RawMessage `json:"expiry"`
 }
 
-func newSolverClient(options solverClientOptions) (*solverClient, error) {
-	endpoint, ok := normalizeSolverEndpoint(options.FlareSolverr.URL)
+func newSolverClient(rawURL, proxyURL string) (*solverClient, error) {
+	endpoint, ok := normalizeSolverEndpoint(rawURL)
 	if !ok {
-		return nil, ErrSolverUnavailable
+		return nil, errSolverUnavailable
 	}
 
-	session := options.SessionName
-	if session == "" {
-		var err error
-		session, err = newSolverSessionName()
-		if err != nil {
-			return nil, ErrSolverUnavailable
-		}
+	session, err := newSolverSessionName()
+	if err != nil {
+		return nil, errors.Join(errSolverUnavailable, err)
 	}
-	if !validSolverSessionName(session) {
-		return nil, ErrSolverUnavailable
-	}
-
-	httpClient := options.HTTPClient
-	if httpClient == nil {
-		// FlareSolverr control traffic must be direct. The browser proxy is
-		// supplied in sessions.create instead of being inherited by this client.
-		transport := &http.Transport{Proxy: nil}
-		httpClient = &http.Client{
-			Transport: transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
+	// solver control 直连；浏览器代理仅通过 sessions.create 传入。
+	httpClient := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	return &solverClient{
 		endpoint:   endpoint,
-		proxyURL:   options.FlareSolverr.ProxyURL,
+		proxyURL:   proxyURL,
 		httpClient: httpClient,
 		session:    session,
 	}, nil
@@ -142,7 +117,7 @@ func newSolverSessionName() (string, error) {
 func normalizeSolverEndpoint(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.ForceQuery {
 		return "", false
 	}
 	switch strings.ToLower(parsed.Scheme) {
@@ -153,22 +128,7 @@ func normalizeSolverEndpoint(raw string) (string, bool) {
 	return strings.TrimRight(raw, "/"), true
 }
 
-func validSolverSessionName(value string) bool {
-	if strings.TrimSpace(value) == "" {
-		return false
-	}
-	for _, char := range value {
-		if char < 0x20 || char == 0x7f {
-			return false
-		}
-	}
-	return true
-}
-
 func (c *solverClient) create(ctx context.Context) error {
-	if c == nil {
-		return ErrSolverUnavailable
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.created {
@@ -206,9 +166,6 @@ func (c *solverClient) get(ctx context.Context, targetURL string) (solverState, 
 }
 
 func (c *solverClient) destroy(ctx context.Context) error {
-	if c == nil {
-		return ErrSolverUnavailable
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.created {
@@ -225,16 +182,13 @@ func (c *solverClient) destroy(ctx context.Context) error {
 }
 
 func (c *solverClient) call(ctx context.Context, payload solverRequest) (solverResponse, error) {
-	if ctx == nil || c == nil || c.httpClient == nil || c.endpoint == "" || !validSolverSessionName(c.session) {
-		return solverResponse{}, ErrSolverUnavailable
-	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return solverResponse{}, ErrMalformedSolverResponse
+		return solverResponse{}, errors.Join(errMalformedSolverResponse, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+"/v1", bytes.NewReader(body))
 	if err != nil {
-		return solverResponse{}, ErrSolverUnavailable
+		return solverResponse{}, errors.Join(errSolverUnavailable, err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
@@ -244,38 +198,35 @@ func (c *solverClient) call(ctx context.Context, payload solverRequest) (solverR
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return solverResponse{}, ctxErr
 		}
-		return solverResponse{}, ErrSolverUnavailable
-	}
-	if response == nil || response.Body == nil {
-		return solverResponse{}, ErrMalformedSolverResponse
+		return solverResponse{}, errors.Join(errSolverUnavailable, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return solverResponse{}, ErrSolverFailed
+		return solverResponse{}, errSolverFailed
 	}
 
 	decoder := json.NewDecoder(response.Body)
 	var decoded solverResponse
 	if err := decoder.Decode(&decoded); err != nil {
-		return solverResponse{}, ErrMalformedSolverResponse
+		return solverResponse{}, errors.Join(errMalformedSolverResponse, err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return solverResponse{}, ErrMalformedSolverResponse
+		return solverResponse{}, errors.Join(errMalformedSolverResponse, err)
 	}
 	switch decoded.Status {
 	case "ok":
 		return decoded, nil
 	case "error":
-		return solverResponse{}, ErrSolverFailed
+		return solverResponse{}, errSolverFailed
 	default:
-		return solverResponse{}, ErrMalformedSolverResponse
+		return solverResponse{}, errMalformedSolverResponse
 	}
 }
 
 func validateSolverSolution(solution *solverResponseSolution) (solverState, error) {
 	if solution == nil || !validSolverHeaderValue(solution.UserAgent) {
-		return solverState{}, ErrMalformedSolverResponse
+		return solverState{}, errMalformedSolverResponse
 	}
 
 	var clearance string
@@ -288,7 +239,7 @@ func validateSolverSolution(solution *solverResponseSolution) (solverState, erro
 		}
 		count++
 		if count > 1 || cookie.Value == "" || !validSolverCookieValue(cookie.Value) {
-			return solverState{}, ErrMalformedSolverResponse
+			return solverState{}, errMalformedSolverResponse
 		}
 		clearance = cookie.Value
 		if len(bytes.TrimSpace(cookie.Expiry)) != 0 && !bytes.Equal(bytes.TrimSpace(cookie.Expiry), []byte("null")) {
@@ -298,11 +249,11 @@ func validateSolverSolution(solution *solverResponseSolution) (solverState, erro
 		}
 	}
 	if count != 1 {
-		return solverState{}, ErrMalformedSolverResponse
+		return solverState{}, errMalformedSolverResponse
 	}
 	expiresAt, hasExpiry, err := parseSolverExpiry(expiryRaw)
 	if err != nil {
-		return solverState{}, ErrMalformedSolverResponse
+		return solverState{}, errMalformedSolverResponse
 	}
 	return solverState{userAgent: solution.UserAgent, clearance: clearance, expiresAt: expiresAt, hasExpiry: hasExpiry}, nil
 }

@@ -16,7 +16,7 @@ func Current() Info {
 	}
 }
 
-// IsDevelopment 仅根据版本号判断开发构建，供更新功能在未来拒绝 dev 二进制时使用。
+// IsDevelopment 识别没有发布渠道的开发构建。
 func (info Info) IsDevelopment() bool {
 	return info.Version == "dev"
 }

@@ -1,3 +1,5 @@
+// Source loading owns private immutable snapshots and cancellable readers.
+
 package reversesearch
 
 import (
@@ -13,22 +15,14 @@ import (
 	"sync"
 )
 
-// SourceLoaderOptions 是载荷加载器的构造依赖。TempDir 为空时使用系统临时目录；
-// HTTPClient 由 URL source 使用，加载器不会修改调用方对象。
-type SourceLoaderOptions struct {
-	TempDir    string
-	HTTPClient *http.Client
-}
-
 // Loader 实现文件与 HTTP(S) source 的单次流式载入。
 type Loader struct {
-	tempDir    string
 	httpClient *http.Client
-	openFile   func(string) (*os.File, error)
 }
 
-func NewSourceLoader(options SourceLoaderOptions) *Loader {
-	return &Loader{tempDir: options.TempDir, httpClient: options.HTTPClient, openFile: os.Open}
+// NewSourceLoader 使用组合根提供的 HTTP client；加载器不会修改调用方对象。
+func NewSourceLoader(client *http.Client) *Loader {
+	return &Loader{httpClient: client}
 }
 
 // Snapshot 是 provider 共享的不可变载荷。调用方必须在所有 reader 关闭后 Close。
@@ -47,11 +41,8 @@ func (s *Snapshot) SHA256() string { return s.sha256 }
 
 func (s *Snapshot) Size() int64 { return s.size }
 
-// Open 从快照起点返回一个独立 reader，不暴露临时文件路径。
-func (s *Snapshot) Open() (io.ReadCloser, error) {
-	if s == nil {
-		return nil, NewError(CodeSnapshotFailed, "image snapshot is unavailable", nil)
-	}
+// Open 从快照起点返回响应 ctx 取消的独立 reader，不暴露临时文件路径。
+func (s *Snapshot) Open(ctx context.Context) (io.ReadCloser, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -61,14 +52,14 @@ func (s *Snapshot) Open() (io.ReadCloser, error) {
 	if err != nil {
 		return nil, NewError(CodeSnapshotFailed, "could not open image snapshot", err)
 	}
-	return reader, nil
+	return struct {
+		io.Reader
+		io.Closer
+	}{contextReader{ctx: ctx, reader: reader}, reader}, nil
 }
 
 // Close 删除私有快照；重复调用安全。
 func (s *Snapshot) Close() error {
-	if s == nil {
-		return nil
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -82,9 +73,6 @@ func (s *Snapshot) Close() error {
 }
 
 func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
-	if ctx == nil {
-		return nil, NewError(CodeInvalidRequest, "reverse search context is required", nil)
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -101,7 +89,7 @@ func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
 	if !info.Mode().IsRegular() {
 		return nil, NewError(CodeSourceNotRegularFile, "image source must be a regular file", nil)
 	}
-	input, err := l.openSourceFile(source)
+	input, err := os.Open(source)
 	if err != nil {
 		return nil, NewError(CodeSourceReadFailed, "could not read image source", err)
 	}
@@ -114,13 +102,6 @@ func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
 		return nil, NewError(CodeSourceNotRegularFile, "image source must be a regular file", nil)
 	}
 	return l.copySnapshot(ctx, SourceKindFile, input)
-}
-
-func (l *Loader) openSourceFile(path string) (*os.File, error) {
-	if l.openFile == nil {
-		return os.Open(path)
-	}
-	return l.openFile(path)
 }
 
 func hasHTTPScheme(source string) bool {
@@ -136,11 +117,7 @@ func (l *Loader) loadURL(ctx context.Context, source string) (*Snapshot, error) 
 	if err != nil {
 		return nil, NewError(CodeInvalidSource, "image source URL is invalid", err)
 	}
-	baseClient := l.httpClient
-	if baseClient == nil {
-		baseClient = http.DefaultClient
-	}
-	client := *baseClient
+	client := *l.httpClient
 	originalRedirect := client.CheckRedirect
 	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if originalRedirect != nil {
@@ -161,12 +138,6 @@ func (l *Loader) loadURL(ctx context.Context, source string) (*Snapshot, error) 
 		return nil, NewError(CodeSourceReadFailed, "could not fetch image source", err)
 	}
 	defer response.Body.Close()
-	if response.Request == nil || response.Request.URL == nil {
-		return nil, NewError(CodeInvalidSource, "image source URL is invalid", nil)
-	}
-	if err := validateSourceURL(response.Request.URL.String()); err != nil {
-		return nil, err
-	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, NewError(CodeSourceHTTPStatus, "image source returned an unsuccessful HTTP status", nil)
 	}
@@ -188,15 +159,22 @@ func validateSourceURL(source string) error {
 }
 
 func (l *Loader) copySnapshot(ctx context.Context, kind SourceKind, input io.Reader) (_ *Snapshot, err error) {
-	temporary, err := os.CreateTemp(l.tempDir, "pixiv-reverse-search-*.tmp")
+	temporary, err := os.CreateTemp("", "pixiv-reverse-search-*.tmp")
 	if err != nil {
 		return nil, NewError(CodeSnapshotFailed, "could not create image snapshot", err)
 	}
 	path := temporary.Name()
+	closed := false
 	defer func() {
 		if err != nil {
-			_ = temporary.Close()
-			_ = os.Remove(path)
+			if !closed {
+				if closeErr := temporary.Close(); closeErr != nil {
+					err = errors.Join(err, NewError(CodeSnapshotFailed, "could not close image snapshot", closeErr))
+				}
+			}
+			if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = errors.Join(err, NewError(CodeSnapshotFailed, "could not remove image snapshot", removeErr))
+			}
 		}
 	}()
 	if chmodErr := temporary.Chmod(0o600); chmodErr != nil {
@@ -207,11 +185,14 @@ func (l *Loader) copySnapshot(ctx context.Context, kind SourceKind, input io.Rea
 	size, copyErr := io.Copy(io.MultiWriter(temporary, digest), contextReader{ctx: ctx, reader: input})
 	if copyErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, ctxErr
+			// 保持取消原有的分类和消息，同时保留读取原因。
+			return nil, NewError(CodeUnknown, ctxErr.Error(), copyErr)
 		}
 		return nil, NewError(CodeSourceReadFailed, "could not read image source", copyErr)
 	}
-	if closeErr := temporary.Close(); closeErr != nil {
+	closeErr := temporary.Close()
+	closed = true
+	if closeErr != nil {
 		return nil, NewError(CodeSnapshotFailed, "could not finalize image snapshot", closeErr)
 	}
 	return &Snapshot{
@@ -231,5 +212,12 @@ func (r contextReader) Read(buffer []byte) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}
-	return r.reader.Read(buffer)
+	read, err := r.reader.Read(buffer)
+	if ctxErr := r.ctx.Err(); ctxErr != nil {
+		if err == io.EOF {
+			err = nil
+		}
+		err = errors.Join(ctxErr, err)
+	}
+	return read, err
 }

@@ -1,3 +1,4 @@
+// Package loginrelay owns one-shot remote login and the shared callback protocol.
 package loginrelay
 
 import (
@@ -66,14 +67,8 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 	if err != nil {
 		return nil, err
 	}
-	sessionURL, err := handoffRelayURL(publicURL, "session", sessionID)
-	if err != nil {
-		return nil, err
-	}
-	resultURL, err := handoffRelayURL(publicURL, "result", resultID)
-	if err != nil {
-		return nil, err
-	}
+	sessionURL := handoffRelayURL(publicURL, "session", sessionID)
+	resultURL := handoffRelayURL(publicURL, "result", resultID)
 	startURL := handoffRelayDeepLink(publicURL, sessionID, proof)
 
 	resultCh := make(chan string, 1)
@@ -85,7 +80,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 	var resultWaiterMu sync.Mutex
 	resultWaiterAdded := false
 	var finalOnce sync.Once
-	var finalStatusMu sync.RWMutex
+	// finalReady/finalPageWritten publish finalStatus before either handler reads it.
 	finalStatus := false
 	finalReady := make(chan struct{})
 	finalPageWritten := make(chan struct{})
@@ -104,9 +99,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 	}
 	notifyFinal := func(ok bool) {
 		finalOnce.Do(func() {
-			finalStatusMu.Lock()
 			finalStatus = ok
-			finalStatusMu.Unlock()
 			close(finalReady)
 			resultPageWaiters.Wait()
 			close(finalPageWritten)
@@ -131,7 +124,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 			return errors.New("invalid Pixiv login result")
 		}
 		callback := strings.TrimSpace(raw)
-		if acceptsCallback == nil || !acceptsCallback(callback) {
+		if !acceptsCallback(callback) {
 			return errors.New("login result does not match this session")
 		}
 		sessionMu.Lock()
@@ -224,9 +217,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		}
 		select {
 		case <-finalPageWritten:
-			finalStatusMu.RLock()
 			ok := finalStatus
-			finalStatusMu.RUnlock()
 			_ = json.NewEncoder(w).Encode(relayLoginFinalResponse{Success: ok})
 		case <-r.Context().Done():
 			finishResultPage()
@@ -248,9 +239,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		defer resultPageWaiters.Done()
 		select {
 		case <-finalReady:
-			finalStatusMu.RLock()
 			ok := finalStatus
-			finalStatusMu.RUnlock()
 			WriteFinalPage(w, ok)
 		case <-r.Context().Done():
 			WriteFinalPage(w, false)
@@ -277,23 +266,19 @@ func newRelayResultID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(bytes[:]), nil
 }
 
-func handoffRelayURL(publicURL, segment, id string) (string, error) {
-	canonical, err := CanonicalPublicURL(publicURL)
-	if err != nil {
-		return "", err
-	}
-	parsed, _ := url.Parse(canonical)
+func handoffRelayURL(publicURL, segment, id string) string {
+	parsed, _ := url.Parse(publicURL)
 	escapedBase := parsed.EscapedPath()
 	parsed.Path = path.Join("/", parsed.Path, segment, id)
 	parsed.RawPath = path.Join("/", escapedBase, url.PathEscape(segment), url.PathEscape(id))
-	return parsed.String(), nil
+	return parsed.String()
 }
 
 // CanonicalPublicURL 在启动 session 前一次性规范 relay base；随后
 // session、manual/result endpoint 与 deep link 都只使用这一值，不能各自重写。
 func CanonicalPublicURL(raw string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed == nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.ForceQuery || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", errors.New("invalid remote login relay public URL")
 	}
 	parsed.Scheme = strings.ToLower(parsed.Scheme)

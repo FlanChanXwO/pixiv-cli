@@ -12,12 +12,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-var (
-	// fanboxAccountServiceNotConfigured 表示没有注入 FANBOX 账号叶服务。
-	fanboxAccountServiceNotConfigured = errors.New("fanbox account service is not configured")
-	// nilClient 表示账号叶服务成功返回了 nil client。
-	nilClient = errors.New("fanbox account service returned a nil client")
-)
+// nilClient 表示账号叶服务成功返回了 nil client。
+var nilClient = errors.New("fanbox account service returned a nil client")
 
 // AccountOpener 是 account leaf 为 Fanbox 提供的最窄打开端口。
 //
@@ -40,8 +36,7 @@ type OpenRequest struct {
 // Fanbox 不持有全局 client；每次 Open 都创建一个独立 Lease，调用方可以
 // 明确决定生命周期。Use 用于无法把 Lease 继续向上传递的 callback 场景。
 type Fanbox struct {
-	accounts    AccountOpener
-	closeClient func(*fanbox.Client) error
+	accounts AccountOpener
 }
 
 // NewFanbox 构造 FANBOX 根业务编排对象。
@@ -54,29 +49,20 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 	if ctx == nil {
 		return nil, lifecycle.ErrNilContext
 	}
-	if f == nil || f.accounts == nil {
-		return nil, fanboxAccountServiceNotConfigured
-	}
-	closeClient := f.closeClient
-	if closeClient == nil {
-		closeClient = func(client *fanbox.Client) error {
-			if client != nil {
-				client.CloseIdleConnections()
-			}
-			return nil
-		}
-	}
 	client, err := f.accounts.OpenClient(ctx, request.ProxyOverride)
 	if err != nil {
 		if client != nil {
-			return nil, errors.Join(err, closeClient(client))
+			client.CloseIdleConnections()
 		}
 		return nil, err
 	}
 	if client == nil {
 		return nil, nilClient
 	}
-	return lifecycle.NewLease(client, func() error { return closeClient(client) }), nil
+	return lifecycle.NewLease(client, func() error {
+		client.CloseIdleConnections()
+		return nil
+	}), nil
 }
 
 // Use 在一个 callback 内使用默认账号 client，并在 callback 返回后关闭它。

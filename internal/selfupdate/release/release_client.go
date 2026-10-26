@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -11,10 +12,11 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/source"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 const (
-	defaultGitHubAPIBaseURL = "https://api.github.com"
+	githubAPIHost           = "api.github.com"
 	defaultGitHubRepository = "FlanChanXwO/pixiv-cli"
 	// CacheFilename 是 release cache 使用的固定文件名。
 	CacheFilename = "github-releases.json"
@@ -25,15 +27,10 @@ const (
 )
 
 // ReleaseClientOptions 配置 GitHub Releases 客户端。
-// APIBaseURL、Repository、HTTPClient、CacheDir 和 Now 允许调用方为受控环境注入依赖；
 // Cache 是 release cache 的存储端口，生产默认文件实现由安装器提供。
 type ReleaseClientOptions struct {
-	APIBaseURL                 string
-	Repository                 string
 	HTTPClient                 *http.Client
-	CacheDir                   string
 	Cache                      ReleaseCache
-	Now                        func() time.Time
 	EnablePublicReleaseSources bool
 }
 
@@ -74,7 +71,6 @@ type GitHubReleaseClient struct {
 	endpoint   *url.URL
 	httpClient *http.Client
 	cache      ReleaseCache
-	now        func() time.Time
 	// sourceSelector 仅在调用方未显式配置 HTTP(S) proxy 时启用，避免改变用户指定代理的语义。
 	sourceSelector *source.ReleaseSourceSelector
 }
@@ -84,53 +80,25 @@ func NewGitHubReleaseClient(options ReleaseClientOptions) (*GitHubReleaseClient,
 	if options.Cache == nil {
 		return nil, fmt.Errorf("release cache is required")
 	}
-	apiBaseURL := options.APIBaseURL
-	if apiBaseURL == "" {
-		apiBaseURL = defaultGitHubAPIBaseURL
-	}
-	baseURL, err := url.Parse(apiBaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse GitHub API base URL %q: %w", apiBaseURL, err)
-	}
-	if baseURL.Scheme == "" || baseURL.Host == "" {
-		return nil, fmt.Errorf("GitHub API base URL %q must be absolute", apiBaseURL)
-	}
-
-	repository := options.Repository
-	if repository == "" {
-		repository = defaultGitHubRepository
-	}
-	owner, name, ok := strings.Cut(repository, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return nil, fmt.Errorf("GitHub repository %q must have owner/name form", repository)
-	}
-	endpoint := baseURL.JoinPath("repos", owner, name, "releases")
+	endpoint := &url.URL{Scheme: "https", Host: githubAPIHost, Path: "/repos/" + defaultGitHubRepository + "/releases"}
 
 	httpClient := options.HTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	now := options.Now
-	if now == nil {
-		now = time.Now
-	}
 	client := &GitHubReleaseClient{
 		endpoint:   endpoint,
 		httpClient: httpClient,
 		cache:      options.Cache,
-		now:        now,
 	}
 	if options.EnablePublicReleaseSources {
-		client.sourceSelector = source.NewDefaultReleaseSourceSelector(httpClient)
+		client.sourceSelector = source.NewReleaseSourceSelector(httpClient)
 	}
 	return client, nil
 }
 
 // Check 从 GitHub Releases API 选择符合渠道的最高 SemVer Release。
 func (c *GitHubReleaseClient) Check(ctx context.Context, options ReleaseCheckOptions) (ReleaseCheckResult, error) {
-	if c == nil {
-		return ReleaseCheckResult{}, fmt.Errorf("GitHub release client is nil")
-	}
 	if options.Automatic {
 		// 产品要求普通命令后的自动更新检查最多占用三秒；显式 update 不使用此短时限。
 		automaticContext, cancel := context.WithTimeout(ctx, automaticCheckTimeout)
@@ -144,7 +112,7 @@ func (c *GitHubReleaseClient) Check(ctx context.Context, options ReleaseCheckOpt
 	if err := source.CheckContext(ctx, "read GitHub Releases cache"); err != nil {
 		return ReleaseCheckResult{}, err
 	}
-	now := c.now()
+	now := time.Now()
 	if options.Automatic && cacheExists && cache.SchemaVersion == releaseCacheSchemaVersion && now.Before(cache.CheckedAt.Add(24*time.Hour)) {
 		selected, err := selectRelease(cache.Releases, options.IncludePrerelease)
 		if err != nil {
@@ -239,7 +207,7 @@ func publishedReleases(releases []githubRelease) []githubRelease {
 
 func selectRelease(releases []githubRelease, includePrerelease bool) (*Release, error) {
 	var selected *Release
-	var selectedVersion SemanticVersion
+	var selectedVersion version.Semantic
 	for _, candidate := range releases {
 		if candidate.Draft {
 			continue
@@ -370,8 +338,18 @@ func (c *GitHubReleaseClient) fetchReleasePage(ctx context.Context, pageURL *url
 	}
 
 	var releases []githubRelease
-	if err := json.NewDecoder(response.Body).Decode(&releases); err != nil {
+	decoder := json.NewDecoder(response.Body)
+	if err := decoder.Decode(&releases); err != nil {
 		return releaseCachePage{}, nil, fmt.Errorf("decode GitHub Releases page %q: %w", pageURL, err)
+	}
+	if releases == nil {
+		return releaseCachePage{}, nil, fmt.Errorf("decode GitHub Releases page %q: expected an array", pageURL)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			return releaseCachePage{}, nil, fmt.Errorf("decode GitHub Releases page %q: contains more than one JSON value", pageURL)
+		}
+		return releaseCachePage{}, nil, fmt.Errorf("decode GitHub Releases page %q trailing data: %w", pageURL, err)
 	}
 	if err := source.CheckContext(ctx, "decode GitHub Releases page"); err != nil {
 		return releaseCachePage{}, nil, err
@@ -460,20 +438,13 @@ func (c *GitHubReleaseClient) validateReleasePageURL(pageURL *url.URL) (*url.URL
 	if pageURL.Fragment != "" {
 		return nil, fmt.Errorf("URL %q has a fragment", pageURL)
 	}
-	if pageURL.Scheme != c.endpoint.Scheme || pageURL.Host != c.endpoint.Host || urlUserString(pageURL) != urlUserString(c.endpoint) {
+	if pageURL.Scheme != c.endpoint.Scheme || pageURL.Host != c.endpoint.Host || pageURL.User.String() != c.endpoint.User.String() {
 		return nil, fmt.Errorf("URL %q is not on the GitHub API origin %q", pageURL, c.endpoint)
 	}
 	if normalizedReleasePath(pageURL.Path) != normalizedReleasePath(c.endpoint.Path) {
 		return nil, fmt.Errorf("URL %q path %q is not the GitHub Releases endpoint path %q", pageURL, normalizedReleasePath(pageURL.Path), normalizedReleasePath(c.endpoint.Path))
 	}
 	return pageURL, nil
-}
-
-func urlUserString(pageURL *url.URL) string {
-	if pageURL.User == nil {
-		return ""
-	}
-	return pageURL.User.String()
 }
 
 func canonicalReleasePageURL(pageURL *url.URL) string {

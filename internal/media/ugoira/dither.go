@@ -9,17 +9,6 @@ import (
 // 蛇形 Floyd–Steinberg 移植自 quantette 0.6.0 的 dither.rs。
 // Copyright (c) 2023 Ian Manske，MIT；见 third_party/licenses/quantette-0.6.0/LICENSE-MIT。
 
-func quantizeFrame(ctx context.Context, frame *image.NRGBA, palette []rgb, hasTransparency bool) ([]byte, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	q, err := newFrameQuantizer(palette, hasTransparency)
-	if err != nil {
-		return nil, err
-	}
-	return q.quantize(ctx, frame)
-}
-
 // 调色板、搜索单元与误差工作区由一次编码独占。
 type frameQuantizer struct {
 	errors          []oklab
@@ -40,10 +29,6 @@ func newFrameQuantizer(palette []rgb, hasTransparency bool) (*frameQuantizer, er
 		colors[i] = srgbToOklab(c)
 	}
 	return &frameQuantizer{search: newColorSearch(colors), hasTransparency: hasTransparency}, nil
-}
-
-func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]byte, error) {
-	return q.quantizeInto(ctx, frame, nil)
 }
 
 // 只允许调用方在消费完上一帧后交回索引缓冲。

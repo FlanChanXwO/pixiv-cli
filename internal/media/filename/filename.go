@@ -50,11 +50,6 @@ func ValidateTemplate(template string) error {
 	return nil
 }
 
-// hasPlaceholder 报告已经通过语法校验的模板是否引用某个占位符。
-func hasPlaceholder(template, placeholder string) bool {
-	return strings.Contains(template, placeholder)
-}
-
 // Sanitize 把路径分隔符和各平台不允许出现在文件名中的字符替换为下划线。
 func Sanitize(name string) string {
 	return unsafeNameCharacters.ReplaceAllString(name, "_")
@@ -63,6 +58,9 @@ func Sanitize(name string) string {
 // GenerateChecked 生成安全文件名，并在模板实际使用日期时校验 Pixiv 时间。{num}
 // 是 0-based 页码；未显式出现时保留历史多页 _pN 后缀。
 func GenerateChecked(data Fields, page int, template string) (string, error) {
+	if err := ValidateTemplate(template); err != nil {
+		return "", err
+	}
 	return generateChecked(data, page, template, true)
 }
 
@@ -72,11 +70,8 @@ func generateChecked(data Fields, page int, template string, appendPageSuffix bo
 	if template == "" {
 		template = "{author} - {title}_{id}"
 	}
-	if err := ValidateTemplate(template); err != nil {
-		return "", err
-	}
 	date := ""
-	if hasPlaceholder(template, "{date}") {
+	if strings.Contains(template, "{date}") {
 		parsed, err := time.Parse(time.RFC3339, data.CreateDate)
 		if err != nil {
 			return "", fmt.Errorf("filename template requires a valid create date")
@@ -94,7 +89,7 @@ func generateChecked(data Fields, page int, template string, appendPageSuffix bo
 	).Replace(template)
 	// 模板字面量也可能包含路径分隔符；最终文件名必须整体清理，避免下载写出目标目录。
 	name = Sanitize(name)
-	if appendPageSuffix && data.PageCount > 1 && !hasPlaceholder(template, "{num}") {
+	if appendPageSuffix && data.PageCount > 1 && !strings.Contains(template, "{num}") {
 		return fmt.Sprintf("%s_p%d", name, page), nil
 	}
 	return name, nil
@@ -134,9 +129,6 @@ func BuildRelativeDirectory(template string, data Fields, page int) (string, err
 	segments := strings.Split(template, "/")
 	rendered := make([]string, len(segments))
 	for index, segment := range segments {
-		if segment == "" || segment == "." || segment == ".." {
-			return "", fmt.Errorf("directory template contains an unsafe path segment")
-		}
 		value, err := generateChecked(data, page, segment, false)
 		if err != nil {
 			return "", err

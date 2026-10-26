@@ -93,7 +93,7 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 			previous = append(previous[:0], indices...)
 		}
 	}
-	return w.write([]byte{0x3b})
+	return writeAnimation(w.ctx, w.output, []byte{0x3b})
 }
 
 func gifDelay(delay int, file string) (uint16, error) {
@@ -130,13 +130,13 @@ func (w *gifWriter) header(size image.Point, palette []rgb, transparent bool) er
 	binary.LittleEndian.PutUint16(header[6:8], uint16(size.X))
 	binary.LittleEndian.PutUint16(header[8:10], uint16(size.Y))
 	header[10] = 0x80 | byte(tableBits-1)*0x11
-	if err := w.write(header[:]); err != nil {
+	if err := writeAnimation(w.ctx, w.output, header[:]); err != nil {
 		return err
 	}
-	if err := w.write(table[:3*(1<<tableBits)]); err != nil {
+	if err := writeAnimation(w.ctx, w.output, table[:3*(1<<tableBits)]); err != nil {
 		return err
 	}
-	return w.write([]byte("\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"))
+	return writeAnimation(w.ctx, w.output, []byte("\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"))
 }
 
 func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, delay uint16, transparent bool) error {
@@ -147,7 +147,7 @@ func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, de
 		control[3] = 1 << 2
 	}
 	binary.LittleEndian.PutUint16(control[4:6], delay)
-	if err := w.write(control[:]); err != nil {
+	if err := writeAnimation(w.ctx, w.output, control[:]); err != nil {
 		return err
 	}
 	descriptor := [10]byte{0x2c}
@@ -155,7 +155,7 @@ func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, de
 	binary.LittleEndian.PutUint16(descriptor[3:5], uint16(region.Min.Y))
 	binary.LittleEndian.PutUint16(descriptor[5:7], uint16(region.Dx()))
 	binary.LittleEndian.PutUint16(descriptor[7:9], uint16(region.Dy()))
-	if err := w.write(descriptor[:]); err != nil {
+	if err := writeAnimation(w.ctx, w.output, descriptor[:]); err != nil {
 		return err
 	}
 	var highest byte
@@ -172,7 +172,7 @@ func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, de
 		}
 	}
 	codeSize := max(2, bits.Len8(highest))
-	if err := w.write([]byte{byte(codeSize)}); err != nil {
+	if err := writeAnimation(w.ctx, w.output, []byte{byte(codeSize)}); err != nil {
 		return err
 	}
 	blocks := gifBlocks{writer: w}
@@ -190,18 +190,7 @@ func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, de
 	if err := compressor.Close(); err != nil {
 		return errors.Join(err, w.ctx.Err())
 	}
-	return w.write([]byte{0})
-}
-
-func (w *gifWriter) write(data []byte) error {
-	if err := w.ctx.Err(); err != nil {
-		return err
-	}
-	n, err := w.output.Write(data)
-	if n != len(data) && err == nil {
-		err = io.ErrShortWrite
-	}
-	return errors.Join(err, w.ctx.Err())
+	return writeAnimation(w.ctx, w.output, []byte{0})
 }
 
 // GIF 子块最多 255 字节；直接接收 LZW 字节，避免缓存整帧压缩结果。
@@ -234,7 +223,7 @@ func (b *gifBlocks) Flush() error {
 		return nil
 	}
 	b.buffer[0] = byte(b.used)
-	if err := b.writer.write(b.buffer[:b.used+1]); err != nil {
+	if err := writeAnimation(b.writer.ctx, b.writer.output, b.buffer[:b.used+1]); err != nil {
 		return err
 	}
 	b.used = 0

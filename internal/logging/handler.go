@@ -32,7 +32,7 @@ func New(w io.Writer, level, format string) (*slog.Logger, error) {
 	options := &slog.HandlerOptions{Level: parsed}
 	switch format {
 	case FormatText:
-		return slog.New(callHandler{inner: newTextHandler(w, options)}), nil
+		return slog.New(callHandler{inner: newTextHandler(w, parsed)}), nil
 	case FormatJSON:
 		return slog.New(callHandler{inner: jsonErrorHandler{inner: slog.NewJSONHandler(w, options)}}), nil
 	default:
@@ -128,21 +128,17 @@ func expandErrorAttr(attr slog.Attr) slog.Attr {
 type textHandler struct {
 	mu     *sync.Mutex
 	w      io.Writer
-	level  slog.Leveler
+	level  slog.Level
 	attrs  []slog.Attr
 	groups []string
 }
 
-func newTextHandler(w io.Writer, options *slog.HandlerOptions) *textHandler {
-	level := options.Level
-	if level == nil {
-		level = slog.LevelInfo
-	}
+func newTextHandler(w io.Writer, level slog.Level) *textHandler {
 	return &textHandler{mu: &sync.Mutex{}, w: w, level: level}
 }
 
 func (h *textHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= h.level.Level()
+	return level >= h.level
 }
 
 func (h *textHandler) Handle(_ context.Context, record slog.Record) error {
@@ -152,7 +148,6 @@ func (h *textHandler) Handle(_ context.Context, record slog.Record) error {
 
 	var errAttr slog.Value
 	for _, attr := range h.attrs {
-		attr = prefixAttr(h.groups, attr)
 		writeAttr(&b, attr)
 		if attr.Key == AttrError {
 			errAttr = attr.Value
@@ -181,7 +176,11 @@ func (h *textHandler) Handle(_ context.Context, record slog.Record) error {
 
 func (h *textHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	clone := *h
-	clone.attrs = append(append([]slog.Attr(nil), h.attrs...), attrs...)
+	clone.attrs = append([]slog.Attr(nil), h.attrs...)
+	for _, attr := range attrs {
+		attr.Value = attr.Value.Resolve()
+		clone.attrs = append(clone.attrs, prefixAttr(h.groups, attr))
+	}
 	return &clone
 }
 
@@ -221,6 +220,7 @@ func writeAttr(b *strings.Builder, attr slog.Attr) {
 }
 
 func formatValue(value slog.Value) string {
+	value = value.Resolve()
 	switch value.Kind() {
 	case slog.KindString:
 		return quoteValue(value.String())

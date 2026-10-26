@@ -1,3 +1,5 @@
+// Solver state cache shares in-flight recovery while tracking each waiter's cancellation.
+
 package ascii2d
 
 import (
@@ -7,13 +9,7 @@ import (
 	"time"
 )
 
-var (
-	// errSolverContextRequired protects the internal cache from a nil Context;
-	// public ascii2d entry points validate the context before reaching it.
-	errSolverContextRequired = errors.New("ascii2d: solver context is required")
-	// errSolverClosed distinguishes lifecycle shutdown from a failed solve.
-	errSolverClosed = errors.New("ascii2d: solver state cache is closed")
-)
+var errSolverClosed = errors.New("ascii2d: solver state cache is closed")
 
 type solverCall struct {
 	ctx     context.Context
@@ -29,27 +25,13 @@ type solverStateCache struct {
 	state  *solverState
 	active *solverCall
 	closed bool
-	now    func() time.Time
 }
 
 type solverSolveFunc func(context.Context) (solverState, error)
 
-func newSolverStateCache() *solverStateCache {
-	return &solverStateCache{now: time.Now}
-}
-
 func (c *solverStateCache) getOrSolve(ctx context.Context, solve solverSolveFunc) (solverState, error) {
-	if ctx == nil {
-		return solverState{}, errSolverContextRequired
-	}
-	if solve == nil {
-		return solverState{}, ErrSolverUnavailable
-	}
 	if err := ctx.Err(); err != nil {
 		return solverState{}, err
-	}
-	if c == nil {
-		return solverState{}, ErrSolverUnavailable
 	}
 
 	c.mu.Lock()
@@ -58,7 +40,7 @@ func (c *solverStateCache) getOrSolve(ctx context.Context, solve solverSolveFunc
 		return solverState{}, errSolverClosed
 	}
 	if c.state != nil {
-		if !solverStateExpired(*c.state, c.currentTime()) {
+		if !solverStateExpired(*c.state, time.Now()) {
 			state := *c.state
 			c.mu.Unlock()
 			return state, nil
@@ -114,7 +96,7 @@ func (c *solverStateCache) runSolver(call *solverCall, solve solverSolveFunc) {
 	call.state = state
 	call.err = err
 	if c.active == call {
-		if !c.closed && err == nil && call.waiters > 0 && !solverStateExpired(state, c.currentTime()) {
+		if !c.closed && err == nil && call.waiters > 0 && !solverStateExpired(state, time.Now()) {
 			cached := state
 			c.state = &cached
 		}
@@ -125,18 +107,12 @@ func (c *solverStateCache) runSolver(call *solverCall, solve solverSolveFunc) {
 }
 
 func (c *solverStateCache) invalidate() {
-	if c == nil {
-		return
-	}
 	c.mu.Lock()
 	c.state = nil
 	c.mu.Unlock()
 }
 
 func (c *solverStateCache) close() {
-	if c == nil {
-		return
-	}
 	c.mu.Lock()
 	if !c.closed {
 		c.closed = true
@@ -146,13 +122,6 @@ func (c *solverStateCache) close() {
 		}
 	}
 	c.mu.Unlock()
-}
-
-func (c *solverStateCache) currentTime() time.Time {
-	if c.now != nil {
-		return c.now()
-	}
-	return time.Now()
 }
 
 func solverStateExpired(state solverState, now time.Time) bool {

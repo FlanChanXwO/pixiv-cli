@@ -163,13 +163,7 @@ func forEach(ctx context.Context, tasks int, work func(context.Context, int)) er
 // workerCount 把系统可用并发收敛到本批任务数，既不创建空 worker，也不以固定数字
 // 限制用户的下载任务。
 func workerCount(tasks int) int {
-	if tasks <= 0 {
-		return 0
-	}
 	workers := runtime.GOMAXPROCS(0)
-	if workers < 1 {
-		workers = 1
-	}
 	if tasks < workers {
 		return tasks
 	}

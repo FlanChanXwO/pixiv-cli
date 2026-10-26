@@ -3,7 +3,6 @@
 package chromium
 
 import (
-	"bytes"
 	"context"
 	"errors"
 
@@ -29,11 +28,11 @@ func (k kind) keychainAccount() string {
 func (p *provider) keychainPassword(ctx context.Context) ([]byte, error) {
 	password, err := secret.Keychain{}.GetPassword(ctx, p.kind.keychainService(), p.kind.keychainAccount())
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if errors.Is(err, secret.ErrItemNotFound) {
 			return nil, browsercookies.ErrKeychainItemNotFound
-		}
-		if errors.Is(err, secret.ErrNotAvailableOnBuild) {
-			return nil, browsercookies.ErrEncryptedValueUnsupported
 		}
 		return nil, browsercookies.ErrKeychainAccess
 	}
@@ -45,24 +44,9 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	legacyKeys := chromiumKeyCandidates(password)
-	localStateKey, present, err := p.localStateEncryptedKey()
+	legacyKeys, err := chromiumKeyCandidates(password)
 	if err != nil {
 		return nil, err
 	}
-	if !present {
-		return legacyKeys, nil
-	}
-	if len(localStateKey) >= chromiumPrefixLength && hasChromiumPrefix(localStateKey) {
-		for _, key := range legacyKeys {
-			if unwrapped, err := decryptChromiumGCM(localStateKey, key); err == nil && len(unwrapped) > 0 {
-				return [][]byte{unwrapped}, nil
-			}
-		}
-		return nil, browsercookies.ErrEncryptedMalformed
-	}
-	if bytes.HasPrefix(localStateKey, []byte("DPAPI")) {
-		return nil, browsercookies.ErrEncryptedFormatUnknown
-	}
-	return [][]byte{localStateKey}, nil
+	return p.profileKeys(legacyKeys)
 }

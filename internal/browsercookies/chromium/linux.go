@@ -22,26 +22,11 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 	if err != nil {
 		return nil, mapSecretError(err)
 	}
-	legacyKeys := chromiumKeyCandidates(password)
-	localStateKey, present, err := p.localStateEncryptedKey()
+	legacyKeys, err := chromiumKeyCandidates(password)
 	if err != nil {
 		return nil, err
 	}
-	if !present {
-		return legacyKeys, nil
-	}
-	if len(localStateKey) >= chromiumPrefixLength && hasChromiumPrefix(localStateKey) {
-		for _, key := range legacyKeys {
-			if unwrapped, err := decryptChromiumGCM(localStateKey, key); err == nil && len(unwrapped) > 0 {
-				return [][]byte{unwrapped}, nil
-			}
-		}
-		return nil, browsercookies.ErrEncryptedMalformed
-	}
-	if len(localStateKey) >= 5 && string(localStateKey[:5]) == "DPAPI" {
-		return nil, browsercookies.ErrEncryptedFormatUnknown
-	}
-	return [][]byte{localStateKey}, nil
+	return p.profileKeys(legacyKeys)
 }
 
 func mapSecretError(err error) error {

@@ -10,7 +10,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// loadSnapshotAt 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
+// loadSnapshot 从明确路径与文件端口生成一次不可变快照。只有 Store 方法
 // 对外提供读取入口。
 //
 // 配置绑定整体分四个阶段，本函数只负责**阶段 1**：
@@ -23,11 +23,7 @@ import (
 //
 // 阶段 1 的具体含义：文件内容在此一次性解析为嵌套表，环境变量在此一次性捕获；
 // 之后无论 Effective 被调用多少次，同一快照都看到同一份输入。
-func loadSnapshotAt(path string, store FileStore) (Snapshot, error) {
-	store, err := requireFileStore(store)
-	if err != nil {
-		return Snapshot{}, err
-	}
+func loadSnapshot(path string, store FileStore) (Snapshot, error) {
 	// 阶段 1：解析文件视图。
 	file, err := loadConfigFile(path, store.ReadFile)
 	if err != nil {
@@ -39,11 +35,11 @@ func loadSnapshotAt(path string, store FileStore) (Snapshot, error) {
 
 // captureEnvironment 固定一次 snapshot 的环境 precedence。若 Effective 每次重新
 // 读取 os.Environ，命令运行中修改环境会让同一个 snapshot 产生不同结果。
-func captureEnvironment() map[Key]snapshotEnvValue {
-	values := make(map[Key]snapshotEnvValue)
+func captureEnvironment() map[Key]string {
+	values := make(map[Key]string)
 	for _, entry := range mustSettingSpecs() {
 		if raw, present := envValue(entry.spec); present {
-			values[entry.spec.Alias] = snapshotEnvValue{value: raw, present: true}
+			values[entry.spec.Alias] = raw
 		}
 	}
 	return values
@@ -107,8 +103,8 @@ func (s Snapshot) Effective(key Key) (SettingValue, error) {
 // effectiveSpec 让绑定器与公开别名读取共享同一来源选择，不再查询另一份声明。
 func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 	// 阶段 2：env 优先。存在即为命中（即使值为空），不回退到 file。
-	if raw, ok := s.env[spec.Alias]; ok && raw.present {
-		return coerceSettingValue(spec, raw.value, "env")
+	if raw, ok := s.env[spec.Alias]; ok {
+		return coerceSettingValue(spec, raw, "env")
 	}
 	// 阶段 2：其次文件。同样按存在性判断，保留显式空值与显式 false。
 	if raw, present := s.fileValue(spec); present {
@@ -127,9 +123,6 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	// 字段声明顺序保留历史普通配置错误优先级；账号池由领域读取处理严格类型。
 	entries := make([]settingSpecFromTags, 0, len(mustSettingSpecs()))
 	for _, entry := range mustSettingSpecs() {
-		if len(entry.fieldIndex) == 0 {
-			continue
-		}
 		if target.Type().Field(entry.fieldIndex[0]).Type == reflect.TypeOf(AccountPoolConfig{}) {
 			continue
 		}
@@ -155,11 +148,11 @@ func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	cfg.FanboxFlareSolverr, err = s.flareSolverr()
+	cfg.FanboxFlareSolverr, err = s.flareSolverr("FanboxFlareSolverr")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
-	cfg.ReverseSearchFlareSolverr, err = s.flareSolverrAt("ReverseSearchFlareSolverr")
+	cfg.ReverseSearchFlareSolverr, err = s.flareSolverr("ReverseSearchFlareSolverr")
 	if err != nil {
 		return RuntimeConfig{}, err
 	}
@@ -186,9 +179,6 @@ func (s Snapshot) bindDeclared(target reflect.Value, entries []settingSpecFromTa
 			continue
 		}
 		raw := reflect.ValueOf(value.Value)
-		if !raw.Type().ConvertibleTo(entry.fieldType) {
-			return fmt.Errorf("config %q cannot bind to %s", entry.spec.Alias, entry.fieldType)
-		}
 		field.Set(raw.Convert(entry.fieldType))
 	}
 	return nil
@@ -236,11 +226,7 @@ func (s Snapshot) optionalString(spec SettingSpec) (OptionalString, error) {
 	return OptionalString{Present: true, Value: value}, nil
 }
 
-func (s Snapshot) flareSolverr() (*FlareSolverrConfig, error) {
-	return s.flareSolverrAt("FanboxFlareSolverr")
-}
-
-func (s Snapshot) flareSolverrAt(group string) (*FlareSolverrConfig, error) {
+func (s Snapshot) flareSolverr(group string) (*FlareSolverrConfig, error) {
 	urlSpec := runtimeFieldSpec(group, "URL")
 	urlValue, err := s.optionalString(urlSpec)
 	if err != nil {

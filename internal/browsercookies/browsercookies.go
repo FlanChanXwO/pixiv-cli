@@ -1,7 +1,7 @@
 // Package browsercookies 定义浏览器 cookie provider 的共享类型与接口。
 //
 // 本包是协议无关的：它不知道 FANBOX、Pixiv、CLI、MCP 或账号 store。
-// 它只接受受约束的 CookieQuery，产出脱敏的 Secret，绝不接受任意 SQL、
+// 它只接受受约束的 CookieQuery，产出脱敏的 credential.Secret，绝不接受任意 SQL、
 // 任意数据库路径或完整 Cookie header。本包不识别 Cloudflare challenge，
 // 也不运行任何 challenge 绕过；它只读取 cookie。
 //
@@ -14,9 +14,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
 // 错误分类。所有错误消息都是静态字符串，绝不包含 cookie 值、加密密钥、
@@ -44,39 +46,6 @@ var (
 	ErrSecretServiceAccess        = errors.New("browsercookies: Linux Secret Service access failed")
 	ErrDPAPI                      = errors.New("browsercookies: Windows DPAPI access failed")
 )
-
-// redactedMarker 是所有 Secret 格式化输出的唯一可见内容。
-const redactedMarker = "<redacted>"
-
-// Secret 是一个脱敏的 cookie 秘密值。任何格式化输出（%v、%s、%q、%+v、%x 等）
-// 与 JSON 序列化都不会泄露底层 value。只有受信任的调用方（本包树内的 provider
-// 与上层保存流程）应当通过 Value() 读取实际值。
-type Secret struct {
-	value string
-}
-
-// NewSecret 构造一个 Secret。仅本包树内部使用。
-func NewSecret(value string) Secret { return Secret{value: value} }
-
-// Value 返回底层秘密值。此访问器只供受信任的调用方使用；日志、错误、JSON
-// 或格式化路径都不得调用它。
-func (s Secret) Value() string { return s.value }
-
-// String 保证不泄露 value。
-func (s Secret) String() string { return redactedMarker }
-
-// GoString 保证 %#v 不泄露 value。
-func (s Secret) GoString() string { return redactedMarker }
-
-// Format 实现 fmt.Formatter，确保所有 verb 都不泄露 value。
-func (s Secret) Format(f fmt.State, verb rune) {
-	switch verb {
-	case 'q':
-		_, _ = io.WriteString(f, `"`+redactedMarker+`"`)
-	default:
-		_, _ = io.WriteString(f, redactedMarker)
-	}
-}
 
 // CookieQuery 是受约束的 cookie 查询：只允许 host 与 name 两个精确字段。
 // 不允许任意 SQL、数据库路径或完整 Cookie header。
@@ -124,6 +93,11 @@ type Profile struct {
 	Path string
 }
 
+// ValidProfileID 只接受非隐藏的目录标识，拦截空值、路径分隔符与父目录跳转。
+func ValidProfileID(id string) bool {
+	return id != "" && !strings.HasPrefix(id, ".") && filepath.Base(id) == id
+}
+
 // Provider 是浏览器 cookie provider 接口。DiscoverProfiles 与 Read 接收
 // context 用于取消与锁等待控制；Read 只接受受约束的 CookieQuery。
 type Provider interface {
@@ -133,7 +107,7 @@ type Provider interface {
 	// 返回 ErrNotInstalled。绝不启动或修改浏览器。
 	DiscoverProfiles(ctx context.Context) ([]Profile, error)
 	// Read 读取 profileID 下匹配 query 的 cookie secret。
-	Read(ctx context.Context, query CookieQuery, profileID string) ([]Secret, error)
+	Read(ctx context.Context, query CookieQuery, profileID string) ([]credential.Secret, error)
 	Close() error
 }
 

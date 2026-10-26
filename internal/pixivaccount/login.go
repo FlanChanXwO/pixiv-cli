@@ -35,11 +35,7 @@ type LoginCompleteRequest struct {
 	PreserveDefault bool
 }
 
-func (s LoginService) Start(requests ...LoginRequest) (LoginStart, error) {
-	request := LoginRequest{}
-	if len(requests) > 0 {
-		request = requests[0]
-	}
+func (s LoginService) Start(request LoginRequest) (LoginStart, error) {
 	session, err := pixiv.BeginLogin(request.Options)
 	if err != nil {
 		return LoginStart{}, err
@@ -63,20 +59,5 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	service, err := s.pixivService()
-	if err != nil {
-		return AccountSummary{}, err
-	}
-	account, err := service.completeLogin(ctx, credentials, request.UseAfterLogin, request.PreserveDefault)
-	if err != nil {
-		return account, err
-	}
-	return account, nil
-}
-
-func (s LoginService) pixivService() (*Service, error) {
-	if s.Pixiv == nil {
-		return nil, errors.New("pixiv account service is not configured")
-	}
-	return s.Pixiv, nil
+	return s.Pixiv.completeLogin(ctx, credentials, request.UseAfterLogin, request.PreserveDefault)
 }

@@ -1,3 +1,4 @@
+// Package searchfilter owns local content filters and their continuation binding.
 package searchfilter
 
 import (

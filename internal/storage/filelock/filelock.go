@@ -16,9 +16,6 @@ func WithPrivateLock(ctx context.Context, path string, action func() error) (err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if action == nil {
-		return errors.New("local state action is not configured")
-	}
 	file, err := openLockFile(path)
 	if err != nil {
 		return err
@@ -85,8 +82,7 @@ func openLockFile(path string) (*os.File, error) {
 		return nil, err
 	}
 	if err := file.Chmod(paths.PrivateFileMode); err != nil {
-		_ = file.Close()
-		return nil, err
+		return nil, errors.Join(err, file.Close())
 	}
 	return file, nil
 }

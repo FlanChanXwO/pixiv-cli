@@ -41,7 +41,6 @@ func runMeta(args []string) {
 	bodyPath := flag.String("body-file", "", "pull request body file")
 	whitelistPath := flag.String("whitelist", "scripts/pr/command-whitelist.txt", "trusted command whitelist")
 	cliName := flag.String("cli", "pixiv", "repository CLI command name")
-	workspace := flag.String("workspace", ".", "workspace used to validate declared file operands")
 	githubOutput := flag.String("github-output", "", "GitHub Actions output file")
 	commandsOutput := flag.String("commands-output", "", "optional commands JSON file")
 	flag.CommandLine.Parse(args)
@@ -58,7 +57,7 @@ func runMeta(args []string) {
 		fatal(fmt.Errorf("load whitelist: %w", err))
 	}
 
-	validation := validate(string(body), w, *cliName, *workspace)
+	validation := validate(string(body), w, *cliName)
 	if *commandsOutput != "" {
 		encoded, err := json.Marshal(validation.Commands)
 		if err != nil {
@@ -84,7 +83,7 @@ func runTrigger(args []string) {
 	githubOutput := flag.String("github-output", "", "GitHub Actions output file")
 	flag.CommandLine.Parse(args)
 	if *commentPath == "" {
-		fatal(errors.New("comment-file is required with check-trigger"))
+		fatal(errors.New("comment-file is required with trigger"))
 	}
 	body, err := os.ReadFile(*commentPath)
 	if err != nil {
@@ -125,36 +124,28 @@ func runResolve(args []string) {
 	if err != nil {
 		fatal(fmt.Errorf("load whitelist: %w", err))
 	}
-	resolveEffective(os.Stdout, *githubOutput, string(body), string(comment), w, *cliName, *commandsOutput)
-}
-
-// resolveEffective emits the effective verification commands for a /test run.
-// An invalid override reports resolve_ok=false rather than exiting, so the
-// trusted aggregator can post the failure result and reactions; it must never
-// quietly fall back to the PR body.
-func resolveEffective(stdout *os.File, githubOutput, prBody, commentBody string, whitelist *Whitelist, cliName, commandsOutput string) {
-	effective, err := resolveEffectiveCommands(prBody, commentBody, whitelist, cliName)
-	overrideDeclared := commentDeclaresCommands(commentBody)
+	effective, err := resolveEffectiveCommands(string(body), string(comment), w, *cliName)
+	overrideDeclared := commentDeclaresCommands(string(comment))
 	if err != nil {
-		if writeErr := writeResolveOutput(githubOutput, effective, overrideDeclared, false, err.Error()); writeErr != nil {
+		if writeErr := writeResolveOutput(*githubOutput, effective, overrideDeclared, false, err.Error()); writeErr != nil {
 			fatal(writeErr)
 		}
-		fmt.Fprintf(stdout, "resolve_ok=false\nresolve_desc=%s\n", oneLine(err.Error()))
+		fmt.Printf("resolve_ok=false\nresolve_desc=%s\n", oneLine(err.Error()))
 		return
 	}
-	if effective.Source != commandSourceNone && commandsOutput != "" {
+	if effective.Source != commandSourceNone && *commandsOutput != "" {
 		encoded, err := json.Marshal(effective.Commands)
 		if err != nil {
 			fatal(err)
 		}
-		if err := os.WriteFile(commandsOutput, append(encoded, '\n'), 0o600); err != nil {
+		if err := os.WriteFile(*commandsOutput, append(encoded, '\n'), 0o600); err != nil {
 			fatal(err)
 		}
 	}
-	if err := writeResolveOutput(githubOutput, effective, overrideDeclared, true, ""); err != nil {
+	if err := writeResolveOutput(*githubOutput, effective, overrideDeclared, true, ""); err != nil {
 		fatal(err)
 	}
-	fmt.Fprintf(stdout, "effective_source=%s\neffective_hash=%s\neffective_count=%d\n",
+	fmt.Printf("effective_source=%s\neffective_hash=%s\neffective_count=%d\n",
 		effective.Source, effective.Hash, len(effective.Commands.Commands))
 }
 
@@ -170,7 +161,7 @@ func commentDeclaresCommands(commentBody string) bool {
 	return len(blocks) > 0
 }
 
-func validate(body string, whitelist *Whitelist, cliName, workspace string) result {
+func validate(body string, whitelist *Whitelist, cliName string) result {
 	clean := htmlComment.ReplaceAllString(body, "")
 	answer := result{TemplateOK: true, CommandsOK: true}
 	var missing []string

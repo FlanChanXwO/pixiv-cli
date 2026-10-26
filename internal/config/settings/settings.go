@@ -23,7 +23,7 @@ func (s Store) Current() (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return loadSnapshotAt(path, files)
+	return loadSnapshot(path, files)
 }
 
 type ConfigMutationResult struct {
@@ -72,17 +72,17 @@ func (s Store) Get(key Key) (SettingValue, error) {
 	if err != nil {
 		return SettingValue{}, err
 	}
-	path, err := s.Path()
+	path, err := files.Path()
 	if err != nil {
 		return SettingValue{}, err
 	}
-	settings, err := loadSnapshotAt(path, files)
+	settings, err := loadSnapshot(path, files)
 	if err != nil {
 		return SettingValue{}, err
 	}
 	value, err := settings.Effective(key)
 	if err != nil {
-		return SettingValue{}, fmt.Errorf("%w. valid keys: %s", err, strings.Join(aliasText(ValidSettingAliases()), ", "))
+		return SettingValue{}, fmt.Errorf("%w. valid keys: %s", err, strings.Join(aliasText(validSettingAliases()), ", "))
 	}
 	return value, nil
 }
@@ -94,17 +94,17 @@ func (s Store) Set(key Key, raw string) (ConfigMutationResult, error) {
 	}
 	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(ValidSettingAliases()), ", "))
+		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(validSettingAliases()), ", "))
 	}
-	_, value, err := ParseSettingInput(key, raw)
+	value, err := parseSettingInput(spec, raw)
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	path, err := s.Path()
+	path, err := files.Path()
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	if err := setConfigValue(path, key, value, files); err != nil {
+	if err := setConfigValue(path, spec, value, files); err != nil {
 		return ConfigMutationResult{}, err
 	}
 	envRaw, hasOverride := envValue(spec)
@@ -121,13 +121,13 @@ func (s Store) Unset(key Key) (ConfigMutationResult, error) {
 	}
 	spec, ok := SettingSpecByAlias(key)
 	if !ok {
-		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(ValidSettingAliases()), ", "))
+		return ConfigMutationResult{}, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(aliasText(validSettingAliases()), ", "))
 	}
-	path, err := s.Path()
+	path, err := files.Path()
 	if err != nil {
 		return ConfigMutationResult{}, err
 	}
-	if _, err := unsetConfigValue(path, key, files); err != nil {
+	if err := unsetConfigValue(path, spec, files); err != nil {
 		return ConfigMutationResult{}, err
 	}
 	envRaw, hasOverride := envValue(spec)

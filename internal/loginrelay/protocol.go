@@ -1,4 +1,5 @@
-// Package loginrelay owns the shared remote-login protocol, independent of CLI and OS helpers.
+// Callback URL policy and wire values shared with the desktop protocol handler.
+
 package loginrelay
 
 import (

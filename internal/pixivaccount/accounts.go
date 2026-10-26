@@ -18,7 +18,7 @@ type Service struct {
 	defaults DefaultStore
 }
 
-// New 构造 Pixiv 应用服务；repository/defaults 均由 composition root 注入。
+// NewService 构造 Pixiv 应用服务；repository/defaults 均由 composition root 注入。
 func NewService(repo Repository, defaults DefaultStore) *Service {
 	return &Service{repo: repo, defaults: defaults}
 }
@@ -44,16 +44,12 @@ func (s *Service) OpenClient(ctx context.Context, options pixiv.Options) (*pixiv
 	if err != nil {
 		return nil, err
 	}
-	return s.openAccount(ctx, userID, options)
+	return s.OpenAccountClient(ctx, userID, options)
 }
 
 // OpenAccountClient 打开指定账号（不改变默认），执行一次 refresh rotation 并
 // 持久化 rotated credentials。
 func (s *Service) OpenAccountClient(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
-	return s.openAccount(ctx, userID, options)
-}
-
-func (s *Service) openAccount(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
 	session, err := s.openReadSession(ctx, userID, options)
 	return session.Client, err
 }
@@ -251,9 +247,6 @@ func (s *Service) RefreshAccount(ctx context.Context, userID int64, options pixi
 }
 
 func (s *Service) completeLogin(ctx context.Context, credentials pixiv.Credentials, setDefault, preserveDefault bool) (AccountSummary, error) {
-	if credentials.UserID <= 0 || credentials.RefreshToken() == "" {
-		return AccountSummary{}, errors.New("login credentials are incomplete")
-	}
 	account := New(credentials.UserID, credentials.Username, []byte(credentials.RefreshToken()))
 	account.CredentialRevision = 1
 	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
@@ -494,9 +487,6 @@ func rotateCredential(ctx context.Context, repository interface {
 }, selectedUserID, authenticatedUserID, revision int64, refreshToken []byte) error {
 	if err := verifyAccountIdentity(selectedUserID, authenticatedUserID); err != nil {
 		return err
-	}
-	if repository == nil {
-		return errors.New("pixiv credential repository is not configured")
 	}
 	return repository.RotatePixivCredentials(ctx, selectedUserID, revision, refreshToken)
 }

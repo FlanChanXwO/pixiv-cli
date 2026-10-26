@@ -1,5 +1,5 @@
-// ascii2d challenge detection: response headers, HTML markers, and bounded scans.
-// Upload and session flow live in client.go.
+// ascii2d challenge detection uses response headers and streaming HTML markers.
+// Upload and session flow live in ascii2d.go.
 
 package ascii2d
 
@@ -31,7 +31,7 @@ func detectResponseChallenge(ctx context.Context, response *http.Response) error
 		return ctxErr
 	}
 	if readErr != nil {
-		return reversesearch.NewError(reversesearch.CodeProviderFailed, "could not read ascii2d error response", nil)
+		return reversesearch.NewError(reversesearch.CodeProviderFailed, "could not read ascii2d error response", readErr)
 	}
 	if challenged {
 		return reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "ascii2d challenge detected", errChallengeDetected)
@@ -40,14 +40,11 @@ func detectResponseChallenge(ctx context.Context, response *http.Response) error
 }
 
 func detectChallenge(response *http.Response) (bool, error) {
-	if response == nil {
-		return false, nil
-	}
 	// cf-mitigated 是 Cloudflare 明确声明 challenge 的权威信号，优先于正文。
 	if challengeHeaderDetected(response.Header) {
 		return true, nil
 	}
-	if response.StatusCode != http.StatusForbidden || response.Body == nil || !isHTMLContentType(response.Header) {
+	if response.StatusCode != http.StatusForbidden || !isHTMLContentType(response.Header) {
 		return false, nil
 	}
 	return scanHTMLChallenge(response.Body)

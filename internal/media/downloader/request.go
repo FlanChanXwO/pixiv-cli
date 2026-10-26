@@ -81,7 +81,9 @@ func ParsePageSpec(raw string) ([]int, error) {
 			}
 			start, end = page, page
 		}
-		for page := start; page <= end; page++ {
+		// 按长度迭代，避免最大 int 页号在末次递增时溢出。
+		for offset := range end - start + 1 {
+			page := start + offset
 			if _, exists := seen[page]; exists {
 				continue
 			}

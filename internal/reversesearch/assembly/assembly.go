@@ -4,8 +4,6 @@
 package assembly
 
 import (
-	"net/http"
-
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/ascii2d"
@@ -40,32 +38,12 @@ func New(options Options) (reversesearch.Searcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newWithClient(options, client)
-}
-
-func (options Options) ascii2dProxy() string {
-	if options.ASCII2DProxy != nil {
-		return *options.ASCII2DProxy
-	}
-	return options.Proxy
-}
-
-func newWithClient(options Options, client *http.Client) (reversesearch.Searcher, error) {
-	if client == nil {
-		return nil, reversesearch.NewError(reversesearch.CodeProviderNotConfigured, "reverse search HTTP client is not configured", nil)
-	}
-	var solverOptions *ascii2d.FlareSolverrOptions
+	asciiOptions := ascii2d.Options{ProxyURL: options.ascii2dProxy(), UserAgent: options.UserAgent}
 	if options.FlareSolverr != nil {
-		solverOptions = &ascii2d.FlareSolverrOptions{
-			URL:      options.FlareSolverr.URL,
-			ProxyURL: options.FlareSolverr.ProxyURL,
-		}
+		asciiOptions.FlareSolverrURL = &options.FlareSolverr.URL
+		asciiOptions.FlareSolverrProxyURL = options.FlareSolverr.ProxyURL
 	}
-	asciiClient, err := ascii2d.New(ascii2d.Options{
-		ProxyURL:     options.ascii2dProxy(),
-		UserAgent:    options.UserAgent,
-		FlareSolverr: solverOptions,
-	})
+	asciiClient, err := ascii2d.New(asciiOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +52,14 @@ func newWithClient(options Options, client *http.Client) (reversesearch.Searcher
 		asciiClient,
 	)
 	return reversesearch.NewService(
-		reversesearch.NewSourceLoader(reversesearch.SourceLoaderOptions{HTTPClient: client}),
+		reversesearch.NewSourceLoader(client),
 		aggregator,
 	), nil
+}
+
+func (options Options) ascii2dProxy() string {
+	if options.ASCII2DProxy != nil {
+		return *options.ASCII2DProxy
+	}
+	return options.Proxy
 }

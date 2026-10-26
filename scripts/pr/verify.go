@@ -180,8 +180,6 @@ func runPipeline(command Command, binary, workspace string, timeout time.Duratio
 	var finalOutput bytes.Buffer
 	var wg sync.WaitGroup
 	for index, stage := range command.Stages {
-		index := index
-		stage := stage
 		var stdin io.Reader
 		if index > 0 {
 			stdin = pipes[index-1].reader
@@ -589,11 +587,4 @@ func formatDuration(milliseconds int64) string {
 		return strconv.FormatInt(milliseconds, 10) + "ms"
 	}
 	return fmt.Sprintf("%.1fs", float64(milliseconds)/1000)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

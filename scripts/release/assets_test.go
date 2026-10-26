@@ -316,3 +316,7 @@ func TestInjectWindowsReleaseSourcesRendersIndexedCandidates(t *testing.T) {
 		t.Fatalf("rendered Windows installer lost CRLF bytes: %q", content)
 	}
 }
+
+func archiveName(version string, target Target) string {
+	return ArchiveName(version, target)
+}

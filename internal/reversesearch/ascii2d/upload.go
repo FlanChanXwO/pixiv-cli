@@ -1,10 +1,11 @@
 // ascii2d image upload: CSRF-protected multipart request and redirect validation.
-// Session construction lives in client.go.
+// Session construction lives in ascii2d.go.
 
 package ascii2d
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -23,7 +24,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 	if err != nil {
 		_ = body.CloseWithError(err)
 		<-writeResult
-		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d upload request", nil)
+		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not create ascii2d upload request", err)
 	}
 	c.applyFormHeaders(request)
 	request.Header.Set("Content-Type", contentType)
@@ -38,7 +39,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
 		}
-		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d upload request failed", nil)
+		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "ascii2d upload request failed", err)
 	}
 	defer response.Body.Close()
 	writeErr := <-writeResult
@@ -57,7 +58,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 		return "", locationErr
 	}
 	if writeErr != nil {
-		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to ascii2d", nil)
+		return "", reversesearch.NewError(reversesearch.CodeProviderFailed, "could not upload image to ascii2d", writeErr)
 	}
 	return hash, nil
 }
@@ -78,18 +79,14 @@ func uploadBody(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType
 			part, err = multipartWriter.CreatePart(header)
 			if err == nil {
 				var source io.ReadCloser
-				source, err = snapshot.Open()
+				source, err = snapshot.Open(ctx)
 				if err == nil {
-					_, err = io.Copy(part, contextReader{ctx: ctx, reader: source})
-					if closeErr := source.Close(); err == nil {
-						err = closeErr
-					}
+					_, err = io.Copy(part, source)
+					err = errors.Join(err, source.Close())
 				}
 			}
 		}
-		if closeErr := multipartWriter.Close(); err == nil {
-			err = closeErr
-		}
+		err = errors.Join(err, multipartWriter.Close())
 		if err != nil {
 			_ = writer.CloseWithError(err)
 		} else {

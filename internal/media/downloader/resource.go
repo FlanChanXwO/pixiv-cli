@@ -3,6 +3,7 @@
 package downloader
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,14 +17,18 @@ import (
 // 绕过作品标题和模板已有的文件名规范化边界。ASCII C0/DEL 控制字符
 // 不适合作为文件名内容，Windows 还不接受尾随点或空格，因而在扩展名边界统一处理。
 func downloadExtension(rawURL string) string {
-	extension := filename.Sanitize(filepath.Ext(pathFromURL(rawURL)))
-	extension = strings.Map(func(character rune) rune {
+	return sanitizeResourceName(filepath.Ext(pathFromURL(rawURL)))
+}
+
+// sanitizeResourceName 统一 URL basename 与扩展名的跨平台字符规则。
+func sanitizeResourceName(name string) string {
+	name = strings.Map(func(character rune) rune {
 		if character < 0x20 || character == 0x7f {
 			return '_'
 		}
 		return character
-	}, extension)
-	return strings.TrimRight(extension, ". ")
+	}, filename.Sanitize(name))
+	return strings.TrimRight(name, ". ")
 }
 
 // publishDetectedImageExtension 统一修正静态质量 URL 后缀与实际实体格式不一致的情况。
@@ -57,8 +62,7 @@ func publishDetectedImageExtension(path, contentType string) (string, error) {
 		return "", fmt.Errorf("publish detected image extension: %w", err)
 	}
 	if err := os.Remove(path); err != nil {
-		_ = os.Remove(target)
-		return "", fmt.Errorf("remove mismatched image path: %w", err)
+		return "", errors.Join(fmt.Errorf("remove mismatched image path: %w", err), os.Remove(target))
 	}
 	return target, nil
 }

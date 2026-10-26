@@ -1,3 +1,5 @@
+// 反搜错误保留稳定分类、安全消息和供 errors.Is/As 使用的原始原因。
+
 package reversesearch
 
 import "errors"
@@ -13,7 +15,6 @@ const (
 	CodeSourceReadFailed          ErrorCode = "source_read_failed"
 	CodeSourceHTTPStatus          ErrorCode = "source_http_status"
 	CodeSnapshotFailed            ErrorCode = "snapshot_failed"
-	CodeSourceLoaderNotConfigured ErrorCode = "source_loader_not_configured"
 	CodeProviderNotConfigured     ErrorCode = "provider_not_configured"
 	CodeMissingCredential         ErrorCode = "missing_credential"
 	CodeMalformedUpstreamResponse ErrorCode = "malformed_upstream_response"

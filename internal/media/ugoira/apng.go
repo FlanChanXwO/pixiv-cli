@@ -117,7 +117,7 @@ type apngWriter struct {
 }
 
 func (w *apngWriter) header(size image.Point, count uint32) error {
-	if err := w.write([]byte("\x89PNG\r\n\x1a\n")); err != nil {
+	if err := writeAnimation(w.ctx, w.output, []byte("\x89PNG\r\n\x1a\n")); err != nil {
 		return err
 	}
 	var header [13]byte
@@ -216,17 +216,6 @@ func (w *apngWriter) nextSequence() (uint32, error) {
 	return sequence, nil
 }
 
-func (w *apngWriter) write(data []byte) error {
-	if err := w.ctx.Err(); err != nil {
-		return err
-	}
-	n, err := w.output.Write(data)
-	if n != len(data) && err == nil {
-		err = io.ErrShortWrite
-	}
-	return errors.Join(err, w.ctx.Err())
-}
-
 func (w *apngWriter) chunk(kind string, parts ...[]byte) error {
 	var length uint64
 	for _, part := range parts {
@@ -238,19 +227,19 @@ func (w *apngWriter) chunk(kind string, parts ...[]byte) error {
 	var header [8]byte
 	binary.BigEndian.PutUint32(header[:4], uint32(length))
 	copy(header[4:], kind)
-	if err := w.write(header[:]); err != nil {
+	if err := writeAnimation(w.ctx, w.output, header[:]); err != nil {
 		return err
 	}
 	checksum := crc32.ChecksumIEEE(header[4:])
 	for _, part := range parts {
-		if err := w.write(part); err != nil {
+		if err := writeAnimation(w.ctx, w.output, part); err != nil {
 			return err
 		}
 		checksum = crc32.Update(checksum, crc32.IEEETable, part)
 	}
 	var trailer [4]byte
 	binary.BigEndian.PutUint32(trailer[:], checksum)
-	return w.write(trailer[:])
+	return writeAnimation(w.ctx, w.output, trailer[:])
 }
 
 type apngFrameData struct {

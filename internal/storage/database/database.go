@@ -1,3 +1,6 @@
+// Package database 管理 Pixiv / FANBOX 鉴权状态的单一 SQLite 数据库。
+// 它只保存鉴权数据与 Pixiv account-pool 租约状态，不保存普通配置、下载
+// archive、缓存、请求日志或浏览器 profile。
 package database
 
 import (
@@ -16,6 +19,12 @@ import (
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
+
+type DB struct {
+	sql  *sql.DB
+	orm  *gorm.DB
+	path string
+}
 
 // DatabasePath 返回鉴权数据库在本机私有目录下的固定路径。
 func DatabasePath(appDataDir string) string {
@@ -75,12 +84,6 @@ func dsnWithPragmas(path string) string {
 	return "file:" + escaped + "?" + query.Encode()
 }
 
-type DB struct {
-	sql  *sql.DB
-	orm  *gorm.DB
-	path string
-}
-
 // 同一路径的CLI/MCP短事务和完整快照读取共用侧车锁；不持锁执行上游请求。
 func (d *DB) withLock(ctx context.Context, action func() error) error {
 	return filelock.WithPrivateLock(ctx, d.path, action)
@@ -103,23 +106,18 @@ func (d *DB) initialize() error {
 	if err := d.verifyOrSetApplicationID(); err != nil {
 		return err
 	}
-	if err := migrate(d.sql); err != nil {
-		return err
-	}
-	return nil
+	return migrate(d.sql)
 }
 
 // enforcePermissions 在 Unix-like 平台收紧目录为 0700、数据库为 0600。Windows
 // 上由上层负责私有 ACL，此处不声称 POSIX mode。
 func (d *DB) enforcePermissions() error {
 	dir := filepath.Dir(d.path)
-	if err := os.Chmod(dir, 0o700); err != nil && !os.IsNotExist(err) {
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return fmt.Errorf("database: tighten directory permissions: %w", err)
 	}
-	if _, err := os.Stat(d.path); err == nil {
-		if err := os.Chmod(d.path, 0o600); err != nil {
-			return fmt.Errorf("database: tighten database permissions: %w", err)
-		}
+	if err := os.Chmod(d.path, 0o600); err != nil {
+		return fmt.Errorf("database: tighten database permissions: %w", err)
 	}
 	return nil
 }
@@ -144,9 +142,6 @@ func (d *DB) verifyOrSetApplicationID() error {
 
 // Close 关闭底层数据库。
 func (d *DB) Close() error {
-	if d == nil || d.sql == nil {
-		return nil
-	}
 	return d.sql.Close()
 }
 

@@ -78,7 +78,7 @@ func traverseWithFrom[C any, T any](
 	return pageResult, err
 }
 
-// CollectWithFrom 与 CollectWith 相同，但从调用方已有的 opaque cursor 开始。
+// CollectWithFrom 在可重放边界内，从调用方已有的 opaque cursor 收集逻辑页。
 func CollectWithFrom[C any, T any](
 	ctx context.Context,
 	execute Execute[C],
@@ -92,10 +92,7 @@ func CollectWithFrom[C any, T any](
 		result.Items = result.Items[:0]
 		result.HasMore = false
 		return nil
-	}, func(ctx context.Context, client C, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
-		items, cursorNext, err := fetch(ctx, client, cursor)
-		return items, cursorNext, err
-	}, func(items []T) (bool, error) {
+	}, fetch, func(items []T) (bool, error) {
 		result.Items = append(result.Items, items...)
 		return false, nil
 	})

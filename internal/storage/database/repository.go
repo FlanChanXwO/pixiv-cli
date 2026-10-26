@@ -409,37 +409,6 @@ func (d *DB) SaveFanboxCredential(ctx context.Context, account fanboxaccount.Acc
 	})
 }
 
-// RotateFanboxSession 更新 FANBOX session 并递增 credential_revision。
-func (d *DB) RotateFanboxSession(ctx context.Context, userID, expectedRevision int64, session []byte, validatedAt int64) error {
-	return d.withLock(ctx, func() error {
-		if userID <= 0 || expectedRevision <= 0 || len(session) == 0 || validatedAt <= 0 {
-			return errors.New("database: invalid fanbox rotation input")
-		}
-		result := d.orm.WithContext(ctx).Model(&fanboxAccountRow{}).
-			Where(colUserID+" = ? AND "+colCredentialRevision+" = ?", userID, expectedRevision).
-			Updates(map[string]any{
-				colSessionID:          session,
-				colCredentialRevision: gorm.Expr(colCredentialRevision + " + 1"),
-				colValidatedAt:        validatedAt,
-				colUpdatedAt:          time.Now().UTC().Unix(),
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 0 {
-			return nil
-		}
-		var count int64
-		if err := d.orm.WithContext(ctx).Model(&fanboxAccountRow{}).Where(colUserID+" = ?", userID).Count(&count).Error; err != nil {
-			return err
-		}
-		if count == 0 {
-			return fanboxaccount.ErrNotFound
-		}
-		return fanboxaccount.ErrCredentialConflict
-	})
-}
-
 // ListFanbox 返回全部 FANBOX 账号，按 sort_order 升序。
 func (d *DB) ListFanbox(ctx context.Context) ([]fanboxaccount.Account, error) {
 	return withDatabaseValue(ctx, d, func() ([]fanboxaccount.Account, error) {

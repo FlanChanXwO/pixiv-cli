@@ -2,7 +2,10 @@
 // 协议适配器位于子包；CLI/MCP 只依赖本顶层包。
 package reversesearch
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // Provider 标识一次查询选择的上游能力。
 type Provider string
@@ -123,15 +126,16 @@ type Match struct {
 	ExternalURLs []string `json:"external_urls,omitempty"`
 }
 
-// ProviderResponse 是一次 provider 查询的领域结果。
+// ProviderResponse 是一次 provider 查询的领域结果；其数据所有权交给 aggregator，
+// 后者可按 rank 排序并将 evidence、quota 直接交给最终响应。
 type ProviderResponse struct {
-	Provider Provider `json:"provider"`
-	Matches  []Match  `json:"matches"`
-	Quota    *Quota   `json:"quota,omitempty"`
+	Matches []Match `json:"matches"`
+	Quota   *Quota  `json:"quota,omitempty"`
 }
 
 // ProviderClient 是 aggregator 注入的 provider 端口。
 type ProviderClient interface {
+	Closer
 	Preflight(context.Context) error
 	Search(context.Context, *Snapshot) (ProviderResponse, error)
 }
@@ -139,7 +143,7 @@ type ProviderClient interface {
 // ASCII2DClient 是 aggregator 注入的 ascii2d 上传端口。一次上传返回的
 // session 可供 color 与 bovw 并发查询，避免重复外传同一图片。
 type ASCII2DClient interface {
-	Preflight(context.Context) error
+	Closer
 	Upload(context.Context, *Snapshot) (ASCII2DSession, error)
 }
 
@@ -153,9 +157,49 @@ type Searcher interface {
 	Search(context.Context, Request) (Response, error)
 }
 
-// Closer 是 reverse-search 内部资源生命周期端口。它保持为独立的可选
-// contract，让只实现 Search 的嵌入方仍可平滑使用；composition root 在
-// 资源由本次命令拥有时负责注册 Close。
+// Closer 由命令组合根注册，释放本次调用拥有的反搜资源。
 type Closer interface {
 	Close() error
 }
+
+// Service 将不透明 source 固化一次，并确保 provider 查询结束后清理快照。
+type Service struct {
+	sources  *Loader
+	payloads *Aggregator
+}
+
+func NewService(sources *Loader, payloads *Aggregator) *Service {
+	return &Service{sources: sources, payloads: payloads}
+}
+
+// Close 释放 Service 所拥有的 payload 编排器。source snapshot 是每次 Search
+// 的局部资源，已经在 Search 返回前关闭；长期存活的 provider/session 资源则
+// 由 payloads 释放。
+func (s *Service) Close() error {
+	return s.payloads.Close()
+}
+
+func (s *Service) Search(ctx context.Context, request Request) (response Response, err error) {
+	if ctx == nil {
+		return Response{}, NewError(CodeInvalidRequest, "reverse search context is required", nil)
+	}
+	if err := s.payloads.preflight(ctx, request.Provider); err != nil {
+		return Response{}, err
+	}
+	snapshot, err := s.sources.Load(ctx, request.Source)
+	if err != nil {
+		return Response{}, err
+	}
+	defer func() {
+		if closeErr := snapshot.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+
+	response, err = s.payloads.search(ctx, snapshot, request.Provider, request.PixivOnly)
+	response.Input = Input{Kind: snapshot.Kind(), SHA256: snapshot.SHA256()}
+	return response, err
+}
+
+var _ Searcher = (*Service)(nil)
+var _ Closer = (*Service)(nil)

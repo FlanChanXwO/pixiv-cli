@@ -14,7 +14,7 @@ var positiveIntegerJSON = regexp.MustCompile(`^[1-9][0-9]*$`)
 
 // prohibitedRecordMetadataKeys 是记录协议明确禁止输出的版本/模式元数据键。
 // 键会忽略大小写、下划线和连字符，以同时覆盖 api_version 与 apiVersion。
-// 这里必须保持白名单，不能按包含 "version" 判断，避免误删 conversion 等业务字段。
+// 精确匹配这些键，避免误删 conversion 等包含 "version" 的业务字段。
 var prohibitedRecordMetadataKeys = map[string]struct{}{
 	"version": {}, "schema": {}, "apiversion": {}, "schemaversion": {}, "protocolversion": {},
 	"formatversion": {}, "recordversion": {}, "sdkversion": {}, "mcpversion": {}, "cliversion": {}, "versioninfo": {},
@@ -51,7 +51,12 @@ func ParseRecordJSON(line []byte) (Record, error) {
 		return Record{}, err
 	}
 	fields["id"] = id
-	return newRecord(fields)
+	for _, name := range []string{"type", "url"} {
+		if err := validateStringField(fields, name); err != nil {
+			return Record{}, err
+		}
+	}
+	return newRecord(fields), nil
 }
 
 func decodeRecordObject(data []byte) (map[string]any, error) {
@@ -62,28 +67,22 @@ func decodeRecordObject(data []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("invalid record JSON object: %w", err)
 	}
 	// A record is exactly one JSON value: reject a second value or trailing bytes.
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return nil, errors.New("invalid record JSON object: trailing content after object")
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			return nil, errors.New("invalid record JSON object: trailing content after object")
+		}
+		return nil, fmt.Errorf("invalid record JSON object: trailing content after object: %w", err)
 	}
 	fields, ok := value.(map[string]any)
-	if !ok || fields == nil {
+	if !ok {
 		return nil, errors.New("invalid record JSON object: record must be a JSON object")
 	}
 	return fields, nil
 }
 
-func newRecord(fields map[string]any) (Record, error) {
+func newRecord(fields map[string]any) Record {
 	removeVersionMetadata(fields)
-	if _, err := requiredStringField(fields, "id"); err != nil {
-		return Record{}, err
-	}
-	if _, err := requiredStringField(fields, "type"); err != nil {
-		return Record{}, err
-	}
-	if _, err := requiredStringField(fields, "url"); err != nil {
-		return Record{}, err
-	}
-	return Record{fields: fields}, nil
+	return Record{fields: fields}
 }
 
 func removeVersionMetadata(value any) {
@@ -131,17 +130,17 @@ func normalizeRecordID(raw any, exists bool) (string, error) {
 	return number.String(), nil
 }
 
-func requiredStringField(fields map[string]any, name string) (string, error) {
+func validateStringField(fields map[string]any, name string) error {
 	raw, ok := fields[name]
 	if !ok {
-		return "", fmt.Errorf("record %s is required", name)
+		return fmt.Errorf("record %s is required", name)
 	}
 	value, ok := raw.(string)
 	if !ok {
-		return "", fmt.Errorf("record %s must be a string", name)
+		return fmt.Errorf("record %s must be a string", name)
 	}
 	if value == "" {
-		return "", fmt.Errorf("record %s must be a non-empty string", name)
+		return fmt.Errorf("record %s must be a non-empty string", name)
 	}
-	return value, nil
+	return nil
 }
