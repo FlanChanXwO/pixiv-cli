@@ -90,10 +90,7 @@ func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler 
 		requestID := app.requestCounter.Add(1)
 		ctx = logging.WithCall(ctx, app.logger, tool.Name, strconv.FormatUint(requestID, 10))
 		result, output, err := handler(ctx, request, input)
-		switch {
-		case err != nil:
-			app.logger.ErrorContext(ctx, "Tool failed", slog.Any(logging.AttrError, err))
-		case result != nil && result.IsError:
+		if err != nil || (result != nil && result.IsError) {
 			app.logger.ErrorContext(ctx, "Tool failed", slog.String(logging.AttrReason, "tool failed"))
 		}
 		return result, output, err
