@@ -7,6 +7,9 @@ import (
 
 // sessionCookie accepts one FANBOXSESSID value, rejecting additional cookie pairs.
 func sessionCookie(value string) (string, error) {
+	if strings.ContainsAny(value, "\r\n") {
+		return "", errors.New("FANBOX session value must not contain line breaks")
+	}
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", errors.New("FANBOX session value is required")
