@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,7 +55,7 @@ func New(cfg Config) *Client {
 		http:                 httpClient,
 		accessToken:          strings.TrimSpace(cfg.AccessToken),
 		ownsHTTP:             cfg.OwnHTTPClient,
-		allowedResourceHosts: slices.Clone(cfg.ResourceHosts),
+		allowedResourceHosts: cfg.ResourceHosts,
 		resourceURLs:         make(map[string]string),
 		acceptLanguage:       strings.TrimSpace(cfg.AcceptLanguage),
 		userID:               cfg.UserID,
