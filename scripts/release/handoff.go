@@ -227,14 +227,15 @@ const (
 )
 
 func verifyHandoffChecksums(handoff releaseHandoff, checksumsPath string) error {
-	if handoff.Checksums != "" {
-		sum, err := hashFile(checksumsPath)
-		if err != nil {
-			return fmt.Errorf("checksums %s: %w", checksumsPath, err)
-		}
-		if sum != handoff.Checksums {
-			return fmt.Errorf("checksums %s = %s, want %s", checksumsPath, sum, handoff.Checksums)
-		}
+	if handoff.Checksums == "" {
+		return errors.New("handoff checksums_sha256 is required")
+	}
+	sum, err := hashFile(checksumsPath)
+	if err != nil {
+		return fmt.Errorf("checksums %s: %w", checksumsPath, err)
+	}
+	if sum != handoff.Checksums {
+		return fmt.Errorf("checksums %s = %s, want %s", checksumsPath, sum, handoff.Checksums)
 	}
 	return nil
 }
