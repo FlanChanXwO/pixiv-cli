@@ -77,9 +77,9 @@ func (s *LoginSession) AuthorizationURL() string {
 }
 
 // AcceptsCallbackURL reports whether rawURL is a callback for this session
-// without consuming the session or performing network I/O. Official HTTPS
-// callbacks require this session's state; the pixiv://account/login callback
-// may omit state but a supplied state must still match.
+// without consuming the session or performing network I/O. The exact official
+// HTTPS callback and pixiv://account/login may omit state; a supplied state
+// must match this session, and other callback URLs require it.
 func (s *LoginSession) AcceptsCallbackURL(rawURL string) bool {
 	if s == nil || s.state == nil {
 		return false
@@ -98,7 +98,8 @@ func (s *LoginSession) AcceptsCallbackURL(rawURL string) bool {
 // Complete exchanges the authorization code carried by callbackURL (a full
 // callback URL or a bare code) for credentials. The session is one-shot; a
 // second completion returns InvalidArgument. The callback state is checked
-// against this session's state for official callback URLs.
+// against this session; the exact official HTTPS callback and
+// pixiv://account/login may omit it.
 func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Credentials, error) {
 	if s == nil || s.state == nil {
 		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login session is nil")
@@ -148,7 +149,7 @@ func (LoginSession) Format(state fmt.State, _ rune) {
 }
 
 // loginCode extracts the authorization code from a callback URL or a bare code,
-// validating the session state for official callbacks.
+// validating supplied state and requiring it outside the two Pixiv callbacks.
 func loginCode(input, expectedState string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -177,9 +178,6 @@ func loginCode(input, expectedState string) (string, error) {
 }
 
 func loginCallbackRequiresState(parsed *url.URL) bool {
-	if parsed == nil {
-		return true
-	}
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return false
 	}

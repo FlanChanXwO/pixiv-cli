@@ -49,7 +49,7 @@ type Config struct {
 
 // New builds an OAuth client; refreshToken is validated without network I/O.
 func New(refreshToken string, cfg Config) *Client {
-	refreshToken, refreshTokenErr := ValidateRefreshTokenInput(refreshToken)
+	refreshToken, refreshTokenErr := validateRefreshTokenInput(refreshToken)
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{}
