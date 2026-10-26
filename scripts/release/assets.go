@@ -15,13 +15,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"gopkg.in/yaml.v3"
 )
 
 var fixedTargets = FixedTargets()
@@ -48,39 +50,24 @@ func runAssets(arguments []string) error {
 	}
 }
 
-// runChannel 输出 release 的稳定渠道名称。它在 ValidateVersion
-// 成功后才检查预发布段，因而不会把 build metadata 内合法的连字符误判为 prerelease。
 func runChannel(arguments []string) error {
-	output, err := channelOutput(append([]string{"channel"}, arguments...))
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprint(os.Stdout, output)
-	return err
-}
-
-func channelOutput(arguments []string) (string, error) {
-	if len(arguments) == 0 || arguments[0] != "channel" {
-		return "", errors.New("channel subcommand is required")
-	}
 	flags := flag.NewFlagSet("channel", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	version := flags.String("version", "", "semantic version without v")
-	if err := flags.Parse(arguments[1:]); err != nil {
-		return "", err
+	if err := flags.Parse(arguments); err != nil {
+		return err
 	}
 	if flags.NArg() != 0 {
-		return "", fmt.Errorf("channel accepts no positional arguments: %q", flags.Arg(0))
+		return fmt.Errorf("channel accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := ValidateVersion(*version); err != nil {
-		return "", err
+	if err := versionpkg.Validate(*version); err != nil {
+		return err
 	}
-	// ValidateVersion 已验证整个 SemVer 语法；Channel 移除 build
-	// metadata 后出现的连字符只能是预发布分隔符，无需复制另一套 SemVer parser。
-	return Channel(*version) + "\n", nil
+	_, err := fmt.Fprintln(os.Stdout, versionpkg.Channel(*version))
+	return err
 }
 
-// runValidate 让 workflow 能在拉取 source 后、开始六个平台构建前复用唯一的
+// runAssetsValidate 让 workflow 能在拉取 source 后、开始六个平台构建前复用唯一的
 // SemVer 规则拒绝无效 tag，避免错误标签耗费 runner 或触及发布凭据。
 func runAssetsValidate(arguments []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
@@ -92,7 +79,7 @@ func runAssetsValidate(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
-	return ValidateVersion(*version)
+	return versionpkg.Validate(*version)
 }
 
 // runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。
@@ -111,7 +98,7 @@ func runValidateSource(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := ValidateVersion(*version); err != nil {
+	if err := versionpkg.Validate(*version); err != nil {
 		return err
 	}
 	skillVersion, err := productSkillVersion(*productSkill)
@@ -157,7 +144,7 @@ func productSkillVersion(path string) (string, error) {
 	if metadata.Version == "" {
 		return "", fmt.Errorf("product skill %q has no version", path)
 	}
-	if err := ValidateVersion(metadata.Version); err != nil {
+	if err := versionpkg.Validate(metadata.Version); err != nil {
 		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
 	}
 	return metadata.Version, nil
@@ -177,7 +164,7 @@ func runPackage(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("package accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := ValidateVersion(*version); err != nil {
+	if err := versionpkg.Validate(*version); err != nil {
 		return err
 	}
 	target, err := parseTarget(*targetText)
@@ -195,7 +182,7 @@ func runPackage(arguments []string) error {
 		return err
 	}
 
-	archivePath := filepath.Join(*outputDir, archiveName(*version, target))
+	archivePath := filepath.Join(*outputDir, ArchiveName(*version, target))
 	if _, err := os.Lstat(archivePath); err == nil {
 		return fmt.Errorf("release archive already exists: %s", archivePath)
 	} else if !os.IsNotExist(err) {
@@ -213,7 +200,7 @@ func runPackage(arguments []string) error {
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("package %s: %w", archiveName(*version, target), err)
+		return fmt.Errorf("package %s: %w", ArchiveName(*version, target), err)
 	}
 	if err := requireRegularFile(archivePath, "packaged release archive"); err != nil {
 		return err
@@ -240,7 +227,7 @@ func runFinalize(arguments []string) (err error) {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("finalize accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := ValidateVersion(*version); err != nil {
+	if err := versionpkg.Validate(*version); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*keyID) == "" {
@@ -262,15 +249,15 @@ func runFinalize(arguments []string) (err error) {
 	if err != nil {
 		return err
 	}
-	englishNotes, err := releaseNotesFromChangelog(*changelog, *version)
+	englishNotes, err := NotesFromChangelog(*changelog, *version)
 	if err != nil {
 		return err
 	}
-	chineseNotes, err := releaseNotesFromChangelog(*changelogChinese, *version)
+	chineseNotes, err := NotesFromChangelog(*changelogChinese, *version)
 	if err != nil {
 		return err
 	}
-	notes := bilingualReleaseNotes(englishNotes, chineseNotes)
+	notes := BilingualBody(englishNotes, chineseNotes)
 	if err := requireSecureRegularFile(*installSh, "install.sh"); err != nil {
 		return err
 	}
@@ -340,7 +327,7 @@ func runFinalize(arguments []string) (err error) {
 func copyRequiredAssets(inputDir, outputDir, version, installSh, installCmd string, releaseSources []byte) ([]byte, error) {
 	sources := make(map[string]string, len(fixedTargets)+2)
 	for _, target := range fixedTargets {
-		name := archiveName(version, target)
+		name := ArchiveName(version, target)
 		sources[name] = filepath.Join(inputDir, name)
 	}
 	sources["install.sh"] = installSh
@@ -549,16 +536,6 @@ func readEd25519PrivateKey(path string) (ed25519.PrivateKey, error) {
 	return privateKey, nil
 }
 
-func releaseNotesFromChangelog(path, version string) ([]byte, error) {
-	return NotesFromChangelog(path, version)
-}
-
-// bilingualReleaseNotes 为 GitHub Release body 增加稳定的语言标题。两个输入都已经
-// 由 releaseNotesFromChangelog 验证了对应版本标题，并且不会进入签名 checksum asset 集合。
-func bilingualReleaseNotes(english, chinese []byte) []byte {
-	return BilingualBody(english, chinese)
-}
-
 func signedChecksumsManifest(keyID string, privateKey ed25519.PrivateKey, checksums []byte) ([]byte, error) {
 	sum := sha256.Sum256(checksums)
 	manifest := struct {
@@ -601,20 +578,16 @@ func writeRegularFile(path string, contents []byte, permissions os.FileMode) err
 
 func parseTarget(value string) (Target, error) {
 	for _, target := range fixedTargets {
-		if value == target.GOOS+"/"+target.GOARCH {
+		if value == target.String() {
 			return target, nil
 		}
 	}
 	available := make([]string, 0, len(fixedTargets))
 	for _, target := range fixedTargets {
-		available = append(available, target.GOOS+"/"+target.GOARCH)
+		available = append(available, target.String())
 	}
 	sort.Strings(available)
 	return Target{}, fmt.Errorf("target must be one of %s, got %q", strings.Join(available, ", "), value)
-}
-
-func archiveName(version string, target Target) string {
-	return ArchiveName(version, target)
 }
 
 func requireRepositoryRoot(path string) (string, error) {

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 const (
@@ -46,7 +48,7 @@ func runRender(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("render accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := ValidateVersion(*version); err != nil {
+	if err := versionpkg.Validate(*version); err != nil {
 		return err
 	}
 	formulaName, templateName, err := validateFormulaVersion(*formula, *version)
@@ -70,8 +72,7 @@ func runRender(arguments []string) error {
 }
 
 func validateFormulaVersion(formula, version string) (formulaName, templateName string, err error) {
-	base := strings.SplitN(version, "+", 2)[0]
-	prerelease := strings.Contains(base, "-")
+	prerelease := versionpkg.Channel(version) == "prerelease"
 	switch formula {
 	case stableFormula:
 		if prerelease {
@@ -159,15 +160,8 @@ func releaseURL(version, archive string) string {
 }
 
 func readRegularFile(path, label string) ([]byte, error) {
-	if path == "" {
-		return nil, fmt.Errorf("%s is required", label)
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, fmt.Errorf("inspect %s %q: %w", label, path, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s must be a non-symlink regular file: %q", label, path)
+	if err := requireRegularFile(path, label); err != nil {
+		return nil, err
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -181,33 +175,11 @@ func writeNewRegularFile(path string, body []byte) error {
 		return errors.New("output is required")
 	}
 	parent := filepath.Dir(path)
-	info, err := os.Lstat(parent)
-	if err != nil {
-		return fmt.Errorf("inspect output directory %q: %w", parent, err)
+	if err := requireSecureDirectory(parent, "output directory"); err != nil {
+		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return fmt.Errorf("output directory must be a non-symlink directory: %q", parent)
-	}
-	if err := rejectSymlinkAncestors(parent); err != nil {
-		return fmt.Errorf("output directory: %w", err)
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		return fmt.Errorf("create formula output %q: %w", path, err)
-	}
-	if _, err := file.Write(body); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
+	if err := writeRegularFile(path, body, 0o644); err != nil {
 		return fmt.Errorf("write formula output %q: %w", path, err)
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		_ = os.Remove(path)
-		return fmt.Errorf("sync formula output %q: %w", path, err)
-	}
-	if err := file.Close(); err != nil {
-		_ = os.Remove(path)
-		return fmt.Errorf("close formula output %q: %w", path, err)
 	}
 	return nil
 }

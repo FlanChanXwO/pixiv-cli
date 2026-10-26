@@ -152,8 +152,11 @@ func runNotesAudit(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("audit accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if !validRepository(*repository) || *to == "" {
-		return errors.New("audit requires --repo owner/name and --to")
+	if _, err := githubRepositoryPath(*repository); err != nil {
+		return err
+	}
+	if *to == "" {
+		return errors.New("audit requires --to")
 	}
 	report, err := collectAudit(context.Background(), auditConfig{
 		repository: *repository,
@@ -354,21 +357,14 @@ func (client githubClient) requestJSON(ctx context.Context, method, path string,
 	if client.token != "" {
 		request.Header.Set("Authorization", "Bearer "+client.token)
 	}
-	httpClient := client.client
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	response, err := httpClient.Do(request)
+	response, err := client.client.Do(request)
 	if err != nil {
 		return err
 	}
 	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || (method == http.MethodGet && response.StatusCode != http.StatusOK) {
 		responseBody, readErr := io.ReadAll(response.Body)
-		if readErr != nil {
-			return &githubHTTPError{Path: path, StatusCode: response.StatusCode}
-		}
-		return &githubHTTPError{Path: path, StatusCode: response.StatusCode, Body: strings.TrimSpace(string(responseBody))}
+		return errors.Join(&githubHTTPError{Path: path, StatusCode: response.StatusCode, Body: strings.TrimSpace(string(responseBody))}, readErr)
 	}
 	if destination == nil {
 		return nil
@@ -388,7 +384,10 @@ func runNotesSyncHistory(arguments []string) error {
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || !validRepository(*repository) || !semanticVersionPattern.MatchString(*version) || *directory == "" {
+	if _, err := githubRepositoryPath(*repository); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || !semanticVersionPattern.MatchString(*version) || *directory == "" {
 		return errors.New("sync-history requires --repo, --version, and --dir")
 	}
 	return syncHistoricalRelease(context.Background(), syncHistoryConfig{
@@ -505,11 +504,6 @@ func gitCommitDetail(commit string) (title, author string, err error) {
 	return title, author, nil
 }
 
-func validRepository(repository string) bool {
-	owner, name, ok := strings.Cut(repository, "/")
-	return ok && owner != "" && name != "" && !strings.Contains(name, "/")
-}
-
 func writeJSON(path string, value any) error {
 	var destination io.Writer = os.Stdout
 	var file *os.File
@@ -565,10 +559,10 @@ func validateReleaseDirectory(directory, version, previous string, unreleased bo
 	if err != nil {
 		return fmt.Errorf("Simplified Chinese changelog: %w", err)
 	}
-	if !sameStrings(english.sources, chinese.sources) {
+	if !slices.Equal(english.sources, chinese.sources) {
 		return fmt.Errorf("bilingual source sets differ: English=%v SimplifiedChinese=%v", english.sources, chinese.sources)
 	}
-	if !sameStrings(english.internal, chinese.internal) {
+	if !slices.Equal(english.internal, chinese.internal) {
 		return fmt.Errorf("bilingual internal source sets differ: English=%v SimplifiedChinese=%v", english.internal, chinese.internal)
 	}
 	if err := validateBilingualEntries(english, chinese); err != nil {
@@ -784,26 +778,14 @@ func validateCompareLink(link, version, previous string) error {
 }
 
 func sortedUnique(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		seen[value] = struct{}{}
-	}
-	result := make([]string, 0, len(seen))
-	for value := range seen {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
+	slices.Sort(values)
+	return slices.Compact(values)
 }
 
-func sameStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
+func githubRepositoryPath(repository string) (string, error) {
+	owner, name, ok := strings.Cut(repository, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", fmt.Errorf("repository must use owner/name form: %q", repository)
 	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
+	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
 }

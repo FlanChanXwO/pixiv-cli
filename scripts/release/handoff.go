@@ -91,13 +91,11 @@ func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 	handoff.ProductionArtifacts = production
 	handoff.ContainerArtifacts = containers
 
-	if checksums := filepath.Join(input.DistDir, "checksums.txt"); fileExists(checksums) {
-		sum, err := hashFile(checksums)
-		if err != nil {
-			return releaseHandoff{}, err
-		}
-		handoff.Checksums = sum
+	sum, err := hashFile(filepath.Join(input.DistDir, "checksums.txt"))
+	if err != nil {
+		return releaseHandoff{}, err
 	}
+	handoff.Checksums = sum
 
 	encoded, err := json.MarshalIndent(handoff, "", "  ")
 	if err != nil {
@@ -144,11 +142,6 @@ func verifyHandoffIdentity(handoff releaseHandoff) error {
 		return errors.New("handoff version is required")
 	}
 	return nil
-}
-
-// verifyHandoffArtifacts 使用产物目录内的 checksums.txt 校验。
-func verifyHandoffArtifacts(handoff releaseHandoff, distDir, containerDir string) error {
-	return verifyHandoffArtifactsAt(handoff, distDir, containerDir, filepath.Join(distDir, "checksums.txt"))
 }
 
 // verifyHandoffArtifactsAt 重新计算磁盘上的字节并与 handoff 记录比对。任何缺失、
@@ -360,11 +353,6 @@ func containerArtifactNames(dir string) ([]string, error) {
 	return names, nil
 }
 
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
 func hashFile(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -444,20 +432,8 @@ func verifyHandoffSetCommand(args []string) {
 	if err := json.Unmarshal(body, &handoff); err != nil {
 		fatal(fmt.Errorf("decode handoff: %w", err))
 	}
-	if *repository != "" && handoff.Repository != *repository {
-		fatal(fmt.Errorf("handoff repository = %q, want %q", handoff.Repository, *repository))
-	}
-	if *runID != 0 && handoff.ReleaseRunID != *runID {
-		fatal(fmt.Errorf("handoff release_run_id = %d, want %d", handoff.ReleaseRunID, *runID))
-	}
-	if *tag != "" && handoff.Tag != *tag {
-		fatal(fmt.Errorf("handoff tag = %q, want %q", handoff.Tag, *tag))
-	}
-	// publisher 必须确认自己读取的 handoff 确实由所解析出的那个 run 产生。
-	// 这里比对 handoff 记录的 run head SHA 与调用方从该 run 读到的 head SHA；
-	// 它是自校验的，不会把 tag commit 与 dispatch 分支头混为一谈。
-	if *headSHA != "" && handoff.RunHeadSHA != *headSHA {
-		fatal(fmt.Errorf("handoff run_head_sha = %q, want %q", handoff.RunHeadSHA, *headSHA))
+	if err := verifyHandoffIdentityOnly(handoff, *runID, *repository, *tag, *headSHA); err != nil {
+		fatal(err)
 	}
 	if *section != "" {
 		dir := *distDir

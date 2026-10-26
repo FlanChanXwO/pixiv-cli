@@ -3,7 +3,7 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,12 +22,6 @@ import (
 type sourceTrust struct {
 	Version string
 	Commit  string
-}
-
-type githubReleaseClient struct {
-	BaseURL string
-	Token   string
-	HTTP    *http.Client
 }
 
 func verifySourceCommand(args []string) {
@@ -61,7 +55,7 @@ func verifyPublishedReleaseCommand(args []string) {
 	if token == "" {
 		fatal(errors.New("GH_TOKEN is required"))
 	}
-	client := githubReleaseClient{BaseURL: "https://api.github.com", Token: token, HTTP: http.DefaultClient}
+	client := githubClient{baseURL: "https://api.github.com", token: token, client: http.DefaultClient}
 	if err := verifyPublishedRelease(client, *repository, *tag, *stable); err != nil {
 		fatal(err)
 	}
@@ -93,7 +87,7 @@ func verifyHandoffCommand(args []string) {
 			fatal(fmt.Errorf("resolve handoff tag %q: %w", *tag, err))
 		}
 	}
-	client := githubReleaseClient{BaseURL: "https://api.github.com", Token: token, HTTP: http.DefaultClient}
+	client := githubClient{baseURL: "https://api.github.com", token: token, client: http.DefaultClient}
 	if err := verifyReleaseHandoff(client, *repository, parsedRunID, *workflow, tagCommit); err != nil {
 		fatal(err)
 	}
@@ -136,7 +130,7 @@ func verifySourceTrust(repoRoot, tag, defaultBranch string) (sourceTrust, error)
 	return sourceTrust{Version: version, Commit: commit}, nil
 }
 
-func verifyPublishedRelease(client githubReleaseClient, repository, tag string, stable bool) error {
+func verifyPublishedRelease(client githubClient, repository, tag string, stable bool) error {
 	version, err := releaseTagVersion(tag)
 	if err != nil {
 		return err
@@ -154,7 +148,7 @@ func verifyPublishedRelease(client githubReleaseClient, repository, tag string, 
 		Prerelease  bool   `json:"prerelease"`
 		PublishedAt string `json:"published_at"`
 	}
-	if err := client.get(path+"/releases/tags/"+url.PathEscape(tag), &release); err != nil {
+	if err := client.getJSON(context.Background(), path+"/releases/tags/"+url.PathEscape(tag), &release); err != nil {
 		return err
 	}
 	if release.TagName != tag {
@@ -169,7 +163,7 @@ func verifyPublishedRelease(client githubReleaseClient, repository, tag string, 
 	return nil
 }
 
-func verifyReleaseHandoff(client githubReleaseClient, repository string, runID int64, workflow, tagCommit string) error {
+func verifyReleaseHandoff(client githubClient, repository string, runID int64, workflow, tagCommit string) error {
 	path, err := githubRepositoryPath(repository)
 	if err != nil {
 		return err
@@ -185,7 +179,7 @@ func verifyReleaseHandoff(client githubReleaseClient, repository string, runID i
 		Conclusion string `json:"conclusion"`
 		HeadSHA    string `json:"head_sha"`
 	}
-	if err := client.get(path+"/actions/runs/"+strconv.FormatInt(runID, 10), &run); err != nil {
+	if err := client.getJSON(context.Background(), path+"/actions/runs/"+strconv.FormatInt(runID, 10), &run); err != nil {
 		return err
 	}
 	if run.Name != workflow {
@@ -211,50 +205,10 @@ func releaseTagVersion(tag string) (string, error) {
 	return version, nil
 }
 
-func githubRepositoryPath(repository string) (string, error) {
-	owner, name, ok := strings.Cut(repository, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return "", fmt.Errorf("repository must use owner/name form: %q", repository)
-	}
-	return "/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name), nil
-}
-
-func (client githubReleaseClient) get(path string, destination any) error {
-	if client.HTTP == nil {
-		return errors.New("GitHub HTTP client is required")
-	}
-	if strings.TrimSpace(client.BaseURL) == "" {
-		return errors.New("GitHub API base URL is required")
-	}
-	if strings.TrimSpace(client.Token) == "" {
-		return errors.New("GitHub token is required")
-	}
-	request, err := http.NewRequest(http.MethodGet, strings.TrimRight(client.BaseURL, "/")+path, nil)
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Authorization", "Bearer "+client.Token)
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "pixiv-cli-release-verifier")
-	response, err := client.HTTP.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("GitHub API %s returned %s: %s", path, response.Status, strings.TrimSpace(string(body)))
-	}
-	if err := json.NewDecoder(response.Body).Decode(destination); err != nil {
-		return fmt.Errorf("decode GitHub API %s: %w", path, err)
-	}
-	return nil
-}
-
 // gitEnv 返回针对指定仓库根运行 git 的环境变量。git 会让继承的
 // GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE 优先于 `-C`，而 pre-commit 在运行 hook
-// 时会导出这三个变量；若不剥离，release 工具的 git 调用会直接作用在真实仓库上。
-func gitEnv(repoRoot string) []string {
+// 时会导出这些变量；剥离后由 -C 选择普通 checkout 或 worktree 的实际 Git 目录。
+func gitEnv() []string {
 	env := make([]string, 0, len(os.Environ()))
 	for _, entry := range os.Environ() {
 		if strings.HasPrefix(entry, "GIT_") {
@@ -262,16 +216,12 @@ func gitEnv(repoRoot string) []string {
 		}
 		env = append(env, entry)
 	}
-	return append(env,
-		"GIT_DIR="+filepath.Join(repoRoot, ".git"),
-		"GIT_WORK_TREE="+repoRoot,
-		"GIT_INDEX_FILE="+filepath.Join(repoRoot, ".git", "index"),
-	)
+	return env
 }
 
 func runGit(repoRoot string, args ...string) error {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
-	command.Env = gitEnv(repoRoot)
+	command.Env = gitEnv()
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
@@ -281,7 +231,7 @@ func runGit(repoRoot string, args ...string) error {
 
 func captureGit(repoRoot string, args ...string) (string, error) {
 	command := exec.Command("git", append([]string{"-C", repoRoot}, args...)...)
-	command.Env = gitEnv(repoRoot)
+	command.Env = gitEnv()
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))

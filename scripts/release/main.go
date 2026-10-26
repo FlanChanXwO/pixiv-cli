@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -192,7 +193,7 @@ func expectedArtifacts(registryPath, version string) ([]string, error) {
 	var names []string
 	seen := map[string]struct{}{}
 	for _, item := range cfg.Platforms {
-		if !contains(item.Capabilities, "release") {
+		if !slices.Contains(item.Capabilities, "release") {
 			continue
 		}
 		if item.GOOS == "" || item.GOARCH == "" {
@@ -228,7 +229,7 @@ func expectedContainerArtifacts(registryPath string) ([]string, error) {
 	var names []string
 	seen := map[string]struct{}{}
 	for _, item := range cfg.Platforms {
-		if !contains(item.Capabilities, "container") {
+		if !slices.Contains(item.Capabilities, "container") {
 			continue
 		}
 		key := item.GOOS + "/" + item.GOARCH
@@ -262,15 +263,6 @@ func releaseArchives(dir, version string) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
-}
-
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func fatal(err error) {
