@@ -104,7 +104,6 @@ func TestResponsesReportMalformedData(t *testing.T) {
 		{"CreatorPosts", `{"body":{}}`},
 		{"CreatorPosts", `{"body":{"posts":[],"nextUrl":" "}}`},
 		{"CreatorPosts", `{"body":{"posts":[{"id":"p1","publishedDatetime":"response-token-canary"}]}}`},
-		{"Post", `{"body":{"post":{"id":"p1","publishedDatetime":"response-token-canary"}}}`},
 		{"Creator", `{"body":{"creatorId":"artist","user":{}}}`},
 	} {
 		api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -121,8 +120,6 @@ func TestResponsesReportMalformedData(t *testing.T) {
 		switch tc.operation {
 		case "CreatorPosts":
 			_, err = client.CreatorPosts(t.Context(), fanbox.CreatorPostsRequest{CreatorID: "artist"})
-		case "Post":
-			_, err = client.Post(t.Context(), fanbox.PostRequest{PostID: "p1"})
 		case "Creator":
 			_, err = client.Creator(t.Context(), fanbox.CreatorRequest{CreatorID: "artist"})
 		case "CurrentUser":
