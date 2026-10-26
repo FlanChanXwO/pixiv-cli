@@ -12,6 +12,8 @@
 
 2026-10-26 补充：注释规则改为每个包一处标准库风格的包文档、其他文件开头不写注释，注释在 sdk/ 用英文、其余用简体中文（规格 3.5、3.5.1）；G29–G33 的语句随之更新。命名的补充规则只约束新代码（规格 3.1.2），有含义的值写成命名常量的规则约束新增和触及的代码（规格 3.2），测试规则仍按 3.4.4。
 
+2026-10-26 补充：新增 G45，修正 G40、G41 记录下来的遗留问题（NDJSON 退出码、input 包的全局状态、重复的收藏过滤、mediaproxy 固定参数、D10 字面量）；G30、G31、G32、G34 改为依赖 G45，G29、G33 不受影响。
+
 2026-10-24 起冻结各 goal 语句：执行中发现的新问题记录在 PR 描述和最终汇报中，由 G28（代码）或 G34（文档、skill）统一处理，不再修改尚在执行的 goal。
 
 | Goal | worktree | 依赖 | 可并行 |
@@ -45,9 +47,9 @@
 | G27 | `refactor-g27-cli-auth` | G12 | 是 |
 | G28 | `refactor-g28-sweep` | G22、G23、G24、G25、G26、G27 | 否 |
 | G29 | `refactor-g29-headers-sdk` | G39、G40、G41、G42 | 是 |
-| G30 | `refactor-g30-headers-cli` | G39、G40、G41、G42 | 是 |
-| G31 | `refactor-g31-headers-mcp` | G39、G40、G41、G42 | 是 |
-| G32 | `refactor-g32-headers-internal` | G39、G40、G41、G42 | 是 |
+| G30 | `refactor-g30-headers-cli` | G39、G40、G41、G42、G45 | 是 |
+| G31 | `refactor-g31-headers-mcp` | G39、G40、G41、G42、G45 | 是 |
+| G32 | `refactor-g32-headers-internal` | G39、G40、G41、G42、G45 | 是 |
 | G33 | `refactor-g33-headers-scripts` | G21、G39、G40、G41、G42 | 是 |
 | G35 | `refactor-g35-tests-sdk` | G28 | 是 |
 | G36 | `refactor-g36-tests-mcp` | G28 | 是 |
@@ -59,7 +61,8 @@
 | G42 | `refactor-g42-audit-internal` | G20、G28、G35、G36、G37、G38、G44、G43 | 是 |
 | G43 | `refactor-g43-changelog` | 无 | 是 |
 | G44 | `refactor-g44-tests-rewrite` | G35、G36、G37、G38 | 否 |
-| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43 | 否 |
+| G45 | `refactor-g45-leftovers` | G39、G40、G41、G42、G43、G44 | 是 |
+| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45 | 否 |
 
 ## G01：go mod tidy
 
@@ -1734,7 +1737,7 @@
 - 名称：refactor-g30-headers-cli
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g30-headers-cli/pixiv-cli
 - 分支：refactor/g30-headers-cli
-- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42、G45（依赖已于 2026-10-26 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g30-headers-cli /Users/flanchan/.codex/worktrees/refactor-g30-headers-cli/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1793,7 +1796,7 @@
 - 名称：refactor-g31-headers-mcp
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g31-headers-mcp/pixiv-cli
 - 分支：refactor/g31-headers-mcp
-- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42、G45（依赖已于 2026-10-26 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g31-headers-mcp /Users/flanchan/.codex/worktrees/refactor-g31-headers-mcp/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -1854,7 +1857,7 @@
 - 名称：refactor-g32-headers-internal
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g32-headers-internal/pixiv-cli
 - 分支：refactor/g32-headers-internal
-- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42、G45（依赖已于 2026-10-26 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g32-headers-internal /Users/flanchan/.codex/worktrees/refactor-g32-headers-internal/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
@@ -2535,6 +2538,69 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、依赖本 goal 的后续 goal 需要知道的事。
 ```
 
+## G45：遗留问题修正：internal/cli、internal/mcpserver（可并行）
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G45：遗留问题修正：internal/cli、internal/mcpserver。
+
+【本 goal】
+工作项：修正 G40（PR #237）、G41（PR #241）记录下来但未处理的问题，范围 internal/cli/、internal/mcpserver/，以及共享收藏过滤所需的 internal/searchfilter。只处理下面五项，不扩大成新一轮审查。
+- NDJSON 退出码：internal/cli/execution.go 的 commandAutoWritesNDJSON 用一份写死的命令路径清单判断哪些命令在非终端 stdout 上自动输出 NDJSON，pixiv series、bookmark、comment、reverse search 等同样自动输出的命令不在清单内，下游提前关闭管道时返回 1 而不是 0。删除这份清单，改由命令自己声明（例如复用已有的 command.OutputNDJSONAnnotationKey），让所有自动输出 NDJSON 的命令行为一致。这是行为修正：先写出复现失败的测试并观察到失败，再修改实现。
+- input 包的全局状态：internal/cli/internal/input/pipeline.go 用包级 sync.Map（resolvedInputs、offlineCommands）按 *cobra.Command 保存状态。改为由命令自己持有，做法参照 G41 对 auth import 的处理（状态放在命令构造函数的闭包里），删除包级可变状态和对应的清理调用。
+- 重复的收藏过滤：internal/cli/search/bookmark.go 与 MCP（internal/mcpserver/pixiv/tools 中的搜索与收藏过滤）各实现一份收藏过滤。收进一个两边都能引用的所有者（首选 internal/searchfilter），CLI 不得因此 import internal/mcpserver。
+- mediaproxy 固定参数：internal/cli/composition_mcp.go 把 mediaproxy.DefaultCacheTTL、DefaultConcurrency 原样传回 mediaproxy 的 Config，Config 构造时再检查它们为正数。固定值由 mediaproxy 自己持有，Config 只保留调用方确实需要决定的字段（见 PR #237 交接第 5 条；其中提到的直读回调已在 G41 删除）。
+- D10 字面量：范围内表示业务取值的字符串字面量（如 "illust"、"manga"、"novel"、"artwork"）换成具名常量，值相同时优先引用 SDK 已有的具名类型常量，值不同时不得替换（例如 CLI 的 "illust" 与 SDK 的 pixiv.ArtworkKindIllustration 值为 "illustration"）；按规格 3.2 保留可以直接写字面量的场景。现有类型和标识符不为新命名规则改名。
+
+【验收】
+- NDJSON：代码中不再有按命令路径判断自动 NDJSON 的清单；用 fixture 或 httptest 验证 series、bookmark、comment、reverse search 和原清单中的命令在管道提前关闭时退出码为 0、stderr 没有错误。PR 中写明修正前观察到的失败。
+- input：internal/cli/internal/input 中没有包级可变状态。
+- 收藏过滤：只有一份实现，CLI 与 MCP 都调用它；go list -deps 证明 internal/cli 不依赖 internal/mcpserver。
+- mediaproxy：Config 不再携带固定的 TTL 与并发数，组合根不再设置它们，mediaproxy 也不再校验它们。
+- D10：PR 中列出范围内剩余的业务字符串字面量及保留理由。
+- 对外输出：除 NDJSON 退出码外，CLI 离线输出与 MCP tools/list 与本 goal 开始时的 origin/main 一致（按 G41 的做法抓取并比对）。
+- 测试按 pixiv-cli-test 的准入规则与规格 3.4.4 决定是否保留；复现用的临时测试不在准入清单内时放在 tmp/test/，不提交。
+- go test ./... -count=1、go test -race ./...、go vet ./...、sh scripts/build.sh 通过。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0、第 9 节、第 10 节。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-mcp-tool、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 问题来源：PR #237 描述的交接第 5、6 条，PR #241 描述中记录但未修正的项。以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
+
+【worktree 与分支】
+- 名称：refactor-g45-leftovers
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g45-leftovers/pixiv-cli
+- 分支：refactor/g45-leftovers
+- 开始前用 gh 确认依赖已满足：G39、G40、G41、G42、G43、G44。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g45-leftovers /Users/flanchan/.codex/worktrees/refactor-g45-leftovers/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行；本 goal 可以分成多个小 PR（每项一个），每个 PR 单独通过检查后合并：
+- 按逻辑单元分次提交。
+- 只修改本 goal 负责的目录。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（NDJSON 退出码修正写 changelog 条目），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main。
+- 未授权：发布版本、打 tag、修改分支保护、force push、引入规格第 4 节以外的依赖、修改 .agents/refactor/（G34 除外）。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策。
+- 选择不改变对外行为的最保守做法继续推进，并把假设写进工作记录和 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做其他 goal 的工作项；注释整理留给 G30–G32，新改动的代码按规格 3.5、3.5.1 写注释。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、G30–G32 与 G34 需要知道的事。
+```
+
 ## G34：文档、skill 收尾并删除 refactor 目录
 
 ```text
@@ -2562,7 +2628,7 @@
 - 名称：refactor-g34-finish
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli
 - 分支：refactor/g34-finish
-- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G39、G40、G41、G42、G43（依赖已于 2026-10-24 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45（依赖已于 2026-10-26 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g34-finish /Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
