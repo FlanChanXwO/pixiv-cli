@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -65,27 +66,27 @@ func parseIdentityMetadataHTML(document []byte) (Identity, error) {
 		} `json:"context"`
 	}
 	if err := decoder.Decode(&envelope); err != nil {
-		return Identity{}, errors.New("FANBOX metadata is not valid JSON")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata is not valid JSON", ErrMalformedResponse)
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return Identity{}, errors.New("FANBOX metadata is not valid JSON")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata is not valid JSON", ErrMalformedResponse)
 	}
 	userID, err := positiveJSONInt(envelope.Context.User.UserID)
 	if err != nil {
-		return Identity{}, errors.New("FANBOX metadata has no valid user id")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata has no valid user id", ErrMalformedResponse)
 	}
 	name := strings.TrimSpace(envelope.Context.User.Name)
 	if name == "" {
-		return Identity{}, errors.New("FANBOX metadata has no display name")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata has no display name", ErrMalformedResponse)
 	}
 	creatorID, err := optionalJSONString(envelope.Context.User.CreatorID)
 	if err != nil {
-		return Identity{}, errors.New("FANBOX metadata has an invalid creator id")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata has an invalid creator id", ErrMalformedResponse)
 	}
 	creatorStatus, isCreator, err := creatorState(envelope.Context.User.CreatorStatus, envelope.Context.User.IsCreator, creatorID)
 	if err != nil {
-		return Identity{}, errors.New("FANBOX metadata has an invalid creator status")
+		return Identity{}, fmt.Errorf("%w: FANBOX metadata has an invalid creator status", ErrMalformedResponse)
 	}
 	return Identity{
 		UserID:        userID,
@@ -102,7 +103,7 @@ func metadataContent(document []byte) (string, error) {
 		switch tokenizer.Next() {
 		case html.ErrorToken:
 			if err := tokenizer.Err(); err != nil {
-				return "", errors.New("FANBOX metadata tag was not found")
+				return "", fmt.Errorf("%w: FANBOX metadata tag was not found", ErrMalformedResponse)
 			}
 		case html.StartTagToken, html.SelfClosingTagToken:
 			token := tokenizer.Token()

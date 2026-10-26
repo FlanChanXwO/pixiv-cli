@@ -42,11 +42,14 @@ var (
 	// ErrInvalidOption identifies a malformed explicit FANBOX connection option.
 	// The public SDK maps it to InvalidArgument without echoing the value.
 	ErrInvalidOption = errors.New("fanbox: invalid option")
+	// ErrMalformedResponse identifies invalid API JSON or identity metadata.
+	ErrMalformedResponse = errors.New("fanbox: malformed response")
 )
 
 // Session 是带 FANBOX Cookie 的只读会话。Cookie 不会作为导出字段或日志数据暴露。
 type Session struct {
 	httpClient   *http.Client
+	ownsHTTP     bool
 	proxyURL     string
 	userAgent    string
 	cookie       string
@@ -107,7 +110,12 @@ func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Sessio
 	if err != nil {
 		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
 	}
-	return newSession(cookieHeader, &http.Client{Transport: transport}, proxyURL, validatedAgent, flareSolverr, options.Logger)
+	session, err := newSession(cookieHeader, &http.Client{Transport: transport}, proxyURL, validatedAgent, flareSolverr, options.Logger)
+	if err != nil {
+		return nil, err
+	}
+	session.ownsHTTP = true
+	return session, nil
 }
 
 func newSession(cookieHeader string, client *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions, logger *slog.Logger) (*Session, error) {
@@ -121,7 +129,11 @@ func newSession(cookieHeader string, client *http.Client, proxyURL, agent string
 
 // CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
 // 长期使用的调用方可在会话不再需要时显式调用，避免无请求期间的 FD 长期占用。
-func (s *Session) CloseIdleConnections() { s.httpClient.CloseIdleConnections() }
+func (s *Session) CloseIdleConnections() {
+	if s.ownsHTTP {
+		s.httpClient.CloseIdleConnections()
+	}
+}
 
 type requestKind uint8
 
@@ -149,22 +161,16 @@ func (s *Session) GetJSON(ctx context.Context, endpoint string, target any) erro
 	if err != nil {
 		return err
 	}
-	if response.Body == nil {
-		return errors.New("FANBOX API response has no body")
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		err = safeExternalError(ctx, "read FANBOX API response failed", err)
+	} else if json.Unmarshal(body, target) != nil {
+		err = ErrMalformedResponse
 	}
-	decodeErr := json.NewDecoder(response.Body).Decode(target)
-	closeErr := response.Body.Close()
-	if decodeErr != nil {
-		decodeFailure := safeExternalError(ctx, "decode FANBOX API response", decodeErr)
-		if closeErr != nil {
-			return errors.Join(decodeFailure, safeExternalError(ctx, "close FANBOX API response failed", closeErr))
-		}
-		return decodeFailure
+	if closeErr := response.Body.Close(); closeErr != nil {
+		err = errors.Join(err, safeExternalError(ctx, "close FANBOX API response failed", closeErr))
 	}
-	if closeErr != nil {
-		return safeExternalError(ctx, "close FANBOX API response failed", closeErr)
-	}
-	return nil
+	return err
 }
 
 // ValidateAPIURL applies the same HTTPS/FANBOX host policy used by the native
