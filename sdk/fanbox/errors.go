@@ -38,7 +38,7 @@ func classifyError(operation string, err error) *sdk.Error {
 		return newError(operation, sdk.ChallengeRequired, err)
 	case errors.Is(err, fanboxapi.ErrSolverUnavailable):
 		return newError(operation, sdk.UpstreamUnavailable, err)
-	case errors.Is(err, fanboxapi.ErrMalformedSolverResponse):
+	case errors.Is(err, fanboxapi.ErrMalformedSolverResponse), errors.Is(err, fanboxapi.ErrMalformedResponse):
 		return newError(operation, sdk.MalformedUpstreamResponse, err)
 	case errors.Is(err, fanboxapi.ErrForbidden):
 		return newError(operation, sdk.Forbidden, err)

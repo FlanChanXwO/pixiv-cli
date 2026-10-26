@@ -21,14 +21,15 @@ func TestCreatorsReportUpstreamFailures(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string
 		status     int
-		wantError  bool
+		wantReason sdk.Reason
 	}{
-		{"empty list", `{"body":[]}`, http.StatusOK, false},
-		{"missing list", `{}`, http.StatusOK, true},
-		{"null list", `{"body":null}`, http.StatusOK, true},
-		{"wrong list type", `{"body":{"plans":true}}`, http.StatusOK, true},
-		{"invalid JSON", `{`, http.StatusOK, true},
-		{"upstream failure", `{}`, http.StatusServiceUnavailable, true},
+		{"empty list", `{"body":[]}`, http.StatusOK, ""},
+		{"missing list", `{}`, http.StatusOK, sdk.MalformedUpstreamResponse},
+		{"null list", `{"body":null}`, http.StatusOK, sdk.MalformedUpstreamResponse},
+		{"wrong list type", `{"body":{"plans":true}}`, http.StatusOK, sdk.MalformedUpstreamResponse},
+		{"invalid JSON", `{`, http.StatusOK, sdk.MalformedUpstreamResponse},
+		{"trailing JSON", `{"body":[]} {}`, http.StatusOK, sdk.MalformedUpstreamResponse},
+		{"upstream failure", `{}`, http.StatusServiceUnavailable, sdk.UpstreamError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +46,7 @@ func TestCreatorsReportUpstreamFailures(t *testing.T) {
 			client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: "session-canary"}, fanbox.Options{HTTPClient: httpClient})
 			require.NoError(t, err)
 			page, err := client.Creators(t.Context(), fanbox.CreatorsRequest{Kind: fanbox.CreatorListSupporting})
-			require.Equal(t, tc.wantError, err != nil)
+			require.Equal(t, tc.wantReason, sdk.ReasonOf(err))
 			require.Empty(t, page.Items)
 		})
 	}
@@ -87,6 +88,11 @@ func TestSessionCredentialsStayPrivate(t *testing.T) {
 	}
 	require.Contains(t, output.String(), "credentials")
 	require.NotContains(t, output.String(), credentials.FANBOXSESSID)
+	for _, value := range []string{"session-canary; extra=injected-canary", "session-canary\r\n"} {
+		_, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: value})
+		require.Error(t, err)
+		require.NotContains(t, fmt.Sprint(err), "session-canary")
+	}
 }
 
 func TestResponsesReportMalformedData(t *testing.T) {
@@ -94,10 +100,10 @@ func TestResponsesReportMalformedData(t *testing.T) {
 		operation, body string
 	}{
 		{"CreatorTags", `{"body":{}}`},
+		{"CurrentUser", `<meta name="metadata" content='{"context":{"user":{"name":"artist"}}}'>`},
 		{"CreatorPosts", `{"body":{}}`},
 		{"CreatorPosts", `{"body":{"posts":[],"nextUrl":" "}}`},
 		{"CreatorPosts", `{"body":{"posts":[{"id":"p1","publishedDatetime":"response-token-canary"}]}}`},
-		{"Post", `{"body":{"post":{"id":"p1","publishedDatetime":"response-token-canary"}}}`},
 		{"Creator", `{"body":{"creatorId":"artist","user":{}}}`},
 	} {
 		api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -114,10 +120,10 @@ func TestResponsesReportMalformedData(t *testing.T) {
 		switch tc.operation {
 		case "CreatorPosts":
 			_, err = client.CreatorPosts(t.Context(), fanbox.CreatorPostsRequest{CreatorID: "artist"})
-		case "Post":
-			_, err = client.Post(t.Context(), fanbox.PostRequest{PostID: "p1"})
 		case "Creator":
 			_, err = client.Creator(t.Context(), fanbox.CreatorRequest{CreatorID: "artist"})
+		case "CurrentUser":
+			_, err = client.CurrentUser(t.Context(), fanbox.CurrentUserRequest{})
 		case "CreatorTags":
 			_, err = client.CreatorTags(t.Context(), fanbox.CreatorTagsRequest{CreatorID: "artist"})
 		}

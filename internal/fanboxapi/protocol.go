@@ -1,7 +1,8 @@
+// Authenticated JSON and media requests, redirect policy, and safe external failures.
+
 package fanboxapi
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,117 +12,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
-
-const (
-	// WebBaseURL and APIBaseURL are fixed FANBOX protocol endpoints. sdk/fanbox
-	// uses them with the route constants in api.go.
-	WebBaseURL = "https://www.fanbox.cc/"
-	APIBaseURL = "https://api.fanbox.cc/"
-	// PostListPageLimit is the explicit upstream parameter used by FANBOX post
-	// list routes. It is not a local result cap; continuation remains owned by
-	// server-provided URLs.
-	PostListPageLimit = 10
-	// Chrome 146 is the profile that passed the current authorized FANBOX native
-	// target probe. The UA is only a header baseline; it is not a bypass guarantee.
-	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
-)
-
-// 分类 sentinel 错误；公开 SDK 层依据它们做进一步分类。
-var (
-	// ErrForbidden 表示 FANBOX 拒绝访问（非 Cloudflare challenge）。
-	ErrForbidden = errors.New("fanbox: forbidden")
-	// ErrChallenge 表示 403 响应体或 header 表明触发了 Cloudflare challenge。
-	ErrChallenge = errors.New("fanbox: challenge required")
-	// ErrNotAuthenticated 表示会话缺失或过期（401）。
-	ErrNotAuthenticated = errors.New("fanbox: not authenticated")
-	// ErrInvalidOption identifies a malformed explicit FANBOX connection option.
-	// The public SDK maps it to InvalidArgument without echoing the value.
-	ErrInvalidOption = errors.New("fanbox: invalid option")
-)
-
-// Session 是带 FANBOX Cookie 的只读会话。Cookie 不会作为导出字段或日志数据暴露。
-type Session struct {
-	httpClient   *http.Client
-	proxyURL     string
-	userAgent    string
-	cookie       string
-	flareSolverr *FlareSolverrOptions
-	log          *slog.Logger
-
-	solverMu     sync.Mutex
-	solverState  *solverState
-	solverActive *solverCall
-}
-
-// FlareSolverrOptions carries the two independent addresses used by the
-// optional challenge recovery path. Solver state is kept on one Session only.
-type FlareSolverrOptions struct {
-	URL      string
-	ProxyURL string
-}
-
-// SessionOptions contains explicit FANBOX native and solver configuration.
-// The solver is inactive when FlareSolverr is nil.
-type SessionOptions struct {
-	HTTPClient   *http.Client
-	ProxyURL     string
-	UserAgent    string
-	FlareSolverr *FlareSolverrOptions
-	// Logger 记录请求结果和挑战恢复决策；nil 时不输出。
-	Logger *slog.Logger
-}
-
-// String 只返回会话类型，避免诊断格式化泄露认证 Cookie。
-func (*Session) String() string { return "FANBOX Session" }
-
-// GoString 保护 %#v 格式化路径，避免它展开 Session 私有字段。
-func (*Session) GoString() string { return "fanbox.Session{}" }
-
-// NewSessionWithOptions creates a session with explicit native and solver
-// options. It performs no network I/O.
-func NewSessionWithOptions(cookieHeader string, options SessionOptions) (*Session, error) {
-	validatedAgent, err := validateUserAgent(options.UserAgent)
-	if err != nil {
-		return nil, err
-	}
-	proxyURL, err := validateProxyURL(options.ProxyURL)
-	if err != nil {
-		return nil, err
-	}
-	flareSolverr, err := normalizeFlareSolverrOptions(options.FlareSolverr)
-	if err != nil {
-		return nil, err
-	}
-	if options.HTTPClient != nil {
-		if options.HTTPClient.Transport == nil {
-			return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
-		}
-		return newSession(cookieHeader, options.HTTPClient, proxyURL, validatedAgent, flareSolverr, options.Logger)
-	}
-	transport, err := newBrowserTransport(proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("create FANBOX TLS transport: %w", err)
-	}
-	return newSession(cookieHeader, &http.Client{Transport: transport}, proxyURL, validatedAgent, flareSolverr, options.Logger)
-}
-
-func newSession(cookieHeader string, client *http.Client, proxyURL, agent string, flareSolverr *FlareSolverrOptions, logger *slog.Logger) (*Session, error) {
-	cookie, err := NormalizeCookieHeader(cookieHeader)
-	if err != nil {
-		return nil, err
-	}
-	logger = cmp.Or(logger, slog.New(slog.DiscardHandler))
-	return &Session{httpClient: client, proxyURL: proxyURL, userAgent: agent, cookie: cookie, flareSolverr: flareSolverr, log: logger}, nil
-}
-
-// CloseIdleConnections 释放会话 transport 持有的空闲连接。它不设置请求 deadline；
-// 长期使用的调用方可在会话不再需要时显式调用，避免无请求期间的 FD 长期占用。
-func (s *Session) CloseIdleConnections() { s.httpClient.CloseIdleConnections() }
 
 type requestKind uint8
 
@@ -142,29 +36,24 @@ type MediaRequest struct {
 	IfRange         string
 }
 
-// GetJSON performs one authenticated FANBOX JSON request. sdk/fanbox owns the
-// routes and wire decoding.
-func (s *Session) GetJSON(ctx context.Context, endpoint string, target any) error {
+// GetJSONURL performs one authenticated request against a server-provided
+// continuation. The continuation is validated against the FANBOX host policy
+// before it reaches the transport.
+func (s *Client) GetJSONURL(ctx context.Context, endpoint string, target any) error {
 	response, err := s.do(ctx, endpoint, requestKindFanbox, true, "application/json, text/plain, */*")
 	if err != nil {
 		return err
 	}
-	if response.Body == nil {
-		return errors.New("FANBOX API response has no body")
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		err = safeExternalError(ctx, "read FANBOX API response failed", err)
+	} else if json.Unmarshal(body, target) != nil {
+		err = ErrMalformedResponse
 	}
-	decodeErr := json.NewDecoder(response.Body).Decode(target)
-	closeErr := response.Body.Close()
-	if decodeErr != nil {
-		decodeFailure := safeExternalError(ctx, "decode FANBOX API response", decodeErr)
-		if closeErr != nil {
-			return errors.Join(decodeFailure, safeExternalError(ctx, "close FANBOX API response failed", closeErr))
-		}
-		return decodeFailure
+	if closeErr := response.Body.Close(); closeErr != nil {
+		err = errors.Join(err, safeExternalError(ctx, "close FANBOX API response failed", closeErr))
 	}
-	if closeErr != nil {
-		return safeExternalError(ctx, "close FANBOX API response failed", closeErr)
-	}
-	return nil
+	return err
 }
 
 // ValidateAPIURL applies the same HTTPS/FANBOX host policy used by the native
@@ -182,7 +71,7 @@ func ValidateMediaURL(rawURL string) error {
 	return err
 }
 
-func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept string) (*http.Response, error) {
+func (s *Client) do(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept string) (*http.Response, error) {
 	return s.doWithRequest(ctx, rawURL, kind, includeCookie, accept, http.MethodGet, nil)
 }
 
@@ -190,7 +79,7 @@ func (s *Session) do(ctx context.Context, rawURL string, kind requestKind, inclu
 // the shared FANBOX transport. Callers cannot pass arbitrary headers; the
 // public SDK constructs the allowlisted Range/conditional headers before this
 // function is reached.
-func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
+func (s *Client) doWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
 		method = http.MethodGet
@@ -217,16 +106,9 @@ func (s *Session) doWithRequest(ctx context.Context, rawURL string, kind request
 	return response, err
 }
 
-// OpenMedia opens one allowlisted media URL. Only the downloads FANBOX host
-// receives the session cookie on the first request; redirects are handled by
-// the transport policy above.
-func (s *Session) OpenMedia(ctx context.Context, mediaURL string) (*http.Response, error) {
-	return s.OpenMediaWithRequest(ctx, mediaURL, MediaRequest{Method: http.MethodGet})
-}
-
-// OpenMediaWithRequest exposes the narrow conditional resource request surface
+// OpenMedia exposes the narrow conditional resource request surface
 // without allowing arbitrary caller headers or credentials.
-func (s *Session) OpenMediaWithRequest(ctx context.Context, mediaURL string, request MediaRequest) (*http.Response, error) {
+func (s *Client) OpenMedia(ctx context.Context, mediaURL string, request MediaRequest) (*http.Response, error) {
 	header := make(http.Header)
 	for _, field := range []struct{ name, value string }{
 		{"Range", request.Range},
@@ -241,9 +123,6 @@ func (s *Session) OpenMediaWithRequest(ctx context.Context, mediaURL string, req
 	response, err := s.doWithRequest(ctx, mediaURL, requestKindMedia, true, "*/*", request.Method, header)
 	if err != nil {
 		return nil, err
-	}
-	if response.Body == nil {
-		return nil, errors.New("FANBOX media response has no body")
 	}
 	response.Body = &safeMediaReadCloser{ctx: ctx, body: response.Body}
 	return response, nil
@@ -271,7 +150,7 @@ func (r *safeMediaReadCloser) Close() error {
 	return nil
 }
 
-func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
+func (s *Client) doNativeWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
 	visited := make(map[string]struct{})
 	redirected := false
 	for {
@@ -322,9 +201,6 @@ func (s *Session) doNativeWithRequest(ctx context.Context, rawURL string, kind r
 			s.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, safeExternalError(ctx, "FANBOX request failed", err).Error()))...)
 			return nil, safeExternalError(ctx, "FANBOX request failed", err)
 		}
-		if response == nil {
-			return nil, errors.New("FANBOX request returned no response")
-		}
 		statusAttrs := append(attrs, slog.Int(logging.AttrStatus, response.StatusCode))
 		if response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= http.StatusInternalServerError {
 			s.log.LogAttrs(ctx, slog.LevelWarn, "Request rejected by upstream", statusAttrs...)
@@ -371,11 +247,11 @@ func isRedirectStatus(status int) bool {
 }
 
 // classifyError 把非 2xx 响应映射为分类 sentinel；403 依 body/header 区分 challenge。
-func (s *Session) classifyError(ctx context.Context, response *http.Response) error {
+func (s *Client) classifyError(ctx context.Context, response *http.Response) error {
 	status := response.StatusCode
 	challengeMarkers := false
 	var readErr error
-	if status == http.StatusForbidden && response.Body != nil {
+	if status == http.StatusForbidden {
 		// 流式扫描并丢弃整个响应体；没有任意字节截断，也不把 body 保留到错误或日志。
 		challengeMarkers, readErr = scanChallengeBody(response.Body)
 	}
@@ -458,9 +334,6 @@ func challengeHTMLResponse(header http.Header) bool {
 }
 
 func closeResponseBody(ctx context.Context, response *http.Response) error {
-	if response == nil || response.Body == nil {
-		return errors.New("FANBOX response has no body")
-	}
 	if err := response.Body.Close(); err != nil {
 		return safeExternalError(ctx, "close FANBOX response failed", err)
 	}
@@ -484,7 +357,7 @@ func safeExternalError(ctx context.Context, message string, err error) error {
 
 func parseAllowedURL(rawURL string, kind requestKind) (*url.URL, error) {
 	target, err := url.Parse(rawURL)
-	if err != nil || target == nil || target.Scheme != "https" || target.Hostname() == "" || target.User != nil {
+	if err != nil || target.Scheme != "https" || target.Hostname() == "" || target.User != nil {
 		return nil, errors.New("FANBOX URL is not an allowed HTTPS URL")
 	}
 	host := strings.ToLower(target.Hostname())
@@ -520,7 +393,7 @@ func credentialCookieAllowed(kind requestKind, host string) bool {
 	case requestKindMedia:
 		// The recorded attachment contract requires the same session on
 		// downloads.fanbox.cc, but never on Pixiv/CDN or third-party hosts.
-		return host == "downloads.fanbox.cc"
+		return host == DownloadsHost
 	default:
 		return false
 	}

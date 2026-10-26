@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -66,7 +67,7 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 // host allowlist. The ref's stable identity is re-resolved to a fresh locator
 // so a stored ref never reopens a stale embedded URL.
 func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
-	ctx = fanboxapi.WithOperation(ctx, "OpenResource")
+	ctx = logging.WithOperation(ctx, "OpenResource")
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -93,7 +94,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 // an atomic destination. It does not expand posts, creators, archives, or
 // sidecars; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
-	ctx = fanboxapi.WithOperation(ctx, "SaveResource")
+	ctx = logging.WithOperation(ctx, "SaveResource")
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, errors.New("destination path is required"))
 	}

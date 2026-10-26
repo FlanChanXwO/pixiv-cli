@@ -5,51 +5,19 @@ import (
 	"strings"
 )
 
-// NormalizeCookieHeader 校验用户提供的完整 Cookie header，并规范化 pair 两侧空白。
-// 它只接受包含非空 FANBOXSESSID 的标准 name=value pair；错误绝不回显 Cookie 内容。
-func NormalizeCookieHeader(header string) (string, error) {
-	if strings.TrimSpace(header) == "" {
-		return "", errors.New("FANBOX cookie header is required")
+// sessionCookie accepts one FANBOXSESSID value, rejecting additional cookie pairs.
+func sessionCookie(value string) (string, error) {
+	if strings.ContainsAny(value, "\r\n") {
+		return "", errors.New("FANBOX session value must not contain line breaks")
 	}
-	if strings.ContainsAny(header, "\r\n") {
-		return "", errors.New("FANBOX cookie header must not contain line breaks")
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", errors.New("FANBOX session value is required")
 	}
-
-	pairs := strings.Split(header, ";")
-	normalized := make([]string, 0, len(pairs))
-	seen := make(map[string]struct{}, len(pairs))
-	hasSessionID := false
-	for _, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		name, value, ok := strings.Cut(pair, "=")
-		name = strings.TrimSpace(name)
-		value = strings.TrimSpace(value)
-		if !ok || name == "" || !validCookieName(name) || value == "" || !validCookieValue(value) {
-			return "", errors.New("FANBOX cookie header contains a malformed cookie pair")
-		}
-		if _, exists := seen[name]; exists {
-			return "", errors.New("FANBOX cookie header contains duplicate cookie names")
-		}
-		seen[name] = struct{}{}
-		if name == "FANBOXSESSID" {
-			hasSessionID = true
-		}
-		normalized = append(normalized, name+"="+value)
+	if !validCookieValue(value) {
+		return "", errors.New("FANBOX session value contains an invalid cookie character")
 	}
-	if !hasSessionID {
-		return "", errors.New("FANBOX cookie header must contain FANBOXSESSID")
-	}
-	return strings.Join(normalized, "; "), nil
-}
-
-func validCookieName(name string) bool {
-	for _, char := range name {
-		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') || strings.ContainsRune("!#$%&'*+-.^_`|~", char)) {
-			return false
-		}
-	}
-	return true
+	return "FANBOXSESSID=" + value, nil
 }
 
 func validCookieValue(value string) bool {

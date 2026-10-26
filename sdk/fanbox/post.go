@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -103,7 +104,7 @@ type SupportingRequest struct {
 
 // Post returns one post by its stable ID.
 func (c *Client) Post(ctx context.Context, request PostRequest) (Post, error) {
-	ctx = fanboxapi.WithOperation(ctx, "Post")
+	ctx = logging.WithOperation(ctx, "Post")
 	if request.PostID == "" {
 		return Post{}, newError("Post", sdk.InvalidArgument, errors.New("post id is required"))
 	}
@@ -308,7 +309,7 @@ func validateFile(source fileWire) error {
 
 // CreatorPosts lists one creator's posts.
 func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) (sdk.Page[Post], error) {
-	ctx = fanboxapi.WithOperation(ctx, "CreatorPosts")
+	ctx = logging.WithOperation(ctx, "CreatorPosts")
 	if request.CreatorID == "" {
 		return sdk.Page[Post]{}, newError("CreatorPosts", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
@@ -323,7 +324,7 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 
 // TaggedPosts lists one creator's posts for a single tag.
 func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (sdk.Page[Post], error) {
-	ctx = fanboxapi.WithOperation(ctx, "TaggedPosts")
+	ctx = logging.WithOperation(ctx, "TaggedPosts")
 	if request.CreatorID == "" || request.Tag == "" {
 		return sdk.Page[Post]{}, newError("TaggedPosts", sdk.InvalidArgument, errors.New("creator id and tag are required"))
 	}
@@ -342,13 +343,13 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
-	ctx = fanboxapi.WithOperation(ctx, "Home")
+	ctx = logging.WithOperation(ctx, "Home")
 	return c.postList(ctx, "Home", fanboxapi.PathPostListHome, nil, url.Values{}, true, request.Cursor)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
-	ctx = fanboxapi.WithOperation(ctx, "Supporting")
+	ctx = logging.WithOperation(ctx, "Supporting")
 	return c.postList(ctx, "Supporting", fanboxapi.PathPostListSupporting, nil, url.Values{}, true, request.Cursor)
 }
 

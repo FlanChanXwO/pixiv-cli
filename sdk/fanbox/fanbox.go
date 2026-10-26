@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -83,19 +84,11 @@ func Open(credentials SessionCredentials) (*Client, error) {
 
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
-	cookieHeader := "FANBOXSESSID=" + credentials.FANBOXSESSID
-	var solver *fanboxapi.FlareSolverrOptions
-	if options.FlareSolverr != nil {
-		solver = &fanboxapi.FlareSolverrOptions{
-			URL:      options.FlareSolverr.URL,
-			ProxyURL: options.FlareSolverr.ProxyURL,
-		}
-	}
-	session, err := fanboxapi.NewSessionWithOptions(cookieHeader, fanboxapi.SessionOptions{
+	app, err := fanboxapi.New(credentials.FANBOXSESSID, fanboxapi.Options{
 		HTTPClient:   options.HTTPClient,
 		ProxyURL:     options.ProxyURL,
 		UserAgent:    options.UserAgent,
-		FlareSolverr: solver,
+		FlareSolverr: (*fanboxapi.FlareSolverrOptions)(options.FlareSolverr),
 		Logger:       options.Logger,
 	})
 	if err != nil {
@@ -105,7 +98,7 @@ func OpenWith(credentials SessionCredentials, options Options) (*Client, error) 
 		}
 		return nil, newError("Open", reason, err)
 	}
-	return &Client{app: fanboxapi.NewClient(session)}, nil
+	return &Client{app: app}, nil
 }
 
 // CloseIdleConnections releases idle connections of the SDK-created session.
@@ -119,7 +112,7 @@ func (c *Client) CloseIdleConnections() {
 // ValidateSession verifies the current session identity. An expired session
 // returns CredentialsExpired.
 func (c *Client) ValidateSession(ctx context.Context) error {
-	ctx = fanboxapi.WithOperation(ctx, "ValidateSession")
+	ctx = logging.WithOperation(ctx, "ValidateSession")
 	if _, err := c.app.CurrentUser(ctx); err != nil {
 		return classifyError("ValidateSession", err)
 	}
@@ -128,7 +121,7 @@ func (c *Client) ValidateSession(ctx context.Context) error {
 
 // CurrentUser returns the current authenticated user's identity.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (User, error) {
-	ctx = fanboxapi.WithOperation(ctx, "CurrentUser")
+	ctx = logging.WithOperation(ctx, "CurrentUser")
 	identity, err := c.app.CurrentUser(ctx)
 	if err != nil {
 		return User{}, classifyError("CurrentUser", err)
