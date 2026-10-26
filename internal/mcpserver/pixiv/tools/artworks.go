@@ -6,6 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
+	"time"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -14,14 +18,11 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"slices"
-	"strings"
-	"time"
 )
 
 // registerIllustDetail 注册 pixiv_illust_detail。
 func (t pixivTools) registerIllustDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: schemas.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.illustDetailHandler(ctx, input)
 	})
 }
@@ -31,21 +32,21 @@ type illustReferenceIn struct {
 	URL      string `json:"url,omitempty" jsonschema:"supported Pixiv artwork URL; provide exactly one of illust_id or url"`
 }
 
-func (t pixivTools) illustDetailHandler(ctx context.Context, in illustReferenceIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+func (t pixivTools) illustDetailHandler(ctx context.Context, in illustReferenceIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	id, err := resolveMCPArtworkReference(in)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	result, err := t.app.Artwork(ctx, id)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	artworkRecord, err := record.RecordFromArtwork(result)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
-	out := outputs.UserDetail{Records: []record.Record{artworkRecord}}
-	return outputs.UserDetailResult(out, false), out, nil
+	out := outputs.Detail{Records: []record.Record{artworkRecord}}
+	return outputs.DetailResult(out), out, nil
 }
 
 func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
@@ -143,7 +144,7 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustRecommended 注册 pixiv_illust_recommended。
@@ -194,7 +195,7 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustRelated 注册 pixiv_illust_related。
@@ -237,7 +238,7 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerIllustSeries 注册 pixiv_illust_series。
@@ -252,16 +253,9 @@ type illustSeriesIn struct {
 	toolhost.PageLimitIn
 }
 
-func illustSeriesValidateSeriesID(id int64) error {
-	if id <= 0 {
-		return errors.New("series_id must be a positive integer")
-	}
-	return nil
-}
-
 func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
-	if err := illustSeriesValidateSeriesID(in.SeriesID); err != nil {
-		return outputs.Error(err)
+	if in.SeriesID <= 0 {
+		return outputs.Error(errors.New("series_id must be a positive integer"))
 	}
 	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
@@ -282,7 +276,7 @@ func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) 
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerRecommended 注册 pixiv_recommended。

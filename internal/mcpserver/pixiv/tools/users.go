@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -63,7 +64,7 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerUserBookmarks 注册 pixiv_user_bookmarks。
@@ -112,7 +113,7 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	userID := in.UserID
@@ -139,7 +140,7 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 func userBookmarksInputSchema() *jsonschema.Schema {
@@ -155,7 +156,7 @@ func userBookmarksInputSchema() *jsonschema.Schema {
 func (t pixivTools) registerUserDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
 		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
-	}, []string{"user_id"}), OutputSchema: schemas.UserDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userDetailIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+	}, []string{"user_id"}), OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.userDetailHandler(ctx, input)
 	})
 }
@@ -167,22 +168,22 @@ type userDetailIn struct {
 
 // userDetailHandler 将完整公开 SDK envelope 封装为单条 user record，避免详情 tool
 // 成为 records 契约的例外。
-func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mcp.CallToolResult, outputs.UserDetail, error) {
+func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	if in.UserID <= 0 {
-		return outputs.UserDetailError(fmt.Errorf("user_id must be a positive integer"))
+		return outputs.DetailError(fmt.Errorf("user_id must be a positive integer"))
 	}
 	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 		return client.User(ctx, pixiv.UserRequest{UserID: in.UserID})
 	})
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
 	userRecord, err := record.RecordFromUserDetail(result)
 	if err != nil {
-		return outputs.UserDetailError(err)
+		return outputs.DetailError(err)
 	}
-	out := outputs.UserDetail{Records: []record.Record{userRecord}}
-	return outputs.UserDetailResult(out, false), out, nil
+	out := outputs.Detail{Records: []record.Record{userRecord}}
+	return outputs.DetailResult(out), out, nil
 }
 
 // registerUserNovels 注册 pixiv_user_novels。
@@ -229,5 +230,5 @@ func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

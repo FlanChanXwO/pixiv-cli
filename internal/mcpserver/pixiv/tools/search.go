@@ -5,6 +5,9 @@ package tools
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -15,28 +18,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"strings"
-	"time"
 )
-
-// artworkSearchClient 是 bookmark 过滤所需的最小 public SDK capability。
-type artworkSearchClient interface {
-	SearchArtworks(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
-	CheckpointSearchArtworks(pixiv.SearchArtworksRequest, int) (sdk.Cursor, error)
-}
 
 type artworkSearchOutcome struct {
 	Page   sdk.Page[pixiv.Artwork]
-	Filter *bookmarkFilterOutcome
+	Filter *outputs.BookmarkFilter
 }
 
-type bookmarkMembership string
-
-const (
-	bookmarkMembershipPremium    bookmarkMembership = "premium"
-	bookmarkMembershipNonPremium bookmarkMembership = "non_premium"
-	bookmarkMembershipUnknown    bookmarkMembership = "unknown"
-)
+// The MCP account port supplies no verified membership evidence.
+const bookmarkMembershipUnknown = "unknown"
 
 type bookmarkFilterStrategy string
 
@@ -54,35 +44,20 @@ const (
 	bookmarkFilterCompletenessCompleteForSource bookmarkFilterCompleteness = "complete_for_source"
 )
 
-type bookmarkFilterOutcome struct {
-	Min          *int
-	Max          *int
-	Membership   bookmarkMembership
-	Strategy     bookmarkFilterStrategy
-	Completeness bookmarkFilterCompleteness
-}
-
 type artworkSearchRequest struct {
-	Query      pixiv.SearchArtworksRequest
-	Plan       pagination.PagePlan
-	Membership bookmarkMembership
-	Strategy   bookmarkFilterStrategy
-	Include    func(pixiv.Artwork) (bool, error)
+	Query    pixiv.SearchArtworksRequest
+	Plan     pagination.PagePlan
+	Strategy bookmarkFilterStrategy
+	Filter   *filters.IllustFilter
 }
 
 // searchArtworks 在 MCP adapter 内执行 bookmark 候选筛选。
 // auto 只在当前已验证策略下解析为 local；server 不做未经证实的降级。
-func searchArtworks[C artworkSearchClient](ctx context.Context, execute pagination.Execute[C], request artworkSearchRequest) (artworkSearchOutcome, error) {
+func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Client], request artworkSearchRequest) (artworkSearchOutcome, error) {
 	var outcome artworkSearchOutcome
-	min, max, hasRange, err := validateArtworkBookmarkSearch(request)
-	if err != nil {
-		return outcome, err
-	}
-	membership, err := normalizeBookmarkMembership(request.Membership)
-	if err != nil {
-		return outcome, err
-	}
-	strategy, err := resolveBookmarkStrategy(request.Strategy, membership, hasRange)
+	min, max := request.Query.BookmarkMin, request.Query.BookmarkMax
+	hasRange := min != nil || max != nil
+	strategy, err := resolveBookmarkStrategy(request.Strategy, hasRange)
 	if err != nil {
 		return outcome, err
 	}
@@ -91,16 +66,16 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 			sdk.WithDetail("sdk pooled operation is not configured"))
 	}
 
-	err = execute(ctx, func(ctx context.Context, client C) (bool, error) {
+	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		if !hasRange {
-			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan, request.Include)
+			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan, request.Filter)
 			if err != nil {
 				return false, err
 			}
 			outcome = artworkSearchOutcome{Page: page}
 			if strategy == bookmarkFilterStrategyBestEffort {
-				outcome.Filter = &bookmarkFilterOutcome{
-					Membership: membership, Strategy: strategy, Completeness: bookmarkFilterCompletenessPartial,
+				outcome.Filter = &outputs.BookmarkFilter{
+					Membership: bookmarkMembershipUnknown, Strategy: string(strategy), Completeness: string(bookmarkFilterCompletenessPartial),
 				}
 			}
 			return false, nil
@@ -131,10 +106,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 						sdk.WithDetail("artwork bookmark count is negative"))
 				}
 				keep := (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max)
-				if !keep || request.Include == nil {
-					return keep, nil
-				}
-				return request.Include(item)
+				return keep && filters.MatchesIllust(item, request.Filter), nil
 			},
 			func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 				checkpointQuery := candidateQuery
@@ -151,12 +123,12 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 		}
 		outcome = artworkSearchOutcome{
 			Page: sdk.Page[pixiv.Artwork]{Items: items, Next: next},
-			Filter: &bookmarkFilterOutcome{
-				Min:          cloneIntPointer(min),
-				Max:          cloneIntPointer(max),
-				Membership:   membership,
-				Strategy:     strategy,
-				Completeness: completeness,
+			Filter: &outputs.BookmarkFilter{
+				Min:          min,
+				Max:          max,
+				Membership:   bookmarkMembershipUnknown,
+				Strategy:     string(strategy),
+				Completeness: string(completeness),
 			},
 		}
 		return false, nil
@@ -167,52 +139,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 	return outcome, nil
 }
 
-func bookmarkFilterFrom(value *bookmarkFilterOutcome) *outputs.BookmarkFilter {
-	if value == nil {
-		return nil
-	}
-	return &outputs.BookmarkFilter{
-		Min:          value.Min,
-		Max:          value.Max,
-		Membership:   string(value.Membership),
-		Strategy:     string(value.Strategy),
-		Completeness: string(value.Completeness),
-	}
-}
-
-func validateArtworkBookmarkSearch(request artworkSearchRequest) (min, max *int, hasRange bool, err error) {
-	if request.Query.BookmarkMin != nil && *request.Query.BookmarkMin < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark minimum must be zero or positive"))
-	}
-	if request.Query.BookmarkMax != nil && *request.Query.BookmarkMax < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark maximum must be zero or positive"))
-	}
-	if request.Query.BookmarkMin != nil && request.Query.BookmarkMax != nil && *request.Query.BookmarkMin > *request.Query.BookmarkMax {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark minimum must not exceed maximum"))
-	}
-	if request.Plan.Skip < 0 || request.Plan.Limit < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("page skip and limit must be zero or positive"))
-	}
-	return request.Query.BookmarkMin, request.Query.BookmarkMax, request.Query.BookmarkMin != nil || request.Query.BookmarkMax != nil, nil
-}
-
-func normalizeBookmarkMembership(value bookmarkMembership) (bookmarkMembership, error) {
-	switch value {
-	case "", bookmarkMembershipUnknown:
-		return bookmarkMembershipUnknown, nil
-	case bookmarkMembershipPremium, bookmarkMembershipNonPremium:
-		return value, nil
-	default:
-		return "", sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("unknown bookmark membership"))
-	}
-}
-
-func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookmarkMembership, hasRange bool) (bookmarkFilterStrategy, error) {
+func resolveBookmarkStrategy(requested bookmarkFilterStrategy, hasRange bool) (bookmarkFilterStrategy, error) {
 	if requested == "" {
 		requested = bookmarkFilterStrategyAuto
 	}
@@ -225,10 +152,6 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 	case bookmarkFilterStrategyLocal, bookmarkFilterStrategyBestEffort:
 		return requested, nil
 	case bookmarkFilterStrategyServer:
-		if membership == bookmarkMembershipNonPremium {
-			return "", sdk.NewError("pixiv", "SearchArtworks", sdk.Forbidden,
-				sdk.WithDetail("server bookmark strategy is not available for non-premium membership"))
-		}
 		return "", sdk.NewError("pixiv", "SearchArtworks", sdk.UpstreamUnavailable,
 			sdk.WithDetail("server bookmark strategy requires verified premium membership and evidence"))
 	default:
@@ -237,16 +160,13 @@ func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookma
 	}
 }
 
-func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query pixiv.SearchArtworksRequest, plan pagination.PagePlan, include func(pixiv.Artwork) (bool, error)) (sdk.Page[pixiv.Artwork], error) {
-	if include == nil {
-		include = func(pixiv.Artwork) (bool, error) { return true, nil }
-	}
+func searchArtworkPages(ctx context.Context, client *pixiv.Client, query pixiv.SearchArtworksRequest, plan pagination.PagePlan, filter *filters.IllustFilter) (sdk.Page[pixiv.Artwork], error) {
 	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		fetchQuery := query
 		fetchQuery.Cursor = cursor
 		page, err := client.SearchArtworks(ctx, fetchQuery)
 		return page.Items, page.Next, err
-	}, include, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+	}, func(item pixiv.Artwork) (bool, error) { return filters.MatchesIllust(item, filter), nil }, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 		checkpointQuery := query
 		checkpointQuery.Cursor = cursor
 		return client.CheckpointSearchArtworks(checkpointQuery, consumed)
@@ -255,14 +175,6 @@ func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, qu
 		return sdk.Page[pixiv.Artwork]{}, err
 	}
 	return sdk.Page[pixiv.Artwork]{Items: items, Next: next}, nil
-}
-
-func cloneIntPointer(value *int) *int {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
 }
 
 // registerSearchIllust 注册 pixiv_search_illust。
@@ -351,7 +263,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 	if err := validateSearchIllustInput(in); err != nil {
 		return outputs.Error(err)
 	}
-	plan, err := searchIllustListPlan(in)
+	plan, err := toolhost.ParseListPlan(toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit})
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -381,13 +293,10 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		}
 		query.Cursor = initial
 		outcome, err := searchArtworks(ctx, t.app.ReadExecutor(), artworkSearchRequest{
-			Query:      query,
-			Plan:       pagination.PagePlan{Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch},
-			Membership: bookmarkMembershipUnknown,
-			Strategy:   bookmarkFilterStrategy(in.BookmarkStrategy),
-			Include: func(item pixiv.Artwork) (bool, error) {
-				return filters.MatchesIllust(item, in.IllustFilter), nil
-			},
+			Query:    query,
+			Plan:     pagination.PagePlan{Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch},
+			Strategy: bookmarkFilterStrategy(in.BookmarkStrategy),
+			Filter:   in.IllustFilter,
 		})
 		if err != nil {
 			return outputs.Error(err)
@@ -399,7 +308,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		out := outputs.Records{
 			Records:    recordItems,
 			Pagination: toolhost.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Next.IsZero()),
-			Filter:     bookmarkFilterFrom(outcome.Filter),
+			Filter:     outcome.Filter,
 		}
 		if plan.OneBatch {
 			if !outcome.Page.Next.IsZero() && outcome.Page.Next == initial {
@@ -410,7 +319,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 				return outputs.Error(err)
 			}
 		}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "search_illust", bindingInput, in.Cursor, toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		query.Cursor = cursor
@@ -428,7 +337,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: page}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 func validateSearchIllustInput(in searchIllustIn) error {
@@ -470,12 +379,6 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 		return "", "", false
 	}
 	return start.Format("2006-01-02"), today.Format("2006-01-02"), true
-}
-
-// searchIllustListPlan 将 search_illust 的 page/limit 归一为分页计划。
-// 省略 limit 时保持单逻辑批次（含空批补拉）。
-func searchIllustListPlan(in searchIllustIn) (toolhost.ListPlan, error) {
-	return toolhost.ParseListPlan(toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit})
 }
 
 // registerSearchNovel 注册 pixiv_search_novel。
@@ -548,7 +451,7 @@ func (t pixivTools) searchNovelHandler(ctx context.Context, in searchNovelIn) (*
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerSearchUser 注册 pixiv_search_user。
@@ -595,5 +498,5 @@ func (t pixivTools) searchUserHandler(ctx context.Context, in searchUserIn) (*mc
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

@@ -15,11 +15,6 @@ func OpenObjectSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", AdditionalProperties: &jsonschema.Schema{}}
 }
 
-// PaginationOutputSchema 返回分页输出的开放 schema。
-func PaginationOutputSchema() *jsonschema.Schema {
-	return OpenObjectSchema()
-}
-
 // CommentInputSchema 返回 artwork/novel comments 共用的稳定输入 schema。
 // stamp_id 属于评论 mutation 的独立字段，不能借 read tool 的兼容边界暴露。
 func CommentInputSchema() map[string]any {
@@ -44,7 +39,7 @@ func CommentOutputSchema() *jsonschema.Schema {
 				Type:  "array",
 				Items: OpenObjectSchema(),
 			},
-			"pagination":     PaginationOutputSchema(),
+			"pagination":     OpenObjectSchema(),
 			"total":          {Type: "integer"},
 			"access_control": OpenObjectSchema(),
 		},
@@ -63,16 +58,6 @@ func NovelContentOutputSchema() *jsonschema.Schema {
 		Required:             []string{"content"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
-}
-
-// UserDetailOutputSchema 描述只返回实体记录的 detail envelope。
-func UserDetailOutputSchema() *jsonschema.Schema {
-	return singleRecordsOutputSchema()
-}
-
-// NovelDetailOutputSchema 描述小说详情的结构化 envelope。
-func NovelDetailOutputSchema() *jsonschema.Schema {
-	return singleRecordsOutputSchema()
 }
 
 // NovelSeriesOutputSchema 描述小说系列元数据与实体记录的 envelope。
@@ -104,7 +89,7 @@ func BookmarkTagsOutputSchema() *jsonschema.Schema {
 				Type:  "array",
 				Items: OpenObjectSchema(),
 			},
-			"pagination": PaginationOutputSchema(),
+			"pagination": OpenObjectSchema(),
 		},
 		Required:             []string{"bookmark_tags", "pagination"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
@@ -130,7 +115,7 @@ func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
 					AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 				},
 			},
-			"pagination": PaginationOutputSchema(),
+			"pagination": OpenObjectSchema(),
 		},
 		Required:             []string{"bookmark_tags", "pagination"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
@@ -227,10 +212,10 @@ func RecommendedOutputSchema() *jsonschema.Schema {
 			"pagination": {
 				Type: "object",
 				Properties: map[string]*jsonschema.Schema{
-					"illust": PaginationOutputSchema(),
-					"manga":  PaginationOutputSchema(),
-					"novel":  PaginationOutputSchema(),
-					"user":   PaginationOutputSchema(),
+					"illust": OpenObjectSchema(),
+					"manga":  OpenObjectSchema(),
+					"novel":  OpenObjectSchema(),
+					"user":   OpenObjectSchema(),
 				},
 				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 			},
@@ -277,7 +262,8 @@ func TrendingTagsOutputSchema() *jsonschema.Schema {
 	}
 }
 
-func singleRecordsOutputSchema() *jsonschema.Schema {
+// DetailOutputSchema 描述只返回实体记录的 detail envelope。
+func DetailOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type:                 "object",
 		Properties:           map[string]*jsonschema.Schema{"records": recordArraySchema()},

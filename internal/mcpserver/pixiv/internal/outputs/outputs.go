@@ -27,8 +27,8 @@ type BookmarkFilter struct {
 }
 
 // Result 构造实体列表的 MCP 文本摘要。
-func Result(out Records, isError bool) *mcp.CallToolResult {
-	return RecordResult(out.Records, isError, "")
+func Result(out Records) *mcp.CallToolResult {
+	return RecordResult(out.Records, false, "")
 }
 
 // Error 构造实体列表的 MCP error 摘要。
@@ -37,19 +37,19 @@ func Error(err error) (*mcp.CallToolResult, Records, error) {
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
-// UserDetail 是 user_detail tool 的输出 envelope。
-type UserDetail struct {
+// Detail 是 artwork、user 与 novel detail 共用的记录 envelope。
+type Detail struct {
 	Records []record.Record `json:"records"`
 }
 
-// UserDetailResult 构造 user detail 的 MCP 摘要。
-func UserDetailResult(out UserDetail, isError bool) *mcp.CallToolResult {
-	return RecordResult(out.Records, isError, "")
+// DetailResult 构造单实体详情的 MCP 摘要。
+func DetailResult(out Detail) *mcp.CallToolResult {
+	return RecordResult(out.Records, false, "")
 }
 
-// UserDetailError 构造 user detail 的 MCP error 摘要。
-func UserDetailError(err error) (*mcp.CallToolResult, UserDetail, error) {
-	out := UserDetail{Records: []record.Record{}}
+// DetailError 构造单实体详情的 MCP error 摘要。
+func DetailError(err error) (*mcp.CallToolResult, Detail, error) {
+	out := Detail{Records: []record.Record{}}
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
@@ -124,22 +124,6 @@ func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
 	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
-// NovelDetail 是 novel_detail tool 的输出 envelope。
-type NovelDetail struct {
-	Records []record.Record `json:"records"`
-}
-
-// NovelDetailResult 构造 novel detail 的 MCP 摘要。
-func NovelDetailResult(out NovelDetail) *mcp.CallToolResult {
-	return RecordResult(out.Records, false, "")
-}
-
-// NovelDetailError 构造 novel detail 的 MCP error 摘要。
-func NovelDetailError(err error) (*mcp.CallToolResult, NovelDetail, error) {
-	out := NovelDetail{Records: []record.Record{}}
-	return RecordResult(out.Records, true, errorMessage(err)), out, nil
-}
-
 // NovelContent 是 novel_content tool 的输出 envelope。
 type NovelContent struct {
 	Content pixiv.NovelContent `json:"content"`
@@ -181,8 +165,8 @@ type BookmarkTags struct {
 }
 
 // BookmarkTagsResult 构造 bookmark tags 的 MCP 摘要。
-func BookmarkTagsResult(out BookmarkTags, count int) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+func BookmarkTagsResult(out BookmarkTags) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", len(out.Tags))}}}
 }
 
 // BookmarkTagsError 构造 bookmark tags 的 MCP error 摘要。
@@ -206,8 +190,8 @@ type BookmarkTagsAll struct {
 }
 
 // BookmarkTagsAllResult 构造 bookmark_tags_all 的 MCP 摘要。
-func BookmarkTagsAllResult(out BookmarkTagsAll, count int) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", count)}}}
+func BookmarkTagsAllResult(out BookmarkTagsAll) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Retrieved %d bookmark tags.", len(out.Tags))}}}
 }
 
 // BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
@@ -255,20 +239,8 @@ func MutationResult(out Mutation) *mcp.CallToolResult {
 	return &mcp.CallToolResult{IsError: !out.Success, Content: []mcp.Content{&mcp.TextContent{Text: out.Text}}}
 }
 
-// RunMutation 执行一次 mutation 并统一包装成功/失败摘要。
-func RunMutation(out Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
-	err := run()
-	if err != nil {
-		out.Text = "Error: " + err.Error()
-		return MutationResult(out), out, nil
-	}
-	out.Success = true
-	return MutationResult(out), out, nil
-}
-
-// RunMutationInPlace 与 RunMutation 共享失败/成功语义，同时允许一次上游
-// mutation 成功后把可靠响应字段（例如 comment_id）写回同一个 envelope。
-func RunMutationInPlace(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
+// RunMutation 执行 mutation，保留上游写回字段并统一包装成功/失败摘要。
+func RunMutation(out *Mutation, run func() error) (*mcp.CallToolResult, Mutation, error) {
 	err := run()
 	if err != nil {
 		out.Text = "Error: " + err.Error()

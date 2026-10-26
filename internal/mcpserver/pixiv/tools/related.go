@@ -1,4 +1,4 @@
-// pixiv related tools.
+// User relation tools and their SDK pagination.
 
 package tools
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -33,7 +34,15 @@ type blockedUsersIn struct {
 }
 
 func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
-	return t.listUserRelations(ctx, "blocked", in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	return t.listUserRelations(ctx, "blocked", userID, in.Restrict, plan, in.Limit)
 }
 
 // registerFollowUser 注册 pixiv_follow_user。
@@ -50,7 +59,7 @@ type followUserIn struct {
 
 func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("Followed user %d.", in.UserID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: in.UserID, Restrict: pixiv.Restrict(in.Restrict)})
 		})
@@ -113,7 +122,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 	if in.Kind == "user" {
 		ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
@@ -135,7 +144,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
@@ -157,7 +166,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerUnfollowUser 注册 pixiv_unfollow_user。
@@ -173,7 +182,7 @@ type unfollowUserIn struct {
 
 func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("Unfollowed user %d.", in.UserID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: in.UserID})
 		})
@@ -202,27 +211,24 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 	if in.Relation == "followers" && in.UserFilter != nil {
 		return outputs.Error(errors.New("user_filter is only supported for following and related users"))
 	}
-	if _, err := toolhost.ParseListPlan(in.PageLimitIn); err != nil {
-		return outputs.Error(err)
-	}
-	ctx, err := filters.WithUserFilter(ctx, in.UserFilter)
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	return t.listUserRelations(ctx, in.Relation, in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	return t.listUserRelations(ctx, in.Relation, userID, in.Restrict, plan, in.Limit)
 }
 
-// ListUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
-// 输出统一 records envelope。
-func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
-	userID, err := toolhost.ResolveUserID(t.app, ctx, userID)
-	if err != nil {
-		return outputs.Error(err)
-	}
-	plan, err := toolhost.ParseListPlan(input)
-	if err != nil {
-		return outputs.Error(err)
-	}
+// listUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
+// 输出统一 records envelope；调用方负责解析账号与分页计划。
+func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolhost.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
 		var err error
@@ -251,5 +257,5 @@ func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID i
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

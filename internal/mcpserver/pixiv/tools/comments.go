@@ -1,4 +1,4 @@
-// pixiv comments tools.
+// Comment read/mutation tools and upstream page metadata accumulation.
 
 package tools
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
@@ -44,7 +45,7 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 			NovelID: in.ID,
 			Text:    fmt.Sprintf("Created comment on novel %d.", in.ID),
 		}
-		return outputs.RunMutationInPlace(&out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				result, err := client.PostNovelComment(ctx, pixiv.PostNovelCommentRequest{
 					NovelID: in.ID,
@@ -64,7 +65,7 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 		IllustID: in.ID,
 		Text:     fmt.Sprintf("Created comment on artwork %d.", in.ID),
 	}
-	return outputs.RunMutationInPlace(&out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			result, err := client.PostArtworkComment(ctx, pixiv.PostArtworkCommentRequest{
 				ArtworkID: in.ID,
@@ -100,7 +101,7 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 			CommentID: in.CommentID,
 			Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
 		}
-		return outputs.RunMutation(out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				return client.DeleteNovelComment(ctx, pixiv.DeleteNovelCommentRequest{CommentID: in.CommentID})
 			})
@@ -112,7 +113,7 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 		CommentID: in.CommentID,
 		Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
 	}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: in.CommentID})
 		})
@@ -151,7 +152,7 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 			NovelID: in.ID,
 			Text:    fmt.Sprintf("Replied to comment %d on novel %d.", in.ParentCommentID, in.ID),
 		}
-		return outputs.RunMutationInPlace(&out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				result, err := client.ReplyNovelComment(ctx, pixiv.ReplyNovelCommentRequest{
 					NovelID:         in.ID,
@@ -172,7 +173,7 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 		IllustID: in.ID,
 		Text:     fmt.Sprintf("Replied to comment %d on artwork %d.", in.ParentCommentID, in.ID),
 	}
-	return outputs.RunMutationInPlace(&out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			result, err := client.ReplyArtworkComment(ctx, pixiv.ReplyArtworkCommentRequest{
 				ArtworkID:       in.ID,
@@ -220,7 +221,7 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 			NovelID: in.ID,
 			Text:    fmt.Sprintf("Added stamp comment to novel %d.", in.ID),
 		}
-		return outputs.RunMutationInPlace(&out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				result, err := client.StampNovelComment(ctx, pixiv.StampNovelCommentRequest{
 					NovelID: in.ID,
@@ -241,7 +242,7 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 		IllustID: in.ID,
 		Text:     fmt.Sprintf("Added stamp comment to artwork %d.", in.ID),
 	}
-	return outputs.RunMutationInPlace(&out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			result, err := client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
 				ArtworkID: in.ID,
@@ -273,7 +274,42 @@ type commentsIn struct {
 }
 
 func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
-	return t.listComments(ctx, in.ID, in.Kind == "novel", in.PageLimitIn, in.Limit)
+	if in.ID <= 0 {
+		result, out, _ := outputs.CommentsError(errors.New("id must be a positive integer"))
+		return result, out, nil
+	}
+	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	if err != nil {
+		result, out, _ := outputs.CommentsError(err)
+		return result, out, nil
+	}
+	metadata := commentMetadata{}
+	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+		var page pixiv.CommentPage
+		var err error
+		if in.Kind == "novel" {
+			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: in.ID, Cursor: cursor})
+		} else {
+			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: in.ID, Cursor: cursor})
+		}
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		if cursor.IsZero() {
+			metadata = commentMetadata{}
+		}
+		metadata.Set(page)
+		return page.Page.Items, page.Page.Next, nil
+	})
+	if err != nil {
+		result, out, _ := outputs.CommentsError(err)
+		return result, out, nil
+	}
+	if items == nil {
+		items = []pixiv.Comment{}
+	}
+	out := outputs.Comments{Comments: items, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more), Total: metadata.Total, AccessControl: metadata.Access}
+	return outputs.CommentsResult(out, false, ""), out, nil
 }
 
 func commentsInputSchema() map[string]any {
@@ -292,58 +328,9 @@ type commentMetadata struct {
 // Set 从评论页记录首个可用的元数据。
 func (m *commentMetadata) Set(page pixiv.CommentPage) {
 	if m.Total == nil && page.Total != nil {
-		value := *page.Total
-		m.Total = &value
+		m.Total = page.Total
 	}
 	if m.Access == nil && page.AccessControl != nil {
-		value := *page.AccessControl
-		m.Access = &value
+		m.Access = page.AccessControl
 	}
-}
-
-// ListComments 在账号池重放边界内收集 artwork 或 novel 的评论分页并输出统一
-// envelope；novel 为 true 时读取小说评论。元数据只缓存上游明确提供的值。
-func (t pixivTools) listComments(ctx context.Context, id int64, novel bool, input toolhost.PageLimitIn, limit *int) (*mcp.CallToolResult, outputs.Comments, error) {
-	if id <= 0 {
-		result, out, _ := outputs.CommentsError(errors.New("id must be a positive integer"))
-		return result, out, nil
-	}
-	plan, err := toolhost.ParseListPlan(input)
-	if err != nil {
-		result, out, _ := outputs.CommentsError(err)
-		return result, out, nil
-	}
-	metadata := commentMetadata{}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
-		var page pixiv.CommentPage
-		var err error
-		if novel {
-			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: id, Cursor: cursor})
-		} else {
-			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: id, Cursor: cursor})
-		}
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		if cursor.IsZero() {
-			metadata = commentMetadata{}
-		}
-		metadata.Set(page)
-		return page.Page.Items, page.Page.Next, nil
-	})
-	if err != nil {
-		result, out, _ := outputs.CommentsError(err)
-		return result, out, nil
-	}
-	comments := make([]pixiv.Comment, 0, len(items))
-	for _, item := range items {
-		comments = append(comments, item)
-	}
-	var accessControl *pixiv.CommentAccessControl
-	if metadata.Access != nil {
-		dto := *metadata.Access
-		accessControl = &dto
-	}
-	out := outputs.Comments{Comments: comments, Pagination: toolhost.ListPagination(plan, limit, len(comments), more), Total: metadata.Total, AccessControl: accessControl}
-	return outputs.CommentsResult(out, false, ""), out, nil
 }

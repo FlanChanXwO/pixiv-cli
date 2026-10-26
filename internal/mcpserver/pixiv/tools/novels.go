@@ -5,6 +5,7 @@ package tools
 import (
 	"context"
 	"errors"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
@@ -66,7 +67,7 @@ func (t pixivTools) novelContentHandler(ctx context.Context, in novelContentIn) 
 
 // registerNovelDetail 注册 pixiv_novel_detail。
 func (t pixivTools) registerNovelDetail(server *mcp.Server) {
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information for one Pixiv novel.", OutputSchema: schemas.NovelDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelDetailIn) (*mcp.CallToolResult, outputs.NovelDetail, error) {
+	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information for one Pixiv novel.", OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.novelDetailHandler(ctx, input)
 	})
 }
@@ -75,22 +76,22 @@ type novelDetailIn struct {
 	NovelID int64 `json:"novel_id" jsonschema:"positive Pixiv novel ID"`
 }
 
-func (t pixivTools) novelDetailHandler(ctx context.Context, in novelDetailIn) (*mcp.CallToolResult, outputs.NovelDetail, error) {
+func (t pixivTools) novelDetailHandler(ctx context.Context, in novelDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	if in.NovelID <= 0 {
-		return outputs.NovelDetailError(errors.New("novel_id must be a positive integer"))
+		return outputs.DetailError(errors.New("novel_id must be a positive integer"))
 	}
 	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
 		return client.Novel(ctx, pixiv.NovelRequest{NovelID: in.NovelID})
 	})
 	if err != nil {
-		return outputs.NovelDetailError(err)
+		return outputs.DetailError(err)
 	}
 	novelRecord, err := record.RecordFromNovel(result)
 	if err != nil {
-		return outputs.NovelDetailError(err)
+		return outputs.DetailError(err)
 	}
-	out := outputs.NovelDetail{Records: []record.Record{novelRecord}}
-	return outputs.NovelDetailResult(out), out, nil
+	out := outputs.Detail{Records: []record.Record{novelRecord}}
+	return outputs.DetailResult(out), out, nil
 }
 
 // registerNovelSeries 注册 pixiv_novel_series。
@@ -105,16 +106,9 @@ type novelSeriesIn struct {
 	toolhost.PageLimitIn
 }
 
-func novelSeriesValidateSeriesID(id int64) error {
-	if id <= 0 {
-		return errors.New("series_id must be a positive integer")
-	}
-	return nil
-}
-
 func (t pixivTools) novelSeriesHandler(ctx context.Context, in novelSeriesIn) (*mcp.CallToolResult, outputs.NovelSeries, error) {
-	if err := novelSeriesValidateSeriesID(in.SeriesID); err != nil {
-		return outputs.NovelSeriesError(err)
+	if in.SeriesID <= 0 {
+		return outputs.NovelSeriesError(errors.New("series_id must be a positive integer"))
 	}
 	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
 	if err != nil {

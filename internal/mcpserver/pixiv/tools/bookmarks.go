@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
@@ -35,7 +36,7 @@ type bookmarkAddIn struct {
 func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	if in.Kind == "novel" {
 		out := outputs.Mutation{Action: "add_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Bookmarked novel %d.", in.ID)}
-		return outputs.RunMutation(out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 			})
@@ -43,7 +44,7 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 	}
 
 	out := outputs.Mutation{Action: "add_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.ID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 		})
@@ -159,7 +160,7 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 		Records:    recordItems,
 		Pagination: toolhost.ListPagination(plan, in.Limit, len(recordItems), more),
 	}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
@@ -248,7 +249,7 @@ type bookmarkRemoveIn struct {
 func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	if in.Kind == "novel" {
 		out := outputs.Mutation{Action: "remove_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Removed bookmark from novel %d.", in.ID)}
-		return outputs.RunMutation(out, func() error {
+		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 				return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: in.ID})
 			})
@@ -256,7 +257,7 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 	}
 
 	out := outputs.Mutation{Action: "remove_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.ID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: in.ID})
 		})
@@ -306,12 +307,11 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	tags := make([]pixiv.BookmarkTag, 0, len(items))
-	for _, item := range items {
-		tags = append(tags, item)
+	if items == nil {
+		items = []pixiv.BookmarkTag{}
 	}
-	out := outputs.BookmarkTags{Tags: tags, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.BookmarkTagsResult(out, len(items)), out, nil
+	out := outputs.BookmarkTags{Tags: items, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
+	return outputs.BookmarkTagsResult(out), out, nil
 }
 
 func bookmarkTagsInputSchema() map[string]any {
@@ -447,7 +447,7 @@ func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsA
 		Tags:       tags,
 		Pagination: toolhost.ListPagination(plan, in.Limit, len(tags), more),
 	}
-	return outputs.BookmarkTagsAllResult(out, len(tags)), out, nil
+	return outputs.BookmarkTagsAllResult(out), out, nil
 }
 
 func tagBatch(page sdk.Page[pixiv.BookmarkTag], consumed int, contentType string) ([]bookmarkTagItem, sdk.Cursor, error) {

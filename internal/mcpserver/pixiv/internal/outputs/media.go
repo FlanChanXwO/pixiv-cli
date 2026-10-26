@@ -47,7 +47,7 @@ func MediaResult(out ArtworkMedia, content []mcp.Content) (*mcp.CallToolResult, 
 }
 
 func ProtectMediaInput(server *mcp.Server, name string) {
-	protectInput(server, name, func() *mcp.CallToolResult {
+	ProtectInput(server, name, func() *mcp.CallToolResult {
 		out := NewArtworkMedia(0)
 		out.Error = "invalid_request"
 		result, _, _ := MediaResult(out, nil)

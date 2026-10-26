@@ -5,6 +5,7 @@ package tools
 import (
 	"context"
 	"errors"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -68,7 +69,7 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
@@ -90,7 +91,7 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerTimelineLatest 注册 pixiv_timeline_latest。
@@ -142,7 +143,7 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	if in.ContentType != pixiv.SearchContentTypeIllust && in.ContentType != pixiv.SearchContentTypeManga {
@@ -167,5 +168,5 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }

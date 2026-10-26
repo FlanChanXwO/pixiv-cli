@@ -6,17 +6,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
-)
 
-var errInputValidation = errors.New("tool input validation failed")
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
 
 // registerDownload 注册 download 与 download_random_from_recommendation。
 func (t pixivTools) registerDownload(server *mcp.Server) {
@@ -34,7 +33,7 @@ type downloadIn struct {
 	Pages      string   `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
 	Quality    string   `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
 	UgoiraMode string   `json:"ugoira_mode,omitempty" jsonschema:"ugoira output mode: gif or apng; default gif"`
-	// Delivery 仅保留 local_path 兼容字段；image_content 已移除。
+	// Delivery selects the published local_path output contract.
 	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path only"`
 }
 
@@ -87,23 +86,23 @@ const (
 func (t pixivTools) downloadHandler(ctx context.Context, in downloadIn) (*mcp.CallToolResult, downloadOut, error) {
 	sources, err := parseDownloadSources(in)
 	if err != nil {
-		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, "Error: "+err.Error())
+		return emptyDownloadError(deliveryLocalPath, "Error: "+err.Error())
 	}
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
-		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, errText)
+		return emptyDownloadError(deliveryLocalPath, errText)
 	}
 	pages, quality, ugoiraFormat, err := parseDownloadSelection(in.Pages, in.Quality, in.UgoiraMode)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
+		return emptyDownloadError(delivery, "Error: "+err.Error())
 	}
 	report, err := downloadSources(ctx, t.app, sources, pages, quality, ugoiraFormat)
 	if err != nil {
-		return downloadOperationError(ctx, delivery, report, err)
+		return downloadOperationError(delivery, report, err)
 	}
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
+		return emptyDownloadError(delivery, "Could not build the download result: "+err.Error())
 	}
 	// MCP 下载只返回本地 path/file_uri/mime_type/页号/大小，不再内嵌 ImageContent。
 	result := downloadResult(out)
@@ -123,7 +122,7 @@ func parseDownloadSources(in downloadIn) ([]string, error) {
 	if len(in.Srcs) == 0 {
 		return nil, errors.New("provide src (one source) or srcs (a source list)")
 	}
-	return append([]string(nil), in.Srcs...), nil
+	return in.Srcs, nil
 }
 
 // downloadSources 把 MCP 下载请求交给 downloader.DownloadService：PID、作品/用户
@@ -193,7 +192,7 @@ func emptyDownloadResult(delivery, text string) (*mcp.CallToolResult, downloadOu
 	return downloadResult(out), out, nil
 }
 
-func emptyDownloadError(_ context.Context, _ error, delivery, text string) (*mcp.CallToolResult, downloadOut, error) {
+func emptyDownloadError(delivery, text string) (*mcp.CallToolResult, downloadOut, error) {
 	result, out, resultErr := emptyDownloadResult(delivery, text)
 	result.IsError = true
 	return result, out, resultErr
@@ -201,10 +200,10 @@ func emptyDownloadError(_ context.Context, _ error, delivery, text string) (*mcp
 
 // downloadOperationError 保留 operation error 发生前已经生成的结构化结果；
 // MCP 用 isError 表达工具级失败，不能用空结果覆盖已落盘的 partial items 或 failures。
-func downloadOperationError(ctx context.Context, delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
+func downloadOperationError(delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
+		return emptyDownloadError(delivery, "Could not build the download result: "+err.Error())
 	}
 	out.Text += "\nDownload failed: " + operationErr.Error()
 	result := downloadResult(out)
@@ -320,28 +319,28 @@ func parseDownloadRandomCount(value *int) (int, error) {
 func (t pixivTools) downloadRandomHandler(ctx context.Context, in downloadRandomIn) (*mcp.CallToolResult, downloadOut, error) {
 	delivery, errText := normalizeDelivery(in.Delivery)
 	if errText != "" {
-		return emptyDownloadError(ctx, errInputValidation, deliveryLocalPath, errText)
+		return emptyDownloadError(deliveryLocalPath, errText)
 	}
 	count, err := parseDownloadRandomCount(in.Count)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
+		return emptyDownloadError(delivery, "Error: "+err.Error())
 	}
 	pages, quality, ugoiraFormat, err := parseDownloadSelection(in.Pages, in.Quality, in.UgoiraMode)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Error: "+err.Error())
+		return emptyDownloadError(delivery, "Error: "+err.Error())
 	}
 	lease, err := t.app.OpenClient(ctx)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
+		return emptyDownloadError(delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	defer lease.Close()
 	client := lease.Value()
 	result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{})
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Could not retrieve recommendations: "+err.Error())
+		return emptyDownloadError(delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	if len(result.Items) == 0 {
-		return emptyDownloadError(ctx, errors.New("recommended illustration list is empty"), delivery, "Could not retrieve recommendations: the list is empty.")
+		return emptyDownloadError(delivery, "Could not retrieve recommendations: the list is empty.")
 	}
 	if count > len(result.Items) {
 		count = len(result.Items)
@@ -361,11 +360,11 @@ func (t pixivTools) downloadRandomHandler(ctx context.Context, in downloadRandom
 		DownloadPath: path, FilenameTemplate: template, DirectoryTemplate: directory,
 	})
 	if err != nil {
-		return downloadOperationError(ctx, delivery, report, err)
+		return downloadOperationError(delivery, report, err)
 	}
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
-		return emptyDownloadError(ctx, err, delivery, "Could not build the download result: "+err.Error())
+		return emptyDownloadError(delivery, "Could not build the download result: "+err.Error())
 	}
 	toolResult := downloadResult(out)
 	if len(out.Failures) > 0 {
