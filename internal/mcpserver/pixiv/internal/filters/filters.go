@@ -81,7 +81,7 @@ type value struct {
 
 // WithIllustFilter 在打开 SDK client 前校验结构化筛选，非法输入不会产生网络请求。
 func WithIllustFilter(ctx context.Context, filter *IllustFilter) (context.Context, error) {
-	if err := ValidateIllustFilter(filter); err != nil {
+	if err := validateIllustFilter(filter); err != nil {
 		return nil, err
 	}
 	return withFilters(ctx, value{illust: filter}), nil
@@ -89,7 +89,7 @@ func WithIllustFilter(ctx context.Context, filter *IllustFilter) (context.Contex
 
 // WithNovelFilter 校验 novel 筛选。
 func WithNovelFilter(ctx context.Context, filter *NovelFilter) (context.Context, error) {
-	if err := ValidateNovelFilter(filter); err != nil {
+	if err := validateNovelFilter(filter); err != nil {
 		return nil, err
 	}
 	return withFilters(ctx, value{novel: filter}), nil
@@ -97,7 +97,7 @@ func WithNovelFilter(ctx context.Context, filter *NovelFilter) (context.Context,
 
 // WithUserFilter 校验 user 筛选。
 func WithUserFilter(ctx context.Context, filter *UserFilter) (context.Context, error) {
-	if err := ValidateUserFilter(filter); err != nil {
+	if err := validateUserFilter(filter); err != nil {
 		return nil, err
 	}
 	return withFilters(ctx, value{user: filter}), nil
@@ -105,13 +105,13 @@ func WithUserFilter(ctx context.Context, filter *UserFilter) (context.Context, e
 
 // WithMixedFilters 校验 recommended 各实体的结构化筛选。
 func WithMixedFilters(ctx context.Context, illust *IllustFilter, novel *NovelFilter, user *UserFilter) (context.Context, error) {
-	if err := ValidateIllustFilter(illust); err != nil {
+	if err := validateIllustFilter(illust); err != nil {
 		return nil, err
 	}
-	if err := ValidateNovelFilter(novel); err != nil {
+	if err := validateNovelFilter(novel); err != nil {
 		return nil, err
 	}
-	if err := ValidateUserFilter(user); err != nil {
+	if err := validateUserFilter(user); err != nil {
 		return nil, err
 	}
 	return withFilters(ctx, value{illust: illust, novel: novel, user: user}), nil
@@ -121,14 +121,14 @@ func withFilters(ctx context.Context, filters value) context.Context {
 	return context.WithValue(ctx, contextKey{}, filters)
 }
 
-// FromContext 读取当前筛选。
-func FromContext(ctx context.Context) (illust *IllustFilter, novel *NovelFilter, user *UserFilter) {
+// fromContext 读取当前筛选。
+func fromContext(ctx context.Context) (illust *IllustFilter, novel *NovelFilter, user *UserFilter) {
 	filters, _ := ctx.Value(contextKey{}).(value)
 	return filters.illust, filters.novel, filters.user
 }
 
-// ValidateIllustFilter 校验 artwork 筛选。
-func ValidateIllustFilter(filter *IllustFilter) error {
+// validateIllustFilter 校验 artwork 筛选。
+func validateIllustFilter(filter *IllustFilter) error {
 	if filter == nil {
 		return nil
 	}
@@ -147,8 +147,8 @@ func ValidateIllustFilter(filter *IllustFilter) error {
 	return nil
 }
 
-// ValidateNovelFilter 校验 novel 筛选。
-func ValidateNovelFilter(filter *NovelFilter) error {
+// validateNovelFilter 校验 novel 筛选。
+func validateNovelFilter(filter *NovelFilter) error {
 	if filter == nil {
 		return nil
 	}
@@ -161,8 +161,8 @@ func ValidateNovelFilter(filter *NovelFilter) error {
 	return nil
 }
 
-// ValidateUserFilter 校验 user 筛选。
-func ValidateUserFilter(filter *UserFilter) error {
+// validateUserFilter 校验 user 筛选。
+func validateUserFilter(filter *UserFilter) error {
 	if filter != nil && filter.ID != nil && *filter.ID <= 0 {
 		return errors.New("user_filter.id must be positive")
 	}
@@ -171,7 +171,7 @@ func ValidateUserFilter(filter *UserFilter) error {
 
 // FilterPage 对单个上游批次执行本地筛选与去重；返回空时调用方不应计入 limit。
 func FilterPage[T any](ctx context.Context, items []T, seen map[string]struct{}) []T {
-	illust, novel, user := FromContext(ctx)
+	illust, novel, user := fromContext(ctx)
 	filtered := make([]T, 0, len(items))
 	for _, item := range items {
 		key, matches := match(any(item), value{illust: illust, novel: novel, user: user})

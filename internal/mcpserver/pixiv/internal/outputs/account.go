@@ -1,3 +1,5 @@
+// Account selection results and input-validation privacy middleware.
+
 package outputs
 
 import (
@@ -6,6 +8,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -46,26 +49,9 @@ func accountFailure(code string) (*mcp.CallToolResult, AccountStatus, error) {
 // ProtectAccountInput replaces SDK validation diagnostics that otherwise echo raw arguments.
 // Typed handlers always return structured content, so their storage errors remain intact.
 func ProtectAccountInput(server *mcp.Server, name string) {
-	protectInput(server, name, func() *mcp.CallToolResult {
+	toolrun.ProtectInput(server, name, func() *mcp.CallToolResult {
 		safe, out, _ := accountFailure("invalid_request")
 		safe.StructuredContent = out
 		return safe
-	})
-}
-
-func protectInput(server *mcp.Server, name string, failure func() *mcp.CallToolResult) {
-	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			result, err := next(ctx, method, request)
-			call, ok := request.(*mcp.CallToolRequest)
-			if !ok || call.Params.Name != name {
-				return result, err
-			}
-			failed, ok := result.(*mcp.CallToolResult)
-			if !ok || !failed.IsError || failed.StructuredContent != nil {
-				return result, err
-			}
-			return failure(), nil
-		}
 	})
 }

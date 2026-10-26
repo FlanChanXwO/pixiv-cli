@@ -2,6 +2,7 @@ package outputs
 
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -32,7 +33,7 @@ func LoginQuery(status accounts.LoginStatus) (*mcp.CallToolResult, AccountStatus
 
 // ProtectLoginInput keeps validation errors within the advertised login envelope.
 func ProtectLoginInput(server *mcp.Server, name string) {
-	protectInput(server, name, func() *mcp.CallToolResult {
+	toolrun.ProtectInput(server, name, func() *mcp.CallToolResult {
 		out := LoginStatus{LoginStatus: accounts.LoginStatus{Status: "failed"}, Error: "invalid_request"}
 		return &mcp.CallToolResult{IsError: true, StructuredContent: out, Content: []mcp.Content{&mcp.TextContent{Text: "invalid_request"}}}
 	})

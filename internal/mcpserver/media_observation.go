@@ -19,11 +19,10 @@ func observeMediaResult(lifecycleCtx context.Context, request mcp.Request, resul
 	if _, wrapped := result.(*observedMediaResult); wrapped {
 		return result
 	}
-	logger := logging.From(lifecycleCtx)
 	if !logging.HasLogger(lifecycleCtx) {
 		return result
 	}
-	return &observedMediaResult{Result: result, logger: logger}
+	return &observedMediaResult{Result: result, logger: logging.From(lifecycleCtx)}
 }
 
 // 在 SDK 实际序列化边界计时，不提前编码、不记录结果正文。

@@ -70,7 +70,10 @@ func (m Selection) Status(ctx context.Context) (Status, error) {
 }
 
 func statusFor(local []Account, selected int64) Status {
-	result := Status{SelectedUserID: selected, SelectionState: "selection_required", CredentialState: "unknown", Accounts: append([]Account{}, local...)}
+	if local == nil {
+		local = []Account{}
+	}
+	result := Status{SelectedUserID: selected, SelectionState: "selection_required", CredentialState: "unknown", Accounts: local}
 	if selected == 0 {
 		if len(local) == 0 {
 			result.SelectionState = "no_local_account"

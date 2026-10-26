@@ -1,4 +1,4 @@
-// pixiv related tools.
+// User relation tools and their SDK pagination.
 
 package tools
 
@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -22,7 +23,7 @@ func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
 		"restrict": schemas.EnumString("Compatibility visibility field.", "public", "private"),
-	}), OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
+	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.blockedUsersHandler(ctx, input)
 	})
 }
@@ -30,11 +31,19 @@ func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 type blockedUsersIn struct {
 	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
-	return outputs.ListUserRelations(ctx, t.app, "blocked", in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	plan, err := toolrun.ParseListPlan(in.ListIn)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	return t.listUserRelations(ctx, "blocked", userID, in.Restrict, plan, in.Limit)
 }
 
 // registerFollowUser 注册 pixiv_follow_user。
@@ -51,7 +60,7 @@ type followUserIn struct {
 
 func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("Followed user %d.", in.UserID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: in.UserID, Restrict: pixiv.Restrict(in.Restrict)})
 		})
@@ -62,7 +71,7 @@ func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mc
 func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_mypixiv", Description: "Browse MyPixiv artworks, novels or users for the authenticated account.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", "artwork", "novel", "user")}, "kind"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.mypixivHandler(ctx, input)
 	})
 }
@@ -74,11 +83,11 @@ type mypixivIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -114,7 +123,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 	if in.Kind == "user" {
 		ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
@@ -136,7 +145,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 			return outputs.Error(err)
 		}
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-		return outputs.Result(out, false), out, nil
+		return outputs.Result(out), out, nil
 	}
 
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
@@ -158,7 +167,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		return outputs.Error(err)
 	}
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out, false), out, nil
+	return outputs.Result(out), out, nil
 }
 
 // registerUnfollowUser 注册 pixiv_unfollow_user。
@@ -174,7 +183,7 @@ type unfollowUserIn struct {
 
 func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("Unfollowed user %d.", in.UserID)}
-	return outputs.RunMutation(out, func() error {
+	return outputs.RunMutation(&out, func() error {
 		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
 			return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: in.UserID})
 		})
@@ -185,7 +194,7 @@ func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) 
 func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_relations", Description: "Browse followers, following or related users; restrict applies only to followers/following.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", "public", "private"), "user_filter": filters.UserFilterSchema()}, "relation"),
-		OutputSchema: records.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
+		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userRelationsHandler(ctx, input)
 	})
 }
@@ -196,19 +205,58 @@ type userRelationsIn struct {
 	UserID     int64               `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict   string              `json:"restrict,omitempty" jsonschema:"public or private"`
 	UserFilter *filters.UserFilter `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.Relation == "followers" && in.UserFilter != nil {
 		return outputs.Error(errors.New("user_filter is only supported for following and related users"))
 	}
-	if _, err := toolhost.ParseListPlan(in.PageLimitIn); err != nil {
-		return outputs.Error(err)
-	}
-	ctx, err := filters.WithUserFilter(ctx, in.UserFilter)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	return outputs.ListUserRelations(ctx, t.app, in.Relation, in.UserID, in.Restrict, in.PageLimitIn, in.Limit)
+	ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	return t.listUserRelations(ctx, in.Relation, userID, in.Restrict, plan, in.Limit)
+}
+
+// listUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
+// 输出统一 records envelope；调用方负责解析账号与分页计划。
+func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolrun.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
+	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+		var result sdk.Page[pixiv.UserPreview]
+		var err error
+		switch kind {
+		case "followers":
+			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "following":
+			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+		case "related":
+			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
+		case "blocked":
+			result, err = client.UserBlockedUsers(ctx, pixiv.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
+		default:
+			return nil, sdk.Cursor{}, errors.New("unknown user relation")
+		}
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		return result.Items, result.Next, nil
+	})
+	if err != nil {
+		return outputs.Error(err)
+	}
+	recordItems, err := record.FromUserPreviews(items)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, limit, len(items), more)}
+	return outputs.Result(out), out, nil
 }

@@ -8,20 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/records"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
-	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"image/gif"
 	"image/png"
 	"io"
@@ -33,6 +19,20 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
+	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // readAnimation reuses the CLI archive policy and Go encoder, but never
@@ -164,7 +164,7 @@ func (t pixivTools) registerArtworkMedia(server *mcp.Server) {
 }
 
 func appAnimationContent(request *mcp.CallToolRequest, result *mcp.CallToolResult, out outputs.ArtworkMedia) {
-	if result == nil || len(out.Pages) != 1 || out.Pages[0].PreviewContentIndex == nil {
+	if len(out.Pages) != 1 || out.Pages[0].PreviewContentIndex == nil {
 		return
 	}
 	caps := request.ClientCapabilities()
@@ -205,7 +205,7 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	if in.Quality == "" {
 		in.Quality = "regular"
 	}
-	if err := normalizeArtworkMediaRequest(&in, &out, requestedQuality); err != "" {
+	if err := normalizeArtworkMediaRequest(&in, &out); err != "" {
 		return outputs.MediaResult(out, nil)
 	}
 	var content []mcp.Content
@@ -224,13 +224,13 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	}
 	out.Complete = out.Error == "" && len(out.RequestedPages) > 0 && len(out.DeliveredPages) == len(out.RequestedPages)
 	result, output, resultErr := outputs.MediaResult(out, content)
-	t.attachMediaDownloads(ctx, &in, &out, content, source, result, resultErr)
+	t.attachMediaDownloads(ctx, &in, &out, content, source, result)
 	return result, output, resultErr
 }
 
-// normalizeArtworkMediaRequest validates the request and expands the implicit
-// all-pages selection. It returns a non-empty tool error when the request is invalid.
-func normalizeArtworkMediaRequest(in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) string {
+// normalizeArtworkMediaRequest validates and deduplicates explicit page selections.
+// Artwork metadata later expands an omitted selection to all pages.
+func normalizeArtworkMediaRequest(in *artworkMediaIn, out *outputs.ArtworkMedia) string {
 	switch {
 	case in.IllustID <= 0:
 		out.Error = "invalid_illust_id"
@@ -342,10 +342,7 @@ func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork pixiv.A
 	return content, ctx.Err()
 }
 
-func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn, out *outputs.ArtworkMedia, content []mcp.Content, source *pixiv.Client, result *mcp.CallToolResult, resultErr error) {
-	if resultErr != nil {
-		return
-	}
+func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn, out *outputs.ArtworkMedia, content []mcp.Content, source *pixiv.Client, result *mcp.CallToolResult) {
 	media := t.app.SDKPorts().Media
 	if media == nil || len(out.Pages) == 0 || ctx.Err() != nil {
 		return
@@ -437,9 +434,6 @@ func (t pixivTools) registerGalleryAnimation(server *mcp.Server) {
 			return fail("invalid_request")
 		}
 		media := t.app.SDKPorts().Media
-		if media == nil {
-			return fail("animation_service_unavailable")
-		}
 		account, err := t.app.ResolveAccount(ctx)
 		if err != nil {
 			return fail("account_unavailable")
@@ -498,7 +492,7 @@ func (t pixivTools) registerShowGallery(server *mcp.Server) {
 func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*mcp.CallToolResult, galleryOut, error) {
 	out := galleryOut{Records: []record.Record{}, Images: []galleryImage{}, Failures: []galleryFailure{}}
 	finish := func() (*mcp.CallToolResult, galleryOut, error) {
-		return records.Result(out.Records, len(out.Failures) > 0, "Gallery results; images load only in the explicit gallery."), out, nil
+		return outputs.RecordResult(out.Records, len(out.Failures) > 0, "Gallery results; images load only in the explicit gallery."), out, nil
 	}
 	if !normalizeGalleryRequest(&in) {
 		out.Failures = append(out.Failures, galleryFailure{Error: "invalid_request"})
@@ -575,10 +569,7 @@ func uniqueIllustIDs(values []int64) []int64 {
 }
 
 func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read, canceled func(int)) {
-	workers := 4
-	if media := t.app.SDKPorts().Media; media != nil {
-		workers = media.ConcurrentReads()
-	}
+	workers := t.app.SDKPorts().Media.ConcurrentReads()
 	if workers > count {
 		workers = count
 	}
@@ -627,10 +618,6 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 		return out
 	}
 	media := t.app.SDKPorts().Media
-	if media == nil {
-		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "image_proxy_unavailable"})
-		return out
-	}
 	out.MediaOrigin = media.Origin()
 	account, err := t.app.ResolveAccount(ctx)
 	if err != nil {
@@ -667,6 +654,6 @@ func showGalleryOutputSchema() *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["records"] = &jsonschema.Schema{Type: "array", Items: records.OpenObjectSchema()}
+	schema.Properties["records"] = &jsonschema.Schema{Type: "array", Items: schemas.OpenObjectSchema()}
 	return schema
 }

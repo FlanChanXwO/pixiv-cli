@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -21,6 +20,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/frontend"
 )
+
+const authorizationLifetime = 10 * time.Minute
 
 type authorizationRequest struct {
 	ClientID, RedirectURI, Resource, Scope, Challenge, State string
@@ -47,10 +48,8 @@ type authorizationCode struct {
 }
 
 type authorizer struct {
-	generation string
-	codes      map[[32]byte]authorizationCode
-	now        func() time.Time
-
+	generation                           string
+	codes                                map[[32]byte]authorizationCode
 	store                                Store
 	issuer, origin, endpoint, cookiePath string
 	secure                               bool
@@ -74,7 +73,7 @@ type authorizationReply struct {
 
 func newAuthorizer(base *url.URL, store Store) *authorizer {
 	return &authorizer{
-		now: time.Now, codes: map[[32]byte]authorizationCode{}, store: store,
+		codes: map[[32]byte]authorizationCode{}, store: store,
 		issuer: base.String(), origin: browserOrigin(base.Scheme + "://" + base.Host),
 		// 完整 URL 防止双斜线 prefix 被浏览器解释为跨 origin action。
 		endpoint: base.String() + "/oauth/authorize", cookiePath: base.EscapedPath() + "/oauth",
@@ -185,7 +184,7 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 		if err != nil {
 			return authorizationReply{Status: 500, Error: "server_error"}
 		}
-		session = ownerSession{Generation: state.OwnerVerifier, ExpiresAt: a.now().Add(authorizationLifetime)}
+		session = ownerSession{Generation: state.OwnerVerifier, ExpiresAt: time.Now().Add(authorizationLifetime)}
 		a.sessions[sessionID] = session
 		cookie = a.cookie(sessionID)
 	}
@@ -193,7 +192,7 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	if err != nil {
 		return authorizationReply{Status: 500, Error: "server_error"}
 	}
-	a.forms[csrf] = consentForm{ExpiresAt: a.now().Add(authorizationLifetime), Request: request, SessionID: sessionID, Generation: state.OwnerVerifier}
+	a.forms[csrf] = consentForm{ExpiresAt: time.Now().Add(authorizationLifetime), Request: request, SessionID: sessionID, Generation: state.OwnerVerifier}
 	origin := redirect.Scheme + ":"
 	if redirect.Host != "" {
 		origin += "//" + redirect.Host
@@ -304,10 +303,10 @@ func (a *authorizer) submit(r *http.Request) authorizationReply {
 				delete(a.forms, csrf)
 			}
 		}
-		a.sessions[id] = ownerSession{Generation: state.OwnerVerifier, Verified: true, ExpiresAt: a.now().Add(authorizationLifetime)}
+		a.sessions[id] = ownerSession{Generation: state.OwnerVerifier, Verified: true, ExpiresAt: time.Now().Add(authorizationLifetime)}
 		reply.Cookie = a.cookie(id)
 	}
-	now := a.now()
+	now := time.Now()
 	// RFC 6749 §4.1.2：有效期从签发起计，不给浏览器等待或业务请求加超时。
 	a.codes[sha256.Sum256([]byte(code))] = authorizationCode{Request: form.Request, Generation: state.OwnerVerifier, ExpiresAt: now.Add(authorizationLifetime)}
 	return reply
@@ -325,7 +324,7 @@ func (a *authorizer) readState(ctx context.Context) (State, error) {
 		clear(a.codes)
 		a.generation = state.OwnerVerifier
 	}
-	now := a.now()
+	now := time.Now()
 	for id, session := range a.sessions {
 		if !now.Before(session.ExpiresAt) {
 			delete(a.sessions, id)
@@ -364,14 +363,4 @@ func (a *authorizer) cookie(value string) *http.Cookie {
 	return &http.Cookie{Name: "pixiv_mcp_owner", Value: value, Path: a.cookiePath, HttpOnly: true, Secure: a.secure, SameSite: http.SameSiteLaxMode}
 }
 
-func randomAuthorizationValue() (string, error) {
-	value := make([]byte, 32)
-	if _, err := rand.Read(value); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(value), nil
-}
-
-var consentHTML = frontend.MustLoad().ConsentHTML
-
-var consentTemplate = template.Must(template.New("consent").Parse(consentHTML))
+var consentTemplate = template.Must(template.New("consent").Parse(frontend.MustLoad().ConsentHTML))

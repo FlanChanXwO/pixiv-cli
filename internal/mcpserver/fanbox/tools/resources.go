@@ -8,48 +8,39 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
 	"mime"
 	"net/http"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerOpenresource 注册 fanbox_open_resource。
-func (t fanboxTools) registerOpenresource(server *mcp.Server) {
-	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
-		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-			result, err := next(ctx, method, request)
-			call, ok := request.(*mcp.CallToolRequest)
-			if !ok || call.Params.Name != "fanbox_open_resource" {
-				return result, err
-			}
-			failed, ok := result.(*mcp.CallToolResult)
-			if !ok || !failed.IsError || failed.StructuredContent != nil {
-				return result, err
-			}
-			out := openresourceOut{Error: "invalid_request"}
-			safe := toolhost.Result(out, true, out.Error)
-			safe.StructuredContent = out
-			return safe, nil
-		}
+// registerOpenResource 注册 fanbox_open_resource。
+func (t fanboxTools) registerOpenResource(server *mcp.Server) {
+	toolrun.ProtectInput(server, "fanbox_open_resource", func() *mcp.CallToolResult {
+		out := openResourceOut{Error: "invalid_request"}
+		result := outputs.Result(true, out.Error)
+		result.StructuredContent = out
+		return result
 	})
-	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input openresourceIn) (*mcp.CallToolResult, openresourceOut, error) {
-		return t.openresourceHandler(ctx, input)
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
+		return t.openResourceHandler(ctx, input)
 	})
 }
 
-type openresourceIn struct {
+type openResourceIn struct {
 	Ref    string `json:"ref" jsonschema:"opaque FANBOX media resource reference"`
 	Method string `json:"method,omitempty" jsonschema:"GET or HEAD; default GET"`
 }
 
-type openresourceOut struct {
+type openResourceOut struct {
 	Filename      string `json:"filename,omitempty"`
 	Ref           string `json:"ref"`
 	StatusCode    int    `json:"status_code"`
@@ -62,17 +53,17 @@ type openresourceOut struct {
 	Error         string `json:"error,omitempty"`
 }
 
-func (t fanboxTools) openresourceHandler(ctx context.Context, input openresourceIn) (*mcp.CallToolResult, openresourceOut, error) {
-	out := openresourceOut{}
+func (t fanboxTools) openResourceHandler(ctx context.Context, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
+	out := openResourceOut{}
 	ref, err := sdk.ParseResourceRef(input.Ref)
 	if err != nil {
 		out.Error = "invalid_ref"
-		return toolhost.Result(out, true, out.Error), out, nil
+		return outputs.Result(true, out.Error), out, nil
 	}
 	product, err := sdk.ResourceRefProduct(ref)
 	if err != nil || product != "fanbox" {
 		out.Error = "invalid_ref"
-		return toolhost.Result(out, true, out.Error), out, nil
+		return outputs.Result(true, out.Error), out, nil
 	}
 	method := sdk.ResourceMethod(strings.ToUpper(input.Method))
 	if method == "" {
@@ -80,10 +71,10 @@ func (t fanboxTools) openresourceHandler(ctx context.Context, input openresource
 	}
 	if method != sdk.ResourceMethodGet && method != sdk.ResourceMethodHead {
 		out.Error = "invalid_method"
-		return toolhost.Result(out, true, out.Error), out, nil
+		return outputs.Result(true, out.Error), out, nil
 	}
 	var content []mcp.Content
-	err = lifecycle.Run(ctx, t.app.OpenClient, func(ctx context.Context, client *fanbox.Client, _ *lifecycle.Attempt) error {
+	err = lifecycle.Run(ctx, t.openClient, func(ctx context.Context, client *fanbox.Client, _ *lifecycle.Attempt) error {
 		response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: method})
 		if err != nil {
 			return err
@@ -146,7 +137,7 @@ func (t fanboxTools) openresourceHandler(ctx context.Context, input openresource
 		}
 	}
 	out.Complete = err == nil
-	result := toolhost.Result(out, !out.Complete, out.Error)
+	result := outputs.Result(!out.Complete, out.Error)
 	if len(content) > 0 {
 		result.Content = content
 	}

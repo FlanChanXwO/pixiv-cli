@@ -1,6 +1,9 @@
 package outputs
 
-import "github.com/modelcontextprotocol/go-sdk/mcp"
+import (
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
 
 // ArtworkMedia indexes complete media in content or negotiated App metadata.
 type ArtworkMedia struct {
@@ -47,7 +50,7 @@ func MediaResult(out ArtworkMedia, content []mcp.Content) (*mcp.CallToolResult, 
 }
 
 func ProtectMediaInput(server *mcp.Server, name string) {
-	protectInput(server, name, func() *mcp.CallToolResult {
+	toolrun.ProtectInput(server, name, func() *mcp.CallToolResult {
 		out := NewArtworkMedia(0)
 		out.Error = "invalid_request"
 		result, _, _ := MediaResult(out, nil)

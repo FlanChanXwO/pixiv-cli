@@ -114,7 +114,7 @@ func (a *authorizer) exchange(r *http.Request, form url.Values) (map[string]any,
 		if _, exists := state.Grants[id]; exists {
 			return errors.New("grant collision")
 		}
-		state.Grants[id] = Grant{ClientID: request.ClientID, Resource: request.Resource, Scope: request.Scope, AccessTokens: map[string]time.Time{tokenHash(access): a.now().Add(time.Hour)}, RefreshHash: tokenHash(refresh)}
+		state.Grants[id] = Grant{ClientID: request.ClientID, Resource: request.Resource, Scope: request.Scope, AccessTokens: map[string]time.Time{tokenHash(access): time.Now().Add(time.Hour)}, RefreshHash: tokenHash(refresh)}
 		if err := a.store.save(r.Context(), state); err != nil {
 			return err
 		}
@@ -178,7 +178,7 @@ func (a *authorizer) refresh(r *http.Request, form url.Values, state State) (map
 		}
 		grant.UsedRefreshHashes = append(grant.UsedRefreshHashes, grant.RefreshHash)
 		grant.RefreshHash = tokenHash(refresh)
-		now := a.now()
+		now := time.Now()
 		for hash, expiry := range grant.AccessTokens {
 			if !now.Before(expiry) {
 				delete(grant.AccessTokens, hash)

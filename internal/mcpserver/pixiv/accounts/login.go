@@ -165,12 +165,7 @@ func (m *Login) Status(loginID string) LoginStatus {
 	if m.current == nil || m.current.status.LoginID != loginID {
 		return LoginStatus{LoginID: loginID, Status: "not_found"}
 	}
-	result := m.current.status
-	if result.Account != nil {
-		account := *result.Account
-		result.Account = &account
-	}
-	return result
+	return m.current.status
 }
 
 // ServeHTTP expects the host mux to strip the public relay path prefix.
@@ -194,7 +189,6 @@ func (m *Login) Close() {
 	current := m.current
 	m.mu.Unlock()
 	if current != nil {
-		current.cancel()
 		<-current.done
 	}
 }
