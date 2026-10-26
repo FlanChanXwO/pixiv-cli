@@ -32,14 +32,11 @@ func RequiresCredentials(rawURL string) bool {
 
 // ValidateURL validates a FANBOX asset locator without opening it.
 func ValidateURL(rawURL string) error {
-	if strings.TrimSpace(rawURL) == "" {
-		return errors.New("FANBOX resource URL is empty")
-	}
-	if err := ValidateMediaURL(rawURL); err != nil {
+	parsed, err := parseAllowedURL(rawURL, requestKindMedia)
+	if err != nil {
 		return err
 	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Path == "" || parsed.Path == "/" {
+	if parsed.Path == "" || parsed.Path == "/" {
 		return errors.New("FANBOX resource URL must contain a path")
 	}
 	return nil

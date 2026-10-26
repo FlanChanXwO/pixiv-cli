@@ -76,9 +76,6 @@ func nativeCookieHeader(session, clearance string) string {
 	if clearance == "" {
 		return session
 	}
-	if session == "" {
-		return "cf_clearance=" + clearance
-	}
 	return session + "; cf_clearance=" + clearance
 }
 
@@ -89,9 +86,6 @@ func (s *Client) invalidateSolverState() {
 }
 
 func (s *Client) waitForSolver(ctx context.Context) (solverState, error) {
-	if s.flareSolverr == nil {
-		return solverState{}, ErrChallenge
-	}
 	if err := ctx.Err(); err != nil {
 		return solverState{}, err
 	}
@@ -144,6 +138,7 @@ func (s *Client) unregisterSolverWaiter(call *solverCall) {
 }
 
 func (s *Client) runSolver(call *solverCall) {
+	defer call.cancel()
 	started := time.Now()
 	state, err := s.solveFlareSolverr(call.ctx)
 	if err == nil {
@@ -168,9 +163,6 @@ func (s *Client) runSolver(call *solverCall) {
 }
 
 func (s *Client) solveFlareSolverr(ctx context.Context) (solverState, error) {
-	if s.flareSolverr == nil {
-		return solverState{}, ErrChallenge
-	}
 	s.log.LogAttrs(ctx, slog.LevelDebug, "Starting Cloudflare solver", logging.OperationAttr(ctx))
 	payload := []byte(`{"cmd":"request.get","url":"https://www.fanbox.cc/"}`)
 	if s.flareSolverr.ProxyURL != "" {

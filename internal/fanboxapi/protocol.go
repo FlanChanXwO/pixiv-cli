@@ -396,7 +396,7 @@ func credentialCookieAllowed(kind requestKind, host string) bool {
 	case requestKindMedia:
 		// The recorded attachment contract requires the same session on
 		// downloads.fanbox.cc, but never on Pixiv/CDN or third-party hosts.
-		return host == "downloads.fanbox.cc"
+		return host == DownloadsHost
 	default:
 		return false
 	}
