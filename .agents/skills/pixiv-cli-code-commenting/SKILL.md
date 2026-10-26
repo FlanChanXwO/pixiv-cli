@@ -28,10 +28,10 @@ Read root `AGENTS.md` and the affected owner before editing. This checked-in ski
 
 ## Package documentation and file starts
 
-Write package documentation in exactly one file per package, normally `doc.go` or the entry file `name/name.go`, directly above the `package` clause. Follow the standard library: the first sentence starts with `Package x` and says what the package does; after an empty `//` line, describe scope, what it does not own, and where related code lives. Do not record authors, dates, or history.
+Write package documentation in exactly one file per package, normally `doc.go` or the entry file `name/name.go`, directly above the `package` clause. Follow the standard library: the first sentence starts with `Package x` (except in a `main` package, below) and says what the package does; after an empty `//` line, describe scope, what it does not own, and where related code lives. Do not record authors, dates, or history.
 
 - A package with several files or several main types adds a "package composition" paragraph that lists the main types and entry points as doc links (`[Client]`, `[Session]`) so godoc navigates to them and gopls flags stale links after a rename.
-- A `main` package's documentation starts with the command name, for example `pixiv 命令启动 pixiv-cli。`
+- A `main` package's documentation starts with the command name instead of `Package main`, for example `pixiv 命令启动 pixiv-cli。`
 - Do not start any other Go file with a comment. A comment attached to `package` merges into package documentation, and a detached file header goes stale after refactors. Choose a file name that tells the reader its contents; a file that needs a comment to explain itself usually needs a rename or a different split. Report that rather than renaming during a comment-only task.
 - A `//go:build` constraint stays on the first line, followed by a blank line before package documentation or `package`. Keep cgo preambles and `//go:embed`/`//go:generate` directives where they are. Generated files keep the generator's header.
 - `_test.go` files, formats without comments, `testdata/`, and `third_party/` take no file description. Shell, PowerShell, and `.cmd` scripts (after the shebang), workflow YAML (before `name:`), and frontend HTML/JS/CSS start with one comment line stating their purpose.
