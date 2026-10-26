@@ -1,5 +1,5 @@
 // App API transport: request construction, form encoding, response decoding, and the
-// authentication and Retry-After retry loop shared by every Pixiv content endpoint.
+// static credentials, resource runtime, and shared Retry-After reads.
 
 package pixivapi
 
@@ -8,73 +8,65 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
-// ErrMalformedResponse 标识成功 HTTP 响应无法构成约定 JSON，不包含原始响应体。
-
+// Client owns App requests, shared HTTP lifetime, and validated resource locators.
 type Client struct {
-	http           *http.Client
-	session        Session
-	acceptLanguage string
-	userID         int64
-	// disableRetryAfterRetry 只由上层明确需要观察首个 429 的调度器启用。
-	// 默认仍遵守既有的有效 Retry-After 单次重试契约。
-	disableRetryAfterRetry bool
-	log                    *slog.Logger
-}
-
-// Session 是 App 内容 API 仅需知道的最小认证边界。
-type Session interface {
-	AccessToken() string
-	Refresh(context.Context) error
+	http                 *http.Client
+	ownsHTTP             bool
+	accessToken          string
+	acceptLanguage       string
+	userID               int64
+	log                  *slog.Logger
+	allowedResourceHosts []string
+	resourceMu           sync.RWMutex
+	resourceURLs         map[string]string
 }
 
 // Config 是 App API 客户端的构造参数；零值使用默认 HTTP client 和无认证。
 type Config struct {
 	HTTPClient *http.Client
-	// Session 提供 access token 与刷新能力；同时设置 AccessToken 时改用不可刷新的静态 token。
-	Session        Session
+	// OwnHTTPClient marks a client created by NewHTTPClient rather than injected.
+	OwnHTTPClient  bool
+	ResourceHosts  []string
 	AccessToken    string
 	AcceptLanguage string
 	UserID         int64
-	// DisableRetryAfterRetry 使读取请求把首个有效 Retry-After 限流直接交给调用方。
-	DisableRetryAfterRetry bool
 	// Logger 记录请求结果与重试决策；nil 时不输出。
 	Logger *slog.Logger
 }
 
 // New builds an App API client from cfg.
 func New(cfg Config) *Client {
-	session := cfg.Session
-	if token := strings.TrimSpace(cfg.AccessToken); token != "" {
-		session = staticSession{token: token}
-	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{}
 	}
 	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
-		http:                   httpClient,
-		session:                session,
-		acceptLanguage:         strings.TrimSpace(cfg.AcceptLanguage),
-		userID:                 cfg.UserID,
-		disableRetryAfterRetry: cfg.DisableRetryAfterRetry,
-		log:                    logger,
+		http:                 httpClient,
+		accessToken:          strings.TrimSpace(cfg.AccessToken),
+		ownsHTTP:             cfg.OwnHTTPClient,
+		allowedResourceHosts: slices.Clone(cfg.ResourceHosts),
+		resourceURLs:         make(map[string]string),
+		acceptLanguage:       strings.TrimSpace(cfg.AcceptLanguage),
+		userID:               cfg.UserID,
+		log:                  logger,
 	}
 }
 
-// request 描述一次 App API 请求；do 负责认证与限流重试，send 只发送一次。
+// request 描述一次 App API 请求；do 负责限流重试，send 只发送一次。
 type request struct {
 	method string
 	url    *url.URL
@@ -150,41 +142,18 @@ func (c *Client) PostFormJSON(ctx context.Context, path string, form url.Values,
 	return c.doJSON(ctx, req, out)
 }
 
-type staticSession struct{ token string }
-
-func (s staticSession) AccessToken() string { return s.token }
-func (staticSession) Refresh(context.Context) error {
-	return errors.New("access token cannot be refreshed")
-}
-
-// do 是所有 App API 请求唯一的发送循环：401/403 刷新一次，读取端点按有效
-// Retry-After 再试一次。返回的响应 Body 由调用方关闭；被重试的响应在这里关闭。
+// do 统一发送读取请求，并按有效 Retry-After 重试一次；静态 token 不在此刷新。
+// 返回的响应 Body 由调用方关闭；被重试的响应在这里关闭。
 func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
-	authRetried, rateRetried := false, false
+	rateRetried := false
 	for attempt := 1; ; attempt++ {
 		resp, err := c.send(ctx, req, attempt)
 		if err != nil {
 			return nil, Transport(err)
 		}
-		isAuth := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden
-		if isAuth && !authRetried && c.session != nil {
-			authRetried = true
-			c.log.LogAttrs(ctx, slog.LevelDebug, "Access token expired; refreshing", logging.OperationAttr(ctx))
-			if err := c.session.Refresh(ctx); err != nil {
-				// 取消和 deadline 必须保留 context 语义，不能被首个 401/403 掩盖。
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					resp.Body.Close()
-					return nil, Transport(err)
-				}
-				// 其他刷新失败保留首个响应的状态，与未刷新时相同。
-				return resp, nil
-			}
-			discardBody(resp)
-			continue
-		}
-		if resp.StatusCode == http.StatusTooManyRequests && req.retryRateLimit && !rateRetried && !c.disableRetryAfterRetry {
+		if resp.StatusCode == http.StatusTooManyRequests && req.retryRateLimit && !rateRetried {
 			if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
-				rateRetried, authRetried = true, false
+				rateRetried = true
 				c.log.LogAttrs(ctx, slog.LevelWarn, "Rate limited; retrying after wait",
 					logging.OperationAttr(ctx), slog.Duration(logging.AttrWait, wait))
 				discardBody(resp)
@@ -314,11 +283,7 @@ func waitForRetryAfter(ctx context.Context, duration time.Duration) error {
 }
 
 func (c *Client) apiHeaders() map[string]string {
-	token := ""
-	if c.session != nil {
-		token = c.session.AccessToken()
-	}
-	headers := AppHeaders(token)
+	headers := AppHeaders(c.accessToken)
 	if c.acceptLanguage != "" {
 		headers["Accept-Language"] = c.acceptLanguage
 	}

@@ -127,3 +127,24 @@ func TestSaveResourceURLPropagatesCancellation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "original", string(data))
 }
+
+func TestResourceRedirectReportsPolicyFailure(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "i.pximg.net" {
+			t.Error("forbidden redirect reached the network")
+		}
+		http.Redirect(w, r, "https://forbidden.invalid/image?signature=signature-canary", http.StatusFound)
+	}))
+	defer api.Close()
+	httpClient := api.Client()
+	transport := httpClient.Transport.(*http.Transport)
+	transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+	}
+	client, err := pixiv.NewWith("access-canary", pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	_, err = client.SaveResourceURL(t.Context(), "https://i.pximg.net/image", sdk.SaveOptions{Path: filepath.Join(t.TempDir(), "image")})
+	require.Equal(t, sdk.ResourceForbidden, sdk.ReasonOf(err))
+	require.NotContains(t, fmt.Sprint(err), "signature-canary")
+}

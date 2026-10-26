@@ -53,6 +53,8 @@ func classifyOAuthError(err error, operation string) *sdk.Error {
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
 	case pixivapi.FailureRejected:
 		return sdk.NewError(product, operation, sdk.UpstreamError)
+	case pixivapi.FailureResourceForbidden:
+		return newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
 	case pixivapi.FailureForbidden:
 		return sdk.NewError(product, operation, sdk.Forbidden)
 	default:
@@ -81,6 +83,8 @@ func classifyAppError(err error, operation string) *sdk.Error {
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
 	case pixivapi.FailureRejected:
 		return sdk.NewError(product, operation, sdk.UpstreamError)
+	case pixivapi.FailureResourceForbidden:
+		return newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
 	case pixivapi.FailureForbidden:
 		return sdk.NewError(product, operation, sdk.Forbidden)
 	default:

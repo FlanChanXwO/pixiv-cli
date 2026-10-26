@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -191,30 +190,11 @@ func (c *Client) fetchStamps(ctx context.Context, operation string) ([]stampWire
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
 	for _, value := range raw.Stamps.Items {
-		if value.ID <= 0 || !c.validStampURL(value.URL) {
+		if value.ID <= 0 || !pixivapi.ValidStampURL(value.URL) {
 			return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 		}
 	}
 	return raw.Stamps.Items, nil
-}
-
-// validStampURL 要求 https、无 userinfo、落在 Pixiv media host allowlist，
-// 且有实际路径。
-func (c *Client) validStampURL(rawURL string) bool {
-	parsed, err := url.ParseRequestURI(rawURL)
-	if err != nil || parsed.Scheme != "https" || parsed.User != nil {
-		return false
-	}
-	if parsed.Path == "" || parsed.Path == "/" {
-		return false
-	}
-	host := strings.ToLower(parsed.Hostname())
-	for _, allowed := range defaultResourceHosts {
-		if host == allowed {
-			return true
-		}
-	}
-	return false
 }
 
 // ArtworkCommentsRequest lists comments on one artwork.

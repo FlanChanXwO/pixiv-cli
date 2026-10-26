@@ -25,10 +25,6 @@ type resourceRefPayload struct {
 	Variant string `json:"v,omitempty"`
 }
 
-// defaultResourceHosts are the official Pixiv media hosts whose HTTPS URLs are
-// accepted for resource reads.
-var defaultResourceHosts = []string{"i.pximg.net", "s.pximg.net", "i-f.pximg.net"}
-
 // newResource builds a validated sdk.Resource from an upstream media URL. It
 // returns ResourceForbidden when the URL does not satisfy the resource
 // policy and InvalidArgument when the identity payload is invalid.
@@ -40,9 +36,6 @@ func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant
 	if rawURL == "" {
 		return sdk.Resource{}, nil
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
-		return sdk.Resource{}, err
-	}
 	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, Variant: variant})
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
@@ -51,9 +44,9 @@ func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")
 	}
-	c.resourceMu.Lock()
-	c.resourceURLs[ref.String()] = rawURL
-	c.resourceMu.Unlock()
+	if err := c.app.CacheResource(ref.String(), rawURL); err != nil {
+		return sdk.Resource{}, newError("resource", sdk.ResourceForbidden, err.Error())
+	}
 	return sdk.Resource{
 		Ref:            ref,
 		URL:            rawURL,
@@ -92,38 +85,6 @@ func ArtworkVariantResource(original sdk.Resource, variant string) (sdk.Resource
 	return ref, nil
 }
 
-func (c *Client) validateResourceURL(rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return newError("resource", sdk.ResourceForbidden, "invalid resource URL")
-	}
-	if parsed.Scheme != "https" || parsed.User != nil {
-		return newError("resource", sdk.ResourceForbidden, "resource URL must be https without userinfo")
-	}
-	if parsed.Path == "" || parsed.Path == "/" {
-		return newError("resource", sdk.ResourceForbidden, "resource URL has no path")
-	}
-	host := strings.ToLower(parsed.Hostname())
-	if !allowedResourceHost(host, c.opts.ResourcePolicy.AllowedHosts) {
-		return newError("resource", sdk.ResourceForbidden, "resource host is not allowed")
-	}
-	return nil
-}
-
-func allowedResourceHost(host string, extra []string) bool {
-	for _, allowed := range defaultResourceHosts {
-		if host == allowed {
-			return true
-		}
-	}
-	for _, allowed := range extra {
-		if host == strings.ToLower(strings.TrimSpace(allowed)) {
-			return true
-		}
-	}
-	return false
-}
-
 // OpenResource opens a resource by its opaque reference and returns an
 // allowlisted response. The caller owns and must close response.Body. The
 // resource URL, redirects, headers, and identity are revalidated before any
@@ -137,9 +98,10 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
-		return nil, newError("OpenResource", sdk.ResourceForbidden, "resource URL is not allowed")
-	}
+	return c.openResourceURL(ctx, request, rawURL)
+}
+
+func (c *Client) openResourceURL(ctx context.Context, request sdk.OpenResourceRequest, rawURL string) (*sdk.ResourceResponse, error) {
 	header := http.Header{}
 	header.Set("Referer", pixivapi.AppReferer)
 	for _, field := range []struct{ name, value string }{
@@ -156,12 +118,10 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if method == "" {
 		method = http.MethodGet
 	}
-	response, err := c.resClient.Open(ctx, pixivapi.OpenRequest{
-		URL:            rawURL,
-		Method:         method,
-		Header:         header,
-		Validate:       c.validateResourceURL,
-		DisableCookies: true,
+	response, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
+		URL:    rawURL,
+		Method: method,
+		Header: header,
 	})
 	if err != nil {
 		return nil, classifyAppError(err, "OpenResource")
@@ -182,10 +142,7 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if err != nil {
 		return sdk.SavedResource{}, err
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.ResourceForbidden, "resource URL is not allowed")
-	}
-	response, err := c.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: sdk.ResourceMethodGet})
+	response, err := c.openResourceURL(ctx, sdk.OpenResourceRequest{Method: sdk.ResourceMethodGet}, rawURL)
 	if err != nil {
 		return sdk.SavedResource{}, err
 	}
@@ -209,16 +166,11 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError(operation, sdk.InvalidArgument, "destination path is required")
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
-		return sdk.SavedResource{}, newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
-	}
 
-	stream, err := c.resClient.Open(ctx, pixivapi.OpenRequest{
-		URL:            rawURL,
-		Method:         http.MethodGet,
-		Header:         http.Header{"Referer": {pixivapi.AppReferer}},
-		Validate:       c.validateResourceURL,
-		DisableCookies: true,
+	stream, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
+		URL:    rawURL,
+		Method: http.MethodGet,
+		Header: http.Header{"Referer": {pixivapi.AppReferer}},
 	})
 	if err != nil {
 		return sdk.SavedResource{}, classifyAppError(err, operation)
@@ -260,12 +212,10 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 	if err != nil {
 		return "", newError(operation, sdk.InvalidArgument, "invalid resource reference")
 	}
-	c.resourceMu.RLock()
-	rawURL := c.resourceURLs[ref.String()]
-	c.resourceMu.RUnlock()
-	if rawURL != "" {
+	if rawURL, ok := c.app.CachedResource(ref.String()); ok {
 		return rawURL, nil
 	}
+	var rawURL string
 
 	switch rp.Kind {
 	case "artwork":
@@ -318,12 +268,9 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		}
 		return "", newError(operation, sdk.MalformedUpstreamResponse, "resource metadata has no usable URL")
 	}
-	if err := c.validateResourceURL(rawURL); err != nil {
+	if err := c.app.CacheResource(ref.String(), rawURL); err != nil {
 		return "", newError(operation, sdk.ResourceForbidden, "resolved resource URL is not allowed")
 	}
-	c.resourceMu.Lock()
-	c.resourceURLs[ref.String()] = rawURL
-	c.resourceMu.Unlock()
 	return rawURL, nil
 }
 

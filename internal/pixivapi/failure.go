@@ -39,11 +39,12 @@ const (
 type FailureKind string
 
 const (
-	FailureHTTPStatus FailureKind = "http_status"
-	FailureMalformed  FailureKind = "malformed_response"
-	FailureRejected   FailureKind = "upstream_rejected"
-	FailureForbidden  FailureKind = "forbidden"
-	FailureTransport  FailureKind = "transport"
+	FailureHTTPStatus        FailureKind = "http_status"
+	FailureMalformed         FailureKind = "malformed_response"
+	FailureRejected          FailureKind = "upstream_rejected"
+	FailureForbidden         FailureKind = "forbidden"
+	FailureResourceForbidden FailureKind = "resource_forbidden"
+	FailureTransport         FailureKind = "transport"
 )
 
 var ErrMalformedResponse = errors.New("pixiv upstream returned a malformed response")
@@ -125,6 +126,8 @@ func (e Failure) Error() string {
 		return ErrMalformedResponse.Error()
 	case FailureRejected:
 		return "pixiv upstream rejected the request"
+	case FailureResourceForbidden:
+		return "pixiv resource URL is not allowed"
 	case FailureForbidden:
 		return "pixiv request was forbidden by policy"
 	default:
