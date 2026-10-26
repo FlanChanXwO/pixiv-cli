@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -74,7 +75,7 @@ type CreatorTagsRequest struct {
 
 // Creator returns one creator's profile.
 func (c *Client) Creator(ctx context.Context, request CreatorRequest) (Creator, error) {
-	ctx = fanboxapi.WithOperation(ctx, "Creator")
+	ctx = logging.WithOperation(ctx, "Creator")
 	if request.CreatorID == "" {
 		return Creator{}, newError("Creator", sdk.InvalidArgument, errors.New("creator id is required"))
 	}
@@ -112,7 +113,7 @@ func (c *Client) creatorProfile(ctx context.Context, operation, creatorID string
 
 // Creators lists supporting or following creators.
 func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Page[CreatorSummary], error) {
-	ctx = fanboxapi.WithOperation(ctx, "Creators")
+	ctx = logging.WithOperation(ctx, "Creators")
 	kind := request.Kind
 	if kind == "" {
 		kind = CreatorListSupporting
@@ -148,7 +149,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 
 // CreatorTags lists the tags used by one creator.
 func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([]CreatorTag, error) {
-	ctx = fanboxapi.WithOperation(ctx, "CreatorTags")
+	ctx = logging.WithOperation(ctx, "CreatorTags")
 	if request.CreatorID == "" {
 		return nil, newError("CreatorTags", sdk.InvalidArgument, errors.New("creator id is required"))
 	}

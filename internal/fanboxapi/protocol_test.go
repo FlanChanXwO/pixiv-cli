@@ -36,11 +36,11 @@ func TestRequestLogsKeepSecretsPrivate(t *testing.T) {
 			var output bytes.Buffer
 			logger, err := logging.New(&output, "debug", logging.FormatJSON)
 			require.NoError(t, err)
-			session, err := fanboxapi.NewSessionWithOptions("FANBOXSESSID=session-canary", fanboxapi.SessionOptions{HTTPClient: httpClient, Logger: logger})
+			session, err := fanboxapi.New("FANBOXSESSID=session-canary", fanboxapi.Options{HTTPClient: httpClient, Logger: logger})
 			require.NoError(t, err)
 			var response map[string]any
 			endpoint := fanboxapi.APIBaseURL + fanboxapi.PathPostInfo + "?postId=query-canary&signature=signature-canary"
-			err = session.GetJSON(t.Context(), endpoint, &response)
+			err = session.GetJSONURL(t.Context(), endpoint, &response)
 			require.Equal(t, failed, err != nil)
 			require.Contains(t, output.String(), fanboxapi.PathPostInfo)
 			for _, secret := range []string{"session-canary", "query-canary", "signature-canary", "body-canary", endpoint} {

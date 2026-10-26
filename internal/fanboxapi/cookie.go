@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// NormalizeCookieHeader 校验用户提供的完整 Cookie header，并规范化 pair 两侧空白。
+// normalizeCookieHeader 校验用户提供的完整 Cookie header，并规范化 pair 两侧空白。
 // 它只接受包含非空 FANBOXSESSID 的标准 name=value pair；错误绝不回显 Cookie 内容。
-func NormalizeCookieHeader(header string) (string, error) {
+func normalizeCookieHeader(header string) (string, error) {
 	if strings.TrimSpace(header) == "" {
 		return "", errors.New("FANBOX cookie header is required")
 	}

@@ -1,5 +1,5 @@
 // FANBOX native transport: browser-shaped RoundTripper, proxy dialing, and option normalization.
-// Session and request handling live in protocol.go.
+// Client construction lives in fanboxapi.go; request policy lives in protocol.go.
 
 package fanboxapi
 
@@ -42,7 +42,7 @@ func validateProxyURL(raw string) (string, error) {
 		return "", nil
 	}
 	proxyURL, err := url.Parse(raw)
-	if err != nil || proxyURL == nil || proxyURL.Hostname() == "" ||
+	if err != nil || proxyURL.Hostname() == "" ||
 		(proxyURL.Scheme != "http" && proxyURL.Scheme != "https") || proxyURL.User != nil {
 		return "", fmt.Errorf("%w: FANBOX proxy URL is invalid", ErrInvalidOption)
 	}
@@ -54,7 +54,7 @@ func normalizeFlareSolverrOptions(options *FlareSolverrOptions) (*FlareSolverrOp
 		return nil, nil
 	}
 	serviceURL, err := url.Parse(options.URL)
-	if err != nil || serviceURL == nil || serviceURL.Hostname() == "" ||
+	if err != nil || serviceURL.Hostname() == "" ||
 		(serviceURL.Scheme != "http" && serviceURL.Scheme != "https") || serviceURL.User != nil ||
 		serviceURL.Path != "" && serviceURL.Path != "/" || serviceURL.RawQuery != "" || serviceURL.Fragment != "" || serviceURL.ForceQuery {
 		return nil, fmt.Errorf("%w: FlareSolverr service URL is invalid", ErrInvalidOption)
@@ -66,7 +66,7 @@ func normalizeFlareSolverrOptions(options *FlareSolverrOptions) (*FlareSolverrOp
 	serviceURL.ForceQuery = false
 	if options.ProxyURL != "" {
 		proxy, err := url.Parse(options.ProxyURL)
-		if err != nil || proxy == nil || proxy.Hostname() == "" || proxy.User != nil ||
+		if err != nil || proxy.Hostname() == "" || proxy.User != nil ||
 			(proxy.Scheme != "http" && proxy.Scheme != "socks4" && proxy.Scheme != "socks5") ||
 			(proxy.Path != "" && proxy.Path != "/") || proxy.RawQuery != "" || proxy.Fragment != "" || proxy.ForceQuery {
 			return nil, fmt.Errorf("%w: FlareSolverr upstream proxy URL is invalid", ErrInvalidOption)
@@ -82,7 +82,7 @@ func newBrowserTransport(proxyURL string) (*browserTransport, error) {
 		tlsclient.WithNotFollowRedirects(),
 		// 上下文取消负责中断请求；这里显式关闭依赖库默认的 30 秒总 deadline。
 		tlsclient.WithTimeoutSeconds(0),
-		// 这不是请求 timeout：空闲连接由 Session.CloseIdleConnections 显式释放，
+		// 这不是请求 timeout：空闲连接由 Client.CloseIdleConnections 显式释放，
 		// 因而不会让正常的大媒体流因无依据的时间阈值中断。
 		tlsclient.WithTransportOptions(&tlsclient.TransportOptions{IdleConnTimeout: &noIdleTimeout}),
 	}
@@ -109,7 +109,7 @@ func newFanboxProxyDialerFactory(proxyURL string) tlsclient.ProxyDialerFactory {
 			return nil, err
 		}
 		parsed, err := url.Parse(validated)
-		if err != nil || parsed == nil {
+		if err != nil {
 			return nil, errors.New("FANBOX proxy URL is invalid")
 		}
 		if parsed.Port() == "" {
@@ -140,9 +140,6 @@ type fanboxProxyDialer struct {
 func (d *fanboxProxyDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if d == nil || d.proxyURL == nil {
-		return nil, errors.New("FANBOX proxy dialer is not configured")
 	}
 
 	var (
@@ -213,9 +210,6 @@ func closeFanboxProxyConnOnCancel(ctx context.Context, conn net.Conn) func() {
 }
 
 func (t *browserTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	if request == nil || request.URL == nil {
-		return nil, errors.New("FANBOX request is invalid")
-	}
 	frequest, err := fhttp.NewRequestWithContext(request.Context(), request.Method, request.URL.String(), request.Body)
 	if err != nil {
 		return nil, err
@@ -256,7 +250,5 @@ func (t *browserTransport) RoundTrip(request *http.Request) (*http.Response, err
 }
 
 func (t *browserTransport) CloseIdleConnections() {
-	if t != nil && t.client != nil {
-		t.client.CloseIdleConnections()
-	}
+	t.client.CloseIdleConnections()
 }

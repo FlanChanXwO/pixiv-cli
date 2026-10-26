@@ -25,7 +25,7 @@ type Identity struct {
 
 // CurrentUser validates the session against the FANBOX home page and parses
 // only the safe identity metadata required by account import/status flows.
-func (s *Session) CurrentUser(ctx context.Context) (Identity, error) {
+func (s *Client) CurrentUser(ctx context.Context) (Identity, error) {
 	response, err := s.do(ctx, WebBaseURL, requestKindFanbox, true, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	if err != nil {
 		return Identity{}, err

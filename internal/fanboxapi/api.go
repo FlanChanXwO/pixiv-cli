@@ -1,6 +1,5 @@
-// Package fanboxapi owns the FANBOX protocol: the session transport and its
-// challenge handling, API routes and query names, and the media URL policy.
-// The public SDK business client lives in sdk/fanbox.
+// FANBOX API routes and query parameter names.
+
 package fanboxapi
 
 // FANBOX API 路径，相对 APIBaseURL。

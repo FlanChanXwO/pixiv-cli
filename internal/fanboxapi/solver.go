@@ -60,7 +60,7 @@ type solverCookie struct {
 	Expiry  json.RawMessage `json:"expiry"`
 }
 
-func (s *Session) nativeState() (string, string) {
+func (s *Client) nativeState() (string, string) {
 	s.solverMu.Lock()
 	defer s.solverMu.Unlock()
 	if s.solverState != nil && s.solverState.hasExpiry && !time.Now().Before(s.solverState.expiresAt) {
@@ -82,13 +82,13 @@ func nativeCookieHeader(session, clearance string) string {
 	return session + "; cf_clearance=" + clearance
 }
 
-func (s *Session) invalidateSolverState() {
+func (s *Client) invalidateSolverState() {
 	s.solverMu.Lock()
 	s.solverState = nil
 	s.solverMu.Unlock()
 }
 
-func (s *Session) waitForSolver(ctx context.Context) (solverState, error) {
+func (s *Client) waitForSolver(ctx context.Context) (solverState, error) {
 	if s.flareSolverr == nil {
 		return solverState{}, ErrChallenge
 	}
@@ -129,7 +129,7 @@ func (s *Session) waitForSolver(ctx context.Context) (solverState, error) {
 	}
 }
 
-func (s *Session) unregisterSolverWaiter(call *solverCall) {
+func (s *Client) unregisterSolverWaiter(call *solverCall) {
 	s.solverMu.Lock()
 	defer s.solverMu.Unlock()
 	if s.solverActive != call || call.waiters == 0 {
@@ -143,7 +143,7 @@ func (s *Session) unregisterSolverWaiter(call *solverCall) {
 	}
 }
 
-func (s *Session) runSolver(call *solverCall) {
+func (s *Client) runSolver(call *solverCall) {
 	started := time.Now()
 	state, err := s.solveFlareSolverr(call.ctx)
 	if err == nil {
@@ -167,7 +167,7 @@ func (s *Session) runSolver(call *solverCall) {
 	s.solverMu.Unlock()
 }
 
-func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
+func (s *Client) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	if s.flareSolverr == nil {
 		return solverState{}, ErrChallenge
 	}
