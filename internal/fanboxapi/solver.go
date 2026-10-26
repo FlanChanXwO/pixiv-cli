@@ -174,7 +174,7 @@ func (s *Session) solveFlareSolverr(ctx context.Context) (solverState, error) {
 	s.log.LogAttrs(ctx, slog.LevelDebug, "Starting Cloudflare solver", logging.OperationAttr(ctx))
 	payload := []byte(`{"cmd":"request.get","url":"https://www.fanbox.cc/"}`)
 	if s.flareSolverr.ProxyURL != "" {
-		payload = fmt.Appendf(nil, `{"cmd":"request.get","url":"https://www.fanbox.cc/","proxy":%q}`, s.flareSolverr.ProxyURL)
+		payload = fmt.Appendf(nil, `{"cmd":"request.get","url":"https://www.fanbox.cc/","proxy":{"url":%q}}`, s.flareSolverr.ProxyURL)
 	}
 	endpoint := strings.TrimRight(s.flareSolverr.URL, "/") + "/v1"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
