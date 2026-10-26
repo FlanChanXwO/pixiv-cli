@@ -1,5 +1,5 @@
 // FANBOX 媒体 URL 策略：允许的主机、是否需要会话 Cookie，以及资源 URL 校验。
-// 媒体请求发送与定位缓存在 client.go。
+// 媒体请求发送在 protocol.go，定位缓存由 fanboxapi.go 的 Client 持有。
 
 package fanboxapi
 
