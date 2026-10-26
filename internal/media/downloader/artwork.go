@@ -63,11 +63,11 @@ func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages
 		if warning != nil {
 			warnings = append(warnings, *warning)
 		}
-		if err != nil {
-			return artworkOut, warnings, err
+		// 清理归档失败时，已发布的动画仍属于本次已提交结果。
+		if path != "" {
+			artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: 1})
 		}
-		artworkOut.Files = append(artworkOut.Files, DownloadedFile{Path: path, Page: 1})
-		return artworkOut, warnings, nil
+		return artworkOut, warnings, err
 	}
 
 	selected, err := selectStaticPages(artwork, pages)
@@ -106,7 +106,7 @@ func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages
 		path, err = publishDetectedImageExtension(path, saved.ContentType)
 		if err != nil {
 			if cleanupErr := os.Remove(saved.Path); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
-				return artworkOut, nil, fmt.Errorf("%w; remove invalid downloaded file: %v", err, cleanupErr)
+				return artworkOut, nil, errors.Join(err, fmt.Errorf("remove invalid downloaded file: %w", cleanupErr))
 			}
 			return artworkOut, nil, err
 		}
