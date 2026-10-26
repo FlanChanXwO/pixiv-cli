@@ -25,5 +25,5 @@ func NewIdentityRecord(id int64, recordType string) (Record, error) {
 		"id":   idString,
 		"type": recordType,
 		"url":  canonicalURL,
-	})
+	}), nil
 }

@@ -1,4 +1,5 @@
-// Package searchfilter 定义 CLI/MCP 共用的搜索筛选 continuation 语义。
+// 收藏筛选策略的 continuation binding；匹配规则见 searchfilter.go。
+
 package searchfilter
 
 import (

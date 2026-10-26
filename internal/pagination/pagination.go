@@ -21,6 +21,16 @@ type PagePlan struct {
 	OneBatch bool
 }
 
+func (p PagePlan) validate() error {
+	if p.Skip < 0 {
+		return errors.New("page skip must be zero or positive")
+	}
+	if p.Limit < 0 {
+		return errors.New("page limit must be zero or positive")
+	}
+	return nil
+}
+
 // PageResult 描述逻辑分页实际返回的条数以及上游是否仍有内容。
 type PageResult struct {
 	Returned int
@@ -37,17 +47,17 @@ func TraversePages[T any, C Cursor](ctx context.Context, plan PagePlan, fetch fu
 // traversePagesFrom 从调用方已有的 opaque cursor 开始遍历。
 func traversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error), consume func([]T) error) (PageResult, error) {
 	var result PageResult
-	if plan.Skip < 0 {
-		return result, errors.New("page skip must be zero or positive")
-	}
-	if plan.Limit < 0 {
-		return result, errors.New("page limit must be zero or positive")
+	if err := plan.validate(); err != nil {
+		return result, err
 	}
 	cursor := initial
 	seen := make(map[string]struct{})
 	skip := plan.Skip
 	seekingOffset := skip > 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		// 稳定文本而非实现身份用于判重，支持不透明的值或指针 cursor。
 		if _, exists := seen[cursor.String()]; exists {
 			return result, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
@@ -55,6 +65,9 @@ func traversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, init
 		seen[cursor.String()] = struct{}{}
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
+			return result, err
+		}
+		if err := ctx.Err(); err != nil {
 			return result, err
 		}
 		if skip >= len(items) {

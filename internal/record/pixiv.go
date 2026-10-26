@@ -57,35 +57,23 @@ func RecordFromUserDetail(detail pixiv.UserDetail) (Record, error) {
 
 // FromArtworks 批量构造 artwork records。
 func FromArtworks(items []pixiv.Artwork) ([]Record, error) {
-	records := make([]Record, 0, len(items))
-	for _, item := range items {
-		record, err := RecordFromArtwork(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
+	return recordsFrom(items, RecordFromArtwork)
 }
 
 // FromNovels 批量构造 novel records。
 func FromNovels(items []pixiv.Novel) ([]Record, error) {
-	records := make([]Record, 0, len(items))
-	for _, item := range items {
-		record, err := RecordFromNovel(item)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, nil
+	return recordsFrom(items, RecordFromNovel)
 }
 
 // FromUserPreviews 批量构造 user records。
 func FromUserPreviews(items []pixiv.UserPreview) ([]Record, error) {
+	return recordsFrom(items, RecordFromUserPreview)
+}
+
+func recordsFrom[T any](items []T, project func(T) (Record, error)) ([]Record, error) {
 	records := make([]Record, 0, len(items))
 	for _, item := range items {
-		record, err := RecordFromUserPreview(item)
+		record, err := project(item)
 		if err != nil {
 			return nil, err
 		}
@@ -109,5 +97,5 @@ func recordFromValue(value any, sourceID int64, recordType, url string) (Record,
 	fields["id"] = strconv.FormatInt(sourceID, 10)
 	fields["type"] = recordType
 	fields["url"] = url
-	return newRecord(fields)
+	return newRecord(fields), nil
 }
