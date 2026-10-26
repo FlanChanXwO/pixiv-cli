@@ -120,6 +120,10 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 	if err != nil {
 		return Artwork{}, newError("Artwork", sdk.MalformedUpstreamResponse, "invalid publish time")
 	}
+	user, err := c.mapUser(value.User)
+	if err != nil {
+		return Artwork{}, err
+	}
 	kind, raw := artworkKind(value.Type)
 	result := Artwork{
 		ID:             value.ID,
@@ -128,7 +132,7 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 		Kind:           kind,
 		RawKind:        raw,
 		Tags:           mapTags(value.Tags),
-		User:           c.mapUser(value.User),
+		User:           user,
 		PublishedAt:    published,
 		TotalBookmarks: value.TotalBookmarks,
 		TotalViews:     value.TotalView,

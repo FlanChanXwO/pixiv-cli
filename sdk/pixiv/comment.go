@@ -45,7 +45,11 @@ func (c *Client) mapComment(value commentWire) (Comment, error) {
 	if err != nil {
 		return Comment{}, newError("Comment", sdk.MalformedUpstreamResponse, "invalid comment time")
 	}
-	result := Comment{ID: value.ID, User: c.mapUser(value.User), Comment: value.Comment, CreatedAt: created}
+	user, err := c.mapUser(value.User)
+	if err != nil {
+		return Comment{}, err
+	}
+	result := Comment{ID: value.ID, User: user, Comment: value.Comment, CreatedAt: created}
 	if result.Comment == "" {
 		result.Comment = value.Caption
 	}

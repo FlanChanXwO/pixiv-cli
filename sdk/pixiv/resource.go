@@ -26,13 +26,8 @@ type resourceRefPayload struct {
 	Variant string `json:"v,omitempty"`
 }
 
-// newResource builds a validated sdk.Resource from an upstream media URL. It
-// returns ResourceForbidden when the URL does not satisfy the resource
-// policy and InvalidArgument when the identity payload is invalid.
+// newResource binds a policy-validated locator to its stable resource identity.
 func (c *Client) newResource(kind string, id int64, page int, variant, rawURL string) (sdk.Resource, error) {
-	if rawURL == "" {
-		return sdk.Resource{}, nil
-	}
 	payload, err := json.Marshal(resourceRefPayload{Kind: kind, ID: id, Page: page, Variant: variant})
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, "cannot encode resource reference")

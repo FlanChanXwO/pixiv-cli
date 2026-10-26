@@ -26,6 +26,7 @@ func TestSearchReportsUpstreamFailures(t *testing.T) {
 		{"empty list", `{"illusts":[],"next_url":null}`, http.StatusOK, false},
 		{"missing list", `{}`, http.StatusOK, true},
 		{"wrong list type", `{"illusts":true}`, http.StatusOK, true},
+		{"invalid user resource", `{"illusts":[{"id":1,"type":"illust","create_date":"2026-01-01T00:00:00Z","user":{"id":2,"profile_image_urls":{"medium":"https://forbidden.invalid/image"}}}],"next_url":null}`, http.StatusOK, true},
 		{"invalid JSON", `{`, http.StatusOK, true},
 		{"upstream failure", `{}`, http.StatusServiceUnavailable, true},
 	} {

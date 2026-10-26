@@ -68,11 +68,15 @@ func (c *Client) mapNovel(value novelWire) (Novel, error) {
 	if err != nil {
 		return Novel{}, newError("Novel", sdk.MalformedUpstreamResponse, "invalid publish time")
 	}
+	user, err := c.mapUser(value.User)
+	if err != nil {
+		return Novel{}, err
+	}
 	result := Novel{
 		ID:             value.ID,
 		Title:          value.Title,
 		Caption:        value.Caption,
-		User:           c.mapUser(value.User),
+		User:           user,
 		Tags:           mapTags(value.Tags),
 		PublishedAt:    published,
 		XRestrict:      intValue(value.XRestrict),
@@ -225,12 +229,16 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
+	user, err := c.mapUser(raw.Detail.User)
+	if err != nil {
+		return NovelSeriesResult{}, err
+	}
 	return NovelSeriesResult{
 		Series: NovelSeries{
 			ID:          raw.Detail.ID,
 			Title:       raw.Detail.Title,
 			Caption:     raw.Detail.Caption,
-			User:        c.mapUser(raw.Detail.User),
+			User:        user,
 			IsConcluded: raw.Detail.IsConcluded,
 		},
 		Novels: sdk.Page[Novel]{Items: items, Next: next},

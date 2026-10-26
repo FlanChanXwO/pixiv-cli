@@ -189,7 +189,7 @@ func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, err
 	if err != nil {
 		return UserDetail{}, err
 	}
-	return c.mapUserDetail(detail), nil
+	return c.mapUserDetail(detail)
 }
 
 // CurrentUser returns the current authenticated user's detail. It requires a
@@ -204,7 +204,7 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	if err != nil {
 		return UserDetail{}, err
 	}
-	return c.mapUserDetail(detail), nil
+	return c.mapUserDetail(detail)
 }
 
 func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID int64, filter bool) (userDetailWire, error) {
@@ -225,12 +225,16 @@ func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID i
 	return raw, nil
 }
 
-func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
+func (c *Client) mapUserDetail(value userDetailWire) (UserDetail, error) {
+	user, err := c.mapUser(value.User.Value)
+	if err != nil {
+		return UserDetail{}, err
+	}
 	profile := value.Profile.Value
 	publicity := value.ProfilePublicity.Value
 	workspace := value.Workspace.Value
 	return UserDetail{
-		User: c.mapUser(value.User.Value),
+		User: user,
 		Profile: UserProfile{
 			Webpage:                   strValue(profile.Webpage),
 			Gender:                    profile.Gender,
@@ -277,7 +281,7 @@ func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
 			Comment:           workspace.Comment,
 			WorkspaceImageURL: strValue(workspace.WorkspaceImageURL),
 		},
-	}
+	}, nil
 }
 
 // RecommendedUsers lists recommended users with sample works.
@@ -435,7 +439,11 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 
 // mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
-	preview := UserPreview{User: c.mapUser(value.User), Illusts: []Artwork{}, Novels: []Novel{}}
+	user, err := c.mapUser(value.User)
+	if err != nil {
+		return UserPreview{}, err
+	}
+	preview := UserPreview{User: user, Illusts: []Artwork{}, Novels: []Novel{}}
 	if !withSamples {
 		return preview, nil
 	}

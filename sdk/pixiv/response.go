@@ -39,7 +39,8 @@ func firstImageURL(value imageURLsWire) string {
 }
 
 // mapUser 是所有 Pixiv 响应的唯一 user 映射。
-func (c *Client) mapUser(value userWire) User {
+// 图片定位失败随外层模型返回，避免把上游异常当作缺省头像。
+func (c *Client) mapUser(value userWire) (User, error) {
 	result := User{
 		ID:         value.ID,
 		Name:       value.Name,
@@ -48,11 +49,13 @@ func (c *Client) mapUser(value userWire) User {
 		IsFollowed: value.IsFollowed,
 	}
 	if value.ProfileImageURLs.Medium != nil && *value.ProfileImageURLs.Medium != "" {
-		if resource, err := c.newResource("user_profile", value.ID, -1, "medium", *value.ProfileImageURLs.Medium); err == nil {
-			result.ProfileImage = ImageResource{Resource: resource, Variant: "medium"}
+		resource, err := c.newResource("user_profile", value.ID, -1, "medium", *value.ProfileImageURLs.Medium)
+		if err != nil {
+			return User{}, err
 		}
+		result.ProfileImage = ImageResource{Resource: resource, Variant: "medium"}
 	}
-	return result
+	return result, nil
 }
 
 func mapTags(values []tagWire) []Tag {
