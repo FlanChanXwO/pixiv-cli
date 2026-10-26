@@ -89,3 +89,32 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 		require.NotContains(t, string(body), secret)
 	}
 }
+
+func TestInvalidToolInputKeepsCredentialsPrivate(t *testing.T) {
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
+	require.NoError(t, err)
+	defer serverSession.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "input-privacy", Version: "1"}, nil).Connect(t.Context(), clientTransport, nil)
+	require.NoError(t, err)
+	defer session.Close()
+	for _, input := range []struct {
+		tool, field string
+		structured  bool
+	}{
+		{"fanbox_creator", "creator_id", false},
+		{"pixiv_user_detail", "user_id", false},
+		{"fanbox_open_resource", "ref", true},
+	} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: input.tool, Arguments: map[string]any{input.field: map[string]any{"Cookie": "cookie-canary", "url": "https://media.test/a?signature=signature-canary"}}})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		require.Equal(t, input.structured, result.StructuredContent != nil)
+		wire, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(wire), "cookie-canary")
+		require.NotContains(t, string(wire), "signature-canary")
+		require.Contains(t, string(wire), "invalid_request")
+	}
+}
