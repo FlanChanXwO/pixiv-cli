@@ -45,10 +45,8 @@ type SDKPorts struct {
 	Login *accounts.Login
 	// ResolveAccount 固定一次业务调用的本地账号选择；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
-	// shortcut: CLI still initializes Open; remove this adapter with that initializer.
-	Open      func(Account) (*pixiv.Client, error)
-	OpenLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
-	Execute   func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
+	OpenLease      func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
+	Execute        func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// Read 用于 HTTP 只读会话；stdio 留空，读取通过 Execute 的账号池执行。
 	Read func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// ReverseSearch 是启动时注入的反向搜图能力与配置快照。Searcher 的
@@ -178,27 +176,14 @@ func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Clie
 // OpenClient 打开一次由会话端口管理的独立 SDK snapshot，并返回
 // 显式 Lease。调用方必须关闭 Lease；底层 gate 与 client 释放由注入端口拥有。
 func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], error) {
-	openLease := a.sdk.OpenLease
-	if openLease == nil && a.sdk.Open != nil {
-		openLease = func(_ context.Context, account Account) (*lifecycle.Lease[*pixiv.Client], error) {
-			client, err := a.sdk.Open(account)
-			if err != nil {
-				return nil, err
-			}
-			return lifecycle.NewLease(client, func() error {
-				client.CloseIdleConnections()
-				return nil
-			}), nil
-		}
-	}
-	if openLease == nil {
+	if a.sdk.OpenLease == nil {
 		return nil, errors.New("pixiv sdk is not configured")
 	}
 	account, err := a.resolveAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return openLease(ctx, account)
+	return a.sdk.OpenLease(ctx, account)
 }
 
 // ResolveAccount returns the fixed account for this tool invocation.

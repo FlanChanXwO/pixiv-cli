@@ -46,28 +46,30 @@ func parseAuthExportUID(raw string) (int64, error) {
 
 func (a controller) newAccountImportCommand() *cobra.Command {
 	opts := accountImportOptions{}
+	// stdin is classified once in Args; RunE reads the result from this command's own state.
+	var input authImportInput
 	cmd := &cobra.Command{
 		Use:     "import [REFRESH_TOKEN]",
 		Short:   "Import or replace an account",
 		Example: "pixiv auth import YOUR_REFRESH_TOKEN",
-		Args:    a.requireMaxArgs(1, "pixiv auth import [REFRESH_TOKEN]"),
+		Args:    a.env.MaxArgs(1, "pixiv auth import [REFRESH_TOKEN]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.accountImport(cmd, args, opts)
+			return a.accountImport(cmd, args, opts, input)
 		},
 	}
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.bindProxyFlags(cmd, &opts.ProxyOptions)
-	a.bindAuthImportInput(cmd)
-	a.bindNoInput(cmd)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
+	a.bindAuthImportInput(cmd, &input)
+	a.env.BindNoInput(cmd)
 	command.Bind(cmd, command.AuthAccount())
 	return cmd
 }
 
-func (a controller) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions) error {
-	if input, ok := authImportInputFrom(cmd); ok && len(input.bundle) > 0 {
-		services := a.services()
-		if err := services.require(); err != nil {
+func (a controller) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions, input authImportInput) error {
+	if len(input.bundle) > 0 {
+		services, err := a.services()
+		if err != nil {
 			return err
 		}
 		result, err := services.Account.importBundle(cmd.Context(), input.bundle)
@@ -75,24 +77,24 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 			return err
 		}
 		if opts.jsonOut {
-			return a.printJSON(result)
+			return a.env.PrintJSON(result)
 		}
 		for _, account := range result.Accounts {
-			fmt.Fprintf(a.out, "%s uid:%d\n", account.Status, account.UserID)
+			fmt.Fprintf(a.env.Out, "%s uid:%d\n", account.Status, account.UserID)
 		}
-		fmt.Fprintf(a.out, "default uid: %d\n", result.DefaultUserID)
+		fmt.Fprintf(a.env.Out, "default uid: %d\n", result.DefaultUserID)
 		return nil
 	}
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
+	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
-	tokenInput, err := a.resolveRefreshTokenInput(cmd, args)
+	tokenInput, err := a.resolveRefreshTokenInput(args, input)
 	if err != nil {
 		return err
 	}
-	services := a.services()
-	if err := services.require(); err != nil {
+	services, err := a.services()
+	if err != nil {
 		return err
 	}
 	result, err := services.Account.importAccount(cmd.Context(), accountImportRequest{
@@ -103,26 +105,23 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		return err
 	}
 	if opts.jsonOut {
-		return a.printJSON(result)
+		return a.env.PrintJSON(result)
 	}
-	fmt.Fprintf(a.out, "%s uid:%d\n", result.Status, result.UserID)
+	fmt.Fprintf(a.env.Out, "%s uid:%d\n", result.Status, result.UserID)
 	if result.Username != "" {
-		fmt.Fprintf(a.out, "username:%s\n", result.Username)
+		fmt.Fprintf(a.env.Out, "username:%s\n", result.Username)
 	}
 	return nil
 }
 
-func (a controller) bindAuthImportInput(cmd *cobra.Command) {
+func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInput) {
 	validate := cmd.Args
-	if validate == nil {
-		validate = cobra.ArbitraryArgs
-	}
 	cmd.Args = func(ctxCmd *cobra.Command, args []string) error {
-		if len(args) == 0 && !a.canPrompt() {
-			if _, err := proxyOverrideFromFlags(ctxCmd, accountImportOptions{}.ProxyOptions); err != nil {
+		if len(args) == 0 && !a.env.CanPrompt() {
+			if _, err := command.ProxyOverride(ctxCmd, accountImportOptions{}.ProxyOptions); err != nil {
 				return err
 			}
-			body, err := io.ReadAll(a.in)
+			body, err := io.ReadAll(a.env.In)
 			if err != nil {
 				return fmt.Errorf("read auth import stdin: %w", err)
 			}
@@ -134,62 +133,35 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command) {
 				if cmd.Flags().Changed("proxy") || cmd.Flags().Changed("no-proxy") {
 					return errors.New("bundle import cannot be combined with --proxy or --no-proxy")
 				}
-				setAuthImportInput(ctxCmd, authImportInput{bundle: body})
+				*input = authImportInput{bundle: body}
 				inputcmd.MarkSkipAutomaticUpdate(ctxCmd)
-				command.Override(ctxCmd, command.AuthBundleImport())
+				command.Bind(ctxCmd, command.AuthBundleImport())
 			} else {
 				token, err := readRefreshTokenInput(bytes.NewReader(body))
 				if err != nil {
 					return err
 				}
-				setAuthImportInput(ctxCmd, authImportInput{token: token})
+				*input = authImportInput{token: token}
 			}
 		}
 		return validate(ctxCmd, args)
 	}
 }
 
-func setAuthImportInput(command *cobra.Command, input authImportInput) {
-	if command == nil {
-		return
-	}
-	authImportInputs.Store(command.Root(), input)
-}
-
-func authImportInputFrom(command *cobra.Command) (authImportInput, bool) {
-	if command == nil {
-		return authImportInput{}, false
-	}
-	input, ok := authImportInputs.Load(command.Root())
-	if !ok {
-		return authImportInput{}, false
-	}
-	return input.(authImportInput), true
-}
-
-// ClearInputState releases the auth-specific classifier result after one CLI
-// execution. Embedded callers should defer this alongside inputcmd.Clear.
-func ClearInputState(command *cobra.Command) {
-	if command == nil {
-		return
-	}
-	authImportInputs.Delete(command.Root())
-}
-
-func (a controller) resolveRefreshTokenInput(cmd *cobra.Command, args []string) (string, error) {
+func (a controller) resolveRefreshTokenInput(args []string, input authImportInput) (string, error) {
 	if len(args) == 1 {
 		return args[0], nil
 	}
-	if input, ok := authImportInputFrom(cmd); ok && input.token != "" {
+	if input.token != "" {
 		return input.token, nil
 	}
-	if a.canPrompt() {
-		return a.promptSecret("Refresh token")
+	if a.env.CanPrompt() {
+		return a.env.PromptSecret("Refresh token")
 	}
-	if _, err := fmt.Fprint(a.errOut, "refresh token: "); err != nil {
+	if _, err := fmt.Fprint(a.env.Err, "refresh token: "); err != nil {
 		return "", err
 	}
-	return readRefreshTokenInput(a.in)
+	return readRefreshTokenInput(a.env.In)
 }
 
 // readRefreshTokenInput 读取完整 stdin，只消费管道输出常见的一个末尾行结束符；

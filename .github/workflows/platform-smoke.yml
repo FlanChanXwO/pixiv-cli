@@ -87,10 +87,6 @@ jobs:
       - name: Test platform OAuth callback integration
         shell: bash
         run: go test ./internal/cli/auth/loginhelper -count=1
-      - name: Test Windows login handler wiring
-        if: ${{ matrix.goos == 'windows' }}
-        shell: bash
-        run: go test ./internal/cli -run '^(TestAuthURLCallback|TestAuthURLHandlerInstall|TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand)$' -count=1
       - name: Test the Windows database path
         if: ${{ matrix.goos == 'windows' }}
         shell: bash

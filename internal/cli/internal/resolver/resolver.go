@@ -155,9 +155,6 @@ type Target struct {
 // canonical record. It performs no network I/O unless the contract supplies a
 // controlled bare-ID probe for an otherwise untyped numeric value.
 func Resolve(ctx context.Context, input Input, contract Contract) (Target, error) {
-	if ctx == nil {
-		return Target{}, invalid(contract, "context is required")
-	}
 	if input.Record != nil && strings.TrimSpace(input.Value) != "" {
 		return Target{}, invalid(contract, "exactly one input value is allowed")
 	}

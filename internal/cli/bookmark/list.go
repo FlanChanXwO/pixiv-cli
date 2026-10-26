@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
@@ -20,7 +21,7 @@ import (
 )
 
 func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -172,7 +173,7 @@ func (item bookmarkListItem) record() (record.Record, error) {
 }
 
 func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -220,7 +221,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 }
 
 func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}

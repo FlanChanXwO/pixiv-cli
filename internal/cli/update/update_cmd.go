@@ -6,6 +6,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -18,14 +19,15 @@ type commandOptions struct {
 	proxy             string
 }
 
-func newUpdateCommand(host Host) *cobra.Command {
+// New 构造 update 命令；loadRuntime 提供配置中的默认代理。
+func New(env command.Env, loadRuntime func() (settings.RuntimeConfig, error)) *cobra.Command {
 	var opts commandOptions
 	cmd := &cobra.Command{
 		Use:     "update",
 		Short:   "Check for or install updates",
 		Example: "pixiv update --check",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := host.RequireExactArgs(0, "pixiv update [--check] [--prerelease] [--proxy URL]")(cmd, args); err != nil {
+			if err := env.ExactArgs(0, "pixiv update [--check] [--prerelease] [--proxy URL]")(cmd, args); err != nil {
 				return err
 			}
 			if opts.jsonOut && !opts.check {
@@ -34,7 +36,7 @@ func newUpdateCommand(host Host) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runtimeConfig, err := host.LoadUpdateRuntimeConfig()
+			runtimeConfig, err := loadRuntime()
 			if err != nil {
 				return fmt.Errorf("load update configuration: %w", err)
 			}
@@ -42,7 +44,7 @@ func newUpdateCommand(host Host) *cobra.Command {
 			if cmd.Flags().Changed("proxy") {
 				proxy = opts.proxy
 			}
-			coordinator, err := host.NewUpdateCoordinator(proxy, host.Output(), host.ErrorOutput())
+			coordinator, err := NewCoordinator(proxy, env.Out, env.Err)
 			if err != nil {
 				return err
 			}
@@ -55,9 +57,9 @@ func newUpdateCommand(host Host) *cobra.Command {
 				return err
 			}
 			if opts.jsonOut {
-				return host.PrintJSON(result)
+				return env.PrintJSON(result)
 			}
-			return printResult(host.Output(), result)
+			return printResult(env.Out, result)
 		},
 	}
 	flags := cmd.Flags()

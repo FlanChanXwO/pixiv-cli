@@ -23,7 +23,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    internalURLCallbackCommand + " URL",
 		Hidden: true,
-		Args:   a.requireExactArgs(1, "pixiv auth "+internalURLCallbackCommand+" URL"),
+		Args:   a.env.ExactArgs(1, "pixiv auth "+internalURLCallbackCommand+" URL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := loginhelper.HandleCallback(cmd.Context(), args[0])
 			if err != nil {
@@ -63,7 +63,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 			return nil
 		},
 	}
-	a.bindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	command.Bind(cmd, command.HiddenCallback())
 	return cmd
 }
@@ -75,15 +75,15 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    internalURLHandlerInstallCommand,
 		Hidden: true,
-		Args:   a.requireExactArgs(0, "pixiv auth "+internalURLHandlerInstallCommand),
+		Args:   a.env.ExactArgs(0, "pixiv auth "+internalURLHandlerInstallCommand),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := loginhelper.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
-				fmt.Fprintf(a.errOut, "warning: persistent pixiv:// callback handler was not initialized: %v\n", err)
+				fmt.Fprintf(a.env.Err, "warning: persistent pixiv:// callback handler was not initialized: %v\n", err)
 			}
 			return nil
 		},
 	}
-	a.bindNoInput(cmd)
+	a.env.BindNoInput(cmd)
 	command.Bind(cmd, command.HiddenCallback())
 	return cmd
 }

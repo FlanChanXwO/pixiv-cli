@@ -59,8 +59,8 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relay
 	}
 	cleanup := func() { closeServer(true) }
 	abort := func() { closeServer(false) }
-	fmt.Fprintf(a.errOut, "Remote Pixiv login relay is listening on %s.\n", listener.Addr().String())
-	fmt.Fprintf(a.errOut, "Open remote Pixiv login session:\n%s\n", session.URL)
+	fmt.Fprintf(a.env.Err, "Remote Pixiv login relay is listening on %s.\n", listener.Addr().String())
+	fmt.Fprintf(a.env.Err, "Open remote Pixiv login session:\n%s\n", session.URL)
 
 	select {
 	case callback := <-session.Callback:

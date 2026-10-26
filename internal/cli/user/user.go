@@ -57,9 +57,7 @@ func New(env command.Env, runner pixivcmd.Runner, follow func() *cobra.Command) 
 		a.newRelatedCommand(),
 		a.newBlockedCommand(),
 	)
-	if follow != nil {
-		cmd.AddCommand(follow())
-	}
+	cmd.AddCommand(follow())
 	a.env.BindNoInput(cmd)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -249,23 +247,23 @@ func (a commandRunner) bindListCommand(cmd *cobra.Command, opts *listOptions) {
 
 // resolve 统一列表命令的分页、传输覆盖与输出模式判定。autoNDJSON 保持各命令既有
 // 的自动 NDJSON 行为，不在此处统一放宽或收紧。
-func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (command.Plan, pixivcmd.Request, bool, bool, error) {
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+		return command.Plan{}, pixivcmd.Request{}, false, false, err
 	}
 	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+		return command.Plan{}, pixivcmd.Request{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return command.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
 		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+			return command.Plan{}, pixivcmd.Request{}, false, false, err
 		}
 	}
 	ndjson := opts.ndjson

@@ -170,23 +170,23 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
 // --json 的互斥、自动 NDJSON 判定和 JSON 解析顺序保持一致。
-func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pixivcmd.Plan, pixivcmd.Request, bool, bool, error) {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+func (a commandRunner) resolve(cmd *cobra.Command, opts options) (command.Plan, pixivcmd.Request, bool, bool, error) {
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+		return command.Plan{}, pixivcmd.Request{}, false, false, err
 	}
 	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 	if err != nil {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+		return command.Plan{}, pixivcmd.Request{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return command.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
 		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return pixivcmd.Plan{}, pixivcmd.Request{}, false, false, err
+			return command.Plan{}, pixivcmd.Request{}, false, false, err
 		}
 	}
 	return plan, request, jsonOut, a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut), nil

@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/spf13/cobra"
 )
 
@@ -62,8 +63,8 @@ func markNDJSON(cmd *cobra.Command, enabled bool) {
 		cmd.Annotations = map[string]string{}
 	}
 	if enabled {
-		cmd.Annotations["pixiv-cli.output-ndjson"] = "true"
+		cmd.Annotations[command.OutputNDJSONAnnotationKey] = "true"
 	} else {
-		cmd.Annotations["pixiv-cli.output-ndjson"] = "false"
+		cmd.Annotations[command.OutputNDJSONAnnotationKey] = "false"
 	}
 }

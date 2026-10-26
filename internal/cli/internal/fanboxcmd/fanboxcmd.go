@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -15,25 +16,9 @@ import (
 
 // ProxyOverride reads the FANBOX group's persistent --proxy/--no-proxy flags.
 func ProxyOverride(cmd *cobra.Command) (*string, error) {
-	if cmd == nil {
-		return nil, nil
-	}
-	proxyFlag := cmd.Flags().Lookup("proxy")
-	noProxyFlag := cmd.Flags().Lookup("no-proxy")
-	proxyChanged := cmd.Flags().Changed("proxy")
-	noProxyChanged := cmd.Flags().Changed("no-proxy")
-	if proxyChanged && noProxyChanged {
-		return nil, errors.New("use either --proxy or --no-proxy, not both")
-	}
-	if noProxyChanged && noProxyFlag != nil && noProxyFlag.Value.String() == "true" {
-		empty := ""
-		return &empty, nil
-	}
-	if proxyChanged && proxyFlag != nil {
-		value := proxyFlag.Value.String()
-		return &value, nil
-	}
-	return nil, nil
+	proxy, _ := cmd.Flags().GetString("proxy")
+	noProxy, _ := cmd.Flags().GetBool("no-proxy")
+	return command.ProxyOverride(cmd, command.ProxyOptions{Proxy: proxy, NoProxy: noProxy})
 }
 
 // Open opens one FANBOX client lease for the current command. The session is
@@ -47,9 +32,6 @@ func Open(ctx context.Context, open func() (*session.Fanbox, error), cmd *cobra.
 	if err != nil {
 		return nil, err
 	}
-	if service == nil {
-		return nil, errors.New("fanbox service is not configured")
-	}
 	return service.Open(ctx, session.OpenRequest{ProxyOverride: proxyOverride})
 }
 
@@ -60,14 +42,6 @@ func UseClient(cmd *cobra.Command, open func() (*session.Fanbox, error), use fun
 	if err != nil {
 		return err
 	}
-	if lease == nil {
-		return errors.New("fanbox client lease is nil")
-	}
 	useErr := use(lease.Value())
 	return errors.Join(useErr, lease.Close())
-}
-
-// BrowserProvider reads one FANBOXSESSID from a browser profile.
-type BrowserProvider interface {
-	ReadSession(context.Context, string, string) (string, error)
 }

@@ -20,10 +20,6 @@ type spool struct {
 	jsonOut, firstSection, firstItem bool
 }
 
-// WriteSpoolHeader 是推荐结果临时文档的首段写入 seam。它保持为 package 变量，
-// 便于 CLI 集成测试验证临时文件失败时不会泄露半份 stdout。
-var WriteSpoolHeader = io.WriteString
-
 func newSpool(jsonOut bool) (*spool, error) {
 	file, err := os.CreateTemp("", "pixiv-cli-recommended-*.tmp")
 	if err != nil {
@@ -31,7 +27,7 @@ func newSpool(jsonOut bool) (*spool, error) {
 	}
 	s := &spool{file: file, jsonOut: jsonOut, firstSection: true, firstItem: true}
 	if jsonOut {
-		if _, err := WriteSpoolHeader(file, "{"); err != nil {
+		if _, err := io.WriteString(file, "{"); err != nil {
 			name := file.Name()
 			_ = file.Close()
 			_ = os.Remove(name)
@@ -56,8 +52,8 @@ func (s *spool) section(key string) error {
 	return err
 }
 
-func (s *spool) heading(jsonOut bool, text string) error {
-	if jsonOut {
+func (s *spool) heading(text string) error {
+	if s.jsonOut {
 		return nil
 	}
 	_, err := fmt.Fprintln(s.file, text)
@@ -131,9 +127,6 @@ func (s *spool) Commit(out io.Writer) error {
 }
 
 func (s *spool) Close() {
-	if s == nil || s.file == nil {
-		return
-	}
 	name := s.file.Name()
 	_ = s.file.Close()
 	_ = os.Remove(name)

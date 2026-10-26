@@ -27,37 +27,27 @@ func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (setti
 	}
 	options := pixiv.Options{Logger: logger}
 	options.Pacing.MinInterval = runtime.RequestInterval
-	proxyValue := request.HTTPSProxyOverride
-	if proxyValue == nil {
-		if runtime.PixivNetwork.ProxyURL.Present {
-			value := runtime.PixivNetwork.ProxyURL.Value
-			proxyValue = &value
-		} else {
-			value := runtime.HTTPSProxy
-			proxyValue = &value
-		}
+	proxy := runtime.HTTPSProxy
+	if runtime.PixivNetwork.ProxyURL.Present {
+		proxy = runtime.PixivNetwork.ProxyURL.Value
 	}
-	if proxyValue != nil {
-		httpClient, err := httpclient.HTTPClient(*proxyValue)
-		if err != nil {
-			return pixiv.Options{}, err
-		}
-		options.HTTPClient = httpClient
+	if request.HTTPSProxyOverride != nil {
+		proxy = *request.HTTPSProxyOverride
 	}
+	httpClient, err := httpclient.HTTPClient(proxy)
+	if err != nil {
+		return pixiv.Options{}, err
+	}
+	options.HTTPClient = httpClient
 	return options, nil
 }
 
-// fanboxsdkOptions 是本包对公开 SDK options 类型的本地别名。保留别名的原因：
-// 让 composition root 成为**唯一**把一份 config snapshot 翻译为 SDK options 的
-// 地方，命令 owner 不需要（也不应该）直接依赖 SDK 的 options 形状。
-type fanboxsdkOptions = fanbox.Options
-
-func fanboxOptionsFromRuntime(loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (fanboxsdkOptions, error) {
+func fanboxOptionsFromRuntime(loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (fanbox.Options, error) {
 	cfg, err := loadRuntime()
 	if err != nil {
-		return fanboxsdkOptions{}, err
+		return fanbox.Options{}, err
 	}
-	options := fanboxsdkOptions{Logger: logger}
+	options := fanbox.Options{Logger: logger}
 	if cfg.FanboxNetwork.ProxyURL.Present {
 		options.ProxyURL = cfg.FanboxNetwork.ProxyURL.Value
 	} else {

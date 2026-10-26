@@ -308,7 +308,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
@@ -354,7 +354,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)

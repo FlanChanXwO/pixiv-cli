@@ -62,7 +62,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	if err != nil {
 		return err
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ type novelSeriesOut struct {
 	Novels []pixiv.Novel     `json:"novels"`
 }
 
-func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id int64, plan pixivcmd.Plan, jsonOut, ndjson bool) error {
+func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id int64, plan command.Plan, jsonOut, ndjson bool) error {
 	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var metadata pixiv.NovelSeries
 		var novels []pixiv.Novel
@@ -144,7 +144,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id
 			}
 			return result.Novels.Items, result.Novels.Next, nil
 		}
-		if err := pixivcmd.PageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
+		if err := command.PageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
 			novels = append(novels, items...)
 			return nil
 		}); err != nil {

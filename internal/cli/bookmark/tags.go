@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
@@ -25,7 +26,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 	if opts.typ != "artwork" && opts.typ != "novel" {
 		return errors.New("bookmark tags type must be one of artwork, novel, all")
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -72,7 +73,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 			return result.Items, result.Next, nil
 		}
 		var items []pixiv.BookmarkTag
-		if err := pixivcmd.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
+		if err := command.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
 			items = append(items, page...)
 			return nil
 		}); err != nil {
@@ -104,7 +105,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 }
 
 func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}

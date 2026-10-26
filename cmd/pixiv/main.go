@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 )
 
 func main() {
@@ -18,5 +18,5 @@ func main() {
 func run(args []string, in *os.File, out, errOut *os.File) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return pixivcmd.RunContextWithDefaultBrokenPipeSignals(ctx, args, in, out, errOut)
+	return cli.Run(ctx, args, in, out, errOut)
 }
