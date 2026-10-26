@@ -1,5 +1,5 @@
 // FANBOX 资源协议：把已验证的媒体定位封装成 sdk.Resource，并按引用重新解析。
-// 会话与 locator 缓存在 internal/fanboxapi；下载写入与进度在下方。
+// 会话与 locator 缓存在 internal/fanboxapi；原子写入与进度共用 sdk.WriteResource。
 
 package fanbox
 
@@ -7,11 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
-	atomicfile "github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -107,17 +105,9 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{ctx: ctx, src: response.Body, progress: options.Progress})
+	size, err := sdk.WriteResource(ctx, product, "SaveResource", response.Body, 0, options)
 	if err != nil {
-		var cause error
-		switch {
-		case errors.Is(err, context.Canceled):
-			cause = context.Canceled
-		case errors.Is(err, context.DeadlineExceeded):
-			cause = context.DeadlineExceeded
-		}
-		return sdk.SavedResource{}, sdk.NewError(product, "SaveResource", sdk.LocalStateError,
-			sdk.WithDetail("cannot write resource"), sdk.WithCause(cause))
+		return sdk.SavedResource{}, err
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
 }
@@ -237,27 +227,4 @@ func attachmentFilename(name, extension string) string {
 		return name
 	}
 	return name + "." + extension
-}
-
-type progressReader struct {
-	ctx      context.Context
-	src      io.Reader
-	progress func(sdk.SaveProgress)
-	done     int64
-}
-
-func (r *progressReader) Read(p []byte) (int, error) {
-	n, err := r.src.Read(p)
-	if n > 0 {
-		r.done += int64(n)
-		if r.progress != nil {
-			r.progress(sdk.SaveProgress{Done: r.done})
-		}
-	}
-	// A final Read can deliver data and EOF together; cancellation must reach
-	// the atomic writer before it commits those bytes to the destination.
-	if (err == nil || err == io.EOF) && r.ctx.Err() != nil {
-		err = r.ctx.Err()
-	}
-	return n, err
 }

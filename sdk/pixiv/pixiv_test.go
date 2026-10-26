@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -24,6 +26,7 @@ func TestSearchReportsUpstreamFailures(t *testing.T) {
 		{"empty list", `{"illusts":[],"next_url":null}`, http.StatusOK, false},
 		{"missing list", `{}`, http.StatusOK, true},
 		{"wrong list type", `{"illusts":true}`, http.StatusOK, true},
+		{"invalid user resource", `{"illusts":[{"id":1,"type":"illust","create_date":"2026-01-01T00:00:00Z","user":{"id":2,"profile_image_urls":{"medium":"https://forbidden.invalid/image"}}}],"next_url":null}`, http.StatusOK, true},
 		{"invalid JSON", `{`, http.StatusOK, true},
 		{"upstream failure", `{}`, http.StatusServiceUnavailable, true},
 	} {
@@ -102,4 +105,75 @@ func TestOpenCredentialsStayPrivate(t *testing.T) {
 	require.Contains(t, output.String(), "artist")
 	require.NotContains(t, output.String(), "access-canary")
 	require.NotContains(t, output.String(), "refresh-canary")
+}
+
+func TestSaveResourceURLPropagatesCancellation(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "file bytes") }))
+	defer api.Close()
+	httpClient := api.Client()
+	transport := httpClient.Transport.(*http.Transport)
+	transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+	}
+	client, err := pixiv.NewWith("access-canary", pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "file.bin")
+	require.NoError(t, os.WriteFile(path, []byte("original"), 0o600))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	_, err = client.SaveResourceURL(ctx, "https://i.pximg.net/file.bin", sdk.SaveOptions{Path: path, Progress: func(sdk.SaveProgress) { cancel() }})
+	require.ErrorIs(t, err, context.Canceled)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "original", string(data))
+}
+
+func TestResourceRedirectReportsPolicyFailure(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "i.pximg.net" {
+			t.Error("forbidden redirect reached the network")
+		}
+		http.Redirect(w, r, "https://forbidden.invalid/image?signature=signature-canary", http.StatusFound)
+	}))
+	defer api.Close()
+	httpClient := api.Client()
+	transport := httpClient.Transport.(*http.Transport)
+	transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+	}
+	client, err := pixiv.NewWith("access-canary", pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	_, err = client.SaveResourceURL(t.Context(), "https://i.pximg.net/image", sdk.SaveOptions{Path: filepath.Join(t.TempDir(), "image")})
+	require.Equal(t, sdk.ResourceForbidden, sdk.ReasonOf(err))
+	require.NotContains(t, fmt.Sprint(err), "signature-canary")
+}
+
+func TestOAuthRejectsMalformedTokenResponses(t *testing.T) {
+	for _, tc := range []struct {
+		authorization bool
+		body          string
+	}{
+		{false, `{"access_token":"access-canary","refresh_token":"refresh-canary","expires_in":9223372036854775807,"user":{"id":42}}`},
+		{true, `{"refresh_token":"refresh-canary","user":{"id":42}}`},
+	} {
+		api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tc.body) }))
+		httpClient := api.Client()
+		transport := httpClient.Transport.(*http.Transport)
+		transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+		transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+		}
+		if tc.authorization {
+			session, e := pixiv.BeginLogin(pixiv.LoginOptions{HTTPClient: httpClient})
+			require.NoError(t, e)
+			_, err := session.Complete(t.Context(), "authorization-canary")
+			require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		} else {
+			_, _, err := pixiv.OpenWith(t.Context(), "synthetic-refresh", pixiv.Options{HTTPClient: httpClient})
+			require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		}
+		api.Close()
+	}
 }

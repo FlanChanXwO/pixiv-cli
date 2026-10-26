@@ -343,13 +343,13 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
 	ctx = fanboxapi.WithOperation(ctx, "Home")
-	return c.postList(ctx, "Home", fanboxapi.PathPostListHome, nil, nil, true, request.Cursor)
+	return c.postList(ctx, "Home", fanboxapi.PathPostListHome, nil, url.Values{}, true, request.Cursor)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
 	ctx = fanboxapi.WithOperation(ctx, "Supporting")
-	return c.postList(ctx, "Supporting", fanboxapi.PathPostListSupporting, nil, nil, true, request.Cursor)
+	return c.postList(ctx, "Supporting", fanboxapi.PathPostListSupporting, nil, url.Values{}, true, request.Cursor)
 }
 
 // postList fetches one post page. cursorQuery binds the cursor and query is sent
@@ -363,7 +363,6 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 		return sdk.Page[Post]{}, err
 	}
 	if limit && nextURL == "" {
-		query = cloneValues(query)
 		query.Set(fanboxapi.ParamLimit, strconv.Itoa(fanboxapi.PostListPageLimit))
 	}
 	var body json.RawMessage
@@ -395,12 +394,4 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 		return sdk.Page[Post]{}, err
 	}
 	return sdk.Page[Post]{Items: items, Next: next}, nil
-}
-
-func cloneValues(source url.Values) url.Values {
-	clone := make(url.Values, len(source))
-	for key, values := range source {
-		clone[key] = append([]string(nil), values...)
-	}
-	return clone
 }

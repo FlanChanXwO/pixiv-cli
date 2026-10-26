@@ -2,11 +2,9 @@ package pixiv
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -66,30 +64,6 @@ var identityScopedOps = map[string]bool{
 	"UserBlockedUsers":    true,
 }
 
-// queryDigest returns a stable digest of the request's query parameters. The
-// continuation parameter is excluded before hashing so that callers can repeat
-// the original query when continuing pagination.
-func queryDigest(query url.Values) string {
-	keys := make([]string, 0, len(query))
-	for key := range query {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var builder strings.Builder
-	for _, key := range keys {
-		values := append([]string(nil), query[key]...)
-		sort.Strings(values)
-		for _, value := range values {
-			builder.WriteString(url.QueryEscape(key))
-			builder.WriteByte('=')
-			builder.WriteString(url.QueryEscape(value))
-			builder.WriteByte('&')
-		}
-	}
-	sum := sha256.Sum256([]byte(builder.String()))
-	return hex.EncodeToString(sum[:])
-}
-
 // buildCursor encodes the next-page continuation for an operation. When exists
 // is false it returns the zero cursor. baseQuery is the request's query without
 // the continuation parameter.
@@ -116,7 +90,7 @@ func (c *Client) buildContinuationCursor(op string, baseQuery url.Values, state 
 			opts = append(opts, sdk.WithCursorEphemeralInstance(c.cursorInstance))
 		}
 	}
-	return sdk.NewCursor(product, op, operationCursorBindingVersion(op), queryDigest(baseQuery), payload, opts...)
+	return sdk.NewCursor(product, op, operationCursorBindingVersion(op), sdk.CursorQueryHash(baseQuery), payload, opts...)
 }
 
 // continuationFromCursor decodes and validates a caller-provided cursor against
@@ -128,7 +102,7 @@ func (c *Client) continuationFromCursor(op string, baseQuery url.Values, cur sdk
 }
 
 func (c *Client) continuationState(op string, baseQuery url.Values, cur sdk.Cursor) (continuationEnvelope, error) {
-	if err := sdk.ValidateCursor(cur, product, op, operationCursorBindingVersion(op), queryDigest(baseQuery)); err != nil {
+	if err := sdk.ValidateCursor(cur, product, op, operationCursorBindingVersion(op), sdk.CursorQueryHash(baseQuery)); err != nil {
 		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor does not match this operation and query")
 	}
 	if identityScopedOps[op] {

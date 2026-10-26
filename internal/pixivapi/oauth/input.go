@@ -5,20 +5,20 @@ import (
 	"strings"
 )
 
-// ErrCookieRefreshTokenInput 表示调用方误把网页 Cookie 当成 App API refresh token。
+// errCookieRefreshTokenInput 表示调用方误把网页 Cookie 当成 App API refresh token。
 // 错误不携带输入内容，避免凭据进入 CLI、MCP 或日志输出。
-var ErrCookieRefreshTokenInput = errors.New("cookie input is not supported; provide a Pixiv App API refresh token")
+var errCookieRefreshTokenInput = errors.New("cookie input is not supported; provide a Pixiv App API refresh token")
 
-// ValidateRefreshTokenInput 只接受 Pixiv App API 的不透明 refresh token。单个
+// validateRefreshTokenInput 只接受 Pixiv App API 的不透明 refresh token。单个
 // "x=y" 仍可能是合法 token；但 Cookie 的明确名称或多 cookie pair 一律拒绝，绝不
 // 从中提取或转换 refresh_token。
-func ValidateRefreshTokenInput(input string) (string, error) {
+func validateRefreshTokenInput(input string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
 		return "", nil
 	}
 	if looksLikeCookie(value) {
-		return "", ErrCookieRefreshTokenInput
+		return "", errCookieRefreshTokenInput
 	}
 	return value, nil
 }

@@ -18,24 +18,6 @@ func newError(operation string, code sdk.Reason, detail string) *sdk.Error {
 	return sdk.NewError(product, operation, code, sdk.WithDetail(detail))
 }
 
-// classifyResourceWriteError 保留写入阶段的 context cause，同时只暴露受控的本地错误详情。
-// 其他底层写入错误不能进入 SDK 错误链，以免泄露路径或响应流中的敏感信息。
-func classifyResourceWriteError(operation string, cause error) *sdk.Error {
-	var safeCause error
-	switch {
-	case errors.Is(cause, context.Canceled):
-		safeCause = context.Canceled
-	case errors.Is(cause, context.DeadlineExceeded):
-		safeCause = context.DeadlineExceeded
-	default:
-		return newError(operation, sdk.LocalStateError, "cannot write resource")
-	}
-	return sdk.NewError(product, operation, sdk.LocalStateError,
-		sdk.WithDetail("cannot write resource"),
-		sdk.WithCause(safeCause),
-	)
-}
-
 // classifyOAuthError maps an OAuth adapter failure to a classified error. It
 // never includes the refresh token, response body, or callback artifacts.
 func classifyOAuthError(err error, operation string) *sdk.Error {
@@ -69,10 +51,6 @@ func classifyOAuthError(err error, operation string) *sdk.Error {
 		}
 	case pixivapi.FailureMalformed:
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
-	case pixivapi.FailureRejected:
-		return sdk.NewError(product, operation, sdk.UpstreamError)
-	case pixivapi.FailureForbidden:
-		return sdk.NewError(product, operation, sdk.Forbidden)
 	default:
 		return classifyTransport(failure, operation)
 	}
@@ -97,10 +75,8 @@ func classifyAppError(err error, operation string) *sdk.Error {
 		return classifyStatus(failure, operation)
 	case pixivapi.FailureMalformed:
 		return sdk.NewError(product, operation, sdk.MalformedUpstreamResponse)
-	case pixivapi.FailureRejected:
-		return sdk.NewError(product, operation, sdk.UpstreamError)
-	case pixivapi.FailureForbidden:
-		return sdk.NewError(product, operation, sdk.Forbidden)
+	case pixivapi.FailureResourceForbidden:
+		return newError(operation, sdk.ResourceForbidden, "resource URL is not allowed")
 	default:
 		return classifyTransport(failure, operation)
 	}

@@ -105,7 +105,7 @@ func (c *Client) imageBlock(n *html.Node, novelID int64, imageIndex int) (NovelB
 	if url == "" {
 		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel image block has no source")
 	}
-	res, err := c.newResource("novel_image", novelID, imageIndex, url)
+	res, err := c.newResource("novel_image", novelID, imageIndex, "", url)
 	if err != nil {
 		return NovelBlock{}, err
 	}
@@ -127,7 +127,7 @@ func (c *Client) fileBlock(n *html.Node, novelID int64, fileIndex int) (NovelBlo
 	if href == "" {
 		return NovelBlock{}, newError("NovelContent", sdk.MalformedUpstreamResponse, "novel file block has no link")
 	}
-	res, err := c.newResource("novel_file", novelID, fileIndex, href)
+	res, err := c.newResource("novel_file", novelID, fileIndex, "", href)
 	if err != nil {
 		return NovelBlock{}, err
 	}

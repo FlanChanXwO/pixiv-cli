@@ -1,12 +1,12 @@
+// Public Pixiv construction and verified identity; transport state belongs to pixivapi.
+
 package pixiv
 
 import (
-	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
@@ -57,24 +57,13 @@ type Options struct {
 type Client struct {
 	// app owns the App API transport and the access token; every operation goes
 	// through it directly.
-	app       *pixivapi.Client
-	resClient *pixivapi.ResourceClient
-	opts      Options
+	app *pixivapi.Client
 
-	httpClient *http.Client
-	selfHTTP   bool
-
-	userID    int64
-	userName  string
-	expiresAt time.Time
+	userID   int64
+	userName string
 	// cursorInstance is a non-secret binding for identity-scoped cursors
 	// produced before OAuth has verified the account identity.
 	cursorInstance string
-
-	// resourceURLs keeps the current locator only for resources created by this
-	// client. ResourceRef itself contains identity fields, never a signed URL.
-	resourceMu   sync.RWMutex
-	resourceURLs map[string]string
 }
 
 // Open rotates refreshToken once through OAuth and returns a Client holding
@@ -88,20 +77,23 @@ func Open(ctx context.Context, refreshToken string) (*Client, Credentials, error
 
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(ctx context.Context, refreshToken string, options Options) (*Client, Credentials, error) {
-	options.Logger = cmp.Or(options.Logger, slog.New(slog.DiscardHandler))
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
-	httpClient, selfHTTP := buildHTTPClient(options)
-	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, Logger: options.Logger})
+	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
+	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP, Logger: options.Logger})
+	var client *Client
+	// Failed construction leaves no client for the caller to close.
+	defer func() {
+		if client == nil {
+			oauthClient.CloseIdleConnections()
+		}
+	}()
 	if err := oauthClient.Refresh(ctx); err != nil {
 		return nil, Credentials{}, classifyOAuthError(err, "Open")
 	}
 	token := oauthClient.AccessToken()
-	if token == "" {
-		return nil, Credentials{}, newError("Open", sdk.UpstreamError, "oauth response did not include an access token")
-	}
 	if oauthClient.UserID() <= 0 {
 		return nil, Credentials{}, newError("Open", sdk.MalformedUpstreamResponse, "oauth response did not include account identity")
 	}
@@ -129,12 +121,11 @@ func New(accessToken string) (*Client, error) {
 
 // NewWith is New with explicit connection-level Options.
 func NewWith(accessToken string, options Options) (*Client, error) {
-	options.Logger = cmp.Or(options.Logger, slog.New(slog.DiscardHandler))
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		return nil, newError("New", sdk.InvalidArgument, "access token is required")
 	}
-	httpClient, selfHTTP := buildHTTPClient(options)
+	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
 	client, err := newClient(httpClient, selfHTTP, accessToken, options, 0)
 	if err != nil {
 		return nil, newError("New", sdk.LocalStateError, "cannot initialize cursor instance")
@@ -153,6 +144,8 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 	}
 	app := pixivapi.New(pixivapi.Config{
 		HTTPClient:     httpClient,
+		OwnHTTPClient:  selfHTTP,
+		ResourceHosts:  options.ResourcePolicy.AllowedHosts,
 		AccessToken:    accessToken,
 		AcceptLanguage: options.AcceptLanguage,
 		UserID:         userID,
@@ -160,29 +153,18 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 	})
 	return &Client{
 		app:            app,
-		resClient:      pixivapi.NewApp(httpClient),
-		opts:           options,
-		httpClient:     httpClient,
-		selfHTTP:       selfHTTP,
 		userID:         userID,
 		cursorInstance: cursorInstance,
-		resourceURLs:   make(map[string]string),
 	}, nil
 }
 
 // CloseIdleConnections releases idle connections of the SDK-created HTTP
 // client. It is a no-op when a caller-provided client was injected.
 func (c *Client) CloseIdleConnections() {
-	if c == nil || !c.selfHTTP || c.httpClient == nil {
+	if c == nil || c.app == nil {
 		return
 	}
-	if transport, ok := c.httpClient.Transport.(*http.Transport); ok {
-		transport.CloseIdleConnections()
-		return
-	}
-	if closer, ok := c.httpClient.Transport.(interface{ CloseIdleConnections() }); ok {
-		closer.CloseIdleConnections()
-	}
+	c.app.CloseIdleConnections()
 }
 
 // UserID returns the verified identity bound at Open, or zero when the client
@@ -192,29 +174,3 @@ func (c *Client) UserID() int64 { return c.userID }
 // Username returns the verified username bound at Open, or the empty string
 // when unknown.
 func (c *Client) Username() string { return c.userName }
-
-// buildHTTPClient 把 pacing 放到项目传输层；请求日志与 OAuth 路由记录由 pixivapi 拥有。
-func buildHTTPClient(options Options) (*http.Client, bool) {
-	if options.HTTPClient == nil {
-		var transport http.RoundTripper = http.DefaultTransport.(*http.Transport).Clone()
-		if options.Pacing.MinInterval > 0 {
-			transport = &pixivapi.PacingTransport{Inner: transport, Interval: options.Pacing.MinInterval, Logger: options.Logger}
-		}
-		return &http.Client{Transport: transport}, true
-	}
-	base := options.HTTPClient
-	if options.Pacing.MinInterval <= 0 {
-		return base, false
-	}
-	transport := base.Transport
-	if transport == nil {
-		transport = http.DefaultTransport
-	}
-	derived := &http.Client{
-		Transport:     &pixivapi.PacingTransport{Inner: transport, Interval: options.Pacing.MinInterval, Logger: options.Logger},
-		Jar:           base.Jar,
-		Timeout:       base.Timeout,
-		CheckRedirect: base.CheckRedirect,
-	}
-	return derived, false
-}

@@ -34,11 +34,11 @@ const (
 // ExpiresAt is set only when the upstream or protocol can reliably determine
 // it; callers must not treat URL as a permanent identity.
 type Resource struct {
-	Ref                 ResourceRef
-	URL                 string
-	RequestHeaders      map[string]string
-	ExpiresAt           *time.Time
-	RequiresCredentials bool
+	Ref                 ResourceRef       `json:"ref"`
+	URL                 string            `json:"url"`
+	RequestHeaders      map[string]string `json:"request_headers,omitempty"`
+	ExpiresAt           *time.Time        `json:"expires_at,omitempty"`
+	RequiresCredentials bool              `json:"requires_credentials,omitempty"`
 }
 
 // MarshalJSON emits only the opaque reference and the credential requirement,
@@ -180,7 +180,7 @@ func (r *ResourceResponse) ContentLength() int64 {
 		return 0
 	}
 	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
-	if err != nil {
+	if err != nil || n < 0 {
 		return 0
 	}
 	return n

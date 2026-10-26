@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/url"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -170,7 +171,7 @@ func (w blockedUsersWire) list() ([]userPreviewWire, error) {
 
 // SearchUsers searches users.
 func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "SearchUsers")
+	ctx = logging.WithOperation(ctx, "SearchUsers")
 	if err := validateSearchWord("SearchUsers", request.Word); err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -180,7 +181,7 @@ func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (s
 
 // User returns one user's detail by their stable ID.
 func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, error) {
-	ctx = pixivapi.WithOperation(ctx, "User")
+	ctx = logging.WithOperation(ctx, "User")
 	if request.UserID <= 0 {
 		return UserDetail{}, newError("User", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -188,14 +189,14 @@ func (c *Client) User(ctx context.Context, request UserRequest) (UserDetail, err
 	if err != nil {
 		return UserDetail{}, err
 	}
-	return c.mapUserDetail(detail), nil
+	return c.mapUserDetail(detail)
 }
 
 // CurrentUser returns the current authenticated user's detail. It requires a
 // verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (UserDetail, error) {
-	ctx = pixivapi.WithOperation(ctx, "CurrentUser")
+	ctx = logging.WithOperation(ctx, "CurrentUser")
 	if c.userID <= 0 {
 		return UserDetail{}, newError("CurrentUser", sdk.Unauthorized, "current user identity is unknown")
 	}
@@ -203,7 +204,7 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 	if err != nil {
 		return UserDetail{}, err
 	}
-	return c.mapUserDetail(detail), nil
+	return c.mapUserDetail(detail)
 }
 
 func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID int64, filter bool) (userDetailWire, error) {
@@ -224,12 +225,16 @@ func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID i
 	return raw, nil
 }
 
-func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
+func (c *Client) mapUserDetail(value userDetailWire) (UserDetail, error) {
+	user, err := c.mapUser(value.User.Value)
+	if err != nil {
+		return UserDetail{}, err
+	}
 	profile := value.Profile.Value
 	publicity := value.ProfilePublicity.Value
 	workspace := value.Workspace.Value
 	return UserDetail{
-		User: c.mapUser(value.User.Value),
+		User: user,
 		Profile: UserProfile{
 			Webpage:                   strValue(profile.Webpage),
 			Gender:                    profile.Gender,
@@ -276,19 +281,19 @@ func (c *Client) mapUserDetail(value userDetailWire) UserDetail {
 			Comment:           workspace.Comment,
 			WorkspaceImageURL: strValue(workspace.WorkspaceImageURL),
 		},
-	}
+	}, nil
 }
 
 // RecommendedUsers lists recommended users with sample works.
 func (c *Client) RecommendedUsers(ctx context.Context, request RecommendedUsersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "RecommendedUsers")
+	ctx = logging.WithOperation(ctx, "RecommendedUsers")
 	base := url.Values{}
 	return c.userPreviewsPage(ctx, "RecommendedUsers", pixivapi.PathUserRecommended, base, base, request.Cursor, userRecommendedContinuation, true)
 }
 
 // RelatedUsers lists users related to one user.
 func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "RelatedUsers")
+	ctx = logging.WithOperation(ctx, "RelatedUsers")
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -298,13 +303,13 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 
 // UserFollowing lists the users one user follows.
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "UserFollowing")
+	ctx = logging.WithOperation(ctx, "UserFollowing")
 	return c.userRelationshipPage(ctx, "UserFollowing", pixivapi.PathUserFollowing, request.UserID, request.Restrict, request.Cursor, userFollowingContinuation)
 }
 
 // UserFollowers lists the users following one user.
 func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "UserFollowers")
+	ctx = logging.WithOperation(ctx, "UserFollowers")
 	return c.userRelationshipPage(ctx, "UserFollowers", pixivapi.PathUserFollower, request.UserID, request.Restrict, request.Cursor, userFollowerContinuation)
 }
 
@@ -325,7 +330,7 @@ func (c *Client) userRelationshipPage(ctx context.Context, operation, path strin
 
 // UserBlockedUsers lists the users one user has blocked.
 func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "UserBlockedUsers")
+	ctx = logging.WithOperation(ctx, "UserBlockedUsers")
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -338,7 +343,7 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 // verified identity, so it fails with Unauthorized on a New client whose
 // user ID is unknown.
 func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) (sdk.Page[UserPreview], error) {
-	ctx = pixivapi.WithOperation(ctx, "MyPixivUsers")
+	ctx = logging.WithOperation(ctx, "MyPixivUsers")
 	if c.userID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.Unauthorized, "current user identity is unknown")
 	}
@@ -434,7 +439,11 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 
 // mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
-	preview := UserPreview{User: c.mapUser(value.User), Illusts: []Artwork{}, Novels: []Novel{}}
+	user, err := c.mapUser(value.User)
+	if err != nil {
+		return UserPreview{}, err
+	}
+	preview := UserPreview{User: user, Illusts: []Artwork{}, Novels: []Novel{}}
 	if !withSamples {
 		return preview, nil
 	}
