@@ -1,5 +1,5 @@
 // artwork 领域：详情、相关、排行、推荐、时间线、系列、趋势、用户作品与动图元数据。
-// 请求类型、响应结构与映射、continuation Spec 都在本文件；共用映射在 response.go，游标在 cursor.go。
+// 请求、端点专属响应与映射、continuation Spec 在本文件；跨领域 wire 与映射在 artwork_wire.go。
 
 package pixiv
 
@@ -7,12 +7,152 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
+
+// ArtworkRequest selects one artwork by its stable ID.
+type ArtworkRequest struct {
+	ArtworkID int64
+}
+
+// ArtworkPagesRequest selects the image pages of one artwork.
+type ArtworkPagesRequest struct {
+	ArtworkID int64
+}
+
+// RelatedArtworksRequest lists artworks related to one artwork.
+type RelatedArtworksRequest struct {
+	ArtworkID int64
+	Cursor    sdk.Cursor
+}
+
+// ArtworkSeriesRequest lists artworks within one illustration series.
+type ArtworkSeriesRequest struct {
+	SeriesID int64
+	Cursor   sdk.Cursor
+}
+
+// ArtworkRankingRequest lists the current artwork ranking.
+type ArtworkRankingRequest struct {
+	Mode   RankingMode
+	Date   string
+	Cursor sdk.Cursor
+}
+
+// RecommendedArtworksRequest lists recommended artworks.
+type RecommendedArtworksRequest struct {
+	Cursor sdk.Cursor
+}
+
+// FollowingArtworksRequest lists artworks by followed users.
+type FollowingArtworksRequest struct {
+	Restrict Restrict
+	Cursor   sdk.Cursor
+}
+
+// LatestArtworksRequest lists the newest artworks.
+type LatestArtworksRequest struct {
+	ContentType SearchContentType
+	Cursor      sdk.Cursor
+}
+
+// UserArtworksRequest lists one user's artworks.
+type UserArtworksRequest struct {
+	UserID int64
+	Kind   ArtworkKind
+	Cursor sdk.Cursor
+}
+
+// MyPixivArtworksRequest lists artworks from the current user's MyPixiv feed.
+type MyPixivArtworksRequest struct {
+	Cursor sdk.Cursor
+}
+
+// TrendingArtworkTagsRequest lists currently trending artwork tags.
+type TrendingArtworkTagsRequest struct{}
+
+// UgoiraMetadataRequest selects the ugoira metadata of one artwork. The
+// artwork must be a ugoira.
+type UgoiraMetadataRequest struct {
+	ArtworkID int64
+}
+
+var relatedContinuation = continuationSpec{
+	path:     pixivapi.PathIllustRelated,
+	keys:     []string{pixivapi.ParamOffset},
+	query:    []string{pixivapi.ParamIllustID},
+	prefixes: []string{"seed_illust_ids[", "viewed["},
+}
+
+var recommendedContinuation = continuationSpec{
+	path: pixivapi.PathIllustRecommended,
+	keys: []string{
+		pixivapi.ParamOffset, pixivapi.ParamMinRecentIllusts, pixivapi.ParamMaxRecommend,
+		pixivapi.ParamIncludeRanking, pixivapi.ParamIncludePrivacy,
+	},
+	allowZero: true,
+	ignored:   []string{"viewed["},
+}
+
+var rankingContinuation = continuationSpec{
+	path:  pixivapi.PathIllustRanking,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamMode, pixivapi.ParamDate},
+}
+
+var seriesContinuation = continuationSpec{
+	path:  pixivapi.PathIllustSeries,
+	keys:  []string{pixivapi.ParamOffset, pixivapi.ParamLastOrder},
+	query: []string{pixivapi.ParamIllustSeriesID},
+}
+
+var followingContinuation = continuationSpec{
+	path:  pixivapi.PathIllustFollow,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamRestrict},
+}
+
+var latestContinuation = continuationSpec{
+	path:  pixivapi.PathIllustNew,
+	keys:  []string{pixivapi.ParamMaxIllustID, pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamContentType, pixivapi.ParamFilter},
+}
+
+var userArtworksContinuation = continuationSpec{
+	path:  pixivapi.PathUserIllusts,
+	keys:  []string{pixivapi.ParamOffset},
+	query: []string{pixivapi.ParamUserID, pixivapi.ParamType},
+}
+
+var myPixivContinuation = continuationSpec{
+	path: pixivapi.PathIllustMyPixiv,
+	keys: []string{pixivapi.ParamOffset},
+}
+
+type artworkDetailWire struct {
+	Illust *artworkWire `json:"illust"`
+}
+
+type artworkSeriesWire struct {
+	SeriesDetail *struct {
+		User userWire `json:"user"`
+	} `json:"illust_series_detail"`
+	Illusts pixivapi.RequiredList[artworkWire] `json:"illusts"`
+	NextURL *string                            `json:"next_url"`
+}
+
+type trendingArtworksWire struct {
+	Tags pixivapi.RequiredList[struct {
+		Tag            string                               `json:"tag"`
+		TranslatedName string                               `json:"translated_name"`
+		Illust         pixivapi.RequiredObject[artworkWire] `json:"illust"`
+	}] `json:"trend_tags"`
+}
 
 // relatedParams 把 related 的 indexed 数组成员归一为可回放的切片键；
 // offset 形式保持原样。
@@ -93,13 +233,9 @@ func artworkKind(raw string) (ArtworkKind, string) {
 }
 
 func (c *Client) artworkPage(op string, query url.Values, key string, values []artworkWire, nextValue int64, hasNext bool) (sdk.Page[Artwork], error) {
-	items := make([]Artwork, len(values))
-	for index, value := range values {
-		mapped, err := c.mapArtwork(value)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-		items[index] = mapped
+	items, err := c.mapArtworks(values)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	next, err := c.buildCursor(op, query, key, nextValue, hasNext)
 	if err != nil {
@@ -110,13 +246,9 @@ func (c *Client) artworkPage(op string, query url.Values, key string, values []a
 
 // artworkParamsPage 以多参数 continuation 构建 cursor（recommended）。
 func (c *Client) artworkParamsPage(op string, query url.Values, values []artworkWire, nextParams url.Values, hasNext bool) (sdk.Page[Artwork], error) {
-	items := make([]Artwork, len(values))
-	for index, value := range values {
-		mapped, err := c.mapArtwork(value)
-		if err != nil {
-			return sdk.Page[Artwork]{}, err
-		}
-		items[index] = mapped
+	items, err := c.mapArtworks(values)
+	if err != nil {
+		return sdk.Page[Artwork]{}, err
 	}
 	var next sdk.Cursor
 	if hasNext {
@@ -507,32 +639,102 @@ func artworkItems(operation string, list pixivapi.RequiredList[artworkWire], req
 	return list.Items, nil
 }
 
-// ArtworkRequest selects one artwork by its stable ID.
-type singlePageWire struct {
-	OriginalImageURL string `json:"original_image_url"`
+// mapArtworkPages 只建立详情响应的页资源；列表响应不解析页。
+func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
+	if len(value.MetaPages) > 0 {
+		pages := make([]ArtworkPage, 0, len(value.MetaPages))
+		for index, page := range value.MetaPages {
+			imageURL := firstImageURL(page.ImageURLs)
+			if imageURL == "" {
+				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
+			}
+			resource, err := c.newResourceWithVariant("artwork", value.ID, index, "original", imageURL)
+			if err != nil {
+				return nil, err
+			}
+			pages = append(pages, ArtworkPage{
+				PageIndex: index,
+				Image: ImageResource{
+					Resource: resource,
+					Variant:  "original",
+					Width:    page.Width,
+					Height:   page.Height,
+				},
+				Width:  page.Width,
+				Height: page.Height,
+			})
+		}
+		return pages, nil
+	}
+	if value.MetaSinglePage.OriginalImageURL == "" {
+		return []ArtworkPage{}, nil
+	}
+	resource, err := c.newResourceWithVariant("artwork", value.ID, 0, "original", value.MetaSinglePage.OriginalImageURL)
+	if err != nil {
+		return nil, err
+	}
+	return []ArtworkPage{{
+		PageIndex: 0,
+		Image: ImageResource{
+			Resource: resource,
+			Variant:  "original",
+			Width:    value.Width,
+			Height:   value.Height,
+		},
+		Width:  value.Width,
+		Height: value.Height,
+	}}, nil
 }
 
-type metaPageWire struct {
-	Width     int           `json:"width"`
-	Height    int           `json:"height"`
-	Extension string        `json:"extension"`
-	ImageURLs imageURLsWire `json:"image_urls"`
+// mapUgoiraMetadata 校验并映射可播放动图的压缩包与帧信息。
+func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (UgoiraMetadata, error) {
+	if !value.ZipURLs.Present || !value.ZipURLs.Valid ||
+		(value.ZipURLs.Value.Medium == "" && value.ZipURLs.Value.Original == "") ||
+		!value.Frames.Present || !value.Frames.Valid || len(value.Frames.Items) == 0 {
+		return UgoiraMetadata{}, pixivapi.MalformedResponse()
+	}
+	archives := make([]UgoiraArchive, 0, 2)
+	for _, candidate := range []struct {
+		quality UgoiraQuality
+		url     string
+	}{
+		{UgoiraQualityMedium, value.ZipURLs.Value.Medium},
+		{UgoiraQualityOriginal, value.ZipURLs.Value.Original},
+	} {
+		if candidate.url == "" {
+			continue
+		}
+		resource, err := c.newResourceWithVariant("ugoira_archive", artworkID, -1, string(candidate.quality), candidate.url)
+		if err != nil {
+			return UgoiraMetadata{}, err
+		}
+		archives = append(archives, UgoiraArchive{Quality: candidate.quality, Resource: resource})
+	}
+	frames := make([]UgoiraFrame, 0, len(value.Frames.Items))
+	seenFile := map[string]bool{}
+	for _, frame := range value.Frames.Items {
+		if !safeArtworkArchiveFilename(frame.File) || seenFile[frame.File] {
+			return UgoiraMetadata{}, pixivapi.MalformedResponse()
+		}
+		seenFile[frame.File] = true
+		frames = append(frames, UgoiraFrame{Filename: frame.File, DelayMilliseconds: frame.Delay})
+	}
+	return UgoiraMetadata{ArtworkID: artworkID, Archives: archives, Frames: frames}, nil
 }
 
-func firstAvailable(urls imageURLsWire) string {
-	for _, value := range []string{urls.Original, urls.Large, urls.Medium, urls.SquareMedium} {
-		if value != "" {
-			return value
+// safeArtworkArchiveFilename 拒绝会进入归档解包或落盘边界的帧名：绝对路径、
+// 路径穿越、NUL 与空段。
+func safeArtworkArchiveFilename(name string) bool {
+	if name == "" || strings.ContainsAny(name, "\\\x00") {
+		return false
+	}
+	if path.IsAbs(name) || len(name) >= 2 && name[1] == ':' {
+		return false
+	}
+	for _, segment := range strings.Split(name, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
 		}
 	}
-	return ""
-}
-
-func cloneStringSlice(value *[]string) *[]string {
-	if value == nil {
-		return nil
-	}
-	cloned := make([]string, len(*value))
-	copy(cloned, *value)
-	return &cloned
+	return true
 }

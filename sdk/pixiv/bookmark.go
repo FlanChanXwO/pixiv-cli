@@ -34,6 +34,29 @@ type bookmarkDetailWire struct {
 	} `json:"bookmark_detail"`
 }
 
+// bookmarkDetail 将作品与小说的未收藏响应归一为空状态，只保留已登记的收藏标签。
+func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter string, id int64) (Restrict, []string, error) {
+	var raw bookmarkDetailWire
+	if err := c.app.GetJSON(ctx, path, url.Values{parameter: {itoa(id)}}, &raw); err != nil {
+		var failure pixivapi.Failure
+		if !errors.As(err, &failure) || failure.Kind != pixivapi.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
+			return "", nil, classifyAppError(err, operation)
+		}
+		return "", []string{}, nil
+	}
+	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
+		// 未收藏响应中的 tags 可能属于作品自身，保持空的收藏状态。
+		return "", []string{}, nil
+	}
+	tags := []string{}
+	for _, tag := range raw.Detail.Tags {
+		if tag.IsRegistered {
+			tags = append(tags, tag.Name)
+		}
+	}
+	return Restrict(raw.Detail.Restrict), tags, nil
+}
+
 // UserArtworkBookmarks lists one user's bookmarked artworks.
 func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBookmarksRequest) (sdk.Page[Artwork], error) {
 	ctx = pixivapi.WithOperation(ctx, "UserArtworkBookmarks")
@@ -128,28 +151,11 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 	if request.ArtworkID <= 0 {
 		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	var raw bookmarkDetailWire
-	query := url.Values{pixivapi.ParamIllustID: {itoa(request.ArtworkID)}}
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustBookmarkDetail, query, &raw); err != nil {
-		// v2 对“未收藏”作品可能返回 404；SDK 的公开契约把它统一表示为
-		// 空状态，因此只在该端点上转换 404，其他错误仍原样暴露。
-		var failure pixivapi.Failure
-		if !errors.As(err, &failure) || failure.Kind != pixivapi.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
-			return ArtworkBookmarkDetail{}, classifyAppError(err, "ArtworkBookmark")
-		}
-		return ArtworkBookmarkDetail{Tags: []string{}}, nil
+	restrict, tags, err := c.bookmarkDetail(ctx, "ArtworkBookmark", pixivapi.PathIllustBookmarkDetail, pixivapi.ParamIllustID, request.ArtworkID)
+	if err != nil {
+		return ArtworkBookmarkDetail{}, err
 	}
-	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		// 未收藏响应中的 tags 可能是作品自身标签，不是收藏标签；统一归一为空状态。
-		return ArtworkBookmarkDetail{Tags: []string{}}, nil
-	}
-	tags := []string{}
-	for _, tag := range raw.Detail.Tags {
-		if tag.IsRegistered {
-			tags = append(tags, tag.Name)
-		}
-	}
-	return ArtworkBookmarkDetail{Restrict: Restrict(raw.Detail.Restrict), Tags: tags}, nil
+	return ArtworkBookmarkDetail{Restrict: restrict, Tags: tags}, nil
 }
 
 // UserNovelBookmarks lists one user's bookmarked novels.
@@ -238,27 +244,11 @@ func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest
 	if request.NovelID <= 0 {
 		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	var raw bookmarkDetailWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelBookmarkDetail, url.Values{
-		pixivapi.ParamNovelID: {itoa(request.NovelID)},
-	}, &raw); err != nil {
-		var failure pixivapi.Failure
-		if !errors.As(err, &failure) || failure.Kind != pixivapi.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
-			return NovelBookmarkDetail{}, classifyAppError(err, "NovelBookmark")
-		}
-		return NovelBookmarkDetail{Tags: []string{}}, nil
+	restrict, tags, err := c.bookmarkDetail(ctx, "NovelBookmark", pixivapi.PathNovelBookmarkDetail, pixivapi.ParamNovelID, request.NovelID)
+	if err != nil {
+		return NovelBookmarkDetail{}, err
 	}
-	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		// 未收藏响应中的 tags 可能是小说自身标签，不是收藏标签；统一归一为空状态。
-		return NovelBookmarkDetail{Tags: []string{}}, nil
-	}
-	tags := []string{}
-	for _, tag := range raw.Detail.Tags {
-		if tag.IsRegistered {
-			tags = append(tags, tag.Name)
-		}
-	}
-	return NovelBookmarkDetail{Restrict: Restrict(raw.Detail.Restrict), Tags: tags}, nil
+	return NovelBookmarkDetail{Restrict: restrict, Tags: tags}, nil
 }
 
 // UserArtworkBookmarksRequest lists one user's bookmarked artworks.

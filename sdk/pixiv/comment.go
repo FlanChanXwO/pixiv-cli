@@ -92,12 +92,42 @@ func (c *Client) commentPage(op string, query url.Values, values []commentWire, 
 	if err != nil {
 		return CommentPage{}, err
 	}
-	page := CommentPage{Page: sdk.Page[Comment]{Items: items, Next: next}}
-	if total != nil {
-		page.Total = cloneValue(total)
+	return CommentPage{Page: sdk.Page[Comment]{Items: items, Next: next}, Total: total, AccessControl: access}, nil
+}
+
+// readComments 统一评论响应、父链、访问控制和续页的校验；端点只提供路径和查询。
+func (c *Client) readComments(ctx context.Context, operation, path string, base url.Values, cursor sdk.Cursor, spec continuationSpec) (CommentPage, error) {
+	offset, err := c.continuationPositiveOffset(operation, base, cursor)
+	if err != nil {
+		return CommentPage{}, err
 	}
-	page.AccessControl = cloneValue(access)
-	return page, nil
+	query := cloneValues(base)
+	if offset > 0 {
+		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+	}
+	var raw commentsWire
+	if err := c.app.GetJSON(ctx, path, query, &raw); err != nil {
+		return CommentPage{}, classifyAppError(err, operation)
+	}
+	if !raw.Comments.Present || !raw.Comments.Valid {
+		return CommentPage{}, newError(operation, sdk.MalformedUpstreamResponse, "")
+	}
+	for _, item := range raw.Comments.Items {
+		if !validCommentChain(item) {
+			return CommentPage{}, newError(operation, sdk.MalformedUpstreamResponse, "")
+		}
+	}
+	var access *CommentAccessControl
+	if raw.CommentAccessControl != nil {
+		access = &CommentAccessControl{NumericValue: raw.CommentAccessControl}
+	} else if raw.AccessControl != nil {
+		access = &CommentAccessControl{CanComment: raw.AccessControl.CanComment, IsLocked: raw.AccessControl.IsLocked}
+	}
+	next, hasNext, err := spec.offset(raw.NextURL)
+	if err != nil {
+		return CommentPage{}, classifyAppError(err, operation)
+	}
+	return c.commentPage(operation, base, raw.Comments.Items, next, hasNext, raw.TotalComments, access)
 }
 
 // ArtworkComments lists comments on one artwork.
@@ -107,38 +137,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	base := url.Values{pixivapi.ParamIllustID: {itoa(request.ArtworkID)}}
-	offset, err := c.continuationPositiveOffset("ArtworkComments", base, request.Cursor)
-	if err != nil {
-		return CommentPage{}, err
-	}
-	query := cloneValues(base)
-	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
-	}
-
-	var raw commentsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustComments, query, &raw); err != nil {
-		return CommentPage{}, classifyAppError(err, "ArtworkComments")
-	}
-	if !raw.Comments.Present || !raw.Comments.Valid {
-		return CommentPage{}, newError("ArtworkComments", sdk.MalformedUpstreamResponse, "")
-	}
-	for _, item := range raw.Comments.Items {
-		if !validCommentChain(item) {
-			return CommentPage{}, newError("ArtworkComments", sdk.MalformedUpstreamResponse, "")
-		}
-	}
-	var access *CommentAccessControl
-	if raw.CommentAccessControl != nil {
-		access = &CommentAccessControl{NumericValue: cloneValue(raw.CommentAccessControl)}
-	} else if raw.AccessControl != nil {
-		access = &CommentAccessControl{CanComment: raw.AccessControl.CanComment, IsLocked: raw.AccessControl.IsLocked}
-	}
-	next, hasNext, err := commentsContinuation.offset(raw.NextURL)
-	if err != nil {
-		return CommentPage{}, classifyAppError(err, "ArtworkComments")
-	}
-	return c.commentPage("ArtworkComments", base, raw.Comments.Items, next, hasNext, raw.TotalComments, access)
+	return c.readComments(ctx, "ArtworkComments", pixivapi.PathIllustComments, base, request.Cursor, commentsContinuation)
 }
 
 // NovelComments lists comments on one novel.
@@ -148,38 +147,7 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
 	base := url.Values{pixivapi.ParamNovelID: {itoa(request.NovelID)}}
-	offset, err := c.continuationPositiveOffset("NovelComments", base, request.Cursor)
-	if err != nil {
-		return CommentPage{}, err
-	}
-	query := cloneValues(base)
-	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
-	}
-
-	var raw commentsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelComments, query, &raw); err != nil {
-		return CommentPage{}, classifyAppError(err, "NovelComments")
-	}
-	if !raw.Comments.Present || !raw.Comments.Valid {
-		return CommentPage{}, newError("NovelComments", sdk.MalformedUpstreamResponse, "")
-	}
-	for _, item := range raw.Comments.Items {
-		if !validCommentChain(item) {
-			return CommentPage{}, newError("NovelComments", sdk.MalformedUpstreamResponse, "")
-		}
-	}
-	var access *CommentAccessControl
-	if raw.CommentAccessControl != nil {
-		access = &CommentAccessControl{NumericValue: cloneValue(raw.CommentAccessControl)}
-	} else if raw.AccessControl != nil {
-		access = &CommentAccessControl{CanComment: raw.AccessControl.CanComment, IsLocked: raw.AccessControl.IsLocked}
-	}
-	next, hasNext, err := novelCommentsContinuation.offset(raw.NextURL)
-	if err != nil {
-		return CommentPage{}, classifyAppError(err, "NovelComments")
-	}
-	return c.commentPage("NovelComments", base, raw.Comments.Items, next, hasNext, raw.TotalComments, access)
+	return c.readComments(ctx, "NovelComments", pixivapi.PathNovelComments, base, request.Cursor, novelCommentsContinuation)
 }
 
 // stampsWire 是 /v1/stamps 的响应；上游当前不提供续页。

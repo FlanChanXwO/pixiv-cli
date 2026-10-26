@@ -299,14 +299,7 @@ type ArtworkBookmarkDetail struct {
 // MarshalJSON keeps the established output: an absent or empty tag list is
 // null, while the in-memory Tags slice stays non-nil for callers.
 func (value ArtworkBookmarkDetail) MarshalJSON() ([]byte, error) {
-	tags := value.Tags
-	if len(tags) == 0 {
-		tags = nil
-	}
-	return json.Marshal(struct {
-		Restrict Restrict `json:"restrict"`
-		Tags     []string `json:"tags"`
-	}{value.Restrict, tags})
+	return marshalBookmarkDetail(value.Restrict, value.Tags)
 }
 
 // NovelBookmarkDetail is the current user's bookmark state for one novel.
@@ -319,14 +312,17 @@ type NovelBookmarkDetail struct {
 // MarshalJSON keeps the established output: an absent or empty tag list is
 // null, while the in-memory Tags slice stays non-nil for callers.
 func (value NovelBookmarkDetail) MarshalJSON() ([]byte, error) {
-	tags := value.Tags
+	return marshalBookmarkDetail(value.Restrict, value.Tags)
+}
+
+func marshalBookmarkDetail(restrict Restrict, tags []string) ([]byte, error) {
 	if len(tags) == 0 {
 		tags = nil
 	}
 	return json.Marshal(struct {
 		Restrict Restrict `json:"restrict"`
 		Tags     []string `json:"tags"`
-	}{value.Restrict, tags})
+	}{restrict, tags})
 }
 
 // SearchTarget selects which novel or artwork fields a search query matches.

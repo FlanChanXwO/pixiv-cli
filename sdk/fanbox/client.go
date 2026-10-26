@@ -1,5 +1,5 @@
 // FANBOX SDK 入口：客户端构造、连接选项，以及会话校验。
-// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；共用映射在 response.go。
+// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；分页和游标在 pagination.go。
 
 package fanbox
 
@@ -120,7 +120,7 @@ func (c *Client) CloseIdleConnections() {
 // returns CredentialsExpired.
 func (c *Client) ValidateSession(ctx context.Context) error {
 	ctx = fanboxapi.WithOperation(ctx, "ValidateSession")
-	if _, err := c.currentUser(ctx); err != nil {
+	if _, err := c.app.CurrentUser(ctx); err != nil {
 		return classifyError("ValidateSession", err)
 	}
 	return nil
@@ -129,13 +129,9 @@ func (c *Client) ValidateSession(ctx context.Context) error {
 // CurrentUser returns the current authenticated user's identity.
 func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (User, error) {
 	ctx = fanboxapi.WithOperation(ctx, "CurrentUser")
-	identity, err := c.currentUser(ctx)
+	identity, err := c.app.CurrentUser(ctx)
 	if err != nil {
 		return User{}, classifyError("CurrentUser", err)
 	}
-	return mapUser(identity), nil
-}
-
-func (c *Client) currentUser(ctx context.Context) (fanboxapi.Identity, error) {
-	return c.app.CurrentUser(ctx)
+	return User(identity), nil
 }

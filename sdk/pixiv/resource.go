@@ -362,7 +362,7 @@ func artworkResourceURL(illust artworkWire, page int, variant string) (string, e
 		for index, candidate := range illust.MetaPages {
 			if index == page {
 				if variant == "original" || variant == "" {
-					if value := firstArtworkImageURL(candidate.ImageURLs); value != "" {
+					if value := firstImageURL(candidate.ImageURLs); value != "" {
 						return value, nil
 					}
 					return "", errors.New("artwork page is unavailable")
@@ -397,32 +397,23 @@ func imageURLsResourceURL(urls imageURLsWire, variant string) (string, error) {
 		}
 		return "", errors.New("requested image variant is unavailable")
 	}
-	if value := firstAvailable(urls); value != "" {
+	if value := firstImageURL(urls); value != "" {
 		return value, nil
 	}
 	return "", errors.New("image URL is unavailable")
 }
 
 func artworkImageURLsResourceURL(urls imageURLsWire, variant string) (string, error) {
-	values := map[string]string{
-		"original":      urls.Original,
-		"large":         urls.Large,
-		"medium":        urls.Medium,
-		"square_medium": urls.SquareMedium,
+	raw, err := imageURLsResourceURL(urls, variant)
+	if err == nil {
+		return raw, nil
 	}
 	if variant != "" {
-		if value := values[variant]; value != "" {
-			return value, nil
-		}
 		if derived, ok := deriveImageVariantURL(urls.Original, variant); ok {
 			return derived, nil
 		}
-		return "", errors.New("requested image variant is unavailable")
 	}
-	if value := firstArtworkImageURL(urls); value != "" {
-		return value, nil
-	}
-	return "", errors.New("image URL is unavailable")
+	return "", err
 }
 
 // deriveImageVariantURL 在 upstream 没有直接提供请求质量时，按 Pixiv 的公开

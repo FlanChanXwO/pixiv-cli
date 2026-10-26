@@ -11,28 +11,22 @@ import (
 const product = "fanbox"
 
 func newError(operation string, code sdk.Reason, err error) *sdk.Error {
-	if err == nil {
-		return sdk.NewError(product, operation, code)
-	}
 	return sdk.NewError(product, operation, code, sdk.WithCause(err))
 }
 
 // classifyResponseError classifies a wire-decoding failure, preserving a reason
-// the mapping already assigned (for example a malformed publish time).
+// the mapping already assigned (for example ResourceForbidden).
 func classifyResponseError(operation string, err error) error {
 	var classified *sdk.Error
 	if errors.As(err, &classified) {
 		return err
 	}
-	return classifyError(operation, err)
+	return newError(operation, sdk.MalformedUpstreamResponse, err)
 }
 
 // classifyError maps an adapter failure to a classified error. It preserves
 // context cancellation and the distinct challenge/forbidden/expired outcomes.
 func classifyError(operation string, err error) *sdk.Error {
-	if err == nil {
-		return nil
-	}
 	switch {
 	case errors.Is(err, context.Canceled):
 		return sdk.NewError(product, operation, sdk.UpstreamError, sdk.WithCause(context.Canceled))
