@@ -67,14 +67,14 @@ type creatorIn struct {
 	CreatorID string `json:"creator_id" jsonschema:"required FANBOX creator id"`
 }
 
-// registerCreatorposts 注册 fanbox_creator_posts。
-func (t fanboxTools) registerCreatorposts(server *mcp.Server) {
-	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_posts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, InputSchema: creatorpostsInputSchema(), Description: "List posts from a FANBOX creator, optionally for one non-empty tag."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorpostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
-		return t.creatorpostsHandler(ctx, input)
+// registerCreatorPosts 注册 fanbox_creator_posts。
+func (t fanboxTools) registerCreatorPosts(server *mcp.Server) {
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_posts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, InputSchema: creatorPostsInputSchema(), Description: "List posts from a FANBOX creator, optionally for one non-empty tag."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorPostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
+		return t.creatorPostsHandler(ctx, input)
 	})
 }
 
-func (t fanboxTools) creatorpostsHandler(ctx context.Context, input creatorpostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
+func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	if err != nil {
@@ -101,14 +101,14 @@ func (t fanboxTools) creatorpostsHandler(ctx context.Context, input creatorposts
 	})
 }
 
-type creatorpostsIn struct {
+type creatorPostsIn struct {
 	Tag       *string `json:"tag,omitempty" jsonschema:"optional non-empty tag"`
 	CreatorID string  `json:"creator_id" jsonschema:"required FANBOX creator id"`
 	toolrun.ListIn
 }
 
-func creatorpostsInputSchema() *jsonschema.Schema {
-	schema, err := jsonschema.For[creatorpostsIn](nil)
+func creatorPostsInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[creatorPostsIn](nil)
 	if err != nil {
 		panic(err)
 	}
@@ -171,10 +171,10 @@ type creatorsIn struct {
 	toolrun.ListIn
 }
 
-// registerCreatortags 注册 fanbox_creator_tags。
-func (t fanboxTools) registerCreatortags(server *mcp.Server) {
-	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List tags used by a FANBOX creator."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatortagsIn) (*mcp.CallToolResult, creatortagsOut, error) {
-		return t.creatortagsHandler(ctx, input)
+// registerCreatorTags 注册 fanbox_creator_tags。
+func (t fanboxTools) registerCreatorTags(server *mcp.Server) {
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List tags used by a FANBOX creator."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorTagsIn) (*mcp.CallToolResult, creatorTagsOut, error) {
+		return t.creatorTagsHandler(ctx, input)
 	})
 }
 
@@ -183,32 +183,32 @@ type tagOut struct {
 	URL  string `json:"url,omitempty"`
 }
 
-type creatortagsOut struct {
+type creatorTagsOut struct {
 	Tags []tagOut `json:"tags"`
 }
 
-func (t fanboxTools) creatortagsHandler(ctx context.Context, input creatortagsIn) (*mcp.CallToolResult, creatortagsOut, error) {
-	creatortagsOut := creatortagsOut{Tags: []tagOut{}}
+func (t fanboxTools) creatorTagsHandler(ctx context.Context, input creatorTagsIn) (*mcp.CallToolResult, creatorTagsOut, error) {
+	creatorTagsOut := creatorTagsOut{Tags: []tagOut{}}
 	if input.CreatorID == "" {
-		return outputs.Result(true, "Error: creator_id is required"), creatortagsOut, nil
+		return outputs.Result(true, "Error: creator_id is required"), creatorTagsOut, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), creatortagsOut, nil
+		return outputs.Result(true, "Error: "+err.Error()), creatorTagsOut, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
 	tags, err := client.CreatorTags(ctx, fanbox.CreatorTagsRequest{CreatorID: input.CreatorID})
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), creatortagsOut, nil
+		return outputs.Result(true, "Error: "+err.Error()), creatorTagsOut, nil
 	}
 	for _, tag := range tags {
-		creatortagsOut.Tags = append(creatortagsOut.Tags, tagOut{Name: tag.Name, URL: tag.URL})
+		creatorTagsOut.Tags = append(creatorTagsOut.Tags, tagOut{Name: tag.Name, URL: tag.URL})
 	}
-	return outputs.Result(false, fmt.Sprintf("Retrieved %d tags.", len(creatortagsOut.Tags))), creatortagsOut, nil
+	return outputs.Result(false, fmt.Sprintf("Retrieved %d tags.", len(creatorTagsOut.Tags))), creatorTagsOut, nil
 }
 
-type creatortagsIn struct {
+type creatorTagsIn struct {
 	CreatorID string `json:"creator_id" jsonschema:"required FANBOX creator id"`
 }
 
@@ -286,22 +286,22 @@ type postIn struct {
 	PostID string `json:"post_id" jsonschema:"required FANBOX post id"`
 }
 
-// registerResolveurl 注册 fanbox_resolve_url。
-func (t fanboxTools) registerResolveurl(server *mcp.Server) {
-	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_resolve_url", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}, Description: "Resolve a FANBOX page URL into a typed reference."}, func(ctx context.Context, request *mcp.CallToolRequest, input resolveurlIn) (*mcp.CallToolResult, resolveurlOut, error) {
-		return t.resolveurlHandler(ctx, input)
+// registerResolveURL 注册 fanbox_resolve_url。
+func (t fanboxTools) registerResolveURL(server *mcp.Server) {
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_resolve_url", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}, Description: "Resolve a FANBOX page URL into a typed reference."}, func(ctx context.Context, request *mcp.CallToolRequest, input resolveURLIn) (*mcp.CallToolResult, resolveURLOut, error) {
+		return t.resolveURLHandler(ctx, input)
 	})
 }
 
-type resolveurlOut struct {
+type resolveURLOut struct {
 	Kind      string `json:"kind"`
 	CreatorID string `json:"creator_id,omitempty"`
 	PostID    string `json:"post_id,omitempty"`
 	Tag       string `json:"tag,omitempty"`
 }
 
-func (t fanboxTools) resolveurlHandler(ctx context.Context, input resolveurlIn) (*mcp.CallToolResult, resolveurlOut, error) {
-	result := resolveurlOut{}
+func (t fanboxTools) resolveURLHandler(ctx context.Context, input resolveURLIn) (*mcp.CallToolResult, resolveURLOut, error) {
+	result := resolveURLOut{}
 	if strings.TrimSpace(input.URL) == "" {
 		return outputs.Result(true, "Error: url is required"), result, nil
 	}
@@ -315,11 +315,11 @@ func (t fanboxTools) resolveurlHandler(ctx context.Context, input resolveurlIn) 
 	if err != nil {
 		return outputs.Result(true, "Error: "+err.Error()), result, nil
 	}
-	result = resolveurlOut{Kind: string(ref.Kind), CreatorID: ref.CreatorID, PostID: ref.PostID, Tag: ref.Tag}
+	result = resolveURLOut{Kind: string(ref.Kind), CreatorID: ref.CreatorID, PostID: ref.PostID, Tag: ref.Tag}
 	return outputs.Result(false, fmt.Sprintf("Resolved URL as %s.", result.Kind)), result, nil
 }
 
-type resolveurlIn struct {
+type resolveURLIn struct {
 	URL string `json:"url" jsonschema:"required FANBOX page URL"`
 }
 

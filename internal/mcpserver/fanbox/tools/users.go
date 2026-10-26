@@ -12,16 +12,16 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerCurrentuser 注册 fanbox_current_user。
-func (t fanboxTools) registerCurrentuser(server *mcp.Server) {
-	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_current_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Show the current authenticated FANBOX user."}, func(ctx context.Context, request *mcp.CallToolRequest, input currentuserIn) (*mcp.CallToolResult, currentuserOut, error) {
-		return t.currentuserHandler(ctx, input)
+// registerCurrentUser 注册 fanbox_current_user。
+func (t fanboxTools) registerCurrentUser(server *mcp.Server) {
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_current_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Show the current authenticated FANBOX user."}, func(ctx context.Context, request *mcp.CallToolRequest, input currentUserIn) (*mcp.CallToolResult, currentUserOut, error) {
+		return t.currentUserHandler(ctx, input)
 	})
 }
 
-type currentuserIn struct{}
+type currentUserIn struct{}
 
-type currentuserOut struct {
+type currentUserOut struct {
 	UserID        int64  `json:"user_id"`
 	DisplayName   string `json:"display_name"`
 	CreatorID     string `json:"creator_id"`
@@ -29,8 +29,8 @@ type currentuserOut struct {
 	IsCreator     bool   `json:"is_creator"`
 }
 
-func (t fanboxTools) currentuserHandler(ctx context.Context, _ currentuserIn) (*mcp.CallToolResult, currentuserOut, error) {
-	empty := currentuserOut{}
+func (t fanboxTools) currentUserHandler(ctx context.Context, _ currentUserIn) (*mcp.CallToolResult, currentUserOut, error) {
+	empty := currentUserOut{}
 	lease, err := t.openClient(ctx)
 	if err != nil {
 		return outputs.Result(true, "Error: "+err.Error()), empty, nil
@@ -41,7 +41,7 @@ func (t fanboxTools) currentuserHandler(ctx context.Context, _ currentuserIn) (*
 	if err != nil {
 		return outputs.Result(true, "Error: "+err.Error()), empty, nil
 	}
-	out := currentuserOut{
+	out := currentUserOut{
 		UserID:        user.UserID,
 		DisplayName:   user.DisplayName,
 		CreatorID:     user.CreatorID,

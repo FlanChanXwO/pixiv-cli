@@ -38,13 +38,13 @@ func (t fanboxTools) openClient(ctx context.Context) (*lifecycle.Lease[*fanbox.C
 // Register adds every FANBOX tool.
 func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	t := fanboxTools{open: ports.OpenLease, account: account, calls: toolrun.NewScope(ports.Logger)}
-	t.registerCurrentuser(server)
+	t.registerCurrentUser(server)
 	t.registerCreator(server)
 	t.registerCreators(server)
-	t.registerCreatortags(server)
-	t.registerCreatorposts(server)
+	t.registerCreatorTags(server)
+	t.registerCreatorPosts(server)
 	t.registerPost(server)
 	t.registerFeed(server)
-	t.registerResolveurl(server)
-	t.registerOpenresource(server)
+	t.registerResolveURL(server)
+	t.registerOpenResource(server)
 }

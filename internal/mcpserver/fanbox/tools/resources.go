@@ -22,25 +22,25 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerOpenresource 注册 fanbox_open_resource。
-func (t fanboxTools) registerOpenresource(server *mcp.Server) {
+// registerOpenResource 注册 fanbox_open_resource。
+func (t fanboxTools) registerOpenResource(server *mcp.Server) {
 	toolrun.ProtectInput(server, "fanbox_open_resource", func() *mcp.CallToolResult {
-		out := openresourceOut{Error: "invalid_request"}
+		out := openResourceOut{Error: "invalid_request"}
 		result := outputs.Result(true, out.Error)
 		result.StructuredContent = out
 		return result
 	})
-	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input openresourceIn) (*mcp.CallToolResult, openresourceOut, error) {
-		return t.openresourceHandler(ctx, input)
+	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_open_resource", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read a FANBOX resource by opaque ref. GET returns real image or embedded binary content and safe metadata; HEAD returns metadata only. Does not save files on the server."}, func(ctx context.Context, request *mcp.CallToolRequest, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
+		return t.openResourceHandler(ctx, input)
 	})
 }
 
-type openresourceIn struct {
+type openResourceIn struct {
 	Ref    string `json:"ref" jsonschema:"opaque FANBOX media resource reference"`
 	Method string `json:"method,omitempty" jsonschema:"GET or HEAD; default GET"`
 }
 
-type openresourceOut struct {
+type openResourceOut struct {
 	Filename      string `json:"filename,omitempty"`
 	Ref           string `json:"ref"`
 	StatusCode    int    `json:"status_code"`
@@ -53,8 +53,8 @@ type openresourceOut struct {
 	Error         string `json:"error,omitempty"`
 }
 
-func (t fanboxTools) openresourceHandler(ctx context.Context, input openresourceIn) (*mcp.CallToolResult, openresourceOut, error) {
-	out := openresourceOut{}
+func (t fanboxTools) openResourceHandler(ctx context.Context, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
+	out := openResourceOut{}
 	ref, err := sdk.ParseResourceRef(input.Ref)
 	if err != nil {
 		out.Error = "invalid_ref"
