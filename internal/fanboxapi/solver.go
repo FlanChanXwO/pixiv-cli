@@ -190,9 +190,6 @@ func (s *Client) solveFlareSolverr(ctx context.Context) (solverState, error) {
 		}
 		return solverState{}, ErrSolverUnavailable
 	}
-	if response == nil || response.Body == nil {
-		return solverState{}, ErrMalformedSolverResponse
-	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return solverState{}, ErrSolverFailed
