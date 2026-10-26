@@ -11,6 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -30,7 +31,7 @@ func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 type blockedUsersIn struct {
 	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -38,7 +39,7 @@ func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -82,11 +83,11 @@ type mypixivIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -204,14 +205,14 @@ type userRelationsIn struct {
 	UserID     int64               `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict   string              `json:"restrict,omitempty" jsonschema:"public or private"`
 	UserFilter *filters.UserFilter `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.Relation == "followers" && in.UserFilter != nil {
 		return outputs.Error(errors.New("user_filter is only supported for following and related users"))
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -228,7 +229,7 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 
 // listUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
 // 输出统一 records envelope；调用方负责解析账号与分页计划。
-func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolhost.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
+func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolrun.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
 		var err error

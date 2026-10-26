@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -33,7 +34,7 @@ func Result(out Records) *mcp.CallToolResult {
 
 // Error 构造实体列表的 MCP error 摘要。
 func Error(err error) (*mcp.CallToolResult, Records, error) {
-	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
@@ -80,7 +81,7 @@ func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 }
 
 // RecommendedPage 把单条推荐流的分页转为指针输出。
-func RecommendedPage(plan toolhost.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
+func RecommendedPage(plan toolrun.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
 	value := toolhost.ListPagination(plan, limit, returned, more)
 	return &value
 }
@@ -120,7 +121,7 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 构造评论的 MCP error 摘要。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
 	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
@@ -171,7 +172,7 @@ func BookmarkTagsResult(out BookmarkTags) *mcp.CallToolResult {
 
 // BookmarkTagsError 构造 bookmark tags 的 MCP error 摘要。
 func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
-	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
@@ -196,7 +197,7 @@ func BookmarkTagsAllResult(out BookmarkTagsAll) *mcp.CallToolResult {
 
 // BookmarkTagsAllError 构造 bookmark_tags_all 的 MCP error 摘要。
 func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
-	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{Page: 1}}
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 

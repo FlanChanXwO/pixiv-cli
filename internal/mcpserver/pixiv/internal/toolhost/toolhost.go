@@ -3,19 +3,16 @@
 package toolhost
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"log/slog"
-	"strconv"
 	"sync"
-	"sync/atomic"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -72,15 +69,14 @@ type ReverseSearchPorts struct {
 
 // App 是 Pixiv MCP 应用。
 type App struct {
-	sdk            SDKPorts
-	sdkAccount     Account
-	logger         *slog.Logger
-	requestCounter atomic.Uint64
+	sdk        SDKPorts
+	sdkAccount Account
+	calls      *toolrun.Scope
 }
 
 // NewApp 构造独立的 Pixiv SDK 与账号运行时。
 func NewApp(ports SDKPorts, account Account) *App {
-	return &App{sdk: ports, sdkAccount: account, logger: cmp.Or(ports.Logger, slog.New(slog.DiscardHandler))}
+	return &App{sdk: ports, sdkAccount: account, calls: toolrun.NewScope(ports.Logger)}
 }
 
 // SDKPorts 返回注入的 SDK 端口。
@@ -121,15 +117,9 @@ func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler 
 	if app.sdk.Media != nil {
 		gallery.Attach(tool, app.sdk.Media)
 	}
-	mcp.AddTool(server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
-		requestID := app.requestCounter.Add(1)
-		ctx = logging.WithCall(ctx, app.logger, tool.Name, strconv.FormatUint(requestID, 10))
+	toolrun.AddTool(app.calls, server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		ctx = context.WithValue(ctx, accountSnapshotKey{}, &accountSnapshot{app: app})
-		result, output, err := handler(ctx, request, input)
-		if err != nil || (result != nil && result.IsError) {
-			app.logger.ErrorContext(ctx, "Tool failed", slog.String(logging.AttrReason, "tool failed"))
-		}
-		return result, output, err
+		return handler(ctx, request, input)
 	})
 }
 

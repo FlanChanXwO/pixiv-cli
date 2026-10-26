@@ -11,6 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -33,11 +34,11 @@ type userArtworksIn struct {
 	UserID       int64                 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Type         string                `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -82,11 +83,11 @@ type userBookmarksIn struct {
 	Restrict     string                `json:"restrict,omitempty" jsonschema:"public or private"`
 	Tag          string                `json:"tag,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -199,11 +200,11 @@ func (t pixivTools) registerUserNovels(server *mcp.Server) {
 type userNovelsIn struct {
 	UserID      int64                `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	NovelFilter *filters.NovelFilter `json:"novel_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}

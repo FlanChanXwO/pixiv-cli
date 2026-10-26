@@ -10,6 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -270,7 +271,7 @@ func (t pixivTools) registerComments(server *mcp.Server) {
 type commentsIn struct {
 	Kind string `json:"kind"`
 	ID   int64  `json:"id" jsonschema:"positive artwork or novel ID"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
@@ -278,7 +279,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 		result, out, _ := outputs.CommentsError(errors.New("id must be a positive integer"))
 		return result, out, nil
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		result, out, _ := outputs.CommentsError(err)
 		return result, out, nil

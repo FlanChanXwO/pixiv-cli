@@ -12,6 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
@@ -263,7 +264,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 	if err := validateSearchIllustInput(in); err != nil {
 		return outputs.Error(err)
 	}
-	plan, err := toolhost.ParseListPlan(toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit})
+	plan, err := toolrun.ParseListPlan(toolrun.ListIn{Page: in.Page, Limit: in.Limit})
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -321,7 +322,7 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		}
 		return outputs.Result(out), out, nil
 	}
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "search_illust", bindingInput, in.Cursor, toolhost.PageLimitIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "search_illust", bindingInput, in.Cursor, toolrun.ListIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		query.Cursor = cursor
 		result, err := client.SearchArtworks(ctx, query)
 		if err != nil {
@@ -394,7 +395,7 @@ type searchNovelIn struct {
 	Sort         string               `json:"sort,omitempty"`
 	Duration     string               `json:"duration,omitempty"`
 	NovelFilter  *filters.NovelFilter `json:"novel_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 // searchNovelInputSchema 只声明 App API 的稳定检索语义与已接通的本地筛选。
@@ -426,7 +427,7 @@ func (t pixivTools) searchNovelHandler(ctx context.Context, in searchNovelIn) (*
 	if in.Sort == "" {
 		in.Sort = string(pixiv.SortModeDateDesc)
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -467,7 +468,7 @@ func (t pixivTools) registerSearchUser(server *mcp.Server) {
 type searchUserIn struct {
 	Word       string              `json:"word"`
 	UserFilter *filters.UserFilter `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) searchUserHandler(ctx context.Context, in searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -475,7 +476,7 @@ func (t pixivTools) searchUserHandler(ctx context.Context, in searchUserIn) (*mc
 		return outputs.Error(sdk.NewError("pixiv", "SearchUsers", sdk.InvalidArgument,
 			sdk.WithDetail("search word is required")))
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}

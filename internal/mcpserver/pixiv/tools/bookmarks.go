@@ -10,6 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -98,7 +99,7 @@ type bookmarkListAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
 	Tag      string `json:"tag,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 type bookmarkCursor struct {
@@ -121,7 +122,7 @@ type bookmarkItem struct {
 }
 
 func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListAllIn) (*mcp.CallToolResult, outputs.Records, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -275,7 +276,7 @@ type bookmarkTagsIn struct {
 	Kind     string `json:"kind,omitempty"`
 	UserID   int64  `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
 	Restrict string `json:"restrict,omitempty" jsonschema:"public or private"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
@@ -286,7 +287,7 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
@@ -347,7 +348,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 type bookmarkTagsAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 type bookmarkTagsCursor struct {
@@ -415,7 +416,7 @@ func bookmarkTagsCheckpoint(cursor bookmarkTagsCursor, position int) (bookmarkTa
 }
 
 func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsAllIn) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}

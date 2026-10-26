@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
@@ -68,7 +69,9 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 	}
 	client, err := fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: "session-canary"}, fanboxsdk.Options{HTTPClient: httpClient})
 	require.NoError(t, err)
-	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{Open: func(context.Context, fanbox.Account) (*fanboxsdk.Client, error) { return client, nil }}, nil)
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{OpenLease: func(context.Context, fanbox.Account) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+		return lifecycle.NewLease(client, func() error { client.CloseIdleConnections(); return nil }), nil
+	}}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
 	require.NoError(t, err)

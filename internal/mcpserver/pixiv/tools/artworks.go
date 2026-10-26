@@ -14,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -83,7 +84,7 @@ type rankingIn struct {
 	Mode         string                `json:"mode,omitempty"`
 	Date         string                `json:"date,omitempty"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 var rankingModes = []string{
@@ -129,7 +130,7 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -157,7 +158,7 @@ func (t pixivTools) registerIllustRecommended(server *mcp.Server) {
 type recommendedArtworkIn struct {
 	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func recommendedArtworkInputSchema() map[string]any {
@@ -180,7 +181,7 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.PageLimitIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -209,7 +210,7 @@ type relatedIn struct {
 	Cursor       *string               `json:"cursor,omitempty" jsonschema:"opaque default-batch continuation; repeat original arguments and omit page and limit"`
 	IllustID     int64                 `json:"illust_id"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -229,7 +230,7 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.PageLimitIn, fetch)
+	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.ListIn, fetch)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -250,14 +251,14 @@ func (t pixivTools) registerIllustSeries(server *mcp.Server) {
 
 type illustSeriesIn struct {
 	SeriesID int64 `json:"series_id" jsonschema:"positive Pixiv series ID"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if in.SeriesID <= 0 {
 		return outputs.Error(errors.New("series_id must be a positive integer"))
 	}
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -292,7 +293,7 @@ type recommendedIn struct {
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
-	toolhost.PageLimitIn
+	toolrun.ListIn
 }
 
 func recommendedInputSchema() map[string]any {
@@ -397,21 +398,21 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	return outputs.RecordResult(out.Records, false, ""), out, nil
 }
 
-func parseRecommendedRequest(in recommendedIn) (toolhost.ListPlan, error) {
-	plan, err := toolhost.ParseListPlan(in.PageLimitIn)
+func parseRecommendedRequest(in recommendedIn) (toolrun.ListPlan, error) {
+	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err == nil && in.Kind != "all" && in.Kind != "illust" && in.Kind != "manga" && in.Kind != "novel" && in.Kind != "user" {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
 	if err != nil {
-		return toolhost.ListPlan{}, err
+		return toolrun.ListPlan{}, err
 	}
 	if err := validateKindFilters(in); err != nil {
-		return toolhost.ListPlan{}, err
+		return toolrun.ListPlan{}, err
 	}
 	return plan, nil
 }
 
-func recommendedInitialCursor(in recommendedIn, plan toolhost.ListPlan) (sdk.Cursor, error) {
+func recommendedInitialCursor(in recommendedIn, plan toolrun.ListPlan) (sdk.Cursor, error) {
 	if in.Cursor == nil {
 		return sdk.Cursor{}, nil
 	}
@@ -425,7 +426,7 @@ func recommendedInitialCursor(in recommendedIn, plan toolhost.ListPlan) (sdk.Cur
 	return binding.Decode(in.Cursor)
 }
 
-func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	var visualItems []pixiv.Artwork
 	var visualMore bool
 	var visualNext sdk.Cursor
@@ -458,7 +459,7 @@ func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv
 	return nil
 }
 
-func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolhost.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
+func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolrun.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
 	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(kind, in.IllustFilter))
 	if err != nil {
 		return err
@@ -482,7 +483,7 @@ func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, pl
 	return nil
 }
 
-func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != "all" && in.Kind != "novel" {
 		return nil
 	}
@@ -510,7 +511,7 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 	return err
 }
 
-func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolhost.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != "all" && in.Kind != "user" {
 		return nil
 	}

@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -22,7 +22,7 @@ import (
 func (t pixivTools) registerReverseSearch(server *mcp.Server) {
 	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。
 	// handler 总是返回完整 envelope，不能覆盖其 provider partial/error 结果。
-	outputs.ProtectInput(server, "pixiv_reverse_search", func() *mcp.CallToolResult {
+	toolrun.ProtectInput(server, "pixiv_reverse_search", func() *mcp.CallToolResult {
 		out := emptyReverseSearchOutput()
 		safe := reverseSearchError(reversesearch.CodeInvalidRequest)
 		safe.StructuredContent = out
