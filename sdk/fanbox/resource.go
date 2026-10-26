@@ -15,9 +15,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// fanboxReferer is the non-secret referer FANBOX media requests carry.
-const fanboxReferer = fanboxapi.Referer
-
 // resourceRefPayload is the opaque identity payload embedded in a FANBOX
 // ResourceRef. It carries only stable identity (kind, owning creator or post,
 // and attachment id) so locator rotation never changes the cache key and a
@@ -45,9 +42,6 @@ func (c *Client) validateResourceURL(rawURL string) error {
 // envelope encodes only stable identity. RequiresCredentials reflects whether
 // the locator lives on the credentialed downloads host.
 func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename string) (sdk.Resource, error) {
-	if rawURL == "" {
-		return sdk.Resource{}, nil
-	}
 	if err := c.validateResourceURL(rawURL); err != nil {
 		return sdk.Resource{}, err
 	}
@@ -63,7 +57,7 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 	return sdk.Resource{
 		Ref:                 ref,
 		URL:                 rawURL,
-		RequestHeaders:      map[string]string{"Referer": fanboxReferer},
+		RequestHeaders:      map[string]string{"Referer": fanboxapi.Referer},
 		RequiresCredentials: fanboxapi.RequiresCredentials(rawURL),
 	}, nil
 }
@@ -81,9 +75,6 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	locator, err := c.resolveResource(ctx, request.Ref, "OpenResource")
 	if err != nil {
 		return nil, err
-	}
-	if err := c.validateResourceURL(locator.URL); err != nil {
-		return nil, newError("OpenResource", sdk.ResourceForbidden, errors.New("resource URL is not allowed"))
 	}
 	response, err := c.app.OpenMedia(ctx, locator.URL, fanboxapi.MediaRequest{
 		Method:          string(request.Method),
@@ -116,9 +107,17 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.UpstreamError, errors.New("resource returned a non-success status"))
 	}
-	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{src: response.Body, progress: options.Progress})
+	size, err := atomicfile.AtomicWrite(ctx, options.Path, &progressReader{ctx: ctx, src: response.Body, progress: options.Progress})
 	if err != nil {
-		return sdk.SavedResource{}, newError("SaveResource", sdk.LocalStateError, errors.New("cannot write resource"))
+		var cause error
+		switch {
+		case errors.Is(err, context.Canceled):
+			cause = context.Canceled
+		case errors.Is(err, context.DeadlineExceeded):
+			cause = context.DeadlineExceeded
+		}
+		return sdk.SavedResource{}, sdk.NewError(product, "SaveResource", sdk.LocalStateError,
+			sdk.WithDetail("cannot write resource"), sdk.WithCause(cause))
 	}
 	return sdk.SavedResource{Path: options.Path, Size: size}, nil
 }
@@ -149,7 +148,7 @@ func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, opera
 	if err != nil {
 		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
 	}
-	if locator, ok := c.app.CachedLocator(ref.String()); ok && locator.URL != "" {
+	if locator, ok := c.app.CachedLocator(ref.String()); ok {
 		return locator, nil
 	}
 	var locator fanboxapi.Locator
@@ -180,9 +179,9 @@ func (c *Client) resolveCreatorAssetURL(ctx context.Context, rp resourceRefPaylo
 	if rp.Creator == "" {
 		return "", errors.New("creator resource reference is missing creator id")
 	}
-	profile, err := c.creatorProfile(ctx, rp.Creator)
+	profile, err := c.creatorProfile(ctx, "resource", rp.Creator)
 	if err != nil {
-		return "", classifyError("resource", err)
+		return "", err
 	}
 	switch rp.Kind {
 	case "creator_icon":
@@ -218,13 +217,13 @@ func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (f
 	}
 	if rp.Kind == "post_image" {
 		for _, image := range images {
-			if image.ID == rp.Asset && image.OriginalURL != "" {
+			if image.ID == rp.Asset {
 				return fanboxapi.Locator{URL: image.OriginalURL}, nil
 			}
 		}
 	} else if rp.Kind == "post_file" {
 		for _, file := range files {
-			if file.ID == rp.Asset && file.URL != "" {
+			if file.ID == rp.Asset {
 				return fanboxapi.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
 			}
 		}
@@ -241,6 +240,7 @@ func attachmentFilename(name, extension string) string {
 }
 
 type progressReader struct {
+	ctx      context.Context
 	src      io.Reader
 	progress func(sdk.SaveProgress)
 	done     int64
@@ -253,6 +253,11 @@ func (r *progressReader) Read(p []byte) (int, error) {
 		if r.progress != nil {
 			r.progress(sdk.SaveProgress{Done: r.done})
 		}
+	}
+	// A final Read can deliver data and EOF together; cancellation must reach
+	// the atomic writer before it commits those bytes to the destination.
+	if (err == nil || err == io.EOF) && r.ctx.Err() != nil {
+		err = r.ctx.Err()
 	}
 	return n, err
 }

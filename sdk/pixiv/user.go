@@ -434,8 +434,7 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 
 // mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
-	// 非样例列表保持零值切片（JSON null），与合并前的公开输出一致。
-	preview := UserPreview{User: c.mapUser(value.User)}
+	preview := UserPreview{User: c.mapUser(value.User), Illusts: []Artwork{}, Novels: []Novel{}}
 	if !withSamples {
 		return preview, nil
 	}

@@ -13,7 +13,7 @@ import (
 // ReferenceKind identifies the FANBOX resource a resolved URL points to.
 type ReferenceKind string
 
-// ReferenceKind values define the supported ReferenceKind filesystem.
+// ReferenceKind values define the supported references.
 const (
 	ReferenceKindCreator      ReferenceKind = "creator"
 	ReferenceKindCreatorPosts ReferenceKind = "creator_posts"
@@ -36,8 +36,8 @@ type ResolveURLRequest struct {
 }
 
 // ResolveURL parses a FANBOX page URL into a typed Reference. It performs no
-// network I/O and accepts HTTPS URLs on fanbox.cc hosts or the legacy Pixiv
-// FANBOX host. Unknown paths and ambiguous inputs return InvalidArgument.
+// network I/O and accepts HTTPS URLs on fanbox.cc and its subdomains.
+// Unknown paths and ambiguous inputs return InvalidArgument.
 func (c *Client) ResolveURL(ctx context.Context, request ResolveURLRequest) (Reference, error) {
 	ctx = fanboxapi.WithOperation(ctx, "ResolveURL")
 	parsed, err := url.Parse(strings.TrimSpace(request.RawURL))

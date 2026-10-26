@@ -4,6 +4,7 @@
 package pixiv
 
 import (
+	"cmp"
 	"errors"
 	"time"
 )
@@ -31,6 +32,10 @@ type imageURLsWire struct {
 	Medium       string `json:"medium"`
 	Large        string `json:"large"`
 	Original     string `json:"original"`
+}
+
+func firstImageURL(value imageURLsWire) string {
+	return cmp.Or(value.Original, value.Large, value.Medium, value.SquareMedium)
 }
 
 // mapUser 是所有 Pixiv 响应的唯一 user 映射。
@@ -70,12 +75,3 @@ func parseUTCTime(value string) (time.Time, error) {
 }
 
 var errNoPublishTime = errors.New("no publish time")
-
-// cloneValue 返回指针的副本，避免调用方与上游结构共享可变值。
-func cloneValue[T any](value *T) *T {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
-}

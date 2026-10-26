@@ -1,3 +1,5 @@
+// FANBOX 分页读取与游标绑定：共用首尾页请求以及会话、参数作用域校验。
+
 package fanbox
 
 import (
@@ -64,6 +66,9 @@ func (c *Client) buildCursor(ctx context.Context, op string, baseQuery url.Value
 	if nextURL == "" {
 		return sdk.Cursor{}, nil
 	}
+	if err := fanboxapi.ValidateAPIURL(nextURL); err != nil {
+		return sdk.Cursor{}, newError(op, sdk.MalformedUpstreamResponse, errors.New("FANBOX continuation URL is invalid"))
+	}
 	payload, err := json.Marshal(continuationEnvelope{NextURL: nextURL})
 	if err != nil {
 		return sdk.Cursor{}, newError(op, sdk.UpstreamError, err)
@@ -109,6 +114,9 @@ func (c *Client) continuationURL(ctx context.Context, op string, baseQuery url.V
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.NextURL == "" {
 		return "", newError(op, sdk.InvalidCursor, errors.New("cursor payload is malformed"))
 	}
+	if err := fanboxapi.ValidateAPIURL(envelope.NextURL); err != nil {
+		return "", newError(op, sdk.InvalidCursor, errors.New("cursor continuation URL is invalid"))
+	}
 	return envelope.NextURL, nil
 }
 
@@ -124,4 +132,31 @@ func (c *Client) verifiedUserID(ctx context.Context) (int64, error) {
 		return 0, classifyError("CurrentUser", err)
 	}
 	return userID, nil
+}
+
+// getListBody fetches one list page body, reusing a server continuation when
+// the caller supplied one and sending query on the first page otherwise.
+func (c *Client) getListBody(ctx context.Context, path string, query url.Values, nextURL string, body *json.RawMessage, operation string) error {
+	var response struct {
+		Body json.RawMessage `json:"body"`
+	}
+	var err error
+	if nextURL != "" {
+		err = c.app.GetJSONURL(ctx, nextURL, &response)
+	} else {
+		err = c.app.GetJSON(ctx, path, query, &response)
+	}
+	if err != nil {
+		return classifyError(operation, err)
+	}
+	*body = response.Body
+	return nil
+}
+
+// firstContinuation prefers the server pageUrls entry over nextUrl.
+func firstContinuation(pageURLs []string, nextURL string) string {
+	if len(pageURLs) > 0 {
+		return pageURLs[0]
+	}
+	return nextURL
 }
