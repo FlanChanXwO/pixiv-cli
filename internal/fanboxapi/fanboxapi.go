@@ -84,7 +84,7 @@ type Options struct {
 }
 
 // New constructs one transport runtime without performing network I/O.
-func New(cookieHeader string, options Options) (*Client, error) {
+func New(sessionValue string, options Options) (*Client, error) {
 	agent, err := validateUserAgent(options.UserAgent)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func New(cookieHeader string, options Options) (*Client, error) {
 	} else if client.Transport == nil {
 		return nil, errors.New("FANBOX injected HTTP client requires an explicit transport")
 	}
-	cookie, err := normalizeCookieHeader(cookieHeader)
+	cookie, err := sessionCookie(sessionValue)
 	if err != nil {
 		return nil, err
 	}

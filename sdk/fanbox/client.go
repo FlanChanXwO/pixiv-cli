@@ -84,8 +84,7 @@ func Open(credentials SessionCredentials) (*Client, error) {
 
 // OpenWith is Open with explicit connection-level Options.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
-	cookieHeader := "FANBOXSESSID=" + credentials.FANBOXSESSID
-	app, err := fanboxapi.New(cookieHeader, fanboxapi.Options{
+	app, err := fanboxapi.New(credentials.FANBOXSESSID, fanboxapi.Options{
 		HTTPClient:   options.HTTPClient,
 		ProxyURL:     options.ProxyURL,
 		UserAgent:    options.UserAgent,

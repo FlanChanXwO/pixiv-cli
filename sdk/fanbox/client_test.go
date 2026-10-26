@@ -88,6 +88,9 @@ func TestSessionCredentialsStayPrivate(t *testing.T) {
 	}
 	require.Contains(t, output.String(), "credentials")
 	require.NotContains(t, output.String(), credentials.FANBOXSESSID)
+	_, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: "session-canary; extra=injected-canary"})
+	require.Error(t, err)
+	require.NotContains(t, fmt.Sprint(err), "injected-canary")
 }
 
 func TestResponsesReportMalformedData(t *testing.T) {
