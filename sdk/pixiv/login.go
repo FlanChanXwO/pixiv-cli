@@ -1,3 +1,5 @@
+// One-shot PKCE login state and SDK credentials; OAuth owns the exchange transport.
+
 package pixiv
 
 import (
@@ -32,8 +34,7 @@ type LoginSession struct {
 }
 
 type loginSessionState struct {
-	httpClient       *http.Client
-	selfHTTP         bool
+	exchange         *oauth.Client
 	authorizationURL string
 	verifier         string
 	state            string
@@ -52,15 +53,14 @@ func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	if err != nil {
 		return nil, newError("BeginLogin", sdk.UpstreamUnavailable, "cannot create oauth login session")
 	}
-	httpClient, selfHTTP := loginHTTPClient(options.HTTPClient)
+	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, 0, nil)
 	values := url.Values{}
 	values.Set("code_challenge", challenge)
 	values.Set("code_challenge_method", "S256")
 	values.Set("client", "pixiv-android")
 	values.Set("state", state)
 	return &LoginSession{state: &loginSessionState{
-		httpClient:       httpClient,
-		selfHTTP:         selfHTTP,
+		exchange:         oauth.New("", oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP}),
 		authorizationURL: strings.TrimRight(pixivapi.AppAPIBase, "/") + pixivapi.AppLogin + "?" + values.Encode(),
 		verifier:         verifier,
 		state:            state,
@@ -110,8 +110,7 @@ func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Creden
 	if !s.state.used.CompareAndSwap(false, true) {
 		return Credentials{}, newError("Complete", sdk.InvalidArgument, "login session was already used")
 	}
-	oauthClient := oauth.New("", oauth.Config{HTTPClient: s.state.httpClient})
-	token, err := oauthClient.ExchangeAuthorizationCode(ctx, code, s.state.verifier)
+	token, err := s.state.exchange.ExchangeAuthorizationCode(ctx, code, s.state.verifier)
 	if err != nil {
 		return Credentials{}, classifyOAuthError(err, "Complete")
 	}
@@ -130,20 +129,10 @@ func (s *LoginSession) Complete(ctx context.Context, callbackURL string) (Creden
 // CloseIdleConnections releases idle connections of a session-owned HTTP
 // client. It is a no-op when a caller-provided client was injected.
 func (s *LoginSession) CloseIdleConnections() {
-	if s == nil || s.state == nil || !s.state.selfHTTP {
+	if s == nil || s.state == nil {
 		return
 	}
-	if transport, ok := s.state.httpClient.Transport.(*http.Transport); ok {
-		transport.CloseIdleConnections()
-	}
-}
-
-func loginHTTPClient(injected *http.Client) (*http.Client, bool) {
-	if injected != nil {
-		return injected, false
-	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	return &http.Client{Transport: transport}, true
+	s.state.exchange.CloseIdleConnections()
 }
 
 // String, GoString, and Format never expose the verifier, state, code, or
