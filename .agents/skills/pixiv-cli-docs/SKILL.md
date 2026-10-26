@@ -20,7 +20,7 @@ Read the changed implementation or authoritative configuration first. Use the ex
 | Safe use of the installed product | `skills/pixiv-cli/` |
 | Versioned release notes | `changelog/vX.Y.Z/`, only during authorized release preparation |
 
-Keep agent contracts, both kinds of skill, their references, and metadata English. Public locale pages retain their language; update affected English and Simplified Chinese contracts together without requiring literal translation. Source comments are not a reason to translate the whole codebase.
+Keep agent contracts, both kinds of skill, their references, and metadata English. Public locale pages retain their language; update affected English and Simplified Chinese contracts together without requiring literal translation. Source-comment language follows [the commenting rules](../pixiv-cli-code-commenting/SKILL.md), independent of these English files.
 
 ## Write only supported claims
 

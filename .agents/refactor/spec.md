@@ -48,7 +48,7 @@
 | D11 | 每个横切关注点只有一个归属层和一种传入方式；业务对象可以持有基础设施，但只能以“一个已封装好的依赖”形式持有，不自己实现横切逻辑（细则见 3.3） |
 | D12 | 测试只保留长期契约，结构只为生产需要而存在；判定标准与典型例子见 3.4，执行者按标准处理全部文件，不依赖穷举清单 |
 | D13 | 不做内部兼容：旧入口、旧名别名、source-compatible 包装、为旧版本自身组件保留的分支一律删除，SDK 不加 `Deprecated` 过渡。只保留两类：上游格式本身的差异，以及让用户本机已有的数据库和配置文件仍能打开所需的读取逻辑（细则见 3.4.2 的 P-l） |
-| D14 | 每个代码文件顶部用 1–3 行注释说明该文件的职责（细则见 3.5） |
+| D14 | 每个包只在一个文件里写标准库风格的包文档，其他文件开头不写注释；注释在 `sdk/` 用英文、其余用简体中文（细则见 3.5、3.5.1） |
 
 ### 3.1 声明放置规则（D9）
 
@@ -86,6 +86,13 @@
 | 包名已经给出的上下文不再重复 | `session.PixivSession`、`filename.FilenameData`、`reversesearch.AggregatorDependencies` | `session.Pixiv`、`filename.Fields`、按职责拆成构造参数 |
 | 同一种能力在各处使用同一个名字 | `UsageError` / `Usage`、`PrintJSON` / `WriteJSON` 并存 | 统一为 `command.Env` 上的一个名字 |
 
+**新代码的补充规则（2026-10-26 起）：** 以下规则只约束新增的代码；现有名字不为此改名，SDK 公开名也不再为此破坏一次。
+
+- Go 代码以 [Google Go Style Guide](https://google.github.io/styleguide/go/)（Guide、Style Decisions、Best Practices）为基线，本规格与它冲突时以本规格为准。代码要让只有 Go 基础的工程师也能读懂：清楚优先于简短，不炫技。
+- 新类型和字段也不用 `Kind`、`Type`（作为万能区分字段时）、`Item`、`Object`、`Misc` 做名字或后缀，改用说明具体角色的词，例如 `Phase`、`Mode`、`Source`、`Status`、`Registry`、`Store`。上游协议本身的字段名（例如 Pixiv 的 `type`）在映射层保持原样。
+- 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（如 `ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名；字段、导出符号和作用域较大的变量仍写完整单词。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
+- 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。
+
 **已确认的起点**（实施时按规则检查所在阶段触及的全部类型，不限于此表）：
 
 | 现有名字 | 位置 | 处理 |
@@ -120,6 +127,8 @@
 | Go 代码中引用的数据库列名 | 未导出常量，例如 `colCredentialRevision` | `storage/database/rows.go`，紧挨行结构 |
 | JSON 输出键（struct tag 以外），例如列表的 `illusts`、`manga` | 未导出常量 | 与使用它的输出代码放在同一文件 |
 | 环境变量名 | 仍由 `env` 标签声明；代码中需要单独引用时定义常量 | `keys.go` |
+
+**数值与其他有含义的值（2026-10-26 起）：** 长度、上限、超时、间隔、退出码、文件名、地址和服务名等有含义的值同样写成命名常量；契约规定的值放在负责执行它的包里。同一个值只定义一次，别处引用常量或从它推导（例如字符串形式用 `strconv.Itoa` 生成），不再写一遍字面量。不需要命名的：0、1 这类不带业务含义的值，以及标准库约定的参数（如 `net.Dial("tcp", ...)`）。这条规则约束新增和触及的代码，现有字面量的统一清理不在注释 goal 内。
 
 可以直接写字面量的场景：
 - struct tag：Go 语法要求它必须是字面量。
@@ -518,72 +527,92 @@ err := installer.install(ctx)
 
 - **改动后检查：** 删除测试后运行该包的测试和 `go vet ./该包`，不跑全量（第 9 节）。保留下来的测试不得修改断言来迁就重构。
 
-### 3.5 文件头注释（D14）
+### 3.5 包文档与文件开头（D14）
 
-每个代码文件在顶部用 1–3 行说明这个文件负责什么，读者不打开函数就能判断要找的代码在不在这里。
+2026-10-26 起取代此前“每个文件写 1–3 行头注释”的要求。
 
-**适用范围：**
+**Go 包文档：** 每个包只在一个文件里写包文档，通常是 `doc.go` 或包的入口文件 `name/name.go`，紧贴 `package` 那一行。写法参照 Go 标准库：
 
-| 文件 | 要求 |
-|---|---|
-| 生产 Go 文件 | 必须有。包的入口文件或 `doc.go` 已经带包注释（`// Package x …`）时，包注释同时承担文件说明，不再另写 |
-| Shell 脚本、PowerShell、`.cmd` | 必须有，写在 shebang 之后 |
-| workflow YAML | 必须有，写在 `name:` 之前 |
-| `frontend` 中的 HTML、JS、CSS | 必须有，使用各自的注释语法 |
-| `_test.go` | 不要求。测试文件按布局规则与 `x.go` 对应，作用由文件名表明；为真实环境测试等例外登记的文件（例如 `live_test.go`）需要有 |
-| 生成文件、JSON 等不支持注释的格式、`testdata/`、`third_party/` | 不加 |
+- 第一句以 `Package x` 开头，说清这个包做什么；再空一行（`//`）分段写使用范围、不负责什么，以及相关内容在哪里。不写维护者、创建日期这类元信息。
+- 有多个文件或多个主要类型的包，在包文档里加一段“包的组成”，用文档链接（如 `[Client]`、`[Session]`）列出主要类型和入口；读者可以在 godoc 中直接跳转，改名时 gopls 也会提示链接失效。
+- `main` 包的包文档以命令名开头，例如“pixiv 命令启动 pixiv-cli。”
+- 同一个包的其他文件不再写包文档；已有的重复包文档合并进一处。
 
-**写法：**
-- 写职责，不写函数清单、修改历史或作者。内容回答“这个文件负责什么”和“相关内容在哪里”。
-- 语言跟随该文件已有的注释语言；新文件默认中文。
-- Go 文件中，头注释与 `package` 子句之间空一行，避免被 `go doc` 当成包注释；有 `//go:build` 时，构建约束写在最前面，之后是空行、头注释、空行、`package` 子句。
-- 文件职责改变时同步修改头注释。这属于 review 检查项，不另写检查工具或测试。
+**其他 Go 文件开头不写注释：** 紧贴 `package` 的注释会被 Go 并进包文档，与 `package` 隔一行的文件说明又容易随重构过期。文件名要让人一眼看出内容；一个文件需要靠注释才说得清，通常说明它该改名或调整拆分。这类问题记录下来交给代码 goal，注释 goal 不改文件名。
+
+**指令与特殊文件：**
+- 有 `//go:build` 时，build tag 放在第一行，空一行后再写包文档或 `package`。cgo 注释、`//go:embed`、`//go:generate` 等指令保留原来的位置。
+- 生成的文件保留生成器写的头部，不手工补写。
+- `_test.go`、JSON 等不支持注释的格式、`testdata/`、`third_party/` 不加文件说明。
+- Shell、PowerShell、`.cmd` 脚本在 shebang 之后、workflow YAML 在 `name:` 之前、`frontend` 的 HTML/JS/CSS 在文件顶部，各用一行注释说明用途。
 
 **例子：**
 
 ```go
-// 用户相关的 SDK 方法：用户详情、关注与粉丝等用户列表、用户的作品与小说列表。
-// 同族列表端点共用 userPreviews；响应结构与映射在 wire.go。
-
+// Package pixiv 提供 Pixiv App API 的 Go 客户端：作品、小说、用户、收藏与评论。
+//
+// 包的组成：[Client] 承载全部端点，由 [New] 构造。上游协议细节在 internal/pixivapi，不对外公开。
 package pixiv
 ```
+
+（`sdk/` 的注释用英文，上例只演示结构；语言见 3.5.1。）
 
 ```go
 //go:build windows
 
-// Windows 下通过 HKCU\Software\Classes\pixiv 注册表项注册 pixiv:// 登录回调处理程序，
-// 并在卸载时把处理权交还给之前注册的程序。
-
 package loginhelper
 ```
 
-```go
-// Package pixiv 是 Pixiv App API 的公开 Go SDK。…
-// （入口文件或 doc.go：包注释即文件说明，不再另写头注释）
-package pixiv
-```
+（同一个包里不写包文档的文件：build tag 之后空一行直接是 `package`。）
 
 ```sh
 #!/bin/sh
 # 为单个目标平台构建 pixiv 二进制，注入版本号，并对 Linux 产物运行 linuxabi 检查。
 ```
 
+**现状（ff5f22cf）：** 368 个生产 Go 文件、91 个包目录；139 个文件带与 `package` 隔开的文件头注释，需要删除或把有用的内容并入包文档；88 个文件带包文档，其中 6 个包有不止一处包文档。
+
 ### 3.5.1 注释写什么
 
-注释写名字和签名表达不了的东西：调用约定、原因、不变量、副作用、所有权。没有这类内容就不写；写了就用平常说话的语气。
+注释遵循 `pixiv-cli-code-commenting` 技能，只写名字和结构表达不出来的东西：调用约定、原因、不变量、副作用、所有权。没有这类内容就不写；写了就用平常说话的语气。
+
+**语言：**
+- `sdk/` 的注释（包括文档注释）用英文，它们会显示在 pkg.go.dev 上。
+- 其余代码（`cmd/`、`internal/`、`scripts/`、`.github/`、`frontend/`）的注释用简体中文；已有的英文注释在注释整理时改写成中文。协议字段、标识符、错误原文保留英文，不在句子中夹杂可翻译的英文术语。
+- 程序输出（日志、错误字符串、CLI 输出、MCP 结果文本）一律用英文，与注释语言无关。
+
+**文档注释：** 导出的类型、函数、方法、常量和变量都写文档注释，`internal/` 也不例外。注释以标识符开头，后面紧跟它做什么、保证什么，必要时写清副作用、错误、取消、并发和零值的含义。私有函数和方法在名字与签名已经说清楚时不写；有前置条件、调用顺序要求或不明显的取舍时再写。
+
+不要写成“X 是……”的定义句，也不要用“该函数”“此方法”“用于”开头：
 
 | 不这样写 | 原因 | 这样写 |
 |---|---|---|
 | `// New 创建一个带 opaque FANBOX session 的账号值，并复制输入凭据。` | 前半句复述函数名与签名 | `// New 会复制 sessionID，调用方之后修改原切片不影响账号。` |
-| `// Account 是一个已保存的 FANBOX 账号记录。session ID 是 opaque credential。` | 用“X 是 Y”下定义，夹杂英文术语 | `// Account 对应本机保存的一个 FANBOX 账号；session ID 只能通过 SessionIDCopy 取得副本。` |
+| `// Account 是一个已保存的 FANBOX 账号记录。session ID 是 opaque credential。` | “X 是 Y”的定义句，夹杂英文术语 | `// Account 对应本机保存的一个 FANBOX 账号；session ID 只能通过 SessionIDCopy 取得副本。` |
 | `// FANBOX session 不与 Pixiv refresh token 共享类型或生命周期。` | 翻译腔 | `// FANBOX 的 session 和 Pixiv 的 refresh token 分开存放、分开轮换。` |
 | `// String 返回字符串表示。` | 没有信息 | 删除；如果它承担脱敏，写清楚：`// String 只输出账号摘要，日志和 %v 不会打印出凭据。` |
 
-- Go 文档注释仍以标识符开头（Go 惯例），但后面的内容要说出名字之外的信息。
-- 公开的 `sdk/` 为每个导出符号保留文档注释（pkg.go.dev 展示）；`internal/` 中名字和签名已经说清楚的导出符号可以不写。
-- 中文注释用自然的中文句式；协议字段、标识符、错误原文保留英文，不在句子中夹杂可翻译的英文术语。
+**类型与字段：** 类型注释写它代表什么，以及使用者必须遵守的不变量。字段只在名字和类型看不出含义时才写，例如单位、零值或缺省的意义、可选性、由哪把锁保护、所有权和生命周期；短说明放在字段同一行的末尾。
 
-**实施时机：** 各阶段 PR 新建或重写的文件，在同一个 PR 中写好头注释；其余文件在所有移动完成后（A7、A8、S1 之后）由 C3 一次补齐。现状：457 个生产 Go 文件中，约 157 个以注释开头，其中大部分是包注释。
+```go
+type Budget struct {
+	mu   sync.Mutex
+	used int64 // 已占用字节，由 mu 保护
+	max  int64
+}
+```
+
+**step 注释：** 函数里有几个明确的阶段时，在每段逻辑前用 `// 1. ...`、`// 2. ...` 写出这一段的目的或顺序要求。编号的是阶段，不是语句；简单函数、getter 和转发函数不编号。注释紧贴它描述的代码段，不在函数开头写目录；调整逻辑时同步改编号。
+
+**让 Go 基础工程师读得懂：**
+- 用到 `select`、channel 关闭、`sync/atomic`、锁的先后顺序、goroutine 交接等写法时，在旁边用一行注释说明为什么这样写。
+- 状态机、账号池、OAuth 流程、MCP 会话这类复杂模块，在包文档或类型注释里用一段多行注释讲清整体模型：有哪些状态、谁拥有什么、按什么顺序发生。之后的局部注释不再重复。
+- 不逐行复述代码，不给每个赋值、`if err != nil` 或 return 加注释，不写装饰性分隔线。
+- 不承诺代码没有提供的保证，例如线程安全、原子性、幂等或可重试。
+
+**写现状，不写进度：** 注释和错误消息只写代码当前的行为、限制和原因，不写 goal、task、工作项或设计文档的编号，也不写“某阶段实现”“后续补齐”这类进度。尚未支持的能力直接写“尚不支持 X”。临时实现用 `shortcut: <限制>，<替换条件>`，替换条件写成条件，例如“上游提供稳定 ID 后替换”。
+
+**适用方式：** 新增文件完整遵守 3.5、3.5.1；修改已有文件时，补齐本次触及部分的注释。全库补齐由 G29–G33 按目录完成，不夹带在功能改动里。只改注释时检查内容、格式和引用即可；涉及 `//go:build`、`//go:embed`、`//go:generate` 等会被工具读取的注释时，验证实际的使用方。
 
 ## 4. 依赖规格
 
@@ -1838,7 +1867,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 G43（面向用户的 changelog）现在就可以开始；G41、G42、G34 都依赖它
 ```
 
-2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的文件头注释并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
+2026-10-23 调整：G19 不再等待发布 workflow 的状态；G20 把 S2 扩大为 scripts 与 CI 的全面精简（删除不再需要的工具和 workflow、能用 sh 写清楚的工具改为 sh、撤销 scripts/internal、按用途重排目录，细则见 `goals.md`）；G21、G33 照常执行；frontend/ 的注释整理并入 G32。G09、G23–G27 只等待与其代码冲突的 goal；G24、G26 先于 G22 合并，G22 在它们的结果上改造日志。依赖以下表和 `goals.md` 为准。
 
 | Goal | worktree 名称 | 工作项 | 依赖（须已合并） | 负责的目录 |
 |---|---|---|---|---|
@@ -1870,11 +1899,11 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G26 | `refactor-g26-accounts` | T5：`pixivaccount`、`pixivaccount/pool`、`fanboxaccount`、`session` | G05 | 这些包 |
 | G27 | `refactor-g27-cli-auth` | T5 与 T2：`cli/auth`、`loginhelper` 的注入点 | G12 | 这些包 |
 | G28 | `refactor-g28-sweep` | T2 重新扫描、T3、T4（scripts、.github 以外）、T6 其余（含 `illustration` 别名） | G22–G27 | 全仓库剩余部分 |
-| G29 | `refactor-g29-headers-sdk` | C3 与注释整理（3.5、3.5.1）：`sdk/`、`cmd/` | G39–G42 | 只改注释 |
-| G30 | `refactor-g30-headers-cli` | C3 与注释整理（3.5、3.5.1）：`internal/cli/` | G39–G42 | 只改注释 |
-| G31 | `refactor-g31-headers-mcp` | C3 与注释整理（3.5、3.5.1）：`internal/mcpserver/` | G39–G42 | 只改注释 |
-| G32 | `refactor-g32-headers-internal` | C3 与注释整理（3.5、3.5.1）：`internal/` 其余目录与 `frontend/` | G39–G42 | 只改注释 |
-| G33 | `refactor-g33-headers-scripts` | C3 与注释整理（3.5、3.5.1）：`scripts/`、`.github/` | G21、G39–G42 | 只改注释 |
+| G29 | `refactor-g29-headers-sdk` | C3 包文档与注释整理（3.5、3.5.1）：`sdk/`、`cmd/` | G39–G42 | 只改注释 |
+| G30 | `refactor-g30-headers-cli` | C3 包文档与注释整理（3.5、3.5.1）：`internal/cli/` | G39–G42 | 只改注释 |
+| G31 | `refactor-g31-headers-mcp` | C3 包文档与注释整理（3.5、3.5.1）：`internal/mcpserver/` | G39–G42 | 只改注释 |
+| G32 | `refactor-g32-headers-internal` | C3 包文档与注释整理（3.5、3.5.1）：`internal/` 其余目录与 `frontend/` | G39–G42 | 只改注释 |
+| G33 | `refactor-g33-headers-scripts` | C3 包文档与注释整理（3.5、3.5.1）：`scripts/`、`.github/` | G21、G39–G42 | 只改注释 |
 | G35 | `refactor-g35-tests-sdk` | 测试精简（3.4.1，含 T-g、T-h） | G28 | `sdk/`、`pixivapi`、`fanboxapi` 的测试 |
 | G36 | `refactor-g36-tests-mcp` | 测试精简 | G28 | `internal/mcpserver/` 的测试 |
 | G37 | `refactor-g37-tests-cli` | 测试精简 | G28 | `internal/cli/`、`cmd/` 的测试 |
@@ -2017,8 +2046,8 @@ S1 由 G19 执行；S2 由 G20 执行，2026-10-23 扩大为 scripts 与 CI 的�
 | PR | 内容 | 对应示例 |
 |---|---|---|
 | C1 | slog 日志：用 `internal/logging` 取代 `diagnostics`，涉及 11 个文件中的 27 处 `diagnostics.Emit`/`Event` 和 2 处 scope 安装（`cli/execution.go`、`composition.go`）；删除 Event/Sink/Scope 与 CLI 渲染器；SDK 两个 `Options` 增加 `Logger`；请求与内部决策的记录放进 `pixivapi`、`fanboxapi` 的发送与重试处，删除 `diagnosticRoundTripper` 和 `fanboxapi` 的 `diagnostics.Emit`；公开方法入口登记 `sdk_operation`；CLI 与 MCP 执行边界接入。沿用现有配置键 `log_level`（`logging.level`，`PIXIV_LOG_LEVEL`）和 `log_format`（`logging.format`，`PIXIV_LOG_FORMAT`）；`LogLevel` 在现有 `info`、`debug` 之外新增 `warn`、`error`；stderr 诊断输出的格式变为 6.9 的文本/JSON 格式，属于对外可见的变化，写入 changelog。按 AGENTS.md 执行 Red/Green | 6.5、6.9 |
-| C2 | 删除 `.agents/refactor/`；`docs/{en,zh}/sdk.md` 改为描述新 API（不写迁移对照）；汇总 G01–G33 PR 描述中的 changelog 条目，作为下个版本 release notes 的草稿写进本阶段 PR 描述（`changelog/vX.Y.Z/` 只在单独授权的发布准备中创建）；通用工程规则（命名与放置、不做内部兼容、测试删除标准、按改动范围验证、文件头注释）已在 PR #159 写入 `pixiv-cli-develop`、`pixiv-cli-test`、`pixiv-cli-code-commenting`、`pixiv-cli-review`；C2 只补充与本次重构结果相关的内容：新目录对应的放置路径、D7 的协议包位置、日志归属（6.9），并把第 6 节的示例整理到 `references/go-examples.md` | — |
-| C3 | 补齐 3.5 要求的文件头注释（各阶段 PR 未触及的文件；规则已在 PR #159 写入 `pixiv-cli-code-commenting`） | 3.5 |
+| C2 | 删除 `.agents/refactor/`；`docs/{en,zh}/sdk.md` 改为描述新 API（不写迁移对照）；汇总 G01–G33 PR 描述中的 changelog 条目，作为下个版本 release notes 的草稿写进本阶段 PR 描述（`changelog/vX.Y.Z/` 只在单独授权的发布准备中创建）；通用工程规则（命名与放置、不做内部兼容、测试删除标准、按改动范围验证、注释规则）已在 PR #159 写入 `pixiv-cli-develop`、`pixiv-cli-test`、`pixiv-cli-code-commenting`、`pixiv-cli-review`；C2 只补充与本次重构结果相关的内容：新目录对应的放置路径、D7 的协议包位置、日志归属（6.9），并把第 6 节的示例整理到 `references/go-examples.md` | — |
+| C3 | 按 3.5、3.5.1 整理注释：每个包一处标准库风格的包文档，删除其他文件的头注释，补齐导出符号的文档注释，统一注释语言（规则写在 `pixiv-cli-code-commenting`） | 3.5 |
 
 **C1 的日志约束：**
 - CLI 的数据 stdout 和 MCP stdio 的 stdout 中不得出现日志。

@@ -63,7 +63,7 @@ sh scripts/build.sh
 
 - `README.md` / `README.zh-CN.md` 与 `docs/<locale>/` 各页保持行为对应；不得留未翻译占位。
 - 按职责更新 SDK/MCP 契约或 `docs/zh-CN/maintainers/`；CLI 命令、flag 或安全语义变化时检查 `skills/pixiv-cli/`。
-- 源码注释可用中文或英文，遵循[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)（不设每函数注释配额）。
+- 源码注释在 `sdk/` 用英文，其余用简体中文；每个包只写一处包文档，其他文件开头不写头注释。遵循[代码注释规范](.agents/skills/pixiv-cli-code-commenting/SKILL.md)（不设每函数注释配额）。
 - PR 正文：改了什么、实际跑过的验证、checklist。发布时由维护者基于已合并 PR 编写双语 release notes，见[发布说明与发布](docs/zh-CN/maintainers/development.md#release-notes-and-publication)。
 - 稳定规则只放在一个权威文档里，其他位置链接过去。
 
