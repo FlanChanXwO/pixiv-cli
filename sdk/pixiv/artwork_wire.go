@@ -164,7 +164,7 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 			if e != nil {
 				continue
 			}
-			if _, e = c.newResourceWithVariant("artwork", value.ID, page, variant, raw); e != nil {
+			if _, e = c.newResource("artwork", value.ID, page, variant, raw); e != nil {
 				return Artwork{}, e
 			}
 		}
@@ -185,7 +185,7 @@ func (c *Client) artworkCover(value artworkWire) (ImageResource, error) {
 		if candidate.value == "" {
 			continue
 		}
-		resource, err := c.newResourceWithVariant("artwork", value.ID, -1, candidate.variant, candidate.value)
+		resource, err := c.newResource("artwork", value.ID, -1, candidate.variant, candidate.value)
 		if err != nil {
 			return ImageResource{}, err
 		}

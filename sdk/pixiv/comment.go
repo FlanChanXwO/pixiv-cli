@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/url"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -131,7 +132,7 @@ func (c *Client) readComments(ctx context.Context, operation, path string, base 
 
 // ArtworkComments lists comments on one artwork.
 func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsRequest) (CommentPage, error) {
-	ctx = pixivapi.WithOperation(ctx, "ArtworkComments")
+	ctx = logging.WithOperation(ctx, "ArtworkComments")
 	if request.ArtworkID <= 0 {
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -141,7 +142,7 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 
 // NovelComments lists comments on one novel.
 func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest) (CommentPage, error) {
-	ctx = pixivapi.WithOperation(ctx, "NovelComments")
+	ctx = logging.WithOperation(ctx, "NovelComments")
 	if request.NovelID <= 0 {
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
@@ -164,14 +165,14 @@ type stampWire struct {
 // image is represented as a stable SDK resource; the upstream locator remains
 // runtime-only and is never embedded in the opaque reference.
 func (c *Client) Stamps(ctx context.Context, request StampsRequest) ([]Stamp, error) {
-	ctx = pixivapi.WithOperation(ctx, "Stamps")
+	ctx = logging.WithOperation(ctx, "Stamps")
 	items, err := c.fetchStamps(ctx, "Stamps")
 	if err != nil {
 		return nil, err
 	}
 	stamps := make([]Stamp, 0, len(items))
 	for _, value := range items {
-		image, err := c.newResourceWithVariant("stamp", value.ID, -1, "", value.URL)
+		image, err := c.newResource("stamp", value.ID, -1, "", value.URL)
 		if err != nil {
 			return nil, classifyAppError(err, "Stamps")
 		}

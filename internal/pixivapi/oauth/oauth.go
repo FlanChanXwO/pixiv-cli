@@ -166,7 +166,7 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 	for key, value := range form {
 		values.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pixivapi.OAuthBase+pixivapi.OAuthToken, strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pixivapi.OAuthBase+pixivapi.PathOAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
 		return authResponse{}, pixivapi.Transport(err)
 	}

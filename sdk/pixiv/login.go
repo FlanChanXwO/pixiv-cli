@@ -61,7 +61,7 @@ func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	values.Set("state", state)
 	return &LoginSession{state: &loginSessionState{
 		exchange:         oauth.New("", oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP}),
-		authorizationURL: strings.TrimRight(pixivapi.AppAPIBase, "/") + pixivapi.AppLogin + "?" + values.Encode(),
+		authorizationURL: strings.TrimRight(pixivapi.AppAPIBase, "/") + pixivapi.PathLogin + "?" + values.Encode(),
 		verifier:         verifier,
 		state:            state,
 	}}, nil

@@ -20,7 +20,7 @@ func IsOfficialOAuthCallbackURL(rawURL string) bool {
 // IsOfficialOAuthStartURL reports whether rawURL has the exact official Pixiv
 // App OAuth start origin and path. It performs no network I/O.
 func IsOfficialOAuthStartURL(rawURL string) bool {
-	return isOfficialOAuthURL(rawURL, pixivapi.AppOAuthStart)
+	return isOfficialOAuthURL(rawURL, pixivapi.PathOAuthStart)
 }
 
 func isOfficialOAuthURL(rawURL, expectedPath string) bool {

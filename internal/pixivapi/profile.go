@@ -1,7 +1,5 @@
-// Package pixivapi 集中维护 Pixiv 上游协议的静态约定。
-//
-// 它不读取配置、不执行网络请求；每个 Headers 函数都返回新的 map，调用方可以
-// 安全地在本次请求上补充认证信息而不污染其他请求。
+// Pixiv protocol constants and fresh per-request App/OAuth header maps.
+
 package pixivapi
 
 const (

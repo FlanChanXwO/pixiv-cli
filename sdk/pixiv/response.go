@@ -48,7 +48,7 @@ func (c *Client) mapUser(value userWire) User {
 		IsFollowed: value.IsFollowed,
 	}
 	if value.ProfileImageURLs.Medium != nil && *value.ProfileImageURLs.Medium != "" {
-		if resource, err := c.newResourceWithVariant("user_profile", value.ID, -1, "medium", *value.ProfileImageURLs.Medium); err == nil {
+		if resource, err := c.newResource("user_profile", value.ID, -1, "medium", *value.ProfileImageURLs.Medium); err == nil {
 			result.ProfileImage = ImageResource{Resource: resource, Variant: "medium"}
 		}
 	}

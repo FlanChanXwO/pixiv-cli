@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -263,7 +264,7 @@ func (c *Client) artworkParamsPage(op string, query url.Values, values []artwork
 
 // Artwork returns one artwork by its stable ID, including every image page.
 func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, error) {
-	ctx = pixivapi.WithOperation(ctx, "Artwork")
+	ctx = logging.WithOperation(ctx, "Artwork")
 	if request.ArtworkID <= 0 {
 		return Artwork{}, newError("Artwork", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -284,7 +285,7 @@ func (c *Client) Artwork(ctx context.Context, request ArtworkRequest) (Artwork, 
 
 // ArtworkPages returns every image page of one artwork as usable resources.
 func (c *Client) ArtworkPages(ctx context.Context, request ArtworkPagesRequest) ([]ArtworkPage, error) {
-	ctx = pixivapi.WithOperation(ctx, "ArtworkPages")
+	ctx = logging.WithOperation(ctx, "ArtworkPages")
 	if request.ArtworkID <= 0 {
 		return nil, newError("ArtworkPages", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -309,7 +310,7 @@ func (c *Client) fetchArtworkDetail(ctx context.Context, operation string, artwo
 
 // RelatedArtworks lists artworks related to one artwork.
 func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "RelatedArtworks")
+	ctx = logging.WithOperation(ctx, "RelatedArtworks")
 	if request.ArtworkID <= 0 {
 		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -343,7 +344,7 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 
 // ArtworkSeries lists artworks within one illustration series.
 func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "ArtworkSeries")
+	ctx = logging.WithOperation(ctx, "ArtworkSeries")
 	if request.SeriesID <= 0 {
 		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
@@ -377,7 +378,7 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 
 // ArtworkRanking lists the current artwork ranking.
 func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "ArtworkRanking")
+	ctx = logging.WithOperation(ctx, "ArtworkRanking")
 	if request.Mode == "" {
 		request.Mode = RankingModeDay
 	}
@@ -419,7 +420,7 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 // 表达续页（offset=0 特例 + bookmark 游标 + viewed 下标数组），cursor 以
 // 结构化参数集整体回放，不保存 raw next_url。
 func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "RecommendedArtworks")
+	ctx = logging.WithOperation(ctx, "RecommendedArtworks")
 	base := url.Values{}
 	params, err := c.continuationParams("RecommendedArtworks", base, request.Cursor)
 	if err != nil {
@@ -443,7 +444,7 @@ func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArt
 
 // FollowingArtworks lists artworks by followed users.
 func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "FollowingArtworks")
+	ctx = logging.WithOperation(ctx, "FollowingArtworks")
 	restrict, err := normalizeFollowingRestrict("FollowingArtworks", request.Restrict)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
@@ -475,7 +476,7 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 
 // LatestArtworks lists the newest artworks.
 func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "LatestArtworks")
+	ctx = logging.WithOperation(ctx, "LatestArtworks")
 	contentType, err := normalizeLatestArtworkContentType("LatestArtworks", request.ContentType)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
@@ -513,7 +514,7 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 
 // UserArtworks lists one user's artworks.
 func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "UserArtworks")
+	ctx = logging.WithOperation(ctx, "UserArtworks")
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.InvalidArgument, "user ID must be positive")
 	}
@@ -548,7 +549,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 
 // MyPixivArtworks lists artworks from the current user's MyPixiv feed.
 func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksRequest) (sdk.Page[Artwork], error) {
-	ctx = pixivapi.WithOperation(ctx, "MyPixivArtworks")
+	ctx = logging.WithOperation(ctx, "MyPixivArtworks")
 	base := url.Values{}
 	offset, err := c.continuationPositiveOffset("MyPixivArtworks", base, request.Cursor)
 	if err != nil {
@@ -576,7 +577,7 @@ func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksReq
 
 // TrendingArtworkTags lists currently trending artwork tags.
 func (c *Client) TrendingArtworkTags(ctx context.Context, request TrendingArtworkTagsRequest) ([]TrendingTag, error) {
-	ctx = pixivapi.WithOperation(ctx, "TrendingArtworkTags")
+	ctx = logging.WithOperation(ctx, "TrendingArtworkTags")
 	var raw trendingArtworksWire
 	if err := c.app.GetJSON(ctx, pixivapi.PathTrendingTagsIllust, nil, &raw); err != nil {
 		return nil, classifyAppError(err, "TrendingArtworkTags")
@@ -601,7 +602,7 @@ func (c *Client) TrendingArtworkTags(ctx context.Context, request TrendingArtwor
 // UgoiraMetadata returns the playable metadata of a ugoira artwork. The artwork
 // must be a ugoira; other kinds return InvalidArgument.
 func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataRequest) (UgoiraMetadata, error) {
-	ctx = pixivapi.WithOperation(ctx, "UgoiraMetadata")
+	ctx = logging.WithOperation(ctx, "UgoiraMetadata")
 	if request.ArtworkID <= 0 {
 		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.InvalidArgument, "artwork ID must be positive")
 	}
@@ -648,7 +649,7 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 			if imageURL == "" {
 				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
 			}
-			resource, err := c.newResourceWithVariant("artwork", value.ID, index, "original", imageURL)
+			resource, err := c.newResource("artwork", value.ID, index, "original", imageURL)
 			if err != nil {
 				return nil, err
 			}
@@ -669,7 +670,7 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 	if value.MetaSinglePage.OriginalImageURL == "" {
 		return []ArtworkPage{}, nil
 	}
-	resource, err := c.newResourceWithVariant("artwork", value.ID, 0, "original", value.MetaSinglePage.OriginalImageURL)
+	resource, err := c.newResource("artwork", value.ID, 0, "original", value.MetaSinglePage.OriginalImageURL)
 	if err != nil {
 		return nil, err
 	}
@@ -704,7 +705,7 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 		if candidate.url == "" {
 			continue
 		}
-		resource, err := c.newResourceWithVariant("ugoira_archive", artworkID, -1, string(candidate.quality), candidate.url)
+		resource, err := c.newResource("ugoira_archive", artworkID, -1, string(candidate.quality), candidate.url)
 		if err != nil {
 			return UgoiraMetadata{}, err
 		}

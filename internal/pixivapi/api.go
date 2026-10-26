@@ -1,11 +1,13 @@
-// App API route and query/form parameter names used by sdk/pixiv.
-//
-// 本文件只声明标识符本身；请求发送与重试仍由 appapi.go 负责。protocol.go 中的
-// App* 常量是历史目录，新增的 SDK 端点只引用本文件。
+// Pixiv App and OAuth route names and query/form parameters.
+// Request sending and retry policy belong to appapi.go and oauth.
+
 package pixivapi
 
 // App API 路径。
 const (
+	PathOAuthToken           = "/auth/token"
+	PathLogin                = "/web/v1/login"
+	PathOAuthStart           = "/web/v1/users/auth/pixiv/start"
 	PathSearchIllust         = "/v1/search/illust"
 	PathIllustDetail         = "/v1/illust/detail"
 	PathIllustRelated        = "/v2/illust/related"

@@ -1,6 +1,4 @@
-// App API transport: request construction, form encoding, response decoding, and the
-// static credentials, resource runtime, and shared Retry-After reads.
-
+// Package pixivapi owns Pixiv App requests, media policy, and their shared HTTP runtime.
 package pixivapi
 
 import (
@@ -102,7 +100,7 @@ func (c *Client) appRequest(method, path string, query, form url.Values) (reques
 
 // GetJSON 提供给 endpoint family 的窄 transport 能力。route、query、wire
 // DTO 与响应校验由具体 endpoint package 拥有；这里仅负责 App API 的请求、
-// 认证刷新与既有 Retry-After 读取契约。
+// 静态认证与既有 Retry-After 读取契约。
 func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, out any) error {
 	req, err := c.appRequest(http.MethodGet, path, query, nil)
 	if err != nil {
@@ -112,7 +110,7 @@ func (c *Client) GetJSON(ctx context.Context, path string, query url.Values, out
 }
 
 // GetRaw 提供给需要保留原始响应体的 endpoint family。App API adapter 仍只负责
-// 认证刷新、状态码处理与既有重试契约，正文语义由调用方 family 解释。
+// 认证头、状态码处理与既有重试契约，正文语义由调用方 family 解释。
 func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]byte, error) {
 	req, err := c.appRequest(http.MethodGet, path, query, nil)
 	if err != nil {
@@ -121,8 +119,8 @@ func (c *Client) GetRaw(ctx context.Context, path string, query url.Values) ([]b
 	return c.doRaw(ctx, req)
 }
 
-// PostForm 提供给 mutation endpoint family 的窄 form transport。重试与认证
-// 刷新仍由 App API adapter 统一执行；具体 route 和字段由 family 持有。
+// PostForm 提供给 mutation endpoint family 的窄 form transport，不重放写入。
+// 认证头与状态码由此层处理；具体 route 和字段由 family 持有。
 func (c *Client) PostForm(ctx context.Context, path string, form url.Values) error {
 	req, err := c.appRequest(http.MethodPost, path, nil, form)
 	if err != nil {
@@ -132,8 +130,7 @@ func (c *Client) PostForm(ctx context.Context, path string, form url.Values) err
 }
 
 // PostFormJSON 提供给需要读取 mutation 响应的 endpoint family。成功响应必须
-// 包含可解码 JSON；除既有的明确 401/403 认证刷新外，不重放请求，避免把不确定
-// 的 mutation 当作安全失败处理。
+// 包含可解码 JSON；不重放请求，避免把不确定的 mutation 当作安全失败处理。
 func (c *Client) PostFormJSON(ctx context.Context, path string, form url.Values, out any) error {
 	req, err := c.appRequest(http.MethodPost, path, nil, form)
 	if err != nil {
@@ -177,7 +174,6 @@ func (c *Client) send(ctx context.Context, req request, attempt int) (*http.Resp
 	if err != nil {
 		return nil, err
 	}
-	// 每次发送重新读取 token：认证刷新后的重试必须使用新 token。
 	for name, value := range c.apiHeaders() {
 		httpReq.Header.Set(name, value)
 	}

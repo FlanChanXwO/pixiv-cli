@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -28,11 +29,7 @@ type resourceRefPayload struct {
 // newResource builds a validated sdk.Resource from an upstream media URL. It
 // returns ResourceForbidden when the URL does not satisfy the resource
 // policy and InvalidArgument when the identity payload is invalid.
-func (c *Client) newResource(kind string, id int64, page int, rawURL string) (sdk.Resource, error) {
-	return c.newResourceWithVariant(kind, id, page, "", rawURL)
-}
-
-func (c *Client) newResourceWithVariant(kind string, id int64, page int, variant, rawURL string) (sdk.Resource, error) {
+func (c *Client) newResource(kind string, id int64, page int, variant, rawURL string) (sdk.Resource, error) {
 	if rawURL == "" {
 		return sdk.Resource{}, nil
 	}
@@ -90,7 +87,7 @@ func ArtworkVariantResource(original sdk.Resource, variant string) (sdk.Resource
 // resource URL, redirects, headers, and identity are revalidated before any
 // bytes are streamed; cookies are never sent for resource requests.
 func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
-	ctx = pixivapi.WithOperation(ctx, "OpenResource")
+	ctx = logging.WithOperation(ctx, "OpenResource")
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
@@ -103,7 +100,6 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 
 func (c *Client) openResourceURL(ctx context.Context, request sdk.OpenResourceRequest, rawURL string) (*sdk.ResourceResponse, error) {
 	header := http.Header{}
-	header.Set("Referer", pixivapi.AppReferer)
 	for _, field := range []struct{ name, value string }{
 		{"Range", request.Range},
 		{"If-None-Match", request.IfNoneMatch},
@@ -114,13 +110,9 @@ func (c *Client) openResourceURL(ctx context.Context, request sdk.OpenResourceRe
 			header.Set(field.name, field.value)
 		}
 	}
-	method := string(request.Method)
-	if method == "" {
-		method = http.MethodGet
-	}
 	response, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
 		URL:    rawURL,
-		Method: method,
+		Method: string(request.Method),
 		Header: header,
 	})
 	if err != nil {
@@ -134,7 +126,7 @@ func (c *Client) openResourceURL(ctx context.Context, request sdk.OpenResourceRe
 // transferred file never appears at the final path. It does not expand creators,
 // archives, sidecars, or ugoira batches; use the downloader for those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
-	ctx = pixivapi.WithOperation(ctx, "SaveResource")
+	ctx = logging.WithOperation(ctx, "SaveResource")
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError("SaveResource", sdk.InvalidArgument, "destination path is required")
 	}
@@ -158,10 +150,10 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 }
 
 // SaveResourceURL 将经过资源策略校验的 Pixiv CDN URL 保存到 Path。它复用
-// ResourceClient 的 Referer、重定向校验和禁用 cookie 行为，并通过原子目标
+// 传输层的 Referer、重定向校验和禁用 cookie 行为，并通过原子目标
 // 写入，避免失败传输留下最终文件。
 func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
-	ctx = pixivapi.WithOperation(ctx, "SaveResourceURL")
+	ctx = logging.WithOperation(ctx, "SaveResourceURL")
 	const operation = "SaveResourceURL"
 	if strings.TrimSpace(options.Path) == "" {
 		return sdk.SavedResource{}, newError(operation, sdk.InvalidArgument, "destination path is required")
@@ -170,7 +162,6 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 	stream, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
 		URL:    rawURL,
 		Method: http.MethodGet,
-		Header: http.Header{"Referer": {pixivapi.AppReferer}},
 	})
 	if err != nil {
 		return sdk.SavedResource{}, classifyAppError(err, operation)
