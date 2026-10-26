@@ -212,7 +212,7 @@ func (c *solverClient) call(ctx context.Context, payload solverRequest) (solverR
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return solverResponse{}, errMalformedSolverResponse
+		return solverResponse{}, errors.Join(errMalformedSolverResponse, err)
 	}
 	switch decoded.Status {
 	case "ok":
