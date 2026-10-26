@@ -171,9 +171,7 @@ func (d *proxyDialer) DialContext(ctx context.Context, network, address string) 
 		_ = conn.Close()
 		return nil, proxyContextError(ctx)
 	}
-	if response.Body != nil {
-		_ = response.Body.Close()
-	}
+	_ = response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		_ = conn.Close()
 		return nil, errors.New("FANBOX proxy CONNECT failed")

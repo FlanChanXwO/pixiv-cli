@@ -251,7 +251,7 @@ func (s *Client) classifyError(ctx context.Context, response *http.Response) err
 	status := response.StatusCode
 	challengeMarkers := false
 	var readErr error
-	if status == http.StatusForbidden && response.Body != nil {
+	if status == http.StatusForbidden {
 		// 流式扫描并丢弃整个响应体；没有任意字节截断，也不把 body 保留到错误或日志。
 		challengeMarkers, readErr = scanChallengeBody(response.Body)
 	}
@@ -334,9 +334,6 @@ func challengeHTMLResponse(header http.Header) bool {
 }
 
 func closeResponseBody(ctx context.Context, response *http.Response) error {
-	if response.Body == nil {
-		return errors.New("FANBOX response has no body")
-	}
 	if err := response.Body.Close(); err != nil {
 		return safeExternalError(ctx, "close FANBOX response failed", err)
 	}
