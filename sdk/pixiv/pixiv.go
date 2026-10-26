@@ -82,14 +82,18 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
 	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
-	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, Logger: options.Logger})
+	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP, Logger: options.Logger})
+	var client *Client
+	// Failed construction leaves no client for the caller to close.
+	defer func() {
+		if client == nil {
+			oauthClient.CloseIdleConnections()
+		}
+	}()
 	if err := oauthClient.Refresh(ctx); err != nil {
 		return nil, Credentials{}, classifyOAuthError(err, "Open")
 	}
 	token := oauthClient.AccessToken()
-	if token == "" {
-		return nil, Credentials{}, newError("Open", sdk.UpstreamError, "oauth response did not include an access token")
-	}
 	if oauthClient.UserID() <= 0 {
 		return nil, Credentials{}, newError("Open", sdk.MalformedUpstreamResponse, "oauth response did not include account identity")
 	}
