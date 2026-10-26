@@ -1,12 +1,10 @@
-// Artwork wire responses and model mapping.
-// Endpoint methods live in artwork.go; shared mappings in response.go.
+// Artwork and ugoira wire shapes shared by endpoint, preview, search and resource readers.
+// Shared artwork mapping lives here; endpoint-specific declarations stay in artwork.go.
 
 package pixiv
 
 import (
 	"encoding/json"
-	"path"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -79,29 +77,9 @@ func (w *artworkWire) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type artworkDetailWire struct {
-	Illust *artworkWire `json:"illust"`
-}
-
 type artworkListWire struct {
 	Illusts pixivapi.RequiredList[artworkWire] `json:"illusts"`
 	NextURL *string                            `json:"next_url"`
-}
-
-type artworkSeriesWire struct {
-	SeriesDetail *struct {
-		User userWire `json:"user"`
-	} `json:"illust_series_detail"`
-	Illusts pixivapi.RequiredList[artworkWire] `json:"illusts"`
-	NextURL *string                            `json:"next_url"`
-}
-
-type trendingArtworksWire struct {
-	Tags pixivapi.RequiredList[struct {
-		Tag            string                               `json:"tag"`
-		TranslatedName string                               `json:"translated_name"`
-		Illust         pixivapi.RequiredObject[artworkWire] `json:"illust"`
-	}] `json:"trend_tags"`
 }
 
 type ugoiraZipURLsWire struct {
@@ -225,104 +203,4 @@ func artworkPageIndexes(value artworkWire) []int {
 		indexes = append(indexes, 0)
 	}
 	return indexes
-}
-
-// mapArtworkPages 只建立详情响应的页资源；列表响应不解析页。
-func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
-	if len(value.MetaPages) > 0 {
-		pages := make([]ArtworkPage, 0, len(value.MetaPages))
-		for index, page := range value.MetaPages {
-			imageURL := firstImageURL(page.ImageURLs)
-			if imageURL == "" {
-				return nil, newError("ArtworkPages", sdk.MalformedUpstreamResponse, "page has no image URL")
-			}
-			resource, err := c.newResourceWithVariant("artwork", value.ID, index, "original", imageURL)
-			if err != nil {
-				return nil, err
-			}
-			pages = append(pages, ArtworkPage{
-				PageIndex: index,
-				Image: ImageResource{
-					Resource: resource,
-					Variant:  "original",
-					Width:    page.Width,
-					Height:   page.Height,
-				},
-				Width:  page.Width,
-				Height: page.Height,
-			})
-		}
-		return pages, nil
-	}
-	if value.MetaSinglePage.OriginalImageURL == "" {
-		return []ArtworkPage{}, nil
-	}
-	resource, err := c.newResourceWithVariant("artwork", value.ID, 0, "original", value.MetaSinglePage.OriginalImageURL)
-	if err != nil {
-		return nil, err
-	}
-	return []ArtworkPage{{
-		PageIndex: 0,
-		Image: ImageResource{
-			Resource: resource,
-			Variant:  "original",
-			Width:    value.Width,
-			Height:   value.Height,
-		},
-		Width:  value.Width,
-		Height: value.Height,
-	}}, nil
-}
-
-// mapUgoiraMetadata 校验并映射可播放动图的压缩包与帧信息。
-func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (UgoiraMetadata, error) {
-	if !value.ZipURLs.Present || !value.ZipURLs.Valid ||
-		(value.ZipURLs.Value.Medium == "" && value.ZipURLs.Value.Original == "") ||
-		!value.Frames.Present || !value.Frames.Valid || len(value.Frames.Items) == 0 {
-		return UgoiraMetadata{}, pixivapi.MalformedResponse()
-	}
-	archives := make([]UgoiraArchive, 0, 2)
-	for _, candidate := range []struct {
-		quality UgoiraQuality
-		url     string
-	}{
-		{UgoiraQualityMedium, value.ZipURLs.Value.Medium},
-		{UgoiraQualityOriginal, value.ZipURLs.Value.Original},
-	} {
-		if candidate.url == "" {
-			continue
-		}
-		resource, err := c.newResourceWithVariant("ugoira_archive", artworkID, -1, string(candidate.quality), candidate.url)
-		if err != nil {
-			return UgoiraMetadata{}, err
-		}
-		archives = append(archives, UgoiraArchive{Quality: candidate.quality, Resource: resource})
-	}
-	frames := make([]UgoiraFrame, 0, len(value.Frames.Items))
-	seenFile := map[string]bool{}
-	for _, frame := range value.Frames.Items {
-		if !safeArtworkArchiveFilename(frame.File) || seenFile[frame.File] {
-			return UgoiraMetadata{}, pixivapi.MalformedResponse()
-		}
-		seenFile[frame.File] = true
-		frames = append(frames, UgoiraFrame{Filename: frame.File, DelayMilliseconds: frame.Delay})
-	}
-	return UgoiraMetadata{ArtworkID: artworkID, Archives: archives, Frames: frames}, nil
-}
-
-// safeArtworkArchiveFilename 拒绝会进入归档解包或落盘边界的帧名：绝对路径、
-// 路径穿越、NUL 与空段。
-func safeArtworkArchiveFilename(name string) bool {
-	if name == "" || strings.ContainsAny(name, "\\\x00") {
-		return false
-	}
-	if path.IsAbs(name) || len(name) >= 2 && name[1] == ':' {
-		return false
-	}
-	for _, segment := range strings.Split(name, "/") {
-		if segment == "" || segment == "." || segment == ".." {
-			return false
-		}
-	}
-	return true
 }
