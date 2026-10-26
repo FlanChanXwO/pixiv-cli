@@ -12,7 +12,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -42,7 +41,7 @@ func Commands(env command.Env, open func() (*session.Fanbox, error)) []*cobra.Co
 }
 
 func (a commandRunner) newCreatorsCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	kind := string(fanbox.CreatorListSupporting)
 	cmd := &cobra.Command{
 		Use:   "creators",
@@ -52,22 +51,22 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 			return a.runCreators(cmd, opts, kind)
 		},
 	}
-	listing.BindListFlags(cmd, &opts)
+	fanboxcmd.BindListFlags(cmd, &opts)
 	cmd.Flags().StringVar(&kind, "kind", kind, "creator list kind: supporting or following")
 	a.env.BindNoInput(cmd)
 	return cmd
 }
 
-func (a commandRunner) runCreators(cmd *cobra.Command, opts listing.Options, rawKind string) error {
+func (a commandRunner) runCreators(cmd *cobra.Command, opts fanboxcmd.Options, rawKind string) error {
 	kind := fanbox.CreatorListKind(rawKind)
 	if kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
 		return errors.New("kind must be one of: supporting, following")
 	}
-	plan, err := listing.ParsePlan(cmd, opts)
+	plan, err := fanboxcmd.ParsePlan(cmd, opts)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
+	jsonOut, err := fanboxcmd.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
@@ -75,14 +74,14 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts listing.Options, raw
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
 			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
 		}
-		return listing.Run(cmd.Context(), a.env.Out, plan, "creators", jsonOut, opts.NDJSON, func(items []fanbox.CreatorSummary) error {
+		return fanboxcmd.Run(cmd.Context(), a.env.Out, plan, "creators", jsonOut, opts.NDJSON, func(items []fanbox.CreatorSummary) error {
 			return printCreators(a.env.Out, items)
 		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
 }
 
 func (a commandRunner) newPostsCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	cmd := &cobra.Command{
 		Use:   "posts SOURCE",
 		Short: "List posts from a creator, tag, post, or FANBOX URL",
@@ -91,17 +90,17 @@ func (a commandRunner) newPostsCommand() *cobra.Command {
 			return a.runPosts(cmd, args, opts)
 		},
 	}
-	listing.BindListFlags(cmd, &opts)
+	fanboxcmd.BindListFlags(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
-func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts listing.Options) error {
-	plan, err := listing.ParsePlan(cmd, opts)
+func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts fanboxcmd.Options) error {
+	plan, err := fanboxcmd.ParsePlan(cmd, opts)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
+	jsonOut, err := fanboxcmd.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
@@ -110,7 +109,7 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts listing.
 		if err != nil {
 			return err
 		}
-		return listing.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
+		return fanboxcmd.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, fetch)
 	})
@@ -181,7 +180,7 @@ type tagOut struct {
 }
 
 func (a commandRunner) newTagsCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	cmd := &cobra.Command{
 		Use:   "tags CREATOR",
 		Short: "List tags used by a FANBOX creator",
@@ -190,13 +189,13 @@ func (a commandRunner) newTagsCommand() *cobra.Command {
 			return a.runTags(cmd, args, opts)
 		},
 	}
-	listing.BindSingleFlags(cmd, &opts)
+	fanboxcmd.BindSingleFlags(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
-func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listing.Options) error {
-	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
+func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts fanboxcmd.Options) error {
+	jsonOut, err := fanboxcmd.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
@@ -231,7 +230,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listing.O
 }
 
 func (a commandRunner) newHomeCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	cmd := &cobra.Command{
 		Use:   "home",
 		Short: "Browse the FANBOX home feed",
@@ -244,13 +243,13 @@ func (a commandRunner) newHomeCommand() *cobra.Command {
 			})
 		},
 	}
-	listing.BindListFlags(cmd, &opts)
+	fanboxcmd.BindListFlags(cmd, &opts)
 	a.env.BindNoInput(cmd)
 	return cmd
 }
 
 func (a commandRunner) newSupportingCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	cmd := &cobra.Command{
 		Use:   "supporting",
 		Short: "Browse posts from supporting creators",
@@ -263,29 +262,29 @@ func (a commandRunner) newSupportingCommand() *cobra.Command {
 			})
 		},
 	}
-	listing.BindListFlags(cmd, &opts)
+	fanboxcmd.BindListFlags(cmd, &opts)
 	a.env.BindNoInput(cmd)
 	return cmd
 }
 
-func (a commandRunner) runFeed(cmd *cobra.Command, opts listing.Options, bind func(*fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) error {
-	plan, err := listing.ParsePlan(cmd, opts)
+func (a commandRunner) runFeed(cmd *cobra.Command, opts fanboxcmd.Options, bind func(*fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) error {
+	plan, err := fanboxcmd.ParsePlan(cmd, opts)
 	if err != nil {
 		return err
 	}
-	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
+	jsonOut, err := fanboxcmd.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}
 	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		return listing.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
+		return fanboxcmd.Run(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.NDJSON, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, bind(client))
 	})
 }
 
 func (a commandRunner) newPostCommand() *cobra.Command {
-	var opts listing.Options
+	var opts fanboxcmd.Options
 	cmd := &cobra.Command{
 		Use:   "post POST_ID",
 		Short: "Show one FANBOX post",
@@ -294,13 +293,13 @@ func (a commandRunner) newPostCommand() *cobra.Command {
 			return a.runPost(cmd, args, opts)
 		},
 	}
-	listing.BindSingleFlags(cmd, &opts)
+	fanboxcmd.BindSingleFlags(cmd, &opts)
 	a.env.BindTextValue(cmd, 1, 1, 0)
 	return cmd
 }
 
-func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts listing.Options) error {
-	jsonOut, err := listing.JSONOut(cmd, opts, a.env.UsageError)
+func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts fanboxcmd.Options) error {
+	jsonOut, err := fanboxcmd.JSONOut(cmd, opts, a.env.UsageError)
 	if err != nil {
 		return err
 	}

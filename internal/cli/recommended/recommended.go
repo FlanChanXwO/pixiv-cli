@@ -94,7 +94,7 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 	if !validKind(kind) {
 		return errors.New("recommendation kind must be one of: all, illust, manga, novel, user")
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func validKind(kind string) bool {
 	return kind == "all" || kind == "illust" || kind == "manga" || kind == "novel" || kind == "user"
 }
 
-func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
+func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	if kind == "illust" || kind == "manga" {
 		jsonKey := "illusts"
 		if kind == "manga" {
@@ -209,7 +209,7 @@ func fetchRecommendedArtworks(client *pixiv.Client, filter searchfilter.Filter) 
 
 // runAllNDJSON 保留 all 的既有类别顺序。每写出一条记录即标记提交，因此账号池只会
 // 在任何下游可见输出之前重放 429。
-func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan pixivcmd.Plan) (bool, error) {
+func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan command.Plan) (bool, error) {
 	encoder := json.NewEncoder(a.env.Out)
 	committed := false
 	writeArtworks := func(items []pixiv.Artwork) error {
@@ -226,7 +226,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 		return nil
 	}
 	var visualItems []pixiv.Artwork
-	if err := pixivcmd.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+	if err := command.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {
@@ -237,7 +237,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 			return committed, err
 		}
 	}
-	if err := pixivcmd.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	if err := command.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -258,7 +258,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 	}); err != nil {
 		return committed, err
 	}
-	err := pixivcmd.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	err := command.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err

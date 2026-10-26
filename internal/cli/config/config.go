@@ -33,92 +33,74 @@ func invalidCLIConfigKey(key settings.Key) error {
 	return fmt.Errorf("unknown config key %q. valid keys: %s", key, configKeyHelp())
 }
 
-type Host interface {
-	Input() io.Reader
-	Output() io.Writer
-	ErrorOutput() io.Writer
-	UsageError(error) error
-	RequireExactArgs(int, string) cobra.PositionalArgs
-	ConfigService() settings.Store
-	ConfigPath() (string, error)
-}
-
-func Register(root *cobra.Command, host Host) {
-	root.AddCommand(NewCommand(host))
-}
-
-// NewCommand 只负责将 config 命令注册到同目录实现。
-func NewCommand(host Host) *cobra.Command {
-	return newConfigCommand(host)
-}
-
-func newConfigCommand(host Host) *cobra.Command {
+// New 构造 config 命令组；store 是 config.toml 的唯一读写入口。
+func New(env command.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage global Pixiv CLI settings",
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
-	cmd.AddCommand(newPathCommand(host), newGetCommand(host), newSetCommand(host), newUnsetCommand(host))
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: host.Input(), UsageError: host.UsageError})
+	cmd.AddCommand(newPathCommand(env, store), newGetCommand(env, store), newSetCommand(env, store), newUnsetCommand(env, store))
+	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
 	command.Bind(cmd, command.Execution{})
 	return cmd
 }
 
-func newPathCommand(host Host) *cobra.Command {
+func newPathCommand(env command.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "path",
 		Short: "Print the config.toml path",
-		Args:  host.RequireExactArgs(0, "pixiv config path"),
+		Args:  env.ExactArgs(0, "pixiv config path"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path, err := host.ConfigPath()
+			path, err := store.Path()
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(host.Output(), path)
+			_, err = fmt.Fprintln(env.Out, path)
 			return err
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: host.Input(), UsageError: host.UsageError})
+	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
 	command.Bind(cmd, command.ConfigPath())
 	return cmd
 }
 
-func newGetCommand(host Host) *cobra.Command {
+func newGetCommand(env command.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get KEY",
 		Short: "Print one effective config value",
 		Long:  "Print one effective config value. KEY must be one of: " + configKeyHelp(),
-		Args:  host.RequireExactArgs(1, "pixiv config get KEY"),
+		Args:  env.ExactArgs(1, "pixiv config get KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return get(host, settings.Key(args[0]))
+			return get(env, store, settings.Key(args[0]))
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: host.Input(), UsageError: host.UsageError})
+	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.UsageError})
 	command.Bind(cmd, command.Normal())
 	return cmd
 }
 
-func get(host Host, key settings.Key) error {
+func get(env command.Env, store settings.Store, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
-	value, err := host.ConfigService().Get(key)
+	value, err := store.Get(key)
 	if err != nil {
 		return err
 	}
-	if spec, ok := settings.SettingSpecByAlias(key); ok && spec.Sensitive {
-		_, err := fmt.Fprintln(host.Output(), "<redacted>")
+	if settings.IsSensitiveSetting(key) {
+		_, err := fmt.Fprintln(env.Out, "<redacted>")
 		return err
 	}
 	if !value.HasValue {
-		_, _ = fmt.Fprintln(host.Output(), configMissingPlaceholder)
+		_, _ = fmt.Fprintln(env.Out, configMissingPlaceholder)
 		return errors.New("config value is unset")
 	}
-	_, err = fmt.Fprintln(host.Output(), settings.PublicSettingText(key, value.Text))
+	_, err = fmt.Fprintln(env.Out, settings.PublicSettingText(key, value.Text))
 	return err
 }
 
-func newSetCommand(host Host) *cobra.Command {
+func newSetCommand(env command.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set KEY [VALUE]",
 		Short: "Set one config value in config.toml",
@@ -135,7 +117,7 @@ func newSetCommand(host Host) *cobra.Command {
 				return errors.New("sensitive config values must be provided through non-TTY stdin")
 			}
 			if settings.IsSensitiveSetting(key) {
-				if input.IsTTY(host.Input()) {
+				if input.IsTTY(env.In) {
 					return errors.New("sensitive config values require non-TTY stdin")
 				}
 				return nil
@@ -148,18 +130,18 @@ func newSetCommand(host Host) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := settings.Key(args[0])
 			if settings.IsSensitiveSetting(key) {
-				raw, err := input.ReadValue(host.Input())
+				raw, err := input.ReadValue(env.In)
 				if err != nil {
 					return fmt.Errorf("read sensitive config value from stdin: %w", err)
 				}
-				return set(host, key, raw)
+				return set(env, store, key, raw)
 			}
-			return set(host, key, args[1])
+			return set(env, store, key, args[1])
 		},
 	}
 	input.Bind(cmd, input.InputSpec{
 		Codec: input.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1,
-		Reader: host.Input(), UsageError: host.UsageError,
+		Reader: env.In, UsageError: env.UsageError,
 		Enabled: func(_ *cobra.Command, args []string) bool {
 			return len(args) == 0 || !settings.IsSensitiveSetting(settings.Key(args[0]))
 		},
@@ -168,48 +150,45 @@ func newSetCommand(host Host) *cobra.Command {
 	return cmd
 }
 
-func set(host Host, key settings.Key, raw string) error {
-	if !isCLIConfigAlias(key) {
-		return invalidCLIConfigKey(key)
-	}
-	result, err := host.ConfigService().Set(key, raw)
+func set(env command.Env, store settings.Store, key settings.Key, raw string) error {
+	result, err := store.Set(key, raw)
 	if err != nil {
 		return err
 	}
 	if result.HasOverride {
-		writeOverrideNote(host.ErrorOutput(), key, result.EnvOverride)
+		writeOverrideNote(env.Err, key, result.EnvOverride)
 	}
-	_, err = fmt.Fprintf(host.Output(), "%s updated\n", key)
+	_, err = fmt.Fprintf(env.Out, "%s updated\n", key)
 	return err
 }
 
-func newUnsetCommand(host Host) *cobra.Command {
+func newUnsetCommand(env command.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "unset KEY",
 		Short: "Remove one config value from config.toml",
 		Long:  "Remove one config value from config.toml. KEY must be one of: " + configKeyHelp(),
-		Args:  host.RequireExactArgs(1, "pixiv config unset KEY"),
+		Args:  env.ExactArgs(1, "pixiv config unset KEY"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return unset(host, settings.Key(args[0]))
+			return unset(env, store, settings.Key(args[0]))
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: host.Input(), UsageError: host.UsageError})
+	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.UsageError})
 	command.Bind(cmd, command.Normal())
 	return cmd
 }
 
-func unset(host Host, key settings.Key) error {
+func unset(env command.Env, store settings.Store, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
-	result, err := host.ConfigService().Unset(key)
+	result, err := store.Unset(key)
 	if err != nil {
 		return err
 	}
 	if result.HasOverride {
-		writeOverrideNote(host.ErrorOutput(), key, result.EnvOverride)
+		writeOverrideNote(env.Err, key, result.EnvOverride)
 	}
-	_, err = fmt.Fprintf(host.Output(), "%s removed\n", key)
+	_, err = fmt.Fprintf(env.Out, "%s removed\n", key)
 	return err
 }
 

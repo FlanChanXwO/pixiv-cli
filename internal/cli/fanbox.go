@@ -22,11 +22,7 @@ func newFanboxCommand(env command.Env, children []*cobra.Command) *cobra.Command
 	flags := cmd.PersistentFlags()
 	flags.String("proxy", "", "native FANBOX proxy URL (HTTP or HTTPS CONNECT)")
 	flags.Bool("no-proxy", false, "use a direct native FANBOX connection for this command")
-	for _, child := range children {
-		if child != nil {
-			cmd.AddCommand(child)
-		}
-	}
+	cmd.AddCommand(children...)
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
 	command.Bind(cmd, command.Execution{})
 	return cmd

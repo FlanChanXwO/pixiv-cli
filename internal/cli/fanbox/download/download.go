@@ -12,7 +12,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd/listing"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -55,7 +54,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := listing.Traverse(cmd.Context(), listing.AllResults(), fetch, func(posts []fanbox.Post) error {
+			if err := fanboxcmd.Traverse(cmd.Context(), command.AllResults(), fetch, func(posts []fanbox.Post) error {
 				for _, post := range posts {
 					if err := a.savePostAssets(cmd.Context(), client, baseDir, post, seen); err != nil {
 						return err

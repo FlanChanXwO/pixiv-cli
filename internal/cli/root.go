@@ -89,7 +89,7 @@ func (a app) newRootCommand() *cobra.Command {
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			if command.For(cmd).AutomaticUpdate {
-				update.RunAutomaticCheck(cmd, a)
+				update.RunAutomaticCheck(cmd, a.errOut, a.runtimeConfig)
 			}
 		},
 	}
@@ -102,12 +102,12 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	env, exec := a.commandEnv(), a.commandExecutor()
 	cmd.AddCommand(a.newAuthCommand())
-	config.Register(cmd, a)
+	cmd.AddCommand(config.New(env, settings.DefaultStore()))
 	cmd.AddCommand(a.pixivCommands(env, exec)...)
 	cmd.AddCommand(a.newDownloadCommand())
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
-	mcp.Register(cmd, a)
-	update.Register(cmd, a)
+	cmd.AddCommand(mcp.New(env, a.runPixivMCP, initMCPAuth))
+	cmd.AddCommand(update.New(env, a.runtimeConfig))
 	return cmd
 }
 
@@ -129,72 +129,6 @@ func (a app) pixivCommands(env command.Env, exec pixivcmd.Executor) []*cobra.Com
 	}
 }
 
-// 以下 host methods 是根控制器对命令子包暴露的窄输出/依赖端口。子包不导入
-// internal/cli，也不接触 app 的内部状态字段。
-func (a app) Output() io.Writer { return a.out }
-
-func (a app) Input() io.Reader { return a.in }
-
-func (a app) ErrorOutput() io.Writer { return a.errOut }
-
-func (a app) PrintJSON(value any) error { return command.Env{Out: a.out}.PrintJSON(value) }
-
-func (app) UsageError(err error) error { return newUsageError(err) }
-
-func (a app) RequireExactArgs(count int, usage string) cobra.PositionalArgs {
-	return requireExactArgs(count, usage)
-}
-
-func (a app) RequireMinArgs(count int, usage string) cobra.PositionalArgs {
-	return requireMinArgs(count, usage)
-}
-
-func (a app) RequireMaxArgs(count int, usage string) cobra.PositionalArgs {
-	return requireMaxArgs(count, usage)
-}
-
-func (a app) BindProxyFlags(cmd *cobra.Command, options *mcp.ProxyOptions) {
-	flags := cmd.Flags()
-	flags.StringVar(&options.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
-	flags.BoolVar(&options.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
-}
-
-func (a app) ClientRequest(cmd *cobra.Command, options mcp.ProxyOptions) (mcp.Request, error) {
-	proxyOverride, err := command.Env{}.ProxyOverride(cmd, command.ProxyOptions{Proxy: options.Proxy, NoProxy: options.NoProxy})
-	if err != nil {
-		return mcp.Request{}, err
-	}
-	request := mcp.Request{HTTPSProxyOverride: proxyOverride}
-	return request, nil
-}
-
 func (a app) runtimeConfig() (settings.RuntimeConfig, error) {
 	return defaultCLIRuntimeConfig()
-}
-
-func requireExactArgs(count int, usage string) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) != count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
-}
-
-func requireMinArgs(count int, usage string) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) < count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
-}
-
-func requireMaxArgs(count int, usage string) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, args []string) error {
-		if len(args) > count {
-			return fmt.Errorf("usage: %s", usage)
-		}
-		return nil
-	}
 }

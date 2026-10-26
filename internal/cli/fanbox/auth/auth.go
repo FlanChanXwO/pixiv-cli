@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
 	"github.com/spf13/cobra"
 )
@@ -22,7 +21,7 @@ type accountStore interface {
 type commandRunner struct {
 	env      command.Env
 	accounts func() (*fanboxaccount.Service, error)
-	browser  fanboxcmd.BrowserProvider
+	browser  BrowserProvider
 }
 
 type importOptions struct {
@@ -42,8 +41,13 @@ type removeOptions struct {
 	yes     bool
 }
 
+// BrowserProvider reads one FANBOXSESSID from a browser profile.
+type BrowserProvider interface {
+	ReadSession(context.Context, string, string) (string, error)
+}
+
 // New builds the actual `pixiv fanbox auth` command group.
-func New(env command.Env, accounts func() (*fanboxaccount.Service, error), browser fanboxcmd.BrowserProvider) *cobra.Command {
+func New(env command.Env, accounts func() (*fanboxaccount.Service, error), browser BrowserProvider) *cobra.Command {
 	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",

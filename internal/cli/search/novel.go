@@ -72,7 +72,7 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 	if opts.period == "half-year" || opts.period == "year" {
 		return errors.New("novel period must be one of day, week, month")
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}

@@ -77,7 +77,7 @@ func (a commandRunner) newWorksCommand() *cobra.Command {
 }
 
 func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 				sdk.WithDetail("user_id must be a positive integer"))
 		}
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}

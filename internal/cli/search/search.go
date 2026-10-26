@@ -117,7 +117,7 @@ func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPor
 // artworkSearchParams 收集 artwork 搜索在解析 flag 后的查询、分页和输出参数。
 type artworkSearchParams struct {
 	request     pixivcmd.Request
-	plan        pixivcmd.Plan
+	plan        command.Plan
 	word        string
 	period      pixiv.DurationFilter
 	startDate   string
@@ -156,7 +156,7 @@ func (a commandRunner) artworkSearchParams(cmd *cobra.Command, opts options) (ar
 	if err != nil {
 		return artworkSearchParams{}, err
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return artworkSearchParams{}, err
 	}
@@ -295,7 +295,7 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
@@ -309,7 +309,7 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
 }
 
-func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan pixivcmd.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:   query,
 		Plan:    plan.PagePlan(),

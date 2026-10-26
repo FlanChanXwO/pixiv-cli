@@ -43,9 +43,6 @@ func (a commandRunner) runReverseSearch(cmd *cobra.Command, source string, opts 
 	if opts.ndjson && cmd.Flags().Changed("json") {
 		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
 	}
-	if a.reverseSearch == nil {
-		return errors.New("pixiv reverse search is not configured")
-	}
 	if !opts.ndjson {
 		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
@@ -140,8 +137,8 @@ func (a commandRunner) writeReverseSearchResponse(response reversesearch.Respons
 	}
 	if jsonOut {
 		return a.env.PrintJSON(reverseSearchOutput{
-			Input: response.Input, Providers: nonNilProviderSummaries(response.Providers), Results: nonNilReverseResults(response.Results),
-			Records: records, ProviderErrors: nonNilProviderErrors(response.ProviderErrors), Partial: response.Partial,
+			Input: response.Input, Providers: nonNil(response.Providers), Results: nonNil(response.Results),
+			Records: records, ProviderErrors: nonNil(response.ProviderErrors), Partial: response.Partial,
 		})
 	}
 	return printReverseSearchHuman(a.env.Out, response.Results)
@@ -208,9 +205,6 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 }
 
 func (a commandRunner) writeReverseSearchWarning(response reversesearch.Response) error {
-	if a.env.Err == nil {
-		return errors.New("reverse search partial warning output is not configured")
-	}
 	failed := make([]string, 0, len(response.ProviderErrors))
 	for _, providerError := range response.ProviderErrors {
 		failed = append(failed, string(providerError.Provider))
@@ -222,23 +216,10 @@ func (a commandRunner) writeReverseSearchWarning(response reversesearch.Response
 	return err
 }
 
-func nonNilProviderSummaries(values []reversesearch.ProviderSummary) []reversesearch.ProviderSummary {
+// nonNil keeps empty JSON arrays as [] rather than null.
+func nonNil[T any](values []T) []T {
 	if values == nil {
-		return []reversesearch.ProviderSummary{}
-	}
-	return values
-}
-
-func nonNilReverseResults(values []reversesearch.Result) []reversesearch.Result {
-	if values == nil {
-		return []reversesearch.Result{}
-	}
-	return values
-}
-
-func nonNilProviderErrors(values []reversesearch.ProviderError) []reversesearch.ProviderError {
-	if values == nil {
-		return []reversesearch.ProviderError{}
+		return []T{}
 	}
 	return values
 }

@@ -65,7 +65,7 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 		Use:     "login",
 		Short:   "Login with the Pixiv browser OAuth flow",
 		Example: "pixiv auth login --use",
-		Args:    a.requireExactArgs(0, "pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL] [--relay-listen-addr ADDR]"),
+		Args:    a.env.ExactArgs(0, "pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL] [--relay-listen-addr ADDR]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountLogin(cmd, opts)
 		},
@@ -80,23 +80,20 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.relayListenAddr, "relay-listen-addr", "", "listen address for this remote login relay")
 	flags.StringVar(&opts.relayTLSCertFile, "relay-tls-cert-file", "", "PEM certificate file for this remote login relay")
 	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
-	a.bindProxyFlags(cmd, &opts.ProxyOptions)
-	a.bindNoInput(cmd)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
+	a.env.BindNoInput(cmd)
 	command.Bind(cmd, command.AuthLogin())
 	return cmd
 }
 
 func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
-	proxyOverride, err := proxyOverrideFromFlags(cmd, opts.ProxyOptions)
+	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
-	services := a.services()
-	if err := services.require(); err != nil {
+	services, err := a.services()
+	if err != nil {
 		return err
-	}
-	if services.LoadRuntime == nil {
-		return errors.New("pixiv auth runtime loader is not configured")
 	}
 	cfg, err := services.LoadRuntime()
 	if err != nil {
@@ -159,14 +156,14 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 
 	out := accountFromPixiv(result)
 	if opts.jsonOut {
-		return a.printJSON(out)
+		return a.env.PrintJSON(out)
 	}
 	// 文本模式给出可直接识别账号的安全摘要，不显示 token 或冗余的成功文案。
-	fmt.Fprintf(a.out, "✓ uid:%d", out.UserID)
+	fmt.Fprintf(a.env.Out, "✓ uid:%d", out.UserID)
 	if out.Username != "" {
-		fmt.Fprintf(a.out, " username:%s", out.Username)
+		fmt.Fprintf(a.env.Out, " username:%s", out.Username)
 	}
-	fmt.Fprintln(a.out)
+	fmt.Fprintln(a.env.Out)
 	return nil
 }
 
@@ -282,7 +279,7 @@ func (s *loginServer) initializeErrors() {
 	s.writeErr = func(format string, args ...any) {
 		errOutMu.Lock()
 		defer errOutMu.Unlock()
-		fmt.Fprintf(s.controller.errOut, format, args...)
+		fmt.Fprintf(s.controller.env.Err, format, args...)
 	}
 	s.reportInvalidSubmission = func(err error) {
 		if err != nil {
@@ -357,7 +354,7 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 		})
 	}
 	s.writeLoginInstructions(loginURL, noOpen)
-	enableTerminalFallback := s.controller.canPrompt()
+	enableTerminalFallback := s.controller.env.CanPrompt()
 	if !noOpen {
 		if err := browser.OpenURL(loginURL); err != nil {
 			s.writeErr("warning: could not open browser: %v\n", err)
@@ -386,7 +383,7 @@ func (s *loginServer) writeLoginInstructions(loginURL string, noOpen bool) {
 
 func (s *loginServer) promptForLoginInput(openTerminalRelay func(string) error) {
 	for {
-		input, err := s.controller.promptInput("Paste the returned Pixiv sign-in address, relay address, or value", "")
+		input, err := s.controller.env.PromptInput("Paste the returned Pixiv sign-in address, relay address, or value", "")
 		if err != nil {
 			return
 		}
@@ -485,9 +482,6 @@ func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expec
 	}
 	if result.RelayURL == "" {
 		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("pixiv authorization relay URL is empty")}, Relayed: true}
-	}
-	if openRelay == nil {
-		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("browser opener is not configured")}, Relayed: true}
 	}
 	if err := openRelay(result.RelayURL); err != nil {
 		return loginInputResult{loginServerResult: loginServerResult{Err: fmt.Errorf("could not open pixiv authorization relay URL: %w", err)}, Relayed: true}

@@ -2,6 +2,7 @@ package update
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
@@ -12,13 +13,13 @@ import (
 
 // RunAutomaticCheck 在业务命令成功后展示稳定版更新提示。所有错误只写
 // stderr，不改变已成功命令的退出码，也不进入 stdout/MCP JSON-RPC。
-func RunAutomaticCheck(cmd *cobra.Command, host AutomaticCheckHost) {
+func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() (settings.RuntimeConfig, error)) {
 	if !shouldCheck(cmd) {
 		return
 	}
-	runtimeConfig, err := host.LoadAutomaticUpdateRuntimeConfig()
+	runtimeConfig, err := loadRuntime()
 	if err != nil {
-		warning(host, "load automatic update configuration", err)
+		warning(errOut, "load automatic update configuration", err)
 		return
 	}
 	if !runtimeConfig.UpdateCheckEnabled {
@@ -26,31 +27,31 @@ func RunAutomaticCheck(cmd *cobra.Command, host AutomaticCheckHost) {
 	}
 	proxy, err := automaticProxy(cmd, runtimeConfig)
 	if err != nil {
-		warning(host, "read automatic update proxy override", err)
+		warning(errOut, "read automatic update proxy override", err)
 		return
 	}
-	checker, err := host.NewAutomaticUpdateChecker(proxy)
+	checker, err := NewAutomaticChecker(proxy)
 	if err != nil {
-		warning(host, "create automatic update checker", err)
+		warning(errOut, "create automatic update checker", err)
 		return
 	}
 	notice, err := checker.Check(cmd.Context(), selfupdate.AutomaticUpdateRequest{BuildInfo: version.Current()})
 	if err != nil {
-		warning(host, "check for updates", err)
+		warning(errOut, "check for updates", err)
 		return
 	}
 	if notice == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(host.ErrorOutput(), "update available: %s -> %s\nrun: %s\n", notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
+	_, _ = fmt.Fprintf(errOut, "update available: %s -> %s\nrun: %s\n", notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
 }
 
-func warning(host AutomaticCheckHost, action string, err error) {
-	_, _ = fmt.Fprintf(host.ErrorOutput(), "warning: %s: %v\n", action, err)
+func warning(errOut io.Writer, action string, err error) {
+	_, _ = fmt.Fprintf(errOut, "warning: %s: %v\n", action, err)
 }
 
 func shouldCheck(cmd *cobra.Command) bool {
-	if version.Current().IsDevelopment() || cmd == nil || cmd.Root() == cmd {
+	if version.Current().IsDevelopment() || cmd.Root() == cmd {
 		return false
 	}
 	if cmd.CommandPath() == "pixiv auth export" {

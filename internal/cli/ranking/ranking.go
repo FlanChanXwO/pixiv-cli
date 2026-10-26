@@ -59,7 +59,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	if opts.typ == "novel" && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}

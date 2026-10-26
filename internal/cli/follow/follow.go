@@ -64,7 +64,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
@@ -97,7 +97,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			return invoke(cmd.Context(), id)
 		},
 	}
-	a.env.BindActionFlags(cmd, &opts.ProxyOptions)
+	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
 	a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())

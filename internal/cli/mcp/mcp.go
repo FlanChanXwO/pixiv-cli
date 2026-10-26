@@ -16,44 +16,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Request 是 mcp 命令解析 flags 后的本地请求值；传输覆写由 root host 桥接。
+// Request 是 mcp 命令解析 flags 后的本地请求值。
 type Request struct {
 	HTTPSProxyOverride  *string
 	ListenAddr, BaseURL *string
 }
 
-type Host interface {
-	RequireExactArgs(int, string) cobra.PositionalArgs
-	BindProxyFlags(*cobra.Command, *ProxyOptions)
-	ClientRequest(*cobra.Command, ProxyOptions) (Request, error)
-	RunMCP(context.Context, Request) error
-	InitMCPAuth(context.Context, bool) (string, error)
-}
-
-type ProxyOptions struct {
-	Proxy   string
-	NoProxy bool
-}
-
-func Register(root *cobra.Command, host Host) {
-	root.AddCommand(NewCommand(host))
-}
-
-// NewCommand 构造 Pixiv MCP 入口；runtime 与 HTTP lifecycle 由 root host 注入。
-func NewCommand(host Host) *cobra.Command {
-	var options ProxyOptions
+// New 构造 Pixiv MCP 入口；run 启动 stdio 或 HTTP runtime，initAuth 初始化 HTTP owner。
+func New(env command.Env, run func(context.Context, Request) error, initAuth func(context.Context, bool) (string, error)) *cobra.Command {
+	var options command.ProxyOptions
 	var hostAddr, baseURL string
 	var port int
 	cmd := &cobra.Command{
 		Use:     "mcp",
 		Short:   "Run unified Pixiv/FANBOX MCP over stdio (default) or HTTP (--port)",
 		Example: "pixiv mcp\npixiv mcp --port 1270\npixiv mcp --port 1270 --base-url https://mcp.example.com",
-		Args:    host.RequireExactArgs(0, "pixiv mcp"),
+		Args:    env.ExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			request, err := host.ClientRequest(cmd, options)
+			proxyOverride, err := command.ProxyOverride(cmd, options)
 			if err != nil {
 				return err
 			}
+			request := Request{HTTPSProxyOverride: proxyOverride}
 			if !cmd.Flags().Changed("port") {
 				if cmd.Flags().Changed("host") || cmd.Flags().Changed("base-url") {
 					return errors.New("--host and --base-url require --port")
@@ -65,23 +49,23 @@ func NewCommand(host Host) *cobra.Command {
 				}
 				request.ListenAddr, request.BaseURL = &listen, &base
 			}
-			return host.RunMCP(cmd.Context(), request)
+			return run(cmd.Context(), request)
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", 0, "Enable HTTP on this port (1-65535); omitted uses stdio")
 	cmd.Flags().StringVar(&hostAddr, "host", "127.0.0.1", "HTTP listen host; requires --port")
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical public URL; requires --port and HTTPS outside loopback")
 
-	host.BindProxyFlags(cmd, &options)
+	env.BindProxyFlags(cmd, &options)
 	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
 	command.Bind(cmd, command.PixivMCP())
 	auth := &cobra.Command{Use: "auth", Short: "Manage the MCP owner"}
 	var reset bool
 	init := &cobra.Command{
 		Use: "init", Short: "Initialize the MCP owner and print its secret once",
-		Args: host.RequireExactArgs(0, "pixiv mcp auth init"),
+		Args: env.ExactArgs(0, "pixiv mcp auth init"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			secret, err := host.InitMCPAuth(cmd.Context(), reset)
+			secret, err := initAuth(cmd.Context(), reset)
 			if err != nil {
 				return err
 			}

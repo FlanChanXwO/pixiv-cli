@@ -41,9 +41,6 @@ func New(out io.Writer, executor Executor) Runner {
 // Execute binds one request to the shared traversal contract. Logical paging,
 // bookmark policy, and cursor handling stay with the command owner.
 func (r Runner) Execute(request Request) pagination.Execute[*pixiv.Client] {
-	if r.executor == nil {
-		return nil
-	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return r.executor(ctx, request, attempt)
 	}
@@ -52,11 +49,7 @@ func (r Runner) Execute(request Request) pagination.Execute[*pixiv.Client] {
 // Read runs one read and returns its result only when the boundary succeeds.
 // Partial results are never delivered.
 func Read[T any](r Runner, ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
-	var zero T
-	if r.executor == nil {
-		return zero, errors.New("pixiv pooled operation is not configured")
-	}
-	var result T
+	var zero, result T
 	err := r.executor(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var err error
 		result, err = invoke(ctx, client)
@@ -71,9 +64,6 @@ func Read[T any](r Runner, ctx context.Context, request Request, invoke func(con
 // Write runs one mutation. Every invoked attempt is committed because a
 // transport error cannot prove the server rejected the request.
 func (r Runner) Write(ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) error) error {
-	if r.executor == nil {
-		return errors.New("pixiv pooled operation is not configured")
-	}
 	return r.executor(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)
 	})
@@ -81,7 +71,7 @@ func (r Runner) Write(ctx context.Context, request Request, invoke func(context.
 
 // BuildRequest reads the shared proxy flags into one execution request.
 func BuildRequest(cmd *cobra.Command, opts command.Options) (Request, error) {
-	proxy, err := (command.Env{}).ProxyOverride(cmd, opts.ProxyOptions)
+	proxy, err := command.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return Request{}, err
 	}

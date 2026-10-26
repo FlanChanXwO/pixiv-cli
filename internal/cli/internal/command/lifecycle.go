@@ -7,6 +7,10 @@ import "github.com/spf13/cobra"
 // 声明存放在 Cobra command 本身，避免进程级 command-pointer registry 泄漏状态。
 const LifecycleAnnotationKey = "pixiv-cli.lifecycle"
 
+// OutputNDJSONAnnotationKey 记录命令本次执行是否把 NDJSON 写到 stdout；root 据此
+// 把下游关闭管道造成的 EPIPE 视为正常结束。
+const OutputNDJSONAnnotationKey = "pixiv-cli.output-ndjson"
+
 // Execution 描述 root 在命令执行前后负责的通用生命周期行为。业务资源由各
 // command owner 的窄依赖端口按需创建，不在这里声明或定位。
 type Execution struct {
@@ -18,17 +22,11 @@ type Execution struct {
 
 // Bind 把静态生命周期声明写入 command 自身。
 func Bind(command *cobra.Command, execution Execution) {
-	if command == nil {
-		return
-	}
 	if command.Annotations == nil {
 		command.Annotations = make(map[string]string)
 	}
 	command.Annotations[LifecycleAnnotationKey] = encodeExecution(execution)
 }
-
-// Override 供 owner 在输入分类后覆盖当前 leaf 的生命周期声明。
-func Override(command *cobra.Command, execution Execution) { Bind(command, execution) }
 
 // For 返回最近的 owner 声明；未声明命令保留 startup 默认行为。
 func For(command *cobra.Command) Execution {

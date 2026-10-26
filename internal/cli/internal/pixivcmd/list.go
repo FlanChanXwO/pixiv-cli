@@ -6,12 +6,9 @@ package pixivcmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"math"
-	"os"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -39,27 +36,6 @@ const (
 	JSONKeyNovels  JSONKey = "novels"
 	JSONKeyUsers   JSONKey = "user_previews"
 )
-
-// Plan is the resolved logical page selection.
-type Plan struct {
-	limit    int
-	skip     int
-	oneBatch bool
-}
-
-// PagePlan exposes the resolved selection to commands that drive shared
-// pagination directly.
-func (p Plan) PagePlan() pagination.PagePlan {
-	return pagination.PagePlan{Skip: p.skip, Limit: p.limit, OneBatch: p.oneBatch}
-}
-
-// PushDownSkip hands a logical skip to an upstream offset only when raw and
-// logical results correspond one-to-one.
-func (p Plan) PushDownSkip() (Plan, int) {
-	offset := p.skip
-	p.skip = 0
-	return p, offset
-}
 
 // ArtworkList describes one artwork list read and how to present it.
 type ArtworkList struct {
@@ -104,31 +80,11 @@ func BindListFlags(cmd *cobra.Command, limit, page *int) {
 	flags.IntVarP(page, "page", "p", 0, "1-based logical page (requires --limit > 0)")
 }
 
-// ParsePlan validates a command's logical pagination settings.
-func ParsePlan(cmd *cobra.Command, limit, page int) (Plan, error) {
-	if limit < 0 {
-		return Plan{}, errors.New("limit must be zero or a positive integer")
-	}
-	if cmd.Flags().Changed("page") && page <= 0 {
-		return Plan{}, errors.New("page must be a positive integer")
-	}
-	if page > 0 {
-		if limit <= 0 {
-			return Plan{}, errors.New("--page requires --limit to be a positive integer")
-		}
-		if page-1 > math.MaxInt/limit {
-			return Plan{}, errors.New("page and limit overflow the logical result offset")
-		}
-		return Plan{limit: limit, skip: (page - 1) * limit}, nil
-	}
-	return Plan{limit: limit, oneBatch: !cmd.Flags().Changed("limit")}, nil
-}
-
 // RunArtworks executes one paged artwork read under the pool's replay boundary.
 // NDJSON commits per record, JSON after the whole document reaches stdout, and
 // text after the first visible batch. A 429 therefore only switches accounts
 // before any result is exposed.
-func (r Runner) RunArtworks(ctx context.Context, request Request, plan Plan, format Format, list ArtworkList) error {
+func (r Runner) RunArtworks(ctx context.Context, request Request, plan command.Plan, format Format, list ArtworkList) error {
 	key := list.Key
 	if key == "" {
 		key = JSONKeyIllusts
@@ -137,7 +93,7 @@ func (r Runner) RunArtworks(ctx context.Context, request Request, plan Plan, for
 }
 
 // RunNovels executes one paged novel read under the same replay boundary.
-func (r Runner) RunNovels(ctx context.Context, request Request, plan Plan, format Format, list NovelList) error {
+func (r Runner) RunNovels(ctx context.Context, request Request, plan command.Plan, format Format, list NovelList) error {
 	return runList(ctx, r, request, plan, format, JSONKeyNovels, Static(list.Heading), list.Fetch, nil, func(items []pixiv.Novel, _ int) error {
 		return list.Print(items)
 	}, record.RecordFromNovel)
@@ -145,14 +101,14 @@ func (r Runner) RunNovels(ctx context.Context, request Request, plan Plan, forma
 
 // RunUsers executes one paged user-preview read. The heading is evaluated only
 // before the first visible output so identity reads stay replayable.
-func (r Runner) RunUsers(ctx context.Context, request Request, plan Plan, format Format, list UserList) error {
+func (r Runner) RunUsers(ctx context.Context, request Request, plan command.Plan, format Format, list UserList) error {
 	return runList(ctx, r, request, plan, format, JSONKeyUsers, list.Heading, list.Fetch, nil, func(items []pixiv.UserPreview, _ int) error {
 		return list.Print(items)
 	}, record.RecordFromUserPreview)
 }
 
-func runList[T any](ctx context.Context, r Runner, request Request, plan Plan, format Format, key JSONKey, heading func() string, fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T, print func([]T, int) error, toRecord func(T) (record.Record, error)) error {
-	var spool *jsonArraySpool
+func runList[T any](ctx context.Context, r Runner, request Request, plan command.Plan, format Format, key JSONKey, heading func() string, fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T, print func([]T, int) error, toRecord func(T) (record.Record, error)) error {
+	var spool *command.JSONArraySpool
 	if format == FormatJSON {
 		defer func() {
 			if spool != nil {
@@ -168,13 +124,13 @@ func runList[T any](ctx context.Context, r Runner, request Request, plan Plan, f
 			spool.Close()
 		}
 		var err error
-		spool, err = newJSONArraySpool(key)
+		spool, err = command.NewJSONArraySpool(string(key))
 		return err
 	}
-	position := plan.skip
+	position := plan.PagePlan().Skip
 	headingWritten := false
 	encoder := json.NewEncoder(r.out)
-	err := runPages(ctx, r.Execute(request), plan.PagePlan(), begin,
+	_, err := pagination.TraverseWith(ctx, r.Execute(request), plan.PagePlan(), begin,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}, func(items []T) (bool, error) {
@@ -196,7 +152,7 @@ func runList[T any](ctx context.Context, r Runner, request Request, plan Plan, f
 				return committed, nil
 			}
 			if format == FormatJSON {
-				return false, appendJSONArray(spool, items)
+				return false, command.AppendJSONArray(spool, items)
 			}
 			committed := false
 			if !headingWritten && heading != nil {
@@ -218,83 +174,6 @@ func runList[T any](ctx context.Context, r Runner, request Request, plan Plan, f
 		return spool.Commit(r.out)
 	}
 	return err
-}
-
-func runPages[C any, T any](ctx context.Context, execute pagination.Execute[C], plan pagination.PagePlan, begin func() error, fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) (bool, error)) error {
-	if execute == nil {
-		return sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
-	}
-	_, err := pagination.TraverseWith(ctx, execute, plan, begin, fetch, consume)
-	return err
-}
-
-// PageItems hands a CLI page plan to shared pagination for commands that run
-// their own inline read.
-func PageItems[T any](ctx context.Context, plan Plan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) error) error {
-	_, err := pagination.TraversePages(ctx, plan.PagePlan(), fetch, consume)
-	return err
-}
-
-// jsonArraySpool writes each confirmed element to a private temporary file.
-// Network or encoding failures leave stdout untouched; success then transfers
-// one complete JSON document.
-type jsonArraySpool struct {
-	file  *os.File
-	first bool
-	key   string
-}
-
-func newJSONArraySpool(key JSONKey) (*jsonArraySpool, error) {
-	file, err := os.CreateTemp("", "pixiv-cli-json-*.tmp")
-	if err != nil {
-		return nil, err
-	}
-	spool := &jsonArraySpool{file: file, first: true, key: string(key)}
-	if _, err := fmt.Fprintf(file, "{\n  %q: [", key); err != nil {
-		_ = file.Close()
-		_ = os.Remove(file.Name())
-		return nil, err
-	}
-	return spool, nil
-}
-
-func appendJSONArray[T any](s *jsonArraySpool, items []T) error {
-	for _, item := range items {
-		if s.first {
-			s.first = false
-		} else if _, err := io.WriteString(s.file, ","); err != nil {
-			return err
-		}
-		encoded, err := json.MarshalIndent(item, "    ", "  ")
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(s.file, "\n    %s", encoded); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *jsonArraySpool) Commit(out io.Writer) error {
-	if _, err := io.WriteString(s.file, "\n  ]\n}\n"); err != nil {
-		return err
-	}
-	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	_, err := io.Copy(out, s.file)
-	return err
-}
-
-func (s *jsonArraySpool) Close() {
-	if s == nil || s.file == nil {
-		return
-	}
-	name := s.file.Name()
-	_ = s.file.Close()
-	_ = os.Remove(name)
 }
 
 // FormatOf maps the two output flags to one list format.

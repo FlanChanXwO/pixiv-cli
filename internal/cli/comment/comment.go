@@ -426,7 +426,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	if err != nil {
 		return err
 	}
-	plan, err := pixivcmd.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
@@ -467,7 +467,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			metadata.set(page)
 			return page.Page.Items, page.Page.Next, nil
 		}
-		if err := pixivcmd.PageItems(ctx, plan, fetch, func(items []pixiv.Comment) error {
+		if err := command.PageItems(ctx, plan, fetch, func(items []pixiv.Comment) error {
 			comments = append(comments, items...)
 			return nil
 		}); err != nil {

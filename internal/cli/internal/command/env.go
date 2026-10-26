@@ -23,7 +23,7 @@ type Env struct {
 	Out io.Writer
 	Err io.Writer
 	// WrapUsage marks argument or input-contract errors with the CLI usage exit
-	// code. Nil keeps the error unchanged.
+	// code.
 	WrapUsage func(error) error
 	// ResolveJSON returns the effective JSON setting; a nil override reads it
 	// from runtime configuration.
@@ -43,12 +43,7 @@ type Options struct {
 }
 
 // UsageError wraps a validation failure with the CLI usage exit code.
-func (e Env) UsageError(err error) error {
-	if err == nil || e.WrapUsage == nil {
-		return err
-	}
-	return e.WrapUsage(err)
-}
+func (e Env) UsageError(err error) error { return e.WrapUsage(err) }
 
 // ExactArgs, MinArgs, and MaxArgs report positional mismatches as ordinary
 // command failures. A usage exit code is reserved for unknown options and
@@ -99,23 +94,11 @@ func (e Env) JSONOverride(cmd *cobra.Command, opts Options) *bool {
 }
 
 // JSONOut resolves the configured JSON setting for one command execution.
-func (e Env) JSONOut(override *bool) (bool, error) {
-	if e.ResolveJSON == nil {
-		if override != nil {
-			return *override, nil
-		}
-		return false, errors.New("JSON output resolver is not configured")
-	}
-	return e.ResolveJSON(override)
-}
+func (e Env) JSONOut(override *bool) (bool, error) { return e.ResolveJSON(override) }
 
 // ProxyOverride parses the shared proxy flags. It returns nil when neither flag
 // was given.
-func (e Env) ProxyOverride(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
-	return proxyOverrideFromFlags(cmd, opts)
-}
-
-func proxyOverrideFromFlags(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
+func ProxyOverride(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
 	noProxyChanged := cmd.Flags().Changed("no-proxy")
 	if proxyChanged && noProxyChanged {
@@ -137,11 +120,7 @@ func (e Env) BindCommonFlags(cmd *cobra.Command, opts *Options) {
 	e.BindProxyFlags(cmd, &opts.ProxyOptions)
 }
 
-// BindActionFlags adds only the proxy overrides for commands without --json.
-func (e Env) BindActionFlags(cmd *cobra.Command, opts *ProxyOptions) {
-	e.BindProxyFlags(cmd, opts)
-}
-
+// BindProxyFlags adds only the proxy overrides, for commands without --json.
 func (e Env) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 	flags := cmd.Flags()
 	flags.StringVar(&opts.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")

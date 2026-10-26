@@ -127,19 +127,9 @@ const (
 	authExportBundleVersion    = 1
 )
 
-func (s AccountService) pixivService() (accountPort, error) {
-	if s.Pixiv == nil {
-		return nil, errors.New("pixiv account service is not configured")
-	}
-	return s.Pixiv, nil
-}
-
 func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error) {
 	proxy := proxyOverride
 	if proxy == nil {
-		if s.LoadRuntime == nil {
-			return pixiv.Options{}, errors.New("pixiv auth runtime loader is not configured")
-		}
 		runtime, err := s.LoadRuntime()
 		if err != nil {
 			return pixiv.Options{}, err
@@ -151,9 +141,6 @@ func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error)
 			value := runtime.HTTPSProxy
 			proxy = &value
 		}
-	}
-	if proxy == nil {
-		return pixiv.Options{}, nil
 	}
 	client, err := httpclient.HTTPClient(*proxy)
 	if err != nil {
@@ -174,10 +161,7 @@ func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
 }
 
 func (s AccountService) importAccount(ctx context.Context, request accountImportRequest) (accountImportOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountImportOut{}, err
-	}
+	service := s.Pixiv
 	validatedToken := strings.TrimSpace(request.TokenInput)
 	if validatedToken == "" {
 		return accountImportOut{}, errors.New("refresh token cannot be empty")
@@ -205,10 +189,7 @@ func (s AccountService) importAccount(ctx context.Context, request accountImport
 }
 
 func (s AccountService) importBundle(ctx context.Context, body []byte) (accountBundleImportOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountBundleImportOut{}, err
-	}
+	service := s.Pixiv
 	bundle, err := decodeAuthExportBundle(body)
 	if err != nil {
 		return accountBundleImportOut{}, err
@@ -241,10 +222,7 @@ func (s AccountService) importBundle(ctx context.Context, body []byte) (accountB
 }
 
 func (s AccountService) listWithContext(ctx context.Context) (accountListOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountListOut{}, err
-	}
+	service := s.Pixiv
 	accounts, err := service.ListAccounts(ctx)
 	if err != nil {
 		return accountListOut{}, err
@@ -262,13 +240,7 @@ func (s AccountService) listWithContext(ctx context.Context) (accountListOut, er
 }
 
 func (s AccountService) poolStatus(ctx context.Context) (accountPoolStatusOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountPoolStatusOut{}, err
-	}
-	if s.LoadRuntime == nil {
-		return accountPoolStatusOut{}, errors.New("account pool runtime loader is not configured")
-	}
+	service := s.Pixiv
 	runtime, err := s.LoadRuntime()
 	if err != nil {
 		return accountPoolStatusOut{}, err
@@ -290,10 +262,7 @@ func (s AccountService) poolStatus(ctx context.Context) (accountPoolStatusOut, e
 }
 
 func (s AccountService) setPool(ctx context.Context, userIDs []int64, schedulable, all bool) error {
-	service, err := s.pixivService()
-	if err != nil {
-		return err
-	}
+	service := s.Pixiv
 	if all {
 		if len(userIDs) != 0 {
 			return errors.New("--all cannot be combined with UIDs")
@@ -307,10 +276,7 @@ func (s AccountService) setPool(ctx context.Context, userIDs []int64, schedulabl
 }
 
 func (s AccountService) export(request accountExportRequest) (accountExportResult, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountExportResult{}, err
-	}
+	service := s.Pixiv
 	accounts, err := service.AccountsWithTokens(context.Background())
 	if err != nil {
 		return accountExportResult{}, err
@@ -354,10 +320,7 @@ func (s AccountService) export(request accountExportRequest) (accountExportResul
 }
 
 func (s AccountService) remove(userID int64) (accountOut, int64, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountOut{}, 0, err
-	}
+	service := s.Pixiv
 	list, err := s.listWithContext(context.Background())
 	if err != nil {
 		return accountOut{}, 0, err
@@ -385,10 +348,7 @@ func (s AccountService) remove(userID int64) (accountOut, int64, error) {
 }
 
 func (s AccountService) use(userID int64) (int64, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return 0, err
-	}
+	service := s.Pixiv
 	if err := service.UseAccount(context.Background(), userID); err != nil {
 		return 0, err
 	}
@@ -396,10 +356,7 @@ func (s AccountService) use(userID int64) (int64, error) {
 }
 
 func (s AccountService) checkWithRequest(ctx context.Context, request accountCheckRequest) (accountOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountOut{}, err
-	}
+	service := s.Pixiv
 	if request.UserID == 0 {
 		current, err := service.CurrentUser(ctx)
 		if err != nil {
@@ -419,10 +376,7 @@ func (s AccountService) checkWithRequest(ctx context.Context, request accountChe
 }
 
 func (s AccountService) refreshWithRequest(ctx context.Context, request accountRefreshRequest) (accountOut, error) {
-	service, err := s.pixivService()
-	if err != nil {
-		return accountOut{}, err
-	}
+	service := s.Pixiv
 	if request.UserID == 0 {
 		current, err := service.CurrentUser(ctx)
 		if err != nil {
