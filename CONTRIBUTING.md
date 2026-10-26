@@ -63,7 +63,7 @@ Update docs in the same PR when a command, flag, SDK API, MCP tool, config key, 
 
 - Keep `README.md` / `README.zh-CN.md` and every `docs/<locale>/` page behaviorally aligned; no untranslated placeholders.
 - Update SDK/MCP contracts or `docs/en/maintainers/` per their responsibility; check `skills/pixiv-cli/` when CLI commands, flags or safety semantics change.
-- Source comments may be English or Chinese; follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) (no per-function quotas).
+- Source comments are English in `sdk/` and Simplified Chinese elsewhere; each package has one package documentation and other files start without a header comment. Follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) (no per-function quotas).
 - PR body: what changed, the verification you actually ran, the checklist. Maintainers write bilingual release notes from merged PRs at release time — see [release notes and publication](docs/en/maintainers/development.md#release-notes-and-publication).
 - Keep each stable rule in one authoritative document and link to it.
 

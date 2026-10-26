@@ -1,6 +1,6 @@
 ---
 name: pixiv-cli-code-commenting
-description: In pixiv-cli, write and review intent-focused code comments, file header comments, API documentation, docstrings, and numbered workflow stages. Use when an implementation changes a contract or non-obvious invariant, a file is created or its responsibility changes, a multi-stage function needs navigation, or existing comments are noisy or stale. Keep natural-language choice neutral and preserve compiler/tool directives. Do not require comments for every function or statement.
+description: In pixiv-cli, write and review package documentation, doc comments, field and concurrency comments, and numbered workflow stages. Use when an implementation changes a contract or non-obvious invariant, a package is created or its responsibility changes, a multi-stage function needs navigation, or existing comments are noisy, stale, or in the wrong language. Preserve compiler/tool directives. Do not require comments for every function or statement.
 ---
 
 # pixiv-cli Code Commenting
@@ -21,42 +21,56 @@ Read root `AGENTS.md` and the affected owner before editing. This checked-in ski
 
 ## Language and syntax
 
-- Accept either English or Chinese source comments; this skill's English instructions do not select a comment language. Follow the explicit task preference, otherwise the surrounding code and intended readers. Keep a coherent language within a comment; do not bulk-translate unrelated code or duplicate every comment bilingually.
-- Preserve identifier spelling, protocol values, units, URLs, issue references, and required documentation tags. Natural-language freedom does not waive language-specific syntax.
-- Use the repository's existing formatter and documentation conventions. For Go, place a doc comment directly before its declaration, normally start with the declared identifier (or `Package name` for a package), and use complete sentences. Chinese prose can follow the unchanged identifier.
-- Document newly added or changed exported Go declarations and caller-visible field semantics. A concise, accurate contract is enough; avoid boilerplate headings and parameter lists that only repeat the signature. A private helper does not automatically need a doc comment.
+- Write comments in `sdk/`, including doc comments, in English; pkg.go.dev displays them. Write comments everywhere else (`cmd/`, `internal/`, `scripts/`, `.github/`, `frontend/`) in Simplified Chinese. When editing a comment in the wrong language, rewrite it in the required one; bulk translation of untouched code belongs to a dedicated comment task. This skill's English text does not change that rule.
+- Program output (logs, error strings, CLI output, MCP result text) stays English regardless of the comment language.
+- Use natural sentences in the chosen language. In Chinese prose keep protocol values, identifiers, and quoted error text in English, but do not mix in translatable English terms.
+- Preserve identifier spelling, protocol values, units, URLs, issue references, and required documentation tags.
 
-## File header comments
+## Package documentation and file starts
 
-Start each new production code file, and each file whose responsibility changes, with a one- to three-line comment stating what the file is responsible for and, when useful, where related code lives. Do not list functions, history, or authors.
+Write package documentation in exactly one file per package, normally `doc.go` or the entry file `name/name.go`, directly above the `package` clause. Follow the standard library: the first sentence starts with `Package x` (except in a `main` package, below) and says what the package does; after an empty `//` line, describe scope, what it does not own, and where related code lives. Do not record authors, dates, or history.
 
-- Go: separate the header from the `package` clause with a blank line so `go doc` does not treat it as package documentation. A `//go:build` constraint group stays first and is followed by a blank line before the header. A package comment in the entry file or `doc.go` already serves as that file's header.
-- Shell, PowerShell, and `.cmd` scripts: after the shebang. Workflow YAML: before `name:`. Frontend HTML, JavaScript, and CSS: in their native comment syntax.
-- `_test.go` files, generated files, formats without comments, `testdata/`, and `third_party/` need no header; a registered test-layout exception without an owner file does.
+- A package with several files or several main types adds a "package composition" paragraph that lists the main types and entry points as doc links (`[Client]`, `[Session]`) so godoc navigates to them and gopls flags stale links after a rename.
+- A `main` package's documentation starts with the command name instead of `Package main`, for example `pixiv 命令启动 pixiv-cli。`
+- Do not start any other Go file with a comment. A comment attached to `package` merges into package documentation, and a detached file header goes stale after refactors. Choose a file name that tells the reader its contents; a file that needs a comment to explain itself usually needs a rename or a different split. Report that rather than renaming during a comment-only task.
+- A `//go:build` constraint stays on the first line, followed by a blank line before package documentation or `package`. Keep cgo preambles and `//go:embed`/`//go:generate` directives where they are. Generated files keep the generator's header.
+- `_test.go` files, formats without comments, `testdata/`, and `third_party/` take no file description. Shell, PowerShell, and `.cmd` scripts (after the shebang), workflow YAML (before `name:`), and frontend HTML/JS/CSS start with one comment line stating their purpose.
 
 ```go
-// User-related SDK methods: user detail, follower and following lists, and a user's works.
-// List endpoints of the same family share userPreviews; wire types live in wire.go.
-
+// Package pixiv provides a Go client for the Pixiv App API: artworks, novels, users, bookmarks, and comments.
+//
+// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixivapi.
 package pixiv
 ```
 
 ## Documentation comments
 
-Describe only the caller-relevant facts that apply: observable behavior, preconditions, zero/nil/absent semantics, units or formats, ordering, side effects, ownership/lifetime, concurrency, cancellation, and error or partial-commit outcomes.
+Document every exported type, function, method, constant, and variable, in `internal/` as well as `sdk/`. Start with the identifier and follow it directly with what it does or guarantees; state side effects, errors, cancellation, concurrency, ownership, and zero/nil/absent semantics when they apply. Avoid boilerplate headings and parameter lists that only repeat the signature. Document a private function only when its name and signature leave out a precondition, an ordering requirement, or a non-obvious trade-off.
 
-Give important structs and domain types their meaning and invariants. Document fields individually only when their meaning is not already clear from the type contract and names. Keep implementation walkthroughs out of API documentation.
-
-For example, a useful contract states an ownership rule:
+Do not write definition sentences ("X 是……", "X is a ...") or open with "该函数", "此方法", or "用于". For example, a useful contract states an ownership rule:
 
 ```go
-// Snapshot returns a copy of the current settings.
-// The caller may modify the result without changing the store.
+// Snapshot 返回当前设置的副本，调用方修改结果不影响 store。
 ```
 
-Use that wording only when the implementation actually provides a copy. Avoid vacuous prose such as `Snapshot returns a snapshot`, and do not promise guarantees that the code or accepted contract does not establish.
+Use that wording only when the implementation actually provides a copy. Avoid vacuous prose such as `Snapshot 返回快照`, and do not promise guarantees that the code or accepted contract does not establish: thread safety, atomicity, idempotency, or retry safety.
+
+Give types their meaning and the invariants callers must keep. Comment a field only when its name and type leave out its unit, the meaning of zero or absence, optionality, the lock that guards it, or its ownership and lifetime; put a short note at the end of the field's line.
+
+```go
+type Budget struct {
+	mu   sync.Mutex
+	used int64 // 已占用字节，由 mu 保护
+	max  int64
+}
+```
 
 Keep a shared contract in its authoritative location and link or name it where helpful; do not copy long explanations into every caller.
+
+## Comments for readers with basic Go
+
+- Next to `select`, channel closing, `sync/atomic`, lock ordering, or a goroutine hand-off, add one line explaining why the code is written that way.
+- For a state machine, account pool, OAuth flow, MCP session, or similarly complex module, explain the overall model once in the package or type documentation: the states, who owns what, and the order of events. Local comments then do not repeat it.
 
 ## Numbered workflow comments
 
@@ -65,9 +79,9 @@ Use `// 1. ...`, `// 2. ...`, and `// 3. ...` when stable, meaningful phases mak
 A useful outline reveals sequencing constraints rather than translating helper names. For a workflow that actually enforces these boundaries:
 
 ```go
-// 1. Validate the complete batch before any record becomes visible.
-// 2. Recheck revisions under the transaction lock to avoid lost updates.
-// 3. Publish the batch; report post-commit cleanup errors as committed.
+// 1. 先校验整批记录，任何一条都还不可见。
+// 2. 在事务锁内重新检查 revision，避免丢失更新。
+// 3. 发布整批；提交后的清理失败按“已提交”报告。
 ```
 
 Place each comment immediately before its actual block, not as a detached table of contents. Use the native comment syntax in languages other than Go.
@@ -83,15 +97,15 @@ Place each comment immediately before its actual block, not as a detached table 
 Explain why the obvious alternative is wrong, why ordering matters, which invariant later code depends on, or which external constraint requires a workaround. State uncertainty honestly and keep sensitive inputs out of examples and links.
 
 ```go
-// Ranking positions change between requests; key by the stable artwork ID.
+// 排行位置在两次请求之间会变化，用稳定的作品 ID 作键。
 key := strconv.FormatInt(artwork.ID, 10)
 ```
 
-The comment `Convert the ID to a string` adds no information to that statement.
+The comment `把 ID 转成字符串` adds no information to that statement.
 
 For a timeout, retry, limit, or fallback, identify its actual requirement, platform constraint, established protocol, or demonstrated failure. A comment does not justify an arbitrary restriction or a hidden fallback. Explain the relevant trigger and successful-path impact without inventing measurements or evidence.
 
-Make TODO/FIXME comments actionable with the specific issue or removal condition when known. Preserve real references; do not invent issue IDs, owners, deadlines, or speculative future work. Prefer `Remove this compatibility path when the upstream v1 API is retired` over `fix this later`. Do not cite design documents, section numbers such as `§28`, or requirement IDs that are not in the repository; state the reason itself.
+Describe current behavior, limits, and reasons; never goal, task, work-item, or design-document numbers, or progress such as "implemented in a later stage". State an unsupported capability directly ("尚不支持 X"). Mark a temporary implementation as `shortcut: <限制>，<替换条件>`, with the replacement written as a condition. Make TODO/FIXME comments actionable with the specific issue or removal condition when known. Preserve real references; do not invent issue IDs, owners, deadlines, or speculative future work. Prefer `上游 v1 API 下线后删除这条兼容路径` over `以后再修`. Do not cite design documents, section numbers such as `§28`, or requirement IDs that are not in the repository; state the reason itself.
 
 ## Protected comments and behavior
 
@@ -101,10 +115,10 @@ Ordinary prose-only edits need a diff/doc/formatter check appropriate to the rep
 
 ## Readability review and completion
 
-Check whether each edited comment adds a contract, reason, invariant, or navigation cue. Remove line-by-line narration, decorative banners, repeated function names, and unsupported guarantees; preserve meaningful explanations and required legal/tooling text.
+Check whether each edited comment adds a contract, reason, invariant, or navigation cue. Remove line-by-line narration, comments on every assignment or `if err != nil`, decorative banners, repeated function names, and unsupported guarantees; preserve meaningful explanations and required legal/tooling text.
 
 Keep clear names, explicit data flow, and cohesive responsibilities ahead of prose. A short expression is not inherently clearer, and extracting many tiny helpers may make a flow harder to follow. Do not replace good structure with explanations or force unrelated refactoring to reduce comments.
 
-Finish when affected contracts are accurate, helpful comments remain close to their code, numbering follows actual phases, and required document/tool checks have been observed. No comment-density target, per-function quota, mandatory translation, or new-test count defines success.
+Finish when affected contracts are accurate, each touched package has one package documentation, touched comments use the required language, helpful comments remain close to their code, numbering follows actual phases, and required document/tool checks have been observed. No comment-density target, per-function quota, or new-test count defines success.
 
 For Go-specific details, consult [Go Doc Comments](https://go.dev/doc/comment) and [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) when needed. Repository behavior and verified evidence still determine what a comment may claim.
