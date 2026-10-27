@@ -1,6 +1,10 @@
-// Command pr owns the trusted PR gates: metadata validation, /test trigger and
-// command resolution, plus cross-platform verification execution and rendering.
-
+// pr 命令实现仓库的受信 PR 门禁：校验 PR 元数据、解析 /test 触发与验证命令，
+// 并在各平台执行声明过的命令、汇总结果。
+//
+// 包的组成：[Stage]、[Command] 与 [Commands] 表示声明过的验证命令，[Whitelist] 持有
+// 允许执行的命令和路径规则。[LoadWhitelist]、[Whitelist.Validate]、[ParseLine] 与
+// [NormalizeAndHash] 构成解析与校验入口。子命令分发在 main，触发与有效命令解析在
+// resolve.go，执行与结果渲染在 verify.go。
 package main
 
 import (

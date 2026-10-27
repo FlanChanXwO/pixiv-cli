@@ -1,5 +1,3 @@
-// 把 PR 正文与 /test 评论解析为有效的受信验证命令。
-
 package main
 
 import (
@@ -8,9 +6,8 @@ import (
 	"strings"
 )
 
-// commandSource identifies where the effective verification commands came from.
-// The hash intentionally does not include this value: identity is defined by the
-// commands that actually run, not by the surface that declared them.
+// commandSource 记录有效验证命令来自 PR 正文、评论还是缺失。命令身份摘要不含来源：
+// 同一批命令无论写在哪里都对应同一次执行。
 type commandSource string
 
 const (
@@ -25,11 +22,8 @@ type effectiveCommands struct {
 	Hash     string
 }
 
-// testTrigger reports whether a comment asks for verification.
-//
-// The trigger must be the first non-empty line, exactly "/test".
-// Scanning the whole comment is forbidden because it would let unrelated text
-// such as "please /test" or a later quotation start credentialed execution.
+// testTrigger 判断评论是否请求验证：首个非空行必须精确等于 /test。扫描整条评论会让
+// “please /test”或后文引用中的 /test 也启动需要凭据的执行。
 func testTrigger(comment string) bool {
 	for _, raw := range strings.Split(comment, "\n") {
 		line := strings.TrimSpace(raw)
@@ -41,14 +35,9 @@ func testTrigger(comment string) bool {
 	return false
 }
 
-// resolveEffectiveCommands computes the commands a /test run must execute.
-//
-// A comment that declares a commands block fully replaces the PR declaration;
-// merging is forbidden. Any declared-but-invalid override fails closed
-// and never falls back to the PR body. Because the override replaces the
-// PR declaration rather than supplementing it, a declared override is resolved
-// before the PR body is consulted, so a stale or invalid PR declaration cannot
-// veto an otherwise valid override.
+// resolveEffectiveCommands 计算一次 /test 必须执行的命令。评论里的 commands 块完全替换
+// PR 声明，不做合并；声明了但无效的 override 直接失败，不回落到 PR 正文。override 先于
+// PR 正文解析，因此陈旧或无效的 PR 声明不会否决有效的 override。
 func resolveEffectiveCommands(prBody, commentBody string, whitelist *Whitelist, cliName string) (effectiveCommands, error) {
 	if testTrigger(commentBody) {
 		commentDeclared, commentCommands, commentErr := parseDeclaration(commentBody, whitelist, cliName)
@@ -66,7 +55,7 @@ func resolveEffectiveCommands(prBody, commentBody string, whitelist *Whitelist, 
 
 	prDeclared, prCommands, prErr := parseDeclaration(prBody, whitelist, cliName)
 	if prErr != nil {
-		// An invalid PR declaration can never become effective commands.
+		// 无效的 PR 声明不能变成有效命令。
 		return effectiveCommands{}, prErr
 	}
 	if !prDeclared {
@@ -79,9 +68,8 @@ func resolveEffectiveCommands(prBody, commentBody string, whitelist *Whitelist, 
 	}, nil
 }
 
-// parseDeclaration reports whether a body declares a commands block and returns
-// the validated commands. Declared-but-empty and declared-but-invalid bodies
-// return an error so callers can fail closed rather than silently ignore them.
+// parseDeclaration 返回正文是否声明了 commands 块以及校验后的命令。声明为空或无效都
+// 返回错误，让调用方 fail closed，而不是静默忽略。
 func parseDeclaration(body string, whitelist *Whitelist, cliName string) (bool, Commands, error) {
 	clean := htmlComment.ReplaceAllString(body, "")
 	blocks, err := commandBlocks(clean)

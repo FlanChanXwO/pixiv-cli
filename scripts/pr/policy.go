@@ -1,5 +1,3 @@
-// Package verificationpolicy parses and validates PR-declared verification
-// commands without invoking a shell.
 package main
 
 import (
@@ -14,15 +12,18 @@ import (
 	"unicode"
 )
 
+// Stage 保存管道里一个阶段的 argv，首个元素是可执行文件名。
 type Stage struct {
 	Argv []string `json:"argv"`
 }
 
+// Command 保留声明的原文与解析后的管道；Display 只用于展示，执行只看 Stages。
 type Command struct {
 	Display string  `json:"display"`
 	Stages  []Stage `json:"stages"`
 }
 
+// Commands 汇集一个 commands 块里声明的全部命令。
 type Commands struct {
 	Commands []Command `json:"commands"`
 }
@@ -34,10 +35,13 @@ type commandRule struct {
 	denyPaths      [][]string
 }
 
+// Whitelist 保存受信白名单：每个可执行文件允许的子命令、路径规则，以及是否能读取
+// workspace 内的任意文件。
 type Whitelist struct {
 	rules map[string]*commandRule
 }
 
+// LoadWhitelist 解析白名单文件，拒绝重复规则、非法命令名与越界路径规则。
 func LoadWhitelist(path string) (*Whitelist, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -118,12 +122,12 @@ func validateRulePath(path []string) error {
 	return nil
 }
 
+// Validate 按白名单检查一条命令，并把 --output、--directory 等路径限制在 workspace 内。
 func (w *Whitelist) Validate(command Command, repositoryCLI, workspace string) error {
 	return w.validate(command, repositoryCLI, workspace, true)
 }
 
-// ValidateStatic validates syntax and lexical path containment without
-// requiring PR files to exist in the trusted base checkout.
+// ValidateStatic 只做语法与词法路径检查，不要求 PR 文件已存在于受信 base checkout。
 func (w *Whitelist) ValidateStatic(command Command, repositoryCLI string) error {
 	return w.validate(command, repositoryCLI, ".", false)
 }
@@ -416,6 +420,7 @@ func validateWorkspacePath(workspace, raw string, mustExist, strict bool) error 
 	return nil
 }
 
+// ParseLine 把一行声明解析成管道，拒绝 shell 元字符、命令替换、未闭合引号和空阶段。
 func ParseLine(line string) (Command, error) {
 	var stages []Stage
 	var argv []string
@@ -499,6 +504,7 @@ func ParseLine(line string) (Command, error) {
 	return Command{Display: strings.TrimSpace(line), Stages: stages}, nil
 }
 
+// NormalizeAndHash 用固定分隔符序列化已校验的命令，返回用于绑定执行结果的命令身份摘要。
 func NormalizeAndHash(commands Commands) string {
 	var lines []string
 	for _, command := range commands.Commands {
