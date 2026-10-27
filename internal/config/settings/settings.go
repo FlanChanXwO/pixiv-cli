@@ -1,3 +1,10 @@
+// Package settings 解析配置 schema、文件与环境变量的优先级，并负责稀疏写回。
+//
+// 字段标签是 schema 的唯一声明来源；[Store] 每次读取时生成新的 [Snapshot]，调用方
+// 在一次执行内复用同一份快照。
+//
+// 包的组成：[Store] 读写 config.toml，[Snapshot] 表示一次执行内的有效配置，
+// [RuntimeConfig] 是绑定后的运行时结构，[FileStore] 是文件端口，[Key] 是配置别名。
 package settings
 
 import (
@@ -6,7 +13,7 @@ import (
 	"strings"
 )
 
-// Store 是配置 schema、文件 precedence 与稀疏写回的唯一 authority。
+// Store 统一负责配置 schema、文件优先级与稀疏写回。
 // Files 只提供协议无关的路径/文件机制；Store 不缓存读取结果。
 type Store struct {
 	Files FileStore
@@ -26,6 +33,8 @@ func (s Store) Current() (Snapshot, error) {
 	return loadSnapshot(path, files)
 }
 
+// ConfigMutationResult 报告一次 Set/Unset 之后是否存在环境变量覆盖；敏感值不会带出
+// EnvOverride。
 type ConfigMutationResult struct {
 	Alias       Key
 	EnvOverride string

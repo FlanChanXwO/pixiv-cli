@@ -1,5 +1,3 @@
-// 把账号池选择失败与最后一个 rate limit 映射为公开 SDK 错误。
-
 package pool
 
 import (

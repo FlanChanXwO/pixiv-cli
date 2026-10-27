@@ -1,6 +1,3 @@
-// ascii2d challenge detection uses response headers and streaming HTML markers.
-// Upload and session flow live in ascii2d.go.
-
 package ascii2d
 
 import (

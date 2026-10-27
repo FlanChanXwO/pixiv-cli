@@ -1,5 +1,3 @@
-// HTML parsing extracts upload tokens and provider result evidence.
-
 package ascii2d
 
 import (

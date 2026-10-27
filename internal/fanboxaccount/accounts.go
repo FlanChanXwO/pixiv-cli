@@ -1,4 +1,9 @@
-// Package fanboxaccount 拥有 FANBOX 账号 domain 与 CLI/MCP 共用的账号/session 服务。
+// Package fanboxaccount 提供 FANBOX 本地账号领域，以及 CLI/MCP 共用的账号与 session 服务。
+//
+// FANBOX 的账号选择、会话校验和存储端口独立于 Pixiv。
+//
+// 包的组成：[Account] 是保存的账号记录，[Repository] 与 [DefaultStore] 是存储端口，
+// [Service] 负责导入、选择、列出与打开客户端，[AccountSummary] 是面向输出的摘要。
 package fanboxaccount
 
 import (
@@ -12,7 +17,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-// Service 是 CLI/MCP 的 FANBOX 账号服务。
+// Service 提供 FANBOX 账号导入、列出、选择、移除与 client 打开。
 type Service struct {
 	repo        Repository
 	defaults    DefaultStore
@@ -25,7 +30,7 @@ func NewService(repo Repository, defaults DefaultStore, loadOptions func() (fanb
 	return &Service{repo: repo, defaults: defaults, loadOptions: loadOptions}
 }
 
-// AccountSummary 是 auth list 的输出行。
+// AccountSummary 汇总 auth list 的输出行。
 type AccountSummary struct {
 	UserID      int64
 	DisplayName string
@@ -144,9 +149,8 @@ func (s *Service) Status(ctx context.Context) (*AccountSummary, error) {
 	}, nil
 }
 
-// OpenClient opens the selected account with a command-scoped native proxy
-// override. A nil override preserves the configured service/global precedence;
-// the FlareSolverr service and upstream proxy are never changed.
+// OpenClient 打开选中的账号。proxyOverride 只影响本次请求的原生代理，nil 时按配置的
+// 服务级/全局优先级决定；FlareSolverr 服务与 upstream 代理保持不变。
 func (s *Service) OpenClient(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {

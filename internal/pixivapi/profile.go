@@ -1,7 +1,6 @@
-// Pixiv protocol constants and fresh per-request App/OAuth header maps.
-
 package pixivapi
 
+// AppAPIBase 与 OAuthBase 是 Pixiv App 与 OAuth 的固定入口，其余常量是请求头基线。
 const (
 	AppAPIBase   = "https://app-api.pixiv.net"
 	OAuthBase    = "https://oauth.secure.pixiv.net"
@@ -16,6 +15,7 @@ const (
 	OAuthRedirectURI  = AppAPIBase + "/web/v1/users/auth/pixiv/callback"
 )
 
+// AppHeaders 返回每次请求新建的 App 请求头；accessToken 非空时附带 Bearer 认证。
 func AppHeaders(accessToken string) map[string]string {
 	headers := map[string]string{
 		"User-Agent":     AppUserAgent,
@@ -30,6 +30,7 @@ func AppHeaders(accessToken string) map[string]string {
 	return headers
 }
 
+// OAuthHeaders 返回表单提交使用的请求头，包含 form Content-Type，不带认证。
 func OAuthHeaders() map[string]string {
 	headers := AppHeaders("")
 	headers["Content-Type"] = "application/x-www-form-urlencoded"

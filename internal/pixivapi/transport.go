@@ -1,5 +1,3 @@
-// HTTP construction, shared request pacing, and owned connection release.
-
 package pixivapi
 
 import (
@@ -47,8 +45,8 @@ func (p *pacingTransport) CloseIdleConnections() {
 	}
 }
 
-// NewHTTPClient preserves an injected client's lifetime and settings. The bool
-// reports ownership; only a newly created client may be closed by the SDK.
+// NewHTTPClient 保留注入 client 的生命周期与设置。第二个返回值报告所有权：只有新建的
+// client 可以由 SDK 关闭。
 func NewHTTPClient(injected *http.Client, interval time.Duration, logger *slog.Logger) (*http.Client, bool) {
 	logger = cmp.Or(logger, slog.New(slog.DiscardHandler))
 	if injected == nil {
@@ -68,7 +66,7 @@ func NewHTTPClient(injected *http.Client, interval time.Duration, logger *slog.L
 	return &http.Client{Transport: &pacingTransport{inner: transport, interval: interval, log: logger}, Jar: injected.Jar, Timeout: injected.Timeout, CheckRedirect: injected.CheckRedirect}, false
 }
 
-// CloseIdleConnections releases only a client created for this runtime.
+// CloseIdleConnections 只释放本运行时创建的 client 连接。
 func (c *Client) CloseIdleConnections() {
 	if c.ownsHTTP {
 		c.http.CloseIdleConnections()

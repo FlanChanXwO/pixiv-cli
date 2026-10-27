@@ -1,3 +1,8 @@
+// Package filelock 用同目录侧车文件为本地状态的读改写事务提供跨进程互斥。
+//
+// 锁文件位于目标路径旁，不随目标文件的原子替换而消失。
+//
+// 包的组成：[WithPrivateLock] 持有锁执行一个动作，[TryPrivateLock] 只尝试获取一次。
 package filelock
 
 import (
@@ -56,7 +61,7 @@ func acquireContext(ctx context.Context, file *os.File) (func() error, error) {
 	}
 }
 
-// TryPrivateLock checks instance liveness without waiting for a running owner.
+// TryPrivateLock 尝试获取一次实例锁，不等待正在持锁的 owner。
 func TryPrivateLock(path string) (release func() error, acquired bool, err error) {
 	file, err := openLockFile(path)
 	if err != nil {

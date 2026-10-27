@@ -1,6 +1,3 @@
-// MCP 读取会话的共享缓存：按账号与网络快照复用 client，凭据变更时作废旧 generation。
-// 文件事件监听在 reads_watch.go，账号选择与持久化在 accounts.go。
-
 package pixivaccount
 
 import (
@@ -16,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// ReadSession holds an ephemeral SDK client; credentials never leave the account owner.
+// ReadSession 持有短期 SDK client；凭据不会离开账号 owner。
 type ReadSession struct {
 	Client      *pixiv.Client
 	Revision    int64
@@ -25,7 +22,7 @@ type ReadSession struct {
 	Invalidated <-chan struct{}
 }
 
-// ReadSessions owns MCP read clients separately from mutation snapshots.
+// ReadSessions 单独管理 MCP 读取 client，与变更用的账号快照分开。
 type ReadSessions struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -49,7 +46,7 @@ type readEntry struct {
 	cancel    context.CancelFunc
 }
 
-// NewReadSessions shares the existing rotation gate with writes.
+// NewReadSessions 与写路径共用已有的轮换门。
 func NewReadSessions(service *Service, gate interface {
 	Acquire(context.Context) error
 	Release()
@@ -80,8 +77,8 @@ func (m *ReadSessions) cached(ctx context.Context, uid int64, network string) (R
 	return ReadSession{}, false, err
 }
 
-// Open returns a shared read snapshot after successfully persisting rotated credentials.
-// The rotation gate is released before returning; content and media never own it.
+// Open 在成功持久化轮换后的凭据后返回共享读取快照。轮换门在返回前释放，内容与媒体请求
+// 不持有它。
 func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, options pixiv.Options) (ReadSession, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(m.ctx, cancel)
@@ -145,7 +142,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	return session, nil
 }
 
-// Revalidate checks local credential generations without opening an upstream session.
+// Revalidate 检查本地凭据 generation，不打开 upstream 会话。
 func (m *ReadSessions) Revalidate(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(m.ctx, cancel)
@@ -181,7 +178,7 @@ func (m *ReadSessions) Revalidate(ctx context.Context) error {
 	return failures
 }
 
-// Invalidate discards only the failed generation, preserving a concurrent replacement.
+// Invalidate 只丢弃失败的 generation，保留并发替换产生的新值。
 func (m *ReadSessions) Invalidate(uid int64, version uint64, err error) {
 	var classified *sdk.Error
 	if !errors.As(err, &classified) || (classified.Reason != sdk.Unauthorized && classified.Reason != sdk.CredentialsExpired && classified.HTTPStatus != 401) {
@@ -195,7 +192,7 @@ func (m *ReadSessions) Invalidate(uid int64, version uint64, err error) {
 	}
 }
 
-// Close releases idle transports at the MCP owner lifecycle boundary.
+// Close 在 MCP owner 生命周期结束时释放空闲传输。
 func (m *ReadSessions) Close() error {
 	// 先唤醒占有mu的本地锁等待与在途读取，不能先取得mu再取消生命周期。
 	m.cancel()
@@ -224,8 +221,8 @@ func (e readEntry) close() {
 	e.transport.CloseIdleConnections()
 }
 
-// Raw read leases (for example media tools) also invalidate on upstream 401,
-// without retrying the failed request or changing SDK error classification.
+// 原始读取租约（例如媒体 tool）在上游 401 时同样作废当前 generation，不重试失败请求，
+// 也不改变 SDK 的错误分类。
 type readSessionTransport struct {
 	inner   http.RoundTripper
 	owner   *ReadSessions

@@ -1,5 +1,3 @@
-// Browser transport preserves the provider fingerprint and cancellable proxy CONNECT.
-
 package ascii2d
 
 import (
@@ -162,9 +160,8 @@ func (c *Client) applyClientHints(header http.Header) {
 	}
 }
 
-// browserHeaderOrder is kept out of net/http.Header: the fhttp magic keys are
-// invalid ordinary HTTP header names and must never reach an injected standard
-// transport. browserTransport adds them only after converting the request.
+// browserHeaderOrder 不放进 net/http.Header：fhttp 的 magic key 不是合法普通头名，
+// 不能流入注入的标准 transport。browserTransport 只在转换请求后添加它们。
 func browserHeaderOrder(header http.Header) []string {
 	order := make([]string, 0, 15)
 	if header.Get("Sec-CH-UA") != "" {

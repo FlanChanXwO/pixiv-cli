@@ -1,5 +1,3 @@
-// 单件作品的下载：解析作品元数据、选择页与质量、写入静态图片或编码 ugoira。
-
 package downloader
 
 import (

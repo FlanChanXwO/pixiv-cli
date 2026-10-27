@@ -1,4 +1,10 @@
 // Package lifecycle 提供与产品、账号和传输协议无关的资源生命周期。
+//
+// [Run] 在 child context 内打开资源、执行 use，并确保 [Lease.Close] 恰好调用一次；
+// use 与 close 的错误都会保留。
+//
+// 包的组成：[Lease] 持有打开的资源与关闭函数，[Attempt] 记录一次可重放操作是否已
+// 越过提交边界，[Open] 与 [Use] 是调用方注入的两个阶段。
 package lifecycle
 
 import (

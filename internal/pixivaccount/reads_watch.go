@@ -1,6 +1,3 @@
-// 监听账号数据库变化，把外部凭据提交绑定到读取会话生命周期。
-// 会话缓存与失效规则在 reads.go。
-
 package pixivaccount
 
 import (
@@ -14,8 +11,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watch binds external credential commits to the read-session lifecycle.
-// Only HTTP MCP composition starts this watcher; stdio and ordinary CLI calls do not.
+// Watch 把外部凭据提交绑定到读取会话生命周期。只有 HTTP MCP 组合根会启动该 watcher；
+// stdio 与普通 CLI 调用不会。
 func (m *ReadSessions) Watch(ctx context.Context, path string) error {
 	path, err := filepath.Abs(path)
 	if err != nil {

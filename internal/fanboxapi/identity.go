@@ -13,8 +13,8 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Identity is the non-sensitive account summary parsed from the FANBOX home
-// page metadata. The session cookie never enters this value.
+// Identity 保存从 FANBOX 首页 metadata 解析出的非敏感账号摘要；session Cookie 不会进入
+// 该值。
 type Identity struct {
 	UserID        int64
 	DisplayName   string
@@ -23,8 +23,7 @@ type Identity struct {
 	IsCreator     bool
 }
 
-// CurrentUser validates the session against the FANBOX home page and parses
-// only the safe identity metadata required by account import/status flows.
+// CurrentUser 用 FANBOX 首页验证会话，只解析账号导入与状态查询需要的安全身份字段。
 func (s *Client) CurrentUser(ctx context.Context) (Identity, error) {
 	response, err := s.do(ctx, WebBaseURL, requestKindFanbox, true, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	if err != nil {

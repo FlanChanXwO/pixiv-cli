@@ -1,6 +1,3 @@
-// Release archive extraction: tar.gz and zip binary materialization.
-// Verification lives in verification.go.
-
 package installer
 
 import (

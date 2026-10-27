@@ -1,5 +1,3 @@
-// Release tags add the required v prefix to the repository's shared SemVer policy.
-
 package release
 
 import (
@@ -9,7 +7,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
-// ParseSemanticVersion validates a release tag with its required v prefix.
+// ParseSemanticVersion 校验带必需 v 前缀的 release tag，并返回去掉前缀的承诺版本。
 func ParseSemanticVersion(tag string) (version.Semantic, error) {
 	text, ok := strings.CutPrefix(tag, "v")
 	if !ok {

@@ -12,6 +12,8 @@ import (
 // ReleaseSourceKind 描述候选传输路径服务的请求类别。
 type ReleaseSourceKind string
 
+// ReleaseSourceAPI 探测 GitHub Releases API，ReleaseSourceAsset 探测固定 release 资产；
+// 两者是 [ReleaseSourceSelector] 的候选路径类别。
 const (
 	ReleaseSourceAPI   ReleaseSourceKind = "GitHub Releases API"
 	ReleaseSourceAsset ReleaseSourceKind = "release asset"

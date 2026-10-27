@@ -1,4 +1,8 @@
 // Package oauth 管理 Pixiv 身份状态与 OAuth token 交换，不承载内容 API。
+//
+// 包的组成：[Client] 保存 access/refresh token 并执行轮换，由 [New] 构造；
+// [Config] 是连接参数，[AuthCodeToken] 是授权码兑换结果，[GeneratePKCEPair] 生成
+// 登录所需的 verifier/challenge。
 package oauth
 
 import (
@@ -23,6 +27,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
 )
 
+// Client 保存 OAuth token 与网络配置，并串行化 token 轮换。
+//
+// accessToken、userID 等字段由 mu 保护；refresh token 与格式化和日志输出隔离。
 type Client struct {
 	httpClient   *http.Client
 	ownsHTTP     bool
@@ -38,16 +45,16 @@ type Client struct {
 	mu              sync.RWMutex
 }
 
-// Config 是 OAuth 客户端的连接配置；零值使用默认 HTTP client。
+// Config 提供 OAuth 客户端的连接配置；零值使用默认 HTTP client。
 type Config struct {
 	HTTPClient *http.Client
-	// OwnHTTPClient marks a client created for this OAuth runtime.
+	// OwnHTTPClient 表示 HTTPClient 由本运行时创建，关闭时只释放这种 client。
 	OwnHTTPClient bool
 	// Logger 记录 token 轮换结果；nil 时不输出。
 	Logger *slog.Logger
 }
 
-// New builds an OAuth client; refreshToken is validated without network I/O.
+// New 构造 OAuth client；refreshToken 只在本地校验，不发起网络请求。
 func New(refreshToken string, cfg Config) *Client {
 	refreshToken, refreshTokenErr := validateRefreshTokenInput(refreshToken)
 	httpClient := cfg.HTTPClient
@@ -107,6 +114,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 	return nil
 }
 
+// AuthCodeToken 携带授权码兑换得到的凭据与账号身份；ExpiresAt 为零表示上游未给有效期。
 type AuthCodeToken struct {
 	AccessToken  string
 	RefreshToken string
@@ -241,8 +249,8 @@ func (i *jsonInt64) UnmarshalJSON(body []byte) error {
 	return nil
 }
 
-// tokenFromResponse accepts the two upstream envelopes without manufacturing
-// an expiry when the response's seconds cannot fit Go's duration representation.
+// tokenFromResponse 接受上游两种 token envelope；秒数超出 time.Duration 表示范围时
+// 返回 malformed，不伪造过期时间。
 func tokenFromResponse(r authResponse) (AuthCodeToken, error) {
 	wire := r.tokenWire
 	if r.Response.AccessToken != "" || r.Response.RefreshToken != "" || r.Response.User.ID != 0 {
@@ -259,7 +267,7 @@ func tokenFromResponse(r authResponse) (AuthCodeToken, error) {
 	return AuthCodeToken{AccessToken: wire.AccessToken, RefreshToken: wire.RefreshToken, UserID: int64(wire.User.ID), Username: wire.User.Name, ExpiresAt: expiry}, nil
 }
 
-// CloseIdleConnections releases only this exchange's owned HTTP connections.
+// CloseIdleConnections 只释放本次 OAuth 交换拥有的 HTTP 连接。
 func (c *Client) CloseIdleConnections() {
 	if c.ownsHTTP {
 		c.httpClient.CloseIdleConnections()

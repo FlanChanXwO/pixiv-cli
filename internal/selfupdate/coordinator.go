@@ -37,7 +37,7 @@ type UpdateRequest struct {
 	IncludePrerelease bool
 }
 
-// UpdateResult 是检查或执行更新后可安全展示的状态。
+// UpdateResult 给出检查或执行更新后可安全展示的状态。
 type UpdateResult struct {
 	Source           InstallSource `json:"source"`
 	CurrentVersion   string        `json:"current_version"`

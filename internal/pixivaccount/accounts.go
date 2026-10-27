@@ -1,4 +1,3 @@
-// Package pixivaccount 编排 Pixiv 账号选择、refresh token 轮换持久化与公开 SDK 调用。
 package pixivaccount
 
 import (
@@ -12,7 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// Service 是 Pixiv 新应用层服务：账号选择 + rotation 持久化 + 公开 SDK。
+// Service 提供 Pixiv 账号导入、选择、检查、凭据轮换与 client 打开。
 type Service struct {
 	repo     Repository
 	defaults DefaultStore
@@ -23,7 +22,7 @@ func NewService(repo Repository, defaults DefaultStore) *Service {
 	return &Service{repo: repo, defaults: defaults}
 }
 
-// AccountSummary 是 Pixiv 账号的公开摘要。
+// AccountSummary 汇总 Pixiv 账号的公开摘要。
 type AccountSummary struct {
 	UserID           int64
 	Username         string
@@ -294,21 +293,21 @@ func (s *Service) AccountsWithTokens(ctx context.Context) ([]AccountWithToken, e
 	return out, nil
 }
 
-// RestoreAccountInput 是一次 bundle 恢复的单账号输入。
+// RestoreAccountInput 描述一次 bundle 恢复的单账号输入。
 type RestoreAccountInput struct {
 	Account         AccountSummary
 	RefreshToken    string
 	IsBundleDefault bool
 }
 
-// RestoreAccountsResult 是一次原子 bundle 恢复的结果。ResultingDefault 为最终
+// RestoreAccountsResult 汇总一次原子 bundle 恢复的结果。ResultingDefault 为最终
 // 选中默认账号；IsDefaultReplacement 区分本次写入是否替换了已有凭据。
 type RestoreAccountsResult struct {
 	Accounts         []RestoreAccountOutcome
 	ResultingDefault int64
 }
 
-// RestoreAccountOutcome 是单账号恢复结果。IsReplacement 区分新增与替换。
+// RestoreAccountOutcome 描述单账号恢复结果。IsReplacement 区分新增与替换。
 type RestoreAccountOutcome struct {
 	Account       AccountSummary
 	IsReplacement bool
@@ -479,9 +478,8 @@ func (s *Service) clearDefaultUserID() error {
 	return s.defaults.ClearPixivDefaultUserID()
 }
 
-// rotateCredential performs the identity check and revision CAS at the product
-// account repository. Session policy decides when to rotate; this function owns
-// the repository-side commit.
+// rotateCredential 在产品账号仓库完成身份校验与 revision CAS。何时轮换由会话策略决定，
+// 仓库侧提交由本函数负责。
 func rotateCredential(ctx context.Context, repository interface {
 	RotatePixivCredentials(context.Context, int64, int64, []byte) error
 }, selectedUserID, authenticatedUserID, revision int64, refreshToken []byte) error {
@@ -491,8 +489,7 @@ func rotateCredential(ctx context.Context, repository interface {
 	return repository.RotatePixivCredentials(ctx, selectedUserID, revision, refreshToken)
 }
 
-// verifyAccountIdentity rejects a credential whose authenticated UID does not
-// match the selected local account before rotation or content requests.
+// verifyAccountIdentity 在轮换或内容请求前拒绝认证 UID 与所选本地账号不一致的凭据。
 func verifyAccountIdentity(selectedUserID, authenticatedUserID int64) error {
 	if selectedUserID <= 0 || authenticatedUserID <= 0 || selectedUserID != authenticatedUserID {
 		return sdk.NewError("pixiv", "OpenAccountClient", sdk.LocalStateError, sdk.WithDetail("credential identity does not match selected account"))

@@ -1,13 +1,12 @@
 // Package browsercookies 定义浏览器 cookie provider 的共享类型与接口。
 //
-// 本包是协议无关的：它不知道 FANBOX、Pixiv、CLI、MCP 或账号 store。
-// 它只接受受约束的 CookieQuery，产出脱敏的 credential.Secret，绝不接受任意 SQL、
-// 任意数据库路径或完整 Cookie header。本包不识别 Cloudflare challenge，
-// 也不运行任何 challenge 绕过；它只读取 cookie。
-//
-// 本包不导入任何 provider 子包，因此单独导入本包不会注册浏览器 provider。
-// 系统/browser integration（导入并注册 chromium、firefox、safari）位于
+// 本包只接受受约束的 [CookieQuery]，产出脱敏的 [credential.Secret]；它不识别
+// Cloudflare challenge，也不运行 challenge 绕过，只读取 cookie。本包不导入 provider
+// 子包，单独导入不会注册任何 provider；需要完整分发的调用方导入
 // internal/browsercookies/system。
+//
+// 包的组成：[Provider] 是各浏览器实现的读取接口，[Profile] 描述可选择的 profile，
+// [Register] 与 [New] 维护名称到 provider 工厂的注册表，[CookieQuery] 约束查询字段。
 package browsercookies
 
 import (
@@ -47,7 +46,7 @@ var (
 	ErrDPAPI                      = errors.New("browsercookies: Windows DPAPI access failed")
 )
 
-// CookieQuery 是受约束的 cookie 查询：只允许 host 与 name 两个精确字段。
+// CookieQuery 约束 cookie 查询：只允许 host 与 name 两个精确字段。
 // 不允许任意 SQL、数据库路径或完整 Cookie header。
 type CookieQuery struct {
 	Host string
@@ -81,10 +80,10 @@ func safeToken(s string) bool {
 	return true
 }
 
-// DefaultQuery 是唯一允许 FANBOX adapter 使用的 cookie query。
+// DefaultQuery 保存唯一允许 FANBOX adapter 使用的 cookie query。
 var DefaultQuery = CookieQuery{Host: ".fanbox.cc", Name: "FANBOXSESSID"}
 
-// Profile 是一个稳定、安全的浏览器 profile 标识与路径。ID 用于 --profile
+// Profile 描述一个稳定、安全的浏览器 profile 标识与路径。ID 用于 --profile
 // 参数匹配，必须是安全 identifier；Path 是解析后的绝对路径，绝不进入日志、
 // 错误、JSON 或 MCP。
 type Profile struct {
@@ -98,7 +97,7 @@ func ValidProfileID(id string) bool {
 	return id != "" && !strings.HasPrefix(id, ".") && filepath.Base(id) == id
 }
 
-// Provider 是浏览器 cookie provider 接口。DiscoverProfiles 与 Read 接收
+// Provider 定义浏览器 cookie provider 接口。DiscoverProfiles 与 Read 接收
 // context 用于取消与锁等待控制；Read 只接受受约束的 CookieQuery。
 type Provider interface {
 	// Name 返回 provider 的稳定名称（"chrome"、"edge"、"firefox"、"safari"）。

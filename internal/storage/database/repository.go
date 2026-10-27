@@ -1,6 +1,3 @@
-// Pixiv / FANBOX 账号的 GORM 查询与写入；事务和数据库 schema 由调用处显式管理。
-// 行结构与列名在 rows.go，账号池查询在 pool.go。
-
 package database
 
 import (

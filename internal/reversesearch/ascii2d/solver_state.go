@@ -1,5 +1,3 @@
-// Solver state cache shares in-flight recovery while tracking each waiter's cancellation.
-
 package ascii2d
 
 import (

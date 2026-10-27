@@ -1,4 +1,8 @@
 // Package ascii2d 实现 ascii2d 的浏览器会话、图片上传与 HTML 结果协议。
+//
+// 包的组成：[New] 构造 [Client]，[Client] 完成上传并通过 [Session] 查询 color 与
+// bovw 两个入口；transport.go 提供浏览器指纹，solver.go 与 challenge.go 处理
+// Cloudflare challenge，html.go 解析结果页。
 package ascii2d
 
 import (
@@ -46,7 +50,7 @@ func mapSolverError(err error) error {
 	}
 }
 
-// Options 是 ascii2d adapter 的构造依赖。
+// Options 提供 ascii2d adapter 的构造依赖。
 type Options struct {
 	ProxyURL  string
 	UserAgent string
@@ -72,7 +76,7 @@ type Client struct {
 	lifecycle   *clientLifecycle
 }
 
-// Session 是一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
+// Session 持有一次成功上传产生的不可变查询句柄。color 与 bovw 可共享它。
 type Session struct {
 	client *Client
 	hash   string
@@ -80,6 +84,7 @@ type Session struct {
 
 var _ reversesearch.Closer = (*Client)(nil)
 
+// New 构造 ascii2d client；传输、代理与可选 solver 配置都来自 options。
 func New(options Options) (*Client, error) {
 	userAgent, hints, err := normalizeUserAgent(options.UserAgent)
 	if err != nil {

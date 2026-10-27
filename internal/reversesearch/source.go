@@ -1,5 +1,3 @@
-// Source loading owns private immutable snapshots and cancellable readers.
-
 package reversesearch
 
 import (
@@ -25,7 +23,7 @@ func NewSourceLoader(client *http.Client) *Loader {
 	return &Loader{httpClient: client}
 }
 
-// Snapshot 是 provider 共享的不可变载荷。调用方必须在所有 reader 关闭后 Close。
+// Snapshot 表示 provider 共享的不可变载荷。调用方必须在所有 reader 关闭后 Close。
 type Snapshot struct {
 	mu     sync.Mutex
 	path   string

@@ -18,7 +18,7 @@ import (
 const (
 	githubAPIHost           = "api.github.com"
 	defaultGitHubRepository = "FlanChanXwO/pixiv-cli"
-	// CacheFilename 是 release cache 使用的固定文件名。
+	// CacheFilename 记录 release cache 使用的固定文件名。
 	CacheFilename = "github-releases.json"
 	// releaseCacheSchemaVersion 2 起缓存页保留 Release assets；旧 schema 不能接受 304，
 	// 否则显式 self-update 会永久看到缺少资产，直到用户手动删除缓存。
@@ -27,7 +27,7 @@ const (
 )
 
 // ReleaseClientOptions 配置 GitHub Releases 客户端。
-// Cache 是 release cache 的存储端口，生产默认文件实现由安装器提供。
+// Cache 定义 release cache 的存储端口，生产默认文件实现由安装器提供。
 type ReleaseClientOptions struct {
 	HTTPClient                 *http.Client
 	Cache                      ReleaseCache
@@ -40,7 +40,7 @@ type ReleaseCheckOptions struct {
 	Automatic         bool
 }
 
-// Release 是可用于更新的 GitHub Release 的最小公开描述。
+// Release 描述可用于更新的 GitHub Release。
 type Release struct {
 	TagName    string
 	Version    string
@@ -48,14 +48,14 @@ type Release struct {
 	Assets     []ReleaseAsset
 }
 
-// ReleaseAsset 是 GitHub Release 附带的一个可下载资产。
+// ReleaseAsset 描述 GitHub Release 附带的一个可下载资产。
 // 仅使用 Releases API 返回的 browser_download_url，避免根据 tag 猜测下载地址。
 type ReleaseAsset struct {
 	Name        string `json:"name"`
 	DownloadURL string `json:"browser_download_url"`
 }
 
-// ReleaseCheckResult 是一次查询得到的候选 Release。
+// ReleaseCheckResult 给出一次查询得到的候选 Release。
 type ReleaseCheckResult struct {
 	Release   *Release
 	Throttled bool

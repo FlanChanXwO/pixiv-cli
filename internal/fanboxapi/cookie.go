@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// sessionCookie accepts one FANBOXSESSID value, rejecting additional cookie pairs.
+// sessionCookie 只接受一个 FANBOXSESSID 值，拒绝额外的 Cookie 对。
 func sessionCookie(value string) (string, error) {
 	if strings.ContainsAny(value, "\r\n") {
 		return "", errors.New("FANBOX session value must not contain line breaks")

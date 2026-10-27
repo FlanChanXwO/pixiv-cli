@@ -1,7 +1,11 @@
-// Package session 编排 Pixiv 与 FANBOX 账号的 public SDK client 生命周期。
+// Package session 编排 Pixiv 与 FANBOX 账号的公开 SDK client 生命周期。
 //
-// 账号凭据与 pool 策略由叶模块实现，具体的 CLI/MCP 请求模型和配置映射由
-// 组合根负责。本包只接收协议无关的请求值与行为端口。
+// 账号凭据与 pool 策略由叶模块实现，CLI/MCP 的请求模型和配置映射由组合根负责；
+// 本包只接收协议无关的请求值与行为端口。
+//
+// 包的组成：[Pixiv] 与 [Fanbox] 每次打开都返回独立 [lifecycle.Lease]，
+// [Request]、[OpenRequest] 与 [PoolConfig] 是请求值，[AccountService]、
+// [AccountOpener]、[PoolExecutor] 与 [RotationGate] 是注入的行为端口。
 package session
 
 import (
@@ -21,7 +25,7 @@ var (
 	clientNotConfigured = errors.New("pixiv account service returned a nil client")
 )
 
-// Request 是一次 Pixiv client 使用请求。
+// Request 保存一次 Pixiv client 使用请求。
 //
 // UserID 为零表示使用 account 叶服务的默认账号；非零值表示显式打开该
 // 本地账号。Options 原样传给 public SDK，不在 services 层解释代理或配置。
@@ -30,7 +34,7 @@ type Request struct {
 	Options pixiv.Options
 }
 
-// PoolConfig 是 Pixiv 会话需要的最小账号池配置，不携带 settings 包类型。
+// PoolConfig 保存 Pixiv 会话需要的最小账号池配置，不携带 settings 包类型。
 // Strategy 使用稳定的字符串值，由组合根负责把配置层的枚举映射到该值。
 type PoolConfig struct {
 	Enabled  bool
@@ -41,14 +45,14 @@ type PoolConfig struct {
 // 由组合根负责。
 type ConfigLoader func() (PoolConfig, error)
 
-// AccountService 是 account 叶服务为 client 生命周期提供的最小端口。
+// AccountService 定义 account 叶服务为 client 生命周期提供的最小端口。
 // *pixivaccount.Service 直接满足该接口；账号选择与持久化由该叶服务负责。
 type AccountService interface {
 	OpenClient(context.Context, pixiv.Options) (*pixiv.Client, error)
 	OpenAccountClient(context.Context, int64, pixiv.Options) (*pixiv.Client, error)
 }
 
-// PoolExecutor 是 pool 叶服务的重放端口。执行器负责选择账号、判断 SDK
+// PoolExecutor 定义 pool 叶服务的重放端口。执行器负责选择账号、判断 SDK
 // retry advice 和维护 attempt exclusion；Pixiv 只负责每次 attempt 的资源边界。
 type PoolExecutor interface {
 	Run(context.Context, func(context.Context, int64, *lifecycle.Attempt) error) error
@@ -65,7 +69,7 @@ type RotationGate interface {
 	Release()
 }
 
-// Pixiv 是 Pixiv 的业务编排层。
+// Pixiv 编排 Pixiv 账号 client 的生命周期。
 type Pixiv struct {
 	accounts       AccountService
 	poolFactory    PoolFactory
@@ -101,8 +105,7 @@ func (f *Pixiv) Open(ctx context.Context, request Request) (*lifecycle.Lease[*pi
 	}
 	gateReleased := false
 	defer func() {
-		// An opener is an injected boundary. If it panics before the Lease takes
-		// ownership, do not leave the rotation gate permanently occupied.
+		// opener 是注入边界；若它在 Lease 接管所有权前 panic，不能让轮换门永久占用。
 		if !gateReleased {
 			f.gate.Release()
 		}

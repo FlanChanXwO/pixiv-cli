@@ -1,10 +1,8 @@
-// 显式 auth export 使用的账号值：凭据字段自行脱敏，JSON 只输出摘要。
-
 package pixivaccount
 
 import "github.com/FlanChanXwO/pixiv-cli/internal/credential"
 
-// AccountWithToken 是仅用于显式 auth export 的账号+token 摘要。
+// AccountWithToken 携带仅用于显式 auth export 的账号+token 摘要。
 // RefreshToken 供显式导出流程读取凭据；通用 JSON 编码忽略 Credential。
 type AccountWithToken struct {
 	UserID     int64             `json:"user_id"`

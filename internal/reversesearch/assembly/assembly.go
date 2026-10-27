@@ -1,6 +1,10 @@
-// Package assembly owns production construction of the reverse-search Service.
-// It is deliberately outside CLI/MCP owners so those adapters only depend on
-// the top-level reversesearch contract and never import provider protocol code.
+// Package assembly 负责在生产组合根装配反向搜图 [reversesearch.Service]。
+//
+// 本包位于 CLI/MCP owner 之外，让这些适配器只依赖顶层 reversesearch 契约，不导入
+// provider 协议代码。
+//
+// 包的组成：[New] 按 [Options] 创建 Service，[FlareSolverrOptions] 配置可选的
+// challenge 恢复服务。
 package assembly
 
 import (
@@ -10,18 +14,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/saucenao"
 )
 
-// FlareSolverrOptions describes the optional challenge-recovery service for
-// ascii2d. Its browser proxy is kept separate from the standard reverse-search
-// HTTP proxy.
+// FlareSolverrOptions 配置 ascii2d 可选的 challenge 恢复服务；它的浏览器代理与反搜
+// 标准 HTTP 代理分开设置。
 type FlareSolverrOptions struct {
 	URL      string
 	ProxyURL string
 }
 
-// Options are construction-time values for one CLI invocation. Proxy is the
-// standard HTTP proxy for source loading and SauceNAO. ASCII2DProxy is an
-// optional override for ascii2d's dedicated browser transport; when omitted,
-// it preserves the historical behavior of reusing Proxy.
+// Options 提供一次 CLI 调用的构造值。Proxy 用于 source 载入与 SauceNAO 的标准 HTTP
+// 代理；ASCII2DProxy 单独覆盖 ascii2d 的浏览器传输，nil 时沿用 Proxy。
 type Options struct {
 	Proxy        string
 	ASCII2DProxy *string
@@ -30,9 +31,8 @@ type Options struct {
 	FlareSolverr *FlareSolverrOptions
 }
 
-// New constructs a Service with a standard HTTP client for the source loader and
-// SauceNAO. ascii2d receives only its proxy and user-agent so it can construct
-// its dedicated browser transport without changing the other providers.
+// New 用标准 HTTP client 构造 source 载入器与 SauceNAO；ascii2d 只收到代理与
+// User-Agent，自行建立浏览器传输，不改变其他 provider。
 func New(options Options) (reversesearch.Searcher, error) {
 	client, err := httpclient.HTTPClient(options.Proxy)
 	if err != nil {

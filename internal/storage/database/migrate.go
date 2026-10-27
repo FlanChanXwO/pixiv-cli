@@ -87,9 +87,8 @@ type appliedMigration struct {
 	Checksum string
 }
 
-// Released pre-v1 binaries recorded this initial-schema checksum before the
-// current tree consolidated the later columns into 0001; keep that known
-// ledger value valid so existing local databases can advance to v3.
+// 已发布的 pre-v1 二进制在把后续列并入 0001 之前记录过这个初始 schema checksum；
+// 保留该 ledger 值，让已有的本地数据库能继续升级到 v3。
 const legacyInitialMigrationChecksum = "0247f7ea8739433ce47074048a1c8707728e7f3d04cf47c3ff6f15282f8e641f"
 
 // migrate 将数据库 schema 推进到 binary 的当前版本。它只向前执行：checksum
@@ -136,8 +135,7 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("inspect migration %d (%s): %w", m.Version, m.Name, err)
 		}
 		if alreadySatisfied {
-			// 0001 in this tree already contains the final v3 columns. Record the
-			// historical migrations without replaying duplicate ALTER TABLE SQL.
+			// 本树的 0001 已包含最终 v3 列：只登记历史迁移，不重放重复的 ALTER TABLE。
 			if err := recordOne(db, m); err != nil {
 				return fmt.Errorf("record migration %d (%s): %w", m.Version, m.Name, err)
 			}
