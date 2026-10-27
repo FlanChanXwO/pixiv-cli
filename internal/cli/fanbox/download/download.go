@@ -1,4 +1,7 @@
-// Package download owns FANBOX post asset download command.
+// Package download 提供 pixiv fanbox download 命令，把 FANBOX 帖子资源保存到本地。
+//
+// 包的组成：[New] 组装命令。
+// 资源打开与保存由 [github.com/FlanChanXwO/pixiv-cli/sdk/fanbox] 提供。
 package download
 
 import (
@@ -24,8 +27,8 @@ type commandRunner struct {
 	downloadPath func() (string, error)
 }
 
-// New builds the actual `pixiv fanbox download` command. downloadPath is read
-// only when the command runs, so building the command tree opens no config.
+// New 构造 `pixiv fanbox download` 命令。downloadPath 只在命令执行时读取，
+// 构造命令树不会打开配置文件。
 func New(env command.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
 	a := commandRunner{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
@@ -111,17 +114,14 @@ func (a commandRunner) savePostAssets(ctx context.Context, client *fanbox.Client
 	return nil
 }
 
-// safePathSegment cleans one path component derived from upstream content. It
-// rejects empty segments, the dot and dot-dot traversals, and anything that
-// still carries a path separator after sanitization; callers must also verify
-// the joined path stays inside the base directory.
+// safePathSegment 清理一个来自上游内容的路径分量。空段、`.`、`..` 和清理后仍含分隔符的
+// 值都会被拒绝；调用方还必须确认拼接结果仍在基准目录内。
 func safePathSegment(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || value == "." || value == ".." {
 		return ""
 	}
-	// Strip OS path separators and shell metacharacters that must never appear
-	// in a single filename component.
+	// 去掉单个文件名分量中绝不能出现的系统路径分隔符和 shell 元字符。
 	cleaned := strings.Map(func(r rune) rune {
 		switch r {
 		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
@@ -136,9 +136,8 @@ func safePathSegment(value string) string {
 	return cleaned
 }
 
-// pathInsideBase reports whether target, after cleaning, is base or lives
-// beneath base. It uses lexical cleaning so a crafted ../ in any segment cannot
-// escape the download directory.
+// pathInsideBase 报告清理后的 target 是否等于 base 或位于其下。只做词法清理，
+// 因此任何一段伪造的 `..` 都不能逃出下载目录。
 func pathInsideBase(target, base string) bool {
 	cleanTarget := filepath.Clean(target)
 	cleanBase := filepath.Clean(base)

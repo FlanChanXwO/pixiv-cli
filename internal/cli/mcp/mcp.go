@@ -1,4 +1,7 @@
-// Package mcp 注册 Pixiv MCP 命令。
+// Package mcp 提供 pixiv mcp 命令，启动统一的 Pixiv/FANBOX MCP server。
+//
+// 包的组成：[New] 组装命令树，[Request] 记录监听地址与代理覆盖。
+// stdio 与 HTTP runtime 由 [github.com/FlanChanXwO/pixiv-cli/internal/mcpserver] 实现。
 package mcp
 
 import (
@@ -16,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Request 是 mcp 命令解析 flags 后的本地请求值。
+// Request 保存 mcp 命令解析 flags 后的本地请求值。
 type Request struct {
 	HTTPSProxyOverride  *string
 	ListenAddr, BaseURL *string
@@ -85,7 +88,7 @@ func New(env command.Env, run func(context.Context, Request) error, initAuth fun
 	return cmd
 }
 
-// endpoint derives the public origin only from explicit startup values, never request headers.
+// endpoint 只从显式启动参数推导公开 origin，避免 Host 等请求头影响回调地址。
 func endpoint(host string, port int, rawBase string, explicitBase bool) (string, string, error) {
 	if port < 1 || port > 65535 {
 		return "", "", errors.New("--port must be an integer from 1 to 65535")

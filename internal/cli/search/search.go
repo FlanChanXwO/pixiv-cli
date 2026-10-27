@@ -1,4 +1,7 @@
-// Package search owns the Pixiv artwork, novel and user search command routes.
+// Package search 提供 pixiv search、pixiv novel search 与反向搜图命令。
+//
+// 包的组成：[New] 组装作品搜索，[NewNovel] 组装小说搜索，[ReverseSearchPort] 接入反向搜图；
+// 收藏筛选、小说和行式输出分别在 bookmark.go、novel.go、presentation.go。
 package search
 
 import (
@@ -53,7 +56,7 @@ type options struct {
 	provider         string
 }
 
-// ReverseSearchPort performs one reverse image search without opening Pixiv.
+// ReverseSearchPort 执行一次反向搜图；这条路径不打开 Pixiv 客户端。
 type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
 type commandRunner struct {
@@ -63,7 +66,7 @@ type commandRunner struct {
 	reverseSearch ReverseSearchPort
 }
 
-// New builds the actual root `pixiv search` command.
+// New 构造根级 `pixiv search` 命令，覆盖作品、小说、用户和反向搜图入口。
 func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	opts := options{
@@ -511,9 +514,8 @@ func resolveBookmarkRange(cmd *cobra.Command, opts options) (*int, *int, error) 
 	return bookmarkMin, bookmarkMax, nil
 }
 
-// resolveBookmarkFilterStrategy validates the flag vocabulary only. The
-// shared resolver rejects server strategies later, when it knows whether a
-// range is being filtered and what membership evidence exists.
+// resolveBookmarkFilterStrategy 只校验 flag 取值。共享解析器要在知道是否过滤时间范围、
+// 是否存在成员证据之后，才决定拒绝哪些服务端策略。
 func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy, error) {
 	switch searchfilter.BookmarkStrategy(value) {
 	case searchfilter.BookmarkStrategyAuto, searchfilter.BookmarkStrategyLocal, searchfilter.BookmarkStrategyBestEffort, searchfilter.BookmarkStrategyServer:
@@ -523,8 +525,8 @@ func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy,
 	}
 }
 
-// Published --period selectors. Half-year and year expand to a date range, so
-// they have no pixiv.DurationFilter value.
+// 已发布的 --period 取值。半年和一年展开为日期范围，因此没有对应的
+// pixiv.DurationFilter 值。
 const (
 	periodDay      = "day"
 	periodWeek     = "week"

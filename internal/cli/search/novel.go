@@ -23,8 +23,8 @@ type novelOptions struct {
 	period   string
 }
 
-// NewNovel builds the canonical `pixiv novel` compatibility group. Its search
-// leaf shares this package's execution with `pixiv search --type novel`.
+// NewNovel 构造 `pixiv novel` 命令组，其 search 叶子与 `pixiv search --type novel`
+// 共用同一套执行逻辑。
 func NewNovel(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
