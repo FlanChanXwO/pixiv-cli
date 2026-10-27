@@ -1,5 +1,3 @@
-// Package citest_test 验证容器发布契约：固定 base digest、非 root 运行、
-// 不嵌入密钥或本地状态，并且发布只使用受信 release 产物。
 package citest_test
 
 import (
@@ -40,13 +38,13 @@ func readDockerfile(t *testing.T) string {
 	return string(body)
 }
 
-// TestDockerfileUsesImmutableBaseDigest 断言 FROM 指令使用不可变 digest
-// 而非可变 tag（如 debian:bookworm-slim）。
+// TestDockerfileUsesImmutableBaseDigest 要求每个 FROM 都指向不可变 digest，
+// 上游无法把已经构建好的镜像替换成别的内容。
 func TestDockerfileUsesImmutableBaseDigest(t *testing.T) {
 	t.Parallel()
 	dockerfile := readDockerfile(t)
 
-	// 匹配 FROM 行
+	// 只检查指令行本身，注释里的 FROM 不算。
 	fromPattern := regexp.MustCompile(`(?m)^FROM\s+(\S+)`)
 	matches := fromPattern.FindAllStringSubmatch(dockerfile, -1)
 	if len(matches) == 0 {
@@ -54,32 +52,33 @@ func TestDockerfileUsesImmutableBaseDigest(t *testing.T) {
 	}
 	for _, match := range matches {
 		image := match[1]
-		// 去掉可能的 AS alias 部分
+		// 去掉 AS alias，只比较镜像引用。
 		image = strings.TrimSpace(strings.Split(image, " AS ")[0])
-		// 不可变 digest 格式：registry/image@sha256:<hex>
-		// 或 image@sha256:<hex>（隐含 Docker Hub）
+		// digest 可以带 registry 前缀，也可以省略而隐含 Docker Hub。
 		if !regexp.MustCompile(`@sha256:[0-9a-f]{64}$`).MatchString(image) {
 			t.Fatalf("FROM %q must use an immutable digest (sha256:hex), not a movable tag", image)
 		}
 	}
 }
 
-// TestDockerfileRunsAsNonRoot 断言最终镜像以非 root 用户运行。
+// TestDockerfileRunsAsNonRoot 要求镜像创建非 root 用户并切换过去；容器内进程因此
+// 不能写宿主挂载之外的系统路径。
 func TestDockerfileRunsAsNonRoot(t *testing.T) {
 	t.Parallel()
 	dockerfile := readDockerfile(t)
 
-	// 必须创建非 root 用户
+	// 只有创建用户还不够，最终 USER 必须真的切走。
 	if !strings.Contains(dockerfile, "useradd") && !strings.Contains(dockerfile, "adduser") {
 		t.Fatal("Dockerfile must create a non-root user")
 	}
-	// 必须使用 USER 指令切换到非 root 用户
+	// 只出现 useradd 而不切换 USER 时，进程仍然以 root 运行。
 	if !strings.Contains(dockerfile, "USER ") {
 		t.Fatal("Dockerfile must switch to a non-root user via USER instruction")
 	}
 }
 
-// TestDockerfileDoesNotEmbedSecretsOrState 断言 Dockerfile 不嵌入 secret 或本地状态文件。
+// TestDockerfileDoesNotEmbedSecretsOrState 要求镜像构建配方里没有凭据名和本地状态路径，
+// 避免登录态随镜像分发。
 func TestDockerfileDoesNotEmbedSecretsOrState(t *testing.T) {
 	t.Parallel()
 	dockerfile := readDockerfile(t)
@@ -100,8 +99,8 @@ func TestDockerfileDoesNotEmbedSecretsOrState(t *testing.T) {
 }
 
 // TestContainerPublishWorkflowUsesTrustedReleaseArtifacts 锁定两个 registry 共用的
-// release_run_id 恢复输入、immutable handoff 校验与 protected release
-// Environment 边界。
+// release_run_id 恢复输入、immutable handoff 校验与受保护的 release Environment 边界；
+// 改动其中任何一项都会让镜像来源无法从原始 Release run 追溯。
 func TestContainerPublishWorkflowUsesTrustedReleaseArtifacts(t *testing.T) {
 	t.Parallel()
 	root := repositoryRoot(t)

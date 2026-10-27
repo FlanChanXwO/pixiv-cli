@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestExpectedArtifactsFollowReleaseCapability 要求发布产物集合由注册表的 release capability 决定。
 func TestExpectedArtifactsFollowReleaseCapability(t *testing.T) {
 	root := t.TempDir()
 	registryPath := filepath.Join(root, "platforms.json")
@@ -32,6 +33,7 @@ func TestExpectedArtifactsFollowReleaseCapability(t *testing.T) {
 	}
 }
 
+// TestExpectedContainerArtifactsFollowContainerCapability 要求容器产物集合由注册表的 container capability 决定。
 func TestExpectedContainerArtifactsFollowContainerCapability(t *testing.T) {
 	root := t.TempDir()
 	registryPath := filepath.Join(root, "platforms.json")

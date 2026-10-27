@@ -1,3 +1,2 @@
-# Repository-wide default owner for future pull requests.
-# This requests the sole maintainer for paths without a more specific rule.
+# 没有更具体规则时，由唯一维护者审阅全部路径。
 * @FlanChanXwO

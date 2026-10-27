@@ -1,3 +1,4 @@
+# Release 完成后渲染并部署 Homebrew formula，按单调规则更新 tap 并校验历史公式。
 name: Publish Homebrew formula
 
 # Homebrew 是独立 publisher，与容器、ClawHub、SkillHub 并行；任一渠道

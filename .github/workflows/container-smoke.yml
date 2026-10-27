@@ -1,3 +1,4 @@
+# 由 pr-metadata 派发的容器 smoke worker：按矩阵构建镜像、验证运行契约并回写聚合 check。
 name: Container smoke workers
 
 on:

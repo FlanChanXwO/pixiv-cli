@@ -1,6 +1,3 @@
-// GitHub REST transport and repository identity shared by release trust checks
-// and changelog auditing; historical writes remain explicit in notes.go.
-
 package main
 
 import (
@@ -26,6 +23,7 @@ type githubHTTPError struct {
 	Body       string
 }
 
+// Error 输出路径、HTTP 状态码和响应体，便于在 workflow 日志里定位失败的 API 调用。
 func (err *githubHTTPError) Error() string {
 	if err.Body == "" {
 		return fmt.Sprintf("GitHub API %s: HTTP %d", err.Path, err.StatusCode)

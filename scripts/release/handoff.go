@@ -1,5 +1,3 @@
-// release handoff 的读写与校验：绑定 release run、tag、commit 与产物身份。
-
 package main
 
 import (
@@ -17,10 +15,10 @@ import (
 	"strings"
 )
 
-// releaseHandoff 是 Release workflow 产出的不可变交接清单。
-//
-// 它是一次成功 Release run 的身份 + 产物事实快照：downstream publisher 只读取
-// 其中记录的 identity 与 checksum，不再自行构建、不再自行推断 tag 或版本。
+// releaseHandoff 保存当前 Release run 的不可变交接清单：run 身份与产物事实。它由
+// prepare_release 在审批前写出，只说明产物属于哪个 run，不证明发布已经成功；downstream
+// publisher 读取其中的 identity 与 checksum，并自行确认 run 状态，不再自行构建或推断
+// tag 与版本。
 type releaseHandoff struct {
 	Repository          string            `json:"repository"`
 	ReleaseRunID        int64             `json:"release_run_id"`
@@ -35,8 +33,8 @@ type releaseHandoff struct {
 	Checksums           string            `json:"checksums_sha256"`
 }
 
-// handoffArtifact 记录单个产物的名字、字节数与内容校验和。checksum 是 publisher
-// 复用同一批 bytes 的唯一依据。
+// handoffArtifact 记录单个产物的名字、字节数与内容校验和；publisher 复用同一批
+// bytes 时只以这里记录的 checksum 为准。
 type handoffArtifact struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
@@ -57,8 +55,8 @@ type releaseHandoffInput struct {
 	Output       string
 }
 
-// writeReleaseHandoff 在 Release preparation 阶段一次性固化成批产物的事实。
-// 它只记录已经存在并通过校验的产物，绝不做任何构建。
+// writeReleaseHandoff 在 Release preparation 阶段一次性固化成批产物的事实，
+// 只记录已经存在并通过校验的产物，不做任何构建。
 func writeReleaseHandoff(input releaseHandoffInput) (releaseHandoff, error) {
 	handoff := releaseHandoff{
 		Repository:        input.Repository,
@@ -168,12 +166,9 @@ func verifyHandoffArtifactsAt(handoff releaseHandoff, distDir, containerDir, che
 	return verifyHandoffChecksums(handoff, checksumsPath)
 }
 
-// verifyHandoffIdentityOnly 校验 handoff 的身份，并要求调用方解析出的 run 与
-// handoff 记录一致，但不要求本地已下载任何产物。
-//
-// 有些 publisher 只发布 handoff 里的一小部分内容（例如 ClawHub 只发布 skill），
-// 它们仍必须证明「读取的 handoff 来自被我信任的那个 run」，否则等于跳过了
-// trusted handoff 校验；同时又不该被迫下载与它无关的归档和镜像。
+// verifyHandoffIdentityOnly 校验 handoff 身份，并要求调用方解析出的 run 与记录一致，
+// 不要求本地已下载任何产物。只发布 handoff 一部分内容的 publisher（例如 ClawHub 只发布
+// skill）用它证明拿到的 handoff 来自受信 run，同时不必下载无关的归档和镜像。
 func verifyHandoffIdentityOnly(handoff releaseHandoff, expectedRunID int64, expectedRepository, expectedTag, expectedRunHeadSHA string) error {
 	if err := verifyHandoffIdentity(handoff); err != nil {
 		return err
@@ -193,9 +188,8 @@ func verifyHandoffIdentityOnly(handoff releaseHandoff, expectedRunID int64, expe
 	return nil
 }
 
-// verifyHandoffSectionAt 只校验 handoff 中某一个 section 的产物。downstream
-// publisher 往往只下载它需要发布的那类产物（例如 Homebrew 只拿 release 归档、
-// 容器 publisher 只拿镜像 tar），因此必须能按 section 校验而不强制下载全部。
+// verifyHandoffSectionAt 只校验 handoff 中某一个 section 的产物：Homebrew 只拿 release
+// 归档、容器 publisher 只拿镜像 tar，按 section 校验即可，不必下载全部。
 func verifyHandoffSectionAt(handoff releaseHandoff, section, dir, checksumsPath string) error {
 	if err := verifyHandoffIdentity(handoff); err != nil {
 		return err
@@ -483,8 +477,8 @@ func writeHandoffOutputs(path string, handoff releaseHandoff) error {
 	return nil
 }
 
-// verifyHandoffIdentityCommand 供只发布 handoff 中部分内容的 publisher 使用：
-// 它证明 handoff 来自被解析的那个 run，而不要求本地已下载任何产物。
+// verifyHandoffIdentityCommand 供只发布 handoff 部分内容的 publisher 使用，证明 handoff
+// 来自被解析的那个 run，不要求本地已下载任何产物。
 func verifyHandoffIdentityCommand(args []string) {
 	set := flag.NewFlagSet("verify-handoff-identity", flag.ExitOnError)
 	handoffPath := set.String("handoff", "", "release handoff JSON path")

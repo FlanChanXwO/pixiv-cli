@@ -1,4 +1,5 @@
 #!/bin/sh
+# 用本机 GOOS/GOARCH 构建 CGO-free 的 pixiv 二进制到 build/。
 set -eu
 
 goos=$(go env GOOS)

@@ -17,6 +17,7 @@ import (
 
 const fixtureVersion = "9.8.7"
 
+// TestInstallShInstallsVerifiedLatestArchive 要求 install.sh 校验 checksum 后安装最新归档，安装目录含空格时仍可用。
 func TestInstallShInstallsVerifiedLatestArchive(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -49,6 +50,7 @@ func TestInstallShInstallsVerifiedLatestArchive(t *testing.T) {
 	}
 }
 
+// TestInstallShChecksumFailurePreservesExistingBinary 要求 checksum 不匹配时失败，并保留已安装的二进制。
 func TestInstallShChecksumFailurePreservesExistingBinary(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -80,6 +82,7 @@ func TestInstallShChecksumFailurePreservesExistingBinary(t *testing.T) {
 	}
 }
 
+// TestInstallShVersionPreflightFailurePreservesExistingBinary 要求版本预检失败时在下载前退出，已安装的二进制保持不变。
 func TestInstallShVersionPreflightFailurePreservesExistingBinary(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -111,6 +114,7 @@ func TestInstallShVersionPreflightFailurePreservesExistingBinary(t *testing.T) {
 	}
 }
 
+// TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive 要求只采用返回权威 checksum 的候选，归档下载失败后换下一个候选。
 func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -127,8 +131,8 @@ func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 		"PIXIV_INSTALLER_CURL_LOG="+logPath,
 		"PIXIV_INSTALLER_CURL_FAIL_ARCHIVE_HOST=fast.example",
 		"PIXIV_INSTALLER_CURL_FAIL_CHECKSUM_HOST=fallback.example",
-		// 该 fixture 只比较两个受控公共候选，避免把并发 scheduler 与直连候选
-		// 的完成顺序误当成“最快已验证公共源”的安装器行为。
+		// 只给两个受控公共候选，安装器比较的是候选自身的完成顺序，与调度器
+		// 和直连探针的先后无关。
 		"PIXIV_RELEASE_SOURCES=fast|-|https://fast.example/{url}\nfallback|-|https://fallback.example/{url}",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
@@ -151,6 +155,7 @@ func TestInstallShSelectsFastestVerifiedSourceAndRetriesArchive(t *testing.T) {
 	}
 }
 
+// TestInstallShAddsDefaultDirectoryToPathIdempotently 要求默认安装目录重复写入 PATH 时只保留一份。
 func TestInstallShAddsDefaultDirectoryToPathIdempotently(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")
@@ -186,6 +191,7 @@ func TestInstallShAddsDefaultDirectoryToPathIdempotently(t *testing.T) {
 	}
 }
 
+// TestInstallShRejectsAutomaticPathForCustomDirectoryBeforeDownload 要求自定义安装目录不能自动改 PATH，并在任何下载前拒绝。
 func TestInstallShRejectsAutomaticPathForCustomDirectoryBeforeDownload(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX installer is exercised by Unix platform jobs")

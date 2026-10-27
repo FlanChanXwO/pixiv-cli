@@ -1,4 +1,5 @@
 @echo off
+rem 官方 Windows 安装器：从已验证的发布源下载 pixiv，校验 checksum 后安装并初始化 pixiv:// handler。
 setlocal EnableExtensions DisableDelayedExpansion
 
 rem 该脚本只使用 Windows 10/11 自带的命令行工具，不调用其他脚本宿主。

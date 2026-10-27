@@ -1,5 +1,3 @@
-// changelog 与历史 Release 的审计、校验和同步；子命令分发在 runNotes。
-
 package main
 
 import (

@@ -15,6 +15,7 @@ import (
 	"testing"
 )
 
+// TestInstallCmdInstallsVerifiedLatestArchive 要求 install.cmd 在 cmd.exe 下校验 checksum 后安装最新归档。
 func TestInstallCmdInstallsVerifiedLatestArchive(t *testing.T) {
 	fixtureDir, assetName := prepareWindowsFixture(t, false)
 	fakeBin := prepareFakeCurlExe(t)
@@ -37,6 +38,7 @@ func TestInstallCmdInstallsVerifiedLatestArchive(t *testing.T) {
 	}
 }
 
+// TestInstallCmdChecksumFailurePreservesExistingBinary 要求 install.cmd 在 checksum 不匹配时保留已安装的 pixiv.exe。
 func TestInstallCmdChecksumFailurePreservesExistingBinary(t *testing.T) {
 	fixtureDir, _ := prepareWindowsFixture(t, true)
 	fakeBin := prepareFakeCurlExe(t)
@@ -59,6 +61,7 @@ func TestInstallCmdChecksumFailurePreservesExistingBinary(t *testing.T) {
 	}
 }
 
+// TestInstallCmdVersionPreflightFailurePreservesExistingBinary 要求 install.cmd 在版本预检失败时保留已安装的 pixiv.exe。
 func TestInstallCmdVersionPreflightFailurePreservesExistingBinary(t *testing.T) {
 	fixtureDir, _ := prepareWindowsFixtureWithVersion(t, false, "0.0.0")
 	fakeBin := prepareFakeCurlExe(t)

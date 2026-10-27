@@ -1,6 +1,3 @@
-// Package workflowpins_test 锁住全仓 GitHub Actions 的 Node runtime 与 pin 形式。
-// GitHub 已弃用 Node 20 runner；旧 action 会被强制迁移，产生 deprecation warning
-// 并在未来失败。这里同时锁定 full SHA pin，禁止回退到可移动的 tag。
 package citest_test
 
 import (
@@ -11,8 +8,8 @@ import (
 	"testing"
 )
 
-// node24Actions 是允许出现在 workflow 中的 action 及其唯一 commit SHA。
-// 前四项都是发布时已确认 using: node24 的稳定版本：
+// node24Actions 保存允许出现在 workflow 中的 action 及其唯一 commit SHA。前四项都是
+// 发布时已确认 using: node24 的稳定版本：
 //
 //	actions/checkout          v7.0.1
 //	actions/setup-go          v7.0.0
@@ -27,8 +24,8 @@ var node24Actions = map[string]string{
 	"actions/upload-artifact":   "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
 }
 
-// retiredPins 是升级前的 Node 20 pin；任何残留都意味着 runtime 仍在被弃用的
-// Node 上运行。
+// retiredPins 记下升级前的 Node 20 pin；任何残留都说明某个 action 仍在已弃用的
+// runtime 上运行。
 var retiredPins = map[string]string{
 	"actions/checkout":          "34e114876b0b11c390a56381ad16ebd13914f8d5",
 	"actions/setup-go":          "40f1582b2485089dde7abd97c1529aa768e1baff",
@@ -36,8 +33,8 @@ var retiredPins = map[string]string{
 	"actions/upload-artifact":   "ea165f8d65b6e75b540449e92b4886f43607fa02",
 }
 
-// usesPattern 只匹配作为独立 YAML key 出现的 uses:，避免命中 `statuses: write`
-// 这类把 "uses:" 当作子串包含的值。
+// usesPattern 只匹配作为独立 YAML key 出现的 uses:，`statuses: write` 这类把
+// "uses:" 当子串的值不会误报。
 var usesPattern = regexp.MustCompile(`(?:^|[ \t])uses:[ \t]*([^ \t\n#]+)`)
 
 func workflowFiles(t *testing.T) []string {
@@ -58,8 +55,8 @@ func workflowFiles(t *testing.T) []string {
 	return paths
 }
 
-// TestWorkflowsUseNode24ActionPins 锁定这四类 action 必须 pin 到已确认
-// using: node24 的稳定版本，且不得残留任何 Node 20 pin。
+// TestWorkflowsUseNode24ActionPins 要求这四类 action 固定在已确认 using: node24 的
+// 稳定版本，且不残留任何 Node 20 pin。
 func TestWorkflowsUseNode24ActionPins(t *testing.T) {
 	t.Parallel()
 
@@ -94,8 +91,8 @@ func TestWorkflowsUseNode24ActionPins(t *testing.T) {
 	}
 }
 
-// TestWorkflowActionsUseFullSHAPins 锁定 pin 形式：full commit SHA 是不可变的，
-// 而 tag（如 @v7）可以被上游重新指向。任何非 SHA 形式都是供应链回归。
+// TestWorkflowActionsUseFullSHAPins 要求 action 固定到 full commit SHA：tag 可以被
+// 上游重新指向，非 SHA 形式会让 workflow 运行未经审阅的代码。
 func TestWorkflowActionsUseFullSHAPins(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +105,7 @@ func TestWorkflowActionsUseFullSHAPins(t *testing.T) {
 		name := filepath.Base(path)
 		for _, match := range usesPattern.FindAllStringSubmatch(string(body), -1) {
 			reference := match[1]
-			// 本地 action（./path）与 docker action 不适用 SHA pin。
+			// 本地 action（./path）与 docker action 没有可固定的上游提交。
 			if strings.HasPrefix(reference, "./") || strings.HasPrefix(reference, "docker://") {
 				continue
 			}

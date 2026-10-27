@@ -1,3 +1,4 @@
+# Release 完成后把已验证的容器产物推送到 GHCR 与 Docker Hub，支持按原 release run 恢复。
 name: Publish container images
 
 on:

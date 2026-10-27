@@ -1,5 +1,3 @@
-// Homebrew tap 的单调 deploy 判定：只允许前进，重复恢复幂等；子命令分发在 runRecover。
-
 package main
 
 import (
@@ -13,7 +11,7 @@ import (
 	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
-// action 是 deploy 判定结果：写入 target 或识别为已发布而 no-op。
+// action 表示 deploy 判定结果：写入 target，或识别为已发布而 no-op。
 type action string
 
 const (
@@ -23,8 +21,8 @@ const (
 	actionNoop action = "noop"
 )
 
-// decision 描述一次 deploy 判定；Version 来自 requested Formula，CurrentVersion
-// 来自 tap 当前 Formula（首次发布时为空）。
+// decision 保存一次 deploy 判定；Version 来自 requested Formula，CurrentVersion 来自
+// tap 当前 Formula，首次发布时为空。
 type decision struct {
 	action         action
 	Version        string
@@ -91,9 +89,9 @@ func parseDeclaredVersion(formula []byte, label string) (string, error) {
 	return version, nil
 }
 
-// Run 是 homebrewrecovery 命令 的入口 owner。调用方传入 tap 当前的 Formula
-// 路径（不存在时用空串）与 staging Formula 路径，工具输出 GITHUB_OUTPUT 供 workflow
-// 决定是否 commit/push。
+// runRecover 接收 tap 当前 Formula 路径与 staging Formula 路径，把判定写入 GITHUB_OUTPUT
+// 和 stdout，供 workflow 决定是否 commit/push。--current 指向的文件不存在时按首次发布
+// 处理；判定写不出去就返回错误，避免 workflow 报告成功却跳过 tap 写入。
 func runRecover(args []string) error {
 	flags := flag.NewFlagSet("decide", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)

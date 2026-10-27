@@ -1,4 +1,3 @@
-// 执行已校验的 PR 验证命令并渲染跨平台结果；分发在 runVerify。
 package main
 
 import (
@@ -35,6 +34,7 @@ type pipeAwareWriter struct {
 	closed atomic.Bool
 }
 
+// Write 转发写入，并记录下游是否已经关闭管道；runStage 用它区分主动提前退出的消费者。
 func (writer *pipeAwareWriter) Write(body []byte) (int, error) {
 	written, err := writer.writer.Write(body)
 	if errors.Is(err, io.ErrClosedPipe) {

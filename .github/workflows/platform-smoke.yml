@@ -1,3 +1,4 @@
+# 由 pr-metadata 派发的原生平台 smoke worker：在六个目标平台上执行测试与打包并为 PR 回写聚合 check。
 name: Platform smoke workers
 
 on:

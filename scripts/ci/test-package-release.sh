@@ -1,4 +1,5 @@
 #!/bin/sh
+# 执行 scripts/build/package.sh，验证 tar.gz 与 zip 的成员集合以及 symlink 拒绝行为。
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)

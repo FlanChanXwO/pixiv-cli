@@ -1,9 +1,10 @@
+# PR 的 Quality 门禁：从受信 base 分类改动范围，再运行测试、race、vet、构建与打包检查。
 name: Quality gate
 
 # tag push 由 Release 独占门禁，Quality 只服务 PR 与 manual dispatch。
 on:
   pull_request:
-    # Base-branch retargets use edited; keep the required Quality job present.
+    # 改 base 分支也走 edited，保证必需的 Quality job 仍然出现。
     types: [opened, synchronize, reopened, edited]
     branches:
       - main

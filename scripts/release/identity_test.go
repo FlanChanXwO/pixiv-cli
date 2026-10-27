@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// TestFixedTargetsCoverSixReleasePlatforms 要求发布目标恰好是六个固定平台。
 func TestFixedTargetsCoverSixReleasePlatforms(t *testing.T) {
 	t.Parallel()
 
@@ -26,6 +27,7 @@ func TestFixedTargetsCoverSixReleasePlatforms(t *testing.T) {
 	}
 }
 
+// TestArchiveNameMatchesFixedTargetIdentity 要求归档名由 version 与 target 唯一确定。
 func TestArchiveNameMatchesFixedTargetIdentity(t *testing.T) {
 	t.Parallel()
 

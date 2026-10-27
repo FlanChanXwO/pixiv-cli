@@ -1,5 +1,3 @@
-// release 信任检查：不可变 tag、默认分支祖先、已发布 Release 与 handoff 身份。
-
 package main
 
 import (

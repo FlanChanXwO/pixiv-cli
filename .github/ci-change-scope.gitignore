@@ -1,6 +1,5 @@
-# Scoped Git-ignore syntax consumed by scripts/ci/classify-change-scope.sh.
-# Plain patterns are documentation-only, ?patterns require Quality only,
-# and !patterns require Quality + Platform + Container.
+# scripts/ci/classify-change-scope.sh 读取的 ignore 语法：普通模式只算文档改动，
+# ? 模式要求 Quality，! 模式要求 Quality + Platform + Container。
 /README.md
 /README.*.md
 /AGENTS.md
@@ -35,8 +34,8 @@
 !/scripts/build/**
 !/scripts/ci/race-gate.sh
 !/scripts/ci/test-package-release.sh
-# pr-metadata.yml 是 smoke controller：它决定 smoke classification、dispatch 两个
-# worker，并持有 Platform/Container required gate，因此改动它必须真的跑 full smoke。
+# pr-metadata.yml 是 smoke controller：它决定 smoke classification、派发两个 worker，
+# 并持有 Platform/Container required gate，因此改动它必须真的跑 full smoke。
 !/.github/workflows/pr-metadata.yml
 !/.github/workflows/container-smoke.yml
 !/scripts/build/platform.sh

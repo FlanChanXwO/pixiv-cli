@@ -11,6 +11,7 @@ import (
 	"testing"
 )
 
+// TestValidateAcceptsMatchingBilingualReleaseNotes 要求两种语言逐条对应的版本说明通过校验。
 func TestValidateAcceptsMatchingBilingualReleaseNotes(t *testing.T) {
 	t.Parallel()
 
@@ -37,6 +38,7 @@ func TestValidateAcceptsMatchingBilingualReleaseNotes(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsMismatchedBilingualSources 要求两种语言引用的来源不一致时拒绝。
 func TestValidateRejectsMismatchedBilingualSources(t *testing.T) {
 	t.Parallel()
 
@@ -64,6 +66,7 @@ func TestValidateRejectsMismatchedBilingualSources(t *testing.T) {
 	}
 }
 
+// TestSyncHistoryDryRunAndApplyPreservesAssets 要求历史正文同步的预览与写入只改正文，不触碰 Release assets。
 func TestSyncHistoryDryRunAndApplyPreservesAssets(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +117,7 @@ func writeReleaseNote(t *testing.T, root, name, body string) {
 	}
 }
 
+// TestValidateRejectsMaintenanceSection 要求面向用户的版本说明里不出现 Maintenance 小节。
 func TestValidateRejectsMaintenanceSection(t *testing.T) {
 	t.Parallel()
 
@@ -141,6 +145,7 @@ func TestValidateRejectsMaintenanceSection(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsUnpairedBilingualEntries 要求某一语言多出条目时拒绝。
 func TestValidateRejectsUnpairedBilingualEntries(t *testing.T) {
 	t.Parallel()
 
@@ -169,6 +174,7 @@ func TestValidateRejectsUnpairedBilingualEntries(t *testing.T) {
 	}
 }
 
+// TestValidateSourceCoverageAcceptsInternalMarker 要求只出现在 internal 注释里的来源算作已覆盖。
 func TestValidateSourceCoverageAcceptsInternalMarker(t *testing.T) {
 	t.Parallel()
 
@@ -211,6 +217,7 @@ func TestValidateSourceCoverageAcceptsInternalMarker(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsInternalMarkerText 要求 internal 标记不能出现在渲染后的正文里。
 func TestValidateRejectsInternalMarkerText(t *testing.T) {
 	t.Parallel()
 
@@ -239,6 +246,7 @@ func TestValidateRejectsInternalMarkerText(t *testing.T) {
 	}
 }
 
+// TestValidateAcceptsUnreleasedWorkspace 要求 unreleased 工作区没有版本标题与 compare 链接也能通过。
 func TestValidateAcceptsUnreleasedWorkspace(t *testing.T) {
 	t.Parallel()
 
@@ -277,6 +285,7 @@ func TestValidateAcceptsUnreleasedWorkspace(t *testing.T) {
 	}
 }
 
+// TestValidateRejectsMispairedBilingualSections 要求章节本身也逐节配对，共享来源集合掩盖不了章节错位。
 func TestValidateRejectsMispairedBilingualSections(t *testing.T) {
 	t.Parallel()
 
@@ -311,6 +320,7 @@ func TestValidateRejectsMispairedBilingualSections(t *testing.T) {
 	}
 }
 
+// TestValidateAcceptsInternalOnlyRelease 要求只含 internal 来源的版本可以没有用户可见条目。
 func TestValidateAcceptsInternalOnlyRelease(t *testing.T) {
 	t.Parallel()
 

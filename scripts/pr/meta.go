@@ -1,5 +1,3 @@
-// PR metadata gate：校验模板与 commands 声明，并解析 /test 的有效命令。
-// 命令白名单与验证执行在 policy.go、verify.go。
 package main
 
 import (
@@ -29,12 +27,12 @@ type result struct {
 	Hash         string
 }
 
-// commandFence is the only fenced block prmeta recognises. Every other fence
-// language (including the retired `test` fence) is ordinary Markdown.
+// commandFence 保存唯一会被识别的围栏语言；其他语言（包括已停用的 `test`）都按普通
+// Markdown 处理。
 const commandFence = "commands"
 
-// htmlEscapedFence is the entity-encoded form of ```; only the commands
-// language is rejected so callers cannot smuggle a declaration past detection.
+// htmlEscapedFence 保存 ``` 的实体编码形式；只拒绝 commands，防止调用方把声明藏在
+// 编码后的围栏里躲过检测。
 const htmlEscapedFence = "&#96;&#96;&#96;"
 
 func runMeta(args []string) {
@@ -149,9 +147,7 @@ func runResolve(args []string) {
 		effective.Source, effective.Hash, len(effective.Commands.Commands))
 }
 
-// commentDeclaresCommands reports whether the comment carries a commands fence.
-// It is used only for reporting; validation always goes through the single
-// trusted parser.
+// commentDeclaresCommands 只用于报告评论是否声明了 commands 块；校验始终走同一个受信解析器。
 func commentDeclaresCommands(commentBody string) bool {
 	clean := htmlComment.ReplaceAllString(commentBody, "")
 	blocks, err := commandBlocks(clean)
@@ -184,8 +180,7 @@ func validate(body string, whitelist *Whitelist, cliName string) result {
 		answer.TemplateDesc = "Required PR sections and checklist are complete."
 	}
 
-	// A single trusted parser serves both the PR-body gate and comment overrides;
-	// a second parser or policy for override handling could disagree with it.
+	// PR 正文门禁和评论 override 共用同一份解析与策略；另写一套可能与它给出不同结论。
 	declared, commands, err := parseDeclaration(clean, whitelist, cliName)
 	if err != nil {
 		answer.CommandsOK = false
@@ -193,7 +188,7 @@ func validate(body string, whitelist *Whitelist, cliName string) result {
 		return answer
 	}
 	if !declared {
-		// Zero declared blocks is valid: consumers treat it as no default commands.
+		// 没有声明块也合法：调用方按“没有默认命令”处理。
 		answer.CommandsDesc = "No default verification commands declared."
 		return answer
 	}
@@ -203,8 +198,7 @@ func validate(body string, whitelist *Whitelist, cliName string) result {
 	return answer
 }
 
-// commandCountDescription renders the stable gate wording. Exactly one
-// declared command reads in the singular; every other count is plural.
+// commandCountDescription 生成门禁的固定措辞：恰好一条命令用单数，其余计数用复数。
 func commandCountDescription(count int) string {
 	if count == 1 {
 		return "1 default verification command accepted."
@@ -286,10 +280,9 @@ func writeTriggerOutput(path string, trigger bool) error {
 	return err
 }
 
-// writeResolveOutput publishes the effective-command outcome. override_declared
-// distinguishes "no comment declaration" from "declaration rejected", which the
-// workflow needs in order to fail closed only when the user actually asked for
-// an override; it is kept separate from the PR commands gate.
+// writeResolveOutput 发布有效命令的结果。override_declared 区分“评论没有声明”和
+// “声明被拒绝”，workflow 据此只在用户确实请求 override 时 fail closed；它与 PR 的
+// commands 门禁分开。
 func writeResolveOutput(path string, effective effectiveCommands, overrideDeclared, ok bool, description string) error {
 	if path == "" {
 		return nil

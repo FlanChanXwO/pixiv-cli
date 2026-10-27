@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 按受信规则文件把 base..head 的改动分成文档、Quality、Platform、Container 四个范围并写入 GITHUB_OUTPUT。
 set -euo pipefail
 
 base=

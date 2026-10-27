@@ -1,4 +1,4 @@
-# Localized content: English / 中文
+# Issue 模板入口：关闭空白 issue，并把使用问题与安全报告指向 Discussion 与私密 advisory。
 blank_issues_enabled: false
 contact_links:
   - name: Documentation and usage questions / 文档与使用问题
