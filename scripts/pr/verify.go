@@ -31,7 +31,7 @@ type stageResult struct {
 
 type pipeAwareWriter struct {
 	writer io.Writer
-	closed atomic.Bool
+	closed atomic.Bool // 外部命令由 os/exec 的拷贝 goroutine 写，runStage 在 Run 返回后读
 }
 
 // Write 转发写入，并记录下游是否已经关闭管道；runStage 用它区分主动提前退出的消费者。
@@ -179,6 +179,8 @@ func runPipeline(command Command, binary, workspace string, timeout time.Duratio
 	}
 	var finalOutput bytes.Buffer
 	var wg sync.WaitGroup
+	// 1. 每个 stage 一个 goroutine，用无缓冲的 io.Pipe 串联；顺序执行时第一个 stage
+	//    会永久阻塞，因此必须先并发启动全部 stage。
 	for index, stage := range command.Stages {
 		var stdin io.Reader
 		if index > 0 {
@@ -202,9 +204,12 @@ func runPipeline(command Command, binary, workspace string, timeout time.Duratio
 			results[index] = runStage(ctx, stage, binary, workspace, stdin, stdout)
 		}()
 	}
+	// 2. 全部 stage 结束后才读取 results；每个 goroutine 只写自己下标，wg.Wait 提供
+	//    happens-before，之后不再有并发写。
 	wg.Wait()
 	normalizeDownstreamPipeClose(results)
 
+	// 3. 从右往左取第一个非零退出码，与 shell pipefail 报告最右失败 stage 的规则一致。
 	overallExit := 0
 	status := "passed"
 	for index := len(results) - 1; index >= 0; index-- {
@@ -214,6 +219,8 @@ func runPipeline(command Command, binary, workspace string, timeout time.Duratio
 			break
 		}
 	}
+	// 4. 没有任何 stage 给出非零码时才按超时记 124；deadline 可能在 stage 已失败后才
+	//    触发，覆盖它会丢掉真实的失败原因。
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		status = "failed"
 		if overallExit == 0 {

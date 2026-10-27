@@ -225,6 +225,8 @@ func runFinalize(arguments []string) (err error) {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("finalize accepts no positional arguments: %q", flags.Arg(0))
 	}
+	// 1. 在任何写入之前校验版本、密钥和全部输入路径；rejectSymlinkAncestors 保证产物
+	//    只落在调用方声明的目录树内。
 	if err := versionpkg.Validate(*version); err != nil {
 		return err
 	}
@@ -285,6 +287,8 @@ func runFinalize(arguments []string) (err error) {
 		return fmt.Errorf("inspect release output directory %q: %w", *outputDir, statErr)
 	}
 
+	// 2. 产物先写进 MkdirTemp 生成的父目录临时目录；中途失败时由 defer 删除，避免
+	//    留下半个发布目录。
 	stage, err := os.MkdirTemp(parent, ".pixiv-release-assets-")
 	if err != nil {
 		return fmt.Errorf("create release output staging directory: %w", err)
@@ -298,6 +302,7 @@ func runFinalize(arguments []string) (err error) {
 		}
 	}()
 
+	// 3. 按固定顺序复制归档并注入安装器候选，checksums 覆盖的是注入之后的字节。
 	checksums, err := copyRequiredAssets(*inputDir, stage, *version, *installSh, *installCmd, releaseSources)
 	if err != nil {
 		return err
@@ -305,6 +310,7 @@ func runFinalize(arguments []string) (err error) {
 	if err := writeRegularFile(filepath.Join(stage, "checksums.txt"), checksums, 0o644); err != nil {
 		return fmt.Errorf("write checksums.txt: %w", err)
 	}
+	// 4. 对 step 3 的 checksums 签名，并把双语发布说明一并写入暂存目录。
 	manifest, err := signedChecksumsManifest(*keyID, privateKey, checksums)
 	if err != nil {
 		return err
@@ -315,6 +321,7 @@ func runFinalize(arguments []string) (err error) {
 	if err := writeRegularFile(filepath.Join(stage, "release-notes.md"), notes, 0o644); err != nil {
 		return fmt.Errorf("write release-notes.md: %w", err)
 	}
+	// 5. rename 让输出目录要么不存在、要么完整；成功后清空 stage，避免 defer 删除它。
 	if err := os.Rename(stage, *outputDir); err != nil {
 		return fmt.Errorf("publish release output directory %q: %w", *outputDir, err)
 	}
