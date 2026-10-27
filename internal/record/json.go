@@ -12,7 +12,7 @@ import (
 
 var positiveIntegerJSON = regexp.MustCompile(`^[1-9][0-9]*$`)
 
-// prohibitedRecordMetadataKeys 是记录协议明确禁止输出的版本/模式元数据键。
+// prohibitedRecordMetadataKeys 列出记录协议禁止输出的版本/模式元数据键。
 // 键会忽略大小写、下划线和连字符，以同时覆盖 api_version 与 apiVersion。
 // 精确匹配这些键，避免误删 conversion 等包含 "version" 的业务字段。
 var prohibitedRecordMetadataKeys = map[string]struct{}{

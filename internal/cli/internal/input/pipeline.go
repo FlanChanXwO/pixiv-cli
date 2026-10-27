@@ -34,7 +34,7 @@ const (
 	RecordMode Mode = "record"
 )
 
-// InputSpec 是一条 Cobra 命令的显式输入契约。
+// InputSpec 描述一条 Cobra 命令的显式输入契约。
 //
 // FillPosition 指定 stdin 填入的位置参数下标（从 0 开始）。只有一个必填或可选值的命令
 // 通常填 0；"config set KEY [VALUE]" 这类命令填 1，保留显式的 KEY 作为第一个参数，只读取

@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// accountOut 是 FANBOX 账号的安全输出摘要；SessionID 永不进入输出。
+// accountOut 定义 FANBOX 账号的安全输出摘要；SessionID 永不进入输出。
 type accountOut struct {
 	UserID      int64  `json:"user_id"`
 	DisplayName string `json:"display_name,omitempty"`

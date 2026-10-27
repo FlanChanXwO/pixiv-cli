@@ -71,7 +71,7 @@ type remoteLoginCallbackRequest struct {
 	Proof       string `json:"proof"`
 }
 
-// activeRemoteLogin 是当前 remote login handoff 的本地私有状态。它只保存
+// activeRemoteLogin 保存当前 remote login handoff 的本地私有状态，只含
 // relay origin、session 与一次性 proof，绝不保存 OAuth 凭证。
 type activeRemoteLogin struct {
 	Version   int    `json:"version"`
@@ -260,7 +260,7 @@ func hasSingleNonEmptyQueryValue(values url.Values, key string) bool {
 	return len(values[key]) == 1 && strings.TrimSpace(values.Get(key)) != ""
 }
 
-// activeRemoteLoginPath 是当前 remote handoff 私有状态文件路径。
+// activeRemoteLoginPath 返回当前 remote handoff 私有状态文件路径。
 func activeRemoteLoginPath() (string, error) {
 	return paths.UserDataFile(paths.AppDataDirName, activeHandoffFilename)
 }

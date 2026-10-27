@@ -4,7 +4,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// kindAll 是推荐与作品列表共用的聚合选择值。
+// kindAll 表示推荐与作品列表共用的聚合选择值。
 const kindAll = "all"
 
 // contentNovel 给最新时间线补充小说类型；公开 schema 接受它，而 SDK 的搜索类型没有该取值。

@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Format 是列表命令的输出格式，由 --json/--ndjson 决定；两个 flag 互斥。
+// Format 指定列表命令的输出格式，由 --json/--ndjson 决定；两个 flag 互斥。
 type Format int
 
 const (
@@ -25,17 +25,17 @@ const (
 	FormatNDJSON
 )
 
-// JSONKey 是列表 JSON 文档的顶层键。这些键属于已发布的输出契约，不能改名。
+// JSONKey 指定列表 JSON 文档的顶层键；这些键属于已发布的输出契约，不能改名。
 type JSONKey string
 
 const (
-	// JSONKeyIllusts 是作品列表的默认顶层键。
+	// JSONKeyIllusts 指定作品列表的默认顶层键。
 	JSONKeyIllusts JSONKey = "illusts"
-	// JSONKeyManga 是漫画排行榜等只返回漫画的列表使用的顶层键。
+	// JSONKeyManga 指定漫画排行榜等只返回漫画的列表使用的顶层键。
 	JSONKeyManga JSONKey = "manga"
-	// JSONKeyNovels 是小说列表的顶层键。
+	// JSONKeyNovels 指定小说列表的顶层键。
 	JSONKeyNovels JSONKey = "novels"
-	// JSONKeyUsers 是用户预览列表的顶层键。
+	// JSONKeyUsers 指定用户预览列表的顶层键。
 	JSONKeyUsers JSONKey = "user_previews"
 )
 

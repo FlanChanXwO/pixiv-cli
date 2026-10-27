@@ -15,17 +15,16 @@ import (
 
 const callbackEndpointFilename = "url-handler-endpoint"
 
-// errNoActiveLocalCallback 是持久协议 handler 在没有本轮 loopback 登录时的
-// 正常状态；调用方可继续尝试已配置的远程 relay。
+// errNoActiveLocalCallback 标记持久协议 handler 没有本轮 loopback 登录的正常
+// 状态；调用方可继续尝试已配置的远程 relay。
 var errNoActiveLocalCallback = errors.New("pixiv login callback is no longer active")
 
 // CallbackCommand 供 desktop protocol handler 调回当前 CLI binary；
 // 它只由本包生成的系统关联使用，不是公开 CLI 命令。
 const CallbackCommand = "_callback"
 
-// callbackEndpointPath 是系统协议 handler 与当前登录进程之间唯一共享的私有状态
-// 路径。文件只保存 loopback bridge 地址，永远不保存 authorization code 或 refresh
-// token。
+// callbackEndpointPath 返回系统协议 handler 与当前登录进程共享的私有状态路径；
+// 文件只保存 loopback bridge 地址，永远不保存 authorization code 或 refresh token。
 func callbackEndpointPath() (string, error) {
 	dir, err := paths.UserDataSubdir(paths.AppDataDirName)
 	if err != nil {

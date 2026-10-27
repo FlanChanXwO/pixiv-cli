@@ -16,7 +16,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// TargetKind 是命令契约选定的输入命名空间。user_bookmarks、artwork_series 这类 URL
+// TargetKind 表示命令契约选定的输入命名空间。user_bookmarks、artwork_series 这类 URL
 // 专属身份留在 Target.ReferenceKind，不合并成新的全局类型。
 type TargetKind string
 
@@ -33,7 +33,7 @@ const (
 	TargetKindComment TargetKind = "comment"
 )
 
-// ResultKind 是命令返回或修改的内容类别，与输入命名空间分开。
+// ResultKind 表示命令返回或修改的内容类别，与输入命名空间分开。
 type ResultKind string
 
 const (
@@ -51,7 +51,7 @@ const (
 	ResultKindTag ResultKind = "tag"
 )
 
-// Subtype 是端点自己的内容子类型，和输入命名空间、结果类别都分开。
+// Subtype 表示端点自己的内容子类型，和输入命名空间、结果类别都分开。
 type Subtype string
 
 const (
@@ -87,7 +87,7 @@ const (
 	URLTypeIndependent URLTypeRelation = "independent"
 )
 
-// Input 是命令解析器接受的输入。Value 和 Record 必须恰好提供一个；Type 是命令已解析的
+// Input 承载命令解析器接受的输入。Value 和 Record 必须恰好提供一个；Type 是命令已解析的
 // 类型选择器，为空时使用 Contract.DefaultType 或从 URL 推断。
 type Input struct {
 	Value  string
@@ -116,7 +116,7 @@ type BareIDPolicy struct {
 	Probe      func(context.Context, int64, TypeSpec) ProbeOutcome
 }
 
-// ProbeStatus 是裸 ID 探测返回的结果类别。
+// ProbeStatus 表示裸 ID 探测返回的结果类别。
 type ProbeStatus string
 
 const (

@@ -16,7 +16,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// pixivURLHandlerBundleID 是 pixiv:// helper 在 macOS 上注册的 bundle identifier。
+// pixivURLHandlerBundleID 保存 pixiv:// helper 在 macOS 上注册的 bundle identifier。
 const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 
 // pixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
@@ -298,7 +298,7 @@ const pixivURLHandlerInfoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-// pixivURLHandlerSwiftSource 是随 helper app 编译的 Swift 源码。它只读取
+// pixivURLHandlerSwiftSource 保存随 helper app 编译的 Swift 源码；它只读取
 // manifest 记录的 binary 路径并回调 CLI，不接触网络或任意本地文件。
 const pixivURLHandlerSwiftSource = `import Cocoa
 import Foundation

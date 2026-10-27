@@ -19,7 +19,7 @@ const (
 	ReleaseSourceAsset ReleaseSourceKind = "release asset"
 )
 
-// releaseProbeWire 是探测 GitHub Releases API 路由时可识别的最小 wire 形状；
+// releaseProbeWire 承载探测 GitHub Releases API 路由时可识别的最小 wire 形状；
 // 探测只校验响应是合法数组，不读取业务字段。
 type releaseProbeWire struct {
 	TagName    string `json:"tag_name"`

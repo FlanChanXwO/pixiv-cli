@@ -10,7 +10,7 @@ import (
 	"net/url"
 )
 
-// errInvalidProxy 是代理配置错误对外呈现的稳定分类文本。
+// errInvalidProxy 标记代理配置错误，包装它的错误统一保留这段稳定分类文本。
 var errInvalidProxy = errors.New("invalid proxy configuration")
 
 // HTTPClient 创建公开 SDK 使用的 operation transport；它不构造

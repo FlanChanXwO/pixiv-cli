@@ -18,7 +18,7 @@ var migrationFS embed.FS
 // applicationID 防止误开其他 SQLite 数据库。值取 ASCII "PIXC"。
 const applicationID = 0x50495843
 
-// migration 是嵌入脚本的一条记录；checksum 是该脚本完整内容的 SHA-256。
+// migration 保存嵌入脚本的一条记录；checksum 是该脚本完整内容的 SHA-256。
 type migration struct {
 	Version  int
 	Name     string
@@ -26,7 +26,7 @@ type migration struct {
 	Checksum string
 }
 
-// embeddedMigrations 是嵌入的所有迁移，按版本升序。
+// embeddedMigrations 保存嵌入的所有迁移，按版本升序。
 var embeddedMigrations []migration
 
 func init() {

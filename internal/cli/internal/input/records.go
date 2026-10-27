@@ -19,7 +19,7 @@ type PipelineDiagnosticError struct{}
 // Error 返回固定文本；逐行诊断已经写入 stderr。
 func (*PipelineDiagnosticError) Error() string { return "pipeline records failed" }
 
-// recordDiagnostic 是一条写入 stderr 的逐行失败诊断；ID 与 Type 在能解析时带上。
+// recordDiagnostic 携带一条写入 stderr 的逐行失败诊断；ID 与 Type 在能解析时带上。
 type recordDiagnostic struct {
 	Kind      string `json:"kind"`
 	Operation string `json:"operation"`

@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// handlerManifestFilename 是持久协议 handler 的私有 manifest 文件名。
+// handlerManifestFilename 指定持久协议 handler 的私有 manifest 文件名。
 const handlerManifestFilename = "handler-manifest.json"
 
 // handlerManifest 只记录恢复此前系统关联所需的非认证元数据。relay secret
