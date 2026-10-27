@@ -1,6 +1,3 @@
-// 作品搜索：查询参数翻译、AIMode 批内过滤与 checkpoint 游标。
-// 搜索响应结构与映射复用 artwork_wire.go。
-
 package pixiv
 
 import (
@@ -125,7 +122,8 @@ func searchArtworksQuery(request SearchArtworksRequest) (SearchArtworksRequest, 
 		query.Set("bookmark_num_max", itoa(int64(*request.BookmarkMax)))
 	}
 	if request.Offset > 0 {
-		// 只绑定初始窗口；上游 offset 由当前 cursor 或首次请求决定。
+		// Bind only the initial window; the effective upstream offset comes from
+		// the current cursor or the first request.
 		query.Set("initial_offset", itoa(int64(request.Offset)))
 	}
 	return request, query, nil
@@ -146,7 +144,8 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 	if err != nil {
 		return sdk.Cursor{}, err
 	}
-	// 累计批内位置，避免第二次截断把已消费前缀重新返回；检查整数溢出。
+	// Accumulate the position within the batch so a second truncation does not
+	// replay the consumed prefix. Guard the addition against overflow.
 	if consumed > int(^uint(0)>>1)-state.Consumed {
 		return sdk.Cursor{}, newError("SearchArtworks", sdk.InvalidArgument, "consumed position overflows")
 	}
@@ -156,7 +155,8 @@ func (c *Client) CheckpointSearchArtworks(request SearchArtworksRequest, consume
 
 func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor, initialOffset int) (continuationEnvelope, error) {
 	if cursor.IsZero() {
-		// 首次读取与批内 checkpoint 必须指向同一原始批次。
+		// The first read and an in-batch checkpoint must address the same upstream
+		// batch.
 		return continuationEnvelope{Key: "offset", Value: int64(initialOffset)}, nil
 	}
 	state, err := c.continuationState("SearchArtworks", query, cursor)
@@ -169,8 +169,9 @@ func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor,
 	return state, nil
 }
 
-// searchArtworksWireQuery 把公开搜索请求翻译成 App search 参数。AIMode=only
-// 由 SDK 在本地过滤，wire 仍发送 all；其余 enum 的候选值在此汇总。
+// searchArtworksWireQuery translates a public search request into App API search
+// parameters. AIMode=only is filtered locally, so the wire still sends all; the
+// accepted values of the remaining enums are collected here.
 func searchArtworksWireQuery(request SearchArtworksRequest, offset int) url.Values {
 	query := url.Values{
 		pixivapi.ParamWord:         {request.Word},
@@ -217,10 +218,12 @@ func setOptionalParam(query url.Values, key, value string) {
 // SearchArtworksRequest searches artworks. Repeat the original fields when
 // continuing with Cursor.
 type SearchArtworksRequest struct {
-	Word        string
-	Target      SearchTarget
-	Sort        SortMode
-	Duration    DurationFilter
+	Word     string
+	Target   SearchTarget
+	Sort     SortMode
+	Duration DurationFilter
+	// StartDate and EndDate are inclusive YYYY-MM-DD bounds; empty leaves the
+	// bound to upstream.
 	StartDate   string
 	EndDate     string
 	ContentType SearchContentType
@@ -234,7 +237,8 @@ type SearchArtworksRequest struct {
 	// CursorContext binds caller-side filtering semantics; it is hashed into
 	// the cursor binding and is never sent to Pixiv. Repeat it when resuming.
 	CursorContext string
-	// Offset 是原始搜索结果流的初始位置；使用 Cursor 续页时须重复此值。
+	// Offset is the starting position in the raw upstream result stream. Repeat
+	// it when continuing with Cursor.
 	Offset int
 }
 

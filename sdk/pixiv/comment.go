@@ -1,6 +1,3 @@
-// comment 领域：作品与小说评论读取、评论页映射和可用的 stamp 列表。
-// 评论写操作在 mutation.go；请求类型与 continuation Spec 都在本文件。
-
 package pixiv
 
 import (
@@ -28,18 +25,18 @@ type commentAccessControlWire struct {
 	IsLocked   bool `json:"is_locked"`
 }
 
-// commentsWire 是 illust 与 novel 评论列表的共同响应结构。
+// commentsWire is the response shape artwork and novel comment lists share.
 type commentsWire struct {
 	Comments      pixivapi.RequiredList[commentWire] `json:"comments"`
 	NextURL       *string                            `json:"next_url"`
 	TotalComments *int64                             `json:"total_comments"`
 	AccessControl *commentAccessControlWire          `json:"access_control"`
-	// CommentAccessControl 是当前 App API 标量；与 legacy object 分开解码，
-	// 避免猜测其业务含义。
+	// CommentAccessControl carries the current App API scalar. It decodes
+	// separately from the object form so no business meaning is inferred for it.
 	CommentAccessControl *int64 `json:"comment_access_control"`
 }
 
-// mapComment 映射一条 artwork comment，并解析其父评论链。
+// mapComment maps one artwork comment and validates its parent chain.
 func (c *Client) mapComment(value commentWire) (Comment, error) {
 	created, err := parseUTCTime(commentDate(value))
 	if err != nil {
@@ -82,7 +79,8 @@ func validCommentChain(value commentWire) bool {
 	}
 }
 
-// commentPage 映射 comment 列表，并把 offset continuation 编码为游标。
+// commentPage maps a comment list and encodes its offset continuation as a
+// cursor.
 func (c *Client) commentPage(op string, query url.Values, values []commentWire, nextOffset int, hasNext bool, total *int64, access *CommentAccessControl) (CommentPage, error) {
 	items := make([]Comment, len(values))
 	for index, value := range values {
@@ -99,7 +97,8 @@ func (c *Client) commentPage(op string, query url.Values, values []commentWire, 
 	return CommentPage{Page: sdk.Page[Comment]{Items: items, Next: next}, Total: total, AccessControl: access}, nil
 }
 
-// readComments 统一评论响应、父链、访问控制和续页的校验；端点只提供路径和查询。
+// readComments validates the comment response, parent chain, access control, and
+// continuation in one place; endpoints supply only the path and query.
 func (c *Client) readComments(ctx context.Context, operation, path string, base url.Values, cursor sdk.Cursor, spec continuationSpec) (CommentPage, error) {
 	offset, err := c.continuationPositiveOffset(operation, base, cursor)
 	if err != nil {
@@ -154,7 +153,7 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 	return c.readComments(ctx, "NovelComments", pixivapi.PathNovelComments, base, request.Cursor, novelCommentsContinuation)
 }
 
-// stampsWire 是 /v1/stamps 的响应；上游当前不提供续页。
+// stampsWire is the /v1/stamps response. Upstream provides no continuation for it.
 type stampsWire struct {
 	Stamps  pixivapi.RequiredList[stampWire] `json:"stamps"`
 	NextURL *json.RawMessage                 `json:"next_url"`
@@ -185,7 +184,8 @@ func (c *Client) Stamps(ctx context.Context, request StampsRequest) ([]Stamp, er
 	return stamps, nil
 }
 
-// fetchStamps 读取并校验 stamp 列表；resource 解析也复用同一份校验。
+// fetchStamps reads and validates the stamp list. Resource resolution reuses the
+// same validation.
 func (c *Client) fetchStamps(ctx context.Context, operation string) ([]stampWire, error) {
 	var raw stampsWire
 	if err := c.app.GetJSON(ctx, pixivapi.PathStamps, nil, &raw); err != nil {

@@ -1,6 +1,3 @@
-// artwork 领域：详情、相关、排行、推荐、时间线、系列、趋势、用户作品与动图元数据。
-// 请求、端点专属响应与映射、continuation Spec 在本文件；跨领域 wire 与映射在 artwork_wire.go。
-
 package pixiv
 
 import (
@@ -38,9 +35,11 @@ type ArtworkSeriesRequest struct {
 	Cursor   sdk.Cursor
 }
 
-// ArtworkRankingRequest lists the current artwork ranking.
+// ArtworkRankingRequest lists an artwork ranking.
 type ArtworkRankingRequest struct {
-	Mode   RankingMode
+	// Mode defaults to RankingModeDay.
+	Mode RankingMode
+	// Date is YYYY-MM-DD; empty asks upstream for the current ranking.
 	Date   string
 	Cursor sdk.Cursor
 }
@@ -155,8 +154,9 @@ type trendingArtworksWire struct {
 	}] `json:"trend_tags"`
 }
 
-// relatedParams 把 related 的 indexed 数组成员归一为可回放的切片键；
-// offset 形式保持原样。
+// relatedParams normalizes the indexed array members of a related next_url into
+// slice keys that can be replayed. Offset-form continuations pass through
+// unchanged.
 func relatedParams(rawURL *string) (url.Values, bool, error) {
 	values, hasNext, err := relatedContinuation.params(rawURL)
 	if err != nil || !hasNext {
@@ -184,8 +184,9 @@ func relatedParams(rawURL *string) (url.Values, bool, error) {
 	}, true, nil
 }
 
-// indexedContinuationValues 把 viewed[0]=… 这类下标参数按序还原为切片键，
-// 要求下标从 0 开始连续且值均为正数。
+// indexedContinuationValues restores parameters such as viewed[0]=… into an
+// ordered slice. Indices must start at zero, stay contiguous, and carry positive
+// values.
 func indexedContinuationValues(params url.Values, prefix string) ([]string, bool) {
 	indexed := make(map[int]string)
 	for key, entries := range params {
@@ -245,7 +246,8 @@ func (c *Client) artworkPage(op string, query url.Values, key string, values []a
 	return sdk.Page[Artwork]{Items: items, Next: next}, nil
 }
 
-// artworkParamsPage 以多参数 continuation 构建 cursor（recommended）。
+// artworkParamsPage maps artworks and builds a cursor from a multi-parameter
+// continuation, as recommended endpoints supply.
 func (c *Client) artworkParamsPage(op string, query url.Values, values []artworkWire, nextParams url.Values, hasNext bool) (sdk.Page[Artwork], error) {
 	items, err := c.mapArtworks(values)
 	if err != nil {
@@ -416,9 +418,10 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	return c.artworkPage("ArtworkRanking", base, pixivapi.ParamOffset, items, int64(next), hasNext)
 }
 
-// RecommendedArtworks lists recommended artworks. 上游以多参数 next_url
-// 表达续页（offset=0 特例 + bookmark 游标 + viewed 下标数组），cursor 以
-// 结构化参数集整体回放，不保存 raw next_url。
+// RecommendedArtworks lists recommended artworks. Upstream expresses the next
+// page as a multi-parameter next_url (an offset=0 special case plus bookmark
+// cursor and viewed index arrays); the cursor replays that parameter set as a
+// unit and never stores the raw next_url.
 func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArtworksRequest) (sdk.Page[Artwork], error) {
 	ctx = logging.WithOperation(ctx, "RecommendedArtworks")
 	base := url.Values{}
@@ -616,8 +619,8 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 	}
 	metadata, err := c.mapUgoiraMetadata(request.ArtworkID, raw.Metadata.Value)
 	if err != nil {
-		// 映射阶段返回的已是公开 SDK 错误（例如 ResourceForbidden），不能再按
-		// 上游失败重新分类，否则会丢掉原始 reason。
+		// Mapping already returned a public SDK error such as ResourceForbidden.
+		// Reclassifying it as an upstream failure would discard the original reason.
 		var sdkErr *sdk.Error
 		if errors.As(err, &sdkErr) {
 			return UgoiraMetadata{}, err
@@ -627,7 +630,8 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 	return metadata, nil
 }
 
-// artworkItems 校验 artwork 列表的必需字段并原样返回 wire 项。
+// artworkItems checks the required fields of an artwork list and returns the
+// wire items unchanged.
 func artworkItems(operation string, list pixivapi.RequiredList[artworkWire], requireUser bool) ([]artworkWire, error) {
 	if !list.Present || !list.Valid {
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
@@ -640,7 +644,8 @@ func artworkItems(operation string, list pixivapi.RequiredList[artworkWire], req
 	return list.Items, nil
 }
 
-// mapArtworkPages 只建立详情响应的页资源；列表响应不解析页。
+// mapArtworkPages builds page resources for an artwork detail response; list
+// responses do not carry pages.
 func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 	if len(value.MetaPages) > 0 {
 		pages := make([]ArtworkPage, 0, len(value.MetaPages))
@@ -687,7 +692,8 @@ func (c *Client) mapArtworkPages(value artworkWire) ([]ArtworkPage, error) {
 	}}, nil
 }
 
-// mapUgoiraMetadata 校验并映射可播放动图的压缩包与帧信息。
+// mapUgoiraMetadata validates and maps the archives and frames needed to play a
+// ugoira animation.
 func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (UgoiraMetadata, error) {
 	if !value.ZipURLs.Present || !value.ZipURLs.Valid ||
 		(value.ZipURLs.Value.Medium == "" && value.ZipURLs.Value.Original == "") ||
@@ -723,8 +729,9 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 	return UgoiraMetadata{ArtworkID: artworkID, Archives: archives, Frames: frames}, nil
 }
 
-// safeArtworkArchiveFilename 拒绝会进入归档解包或落盘边界的帧名：绝对路径、
-// 路径穿越、NUL 与空段。
+// safeArtworkArchiveFilename rejects frame names that would reach archive
+// extraction or a filesystem destination: absolute paths, path traversal, NUL,
+// and empty segments.
 func safeArtworkArchiveFilename(name string) bool {
 	if name == "" || strings.ContainsAny(name, "\\\x00") {
 		return false

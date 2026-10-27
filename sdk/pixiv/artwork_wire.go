@@ -1,6 +1,3 @@
-// Artwork and ugoira wire shapes shared by endpoint, preview, search and resource readers.
-// Shared artwork mapping lives here; endpoint-specific declarations stay in artwork.go.
-
 package pixiv
 
 import (
@@ -21,8 +18,9 @@ type metaPageWire struct {
 	ImageURLs imageURLsWire `json:"image_urls"`
 }
 
-// artworkWire 是 App API 所有 artwork 响应的共同结构。缺少某字段的端点解出 nil，
-// 需要区分“未提供”和显式值的字段因此保持指针。
+// artworkWire is the shape every App API artwork response shares. Endpoints that
+// omit a field decode it as nil, so fields whose absence differs from an
+// explicit value stay pointers.
 type artworkWire struct {
 	ID             int64          `json:"id"`
 	Title          string         `json:"title"`
@@ -55,7 +53,8 @@ type artworkWire struct {
 	TotalComments *int `json:"total_comments"`
 }
 
-// UnmarshalJSON 同时接受当前的 illust_ai_type 与旧版 ai_type；前者优先。
+// UnmarshalJSON accepts both the current illust_ai_type and the earlier ai_type,
+// preferring the current one.
 func (w *artworkWire) UnmarshalJSON(data []byte) error {
 	type wire artworkWire
 	aux := struct {
@@ -113,8 +112,8 @@ func (c *Client) mapArtworks(values []artworkWire) ([]Artwork, error) {
 	return items, nil
 }
 
-// mapArtwork 把一份上游 artwork 响应映射为公开模型，并在受 policy 校验的边界
-// 创建资源引用。
+// mapArtwork maps one upstream artwork response to the public model and creates
+// resource references through the policy-checked boundary.
 func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 	published, err := parseUTCTime(value.CreateDate)
 	if err != nil {

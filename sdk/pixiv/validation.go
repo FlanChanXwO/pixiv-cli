@@ -9,7 +9,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// validateBookmarkRange 在 public SDK 边界校验闭区间，不增加任何隐含上限。
+// validateBookmarkRange checks an inclusive range at the public SDK boundary and
+// adds no hidden upper limit.
 func validateBookmarkRange(operation string, minimum, maximum *int) error {
 	if minimum != nil && *minimum < 0 {
 		return newError(operation, sdk.InvalidArgument, "bookmark minimum must be non-negative")
@@ -42,8 +43,9 @@ func normalizeFollowingRestrict(operation string, value Restrict) (Restrict, err
 	return value, nil
 }
 
-// normalizeLatestArtworkContentType 将 public 空值解析为已冻结的 illust
-// feed，并拒绝尚未承诺的复合或 ugoira subtype。
+// normalizeLatestArtworkContentType resolves an empty public value to the frozen
+// illustration feed and rejects the composite and ugoira subtypes the SDK does
+// not yet support there.
 func normalizeLatestArtworkContentType(operation string, value SearchContentType) (string, error) {
 	switch value {
 	case "", SearchContentTypeIllust:
@@ -55,8 +57,8 @@ func normalizeLatestArtworkContentType(operation string, value SearchContentType
 	}
 }
 
-// normalizeUserArtworkKind 将 public 空值与 illust 绑定到同一查询摘要，
-// 避免合法游标无法续读。
+// normalizeUserArtworkKind maps an empty public value and illust to the same query
+// digest, so a valid cursor still resumes.
 func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, error) {
 	switch value {
 	case "", ArtworkKind("illust"):
@@ -68,7 +70,8 @@ func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, erro
 	}
 }
 
-// applyResolutionFilter 把公开分辨率档位翻译成 App 的宽高上下限。
+// applyResolutionFilter translates a public resolution band into App API width
+// and height bounds.
 func applyResolutionFilter(query url.Values, resolution SearchResolution) {
 	switch resolution {
 	case SearchResolutionHigh:

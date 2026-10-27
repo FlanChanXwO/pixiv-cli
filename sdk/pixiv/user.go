@@ -1,6 +1,3 @@
-// user 领域：用户详情和各类用户列表的读取。
-// 请求类型、响应结构与映射、continuation Spec 都在本文件；共用 user 映射在 response.go。
-
 package pixiv
 
 import (
@@ -57,7 +54,9 @@ type profilePublicityWire struct {
 	Pawoo     profileVisibility `json:"pawoo"`
 }
 
-// profileVisibility 接受 boolean 或 "public"/"private"，并记录缺失与非法的值。
+// profileVisibility decodes a boolean or "public"/"private" and records both
+// absence and unrecognized values. A present but invalid value fails the whole
+// profile response instead of defaulting to private.
 type profileVisibility struct {
 	Value   bool
 	Present bool
@@ -112,7 +111,7 @@ type workspaceWire struct {
 	WorkspaceImageURL *string `json:"workspace_image_url"`
 }
 
-// userPreviewsWire 是用户搜索与用户列表共用的响应。
+// userPreviewsWire is the response shape user search and user lists share.
 type userPreviewsWire struct {
 	UserPreviews pixivapi.RequiredList[userPreviewWire] `json:"user_previews"`
 	NextURL      *string                                `json:"next_url"`
@@ -124,7 +123,8 @@ type userPreviewWire struct {
 	Novels  []novelWire   `json:"novels"`
 }
 
-// blockedPreviewWire 额外接受 /v2/user/list 历史上直接返回的 user 对象。
+// blockedPreviewWire also accepts a bare user object, the form /v2/user/list
+// returns directly.
 type blockedPreviewWire struct {
 	userPreviewWire
 }
@@ -142,11 +142,12 @@ func (w *blockedPreviewWire) UnmarshalJSON(data []byte) error {
 		w.userPreviewWire = userPreviewWire{User: *envelope.User, Illusts: envelope.Illusts, Novels: envelope.Novels}
 		return nil
 	}
-	// 历史 envelope 直接给出 user 对象，没有 "user" 包装。
+	// Some responses give the user object directly, without a "user" wrapper.
 	return json.Unmarshal(data, &w.User)
 }
 
-// blockedUsersWire 是 /v2/user/list 的响应；两种历史 envelope 都按必需列表校验。
+// blockedUsersWire is the /v2/user/list response. Both envelope forms are
+// validated as required lists.
 type blockedUsersWire struct {
 	UserPreviews pixivapi.RequiredList[blockedPreviewWire] `json:"user_previews"`
 	Users        pixivapi.RequiredList[blockedPreviewWire] `json:"users"`
@@ -154,7 +155,7 @@ type blockedUsersWire struct {
 }
 
 func (w blockedUsersWire) list() ([]userPreviewWire, error) {
-	// /v2/user/list 先返回 users；user_previews 只是历史兼容形态。
+	// /v2/user/list reports users first; user_previews is the older envelope form.
 	list := w.Users
 	if !list.Present {
 		list = w.UserPreviews
@@ -352,8 +353,9 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 	return c.userPreviewsPage(ctx, "MyPixivUsers", pixivapi.PathUserMyPixiv, base, query, request.Cursor, userMyPixivContinuation, false)
 }
 
-// userPreviewsPage 是所有 user_previews 列表端点的共同实现。base 绑定游标摘要，
-// query 是实际发出的 query；两者只在端点原有的 filter 处理上不同。
+// userPreviewsPage backs every user_previews list endpoint. base binds the cursor
+// digest while query is what the request sends; the two differ only in the
+// endpoint's own filter handling.
 func (c *Client) userPreviewsPage(ctx context.Context, operation, path string, base, query url.Values, cursor sdk.Cursor, spec continuationSpec, withSamples bool) (sdk.Page[UserPreview], error) {
 	query = cloneValues(query)
 	if spec.allowZero {
@@ -362,7 +364,8 @@ func (c *Client) userPreviewsPage(ctx context.Context, operation, path string, b
 			return sdk.Page[UserPreview]{}, err
 		}
 		if continuationExists {
-			// 推荐流用显式的 offset=0 表示第二页；省略它会回到第一页。
+			// Recommended feeds report the second page as an explicit offset=0;
+			// omitting it would return the first page again.
 			query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
 		}
 	} else {
@@ -385,7 +388,8 @@ func (c *Client) userPreviewsPage(ctx context.Context, operation, path string, b
 	return c.userPreviewsResult(operation, base, raw.UserPreviews.Items, raw.NextURL, spec, withSamples)
 }
 
-// blockedUsersPage 解码 /v2/user/list，其余与 user_previews 列表共用映射与游标。
+// blockedUsersPage decodes /v2/user/list and otherwise shares the user_previews
+// mapping and cursor handling.
 func (c *Client) blockedUsersPage(ctx context.Context, operation, path string, base, query url.Values, cursor sdk.Cursor) (sdk.Page[UserPreview], error) {
 	offset, err := c.continuationPositiveOffset(operation, base, cursor)
 	if err != nil {
@@ -437,7 +441,8 @@ func (c *Client) mapUserPreviews(operation string, values []userPreviewWire, wit
 	return items, nil
 }
 
-// mapUserPreview 映射一条 user_previews 项；只有推荐端点携带供参考的作品与小说。
+// mapUserPreview maps one user_previews entry. Only recommendation endpoints
+// include sample artworks and novels.
 func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSamples bool) (UserPreview, error) {
 	user, err := c.mapUser(value.User)
 	if err != nil {
@@ -452,7 +457,8 @@ func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSam
 		if item.ID <= 0 || item.User.ID <= 0 {
 			return UserPreview{}, newError(operation, sdk.MalformedUpstreamResponse, "")
 		}
-		// 推荐样例缺字段时保持既有契约：不交付该样例，也不让整页失败。
+		// A sample with missing fields is dropped while the rest of the page
+		// succeeds; that is the documented contract for recommendation samples.
 		if mapped, err := c.mapArtwork(item); err == nil {
 			preview.Illusts = append(preview.Illusts, mapped)
 		}

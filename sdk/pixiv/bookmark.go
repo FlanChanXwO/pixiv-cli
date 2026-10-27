@@ -1,6 +1,3 @@
-// bookmark 领域：作品与小说的收藏详情、收藏列表和收藏标签。
-// 收藏写操作在 mutation.go；请求类型与 continuation Spec 都在本文件。
-
 package pixiv
 
 import (
@@ -35,7 +32,8 @@ type bookmarkDetailWire struct {
 	} `json:"bookmark_detail"`
 }
 
-// bookmarkDetail 将作品与小说的未收藏响应归一为空状态，只保留已登记的收藏标签。
+// bookmarkDetail normalizes an unbookmarked artwork or novel response to the
+// empty state and keeps only registered bookmark tags.
 func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter string, id int64) (Restrict, []string, error) {
 	var raw bookmarkDetailWire
 	if err := c.app.GetJSON(ctx, path, url.Values{parameter: {itoa(id)}}, &raw); err != nil {
@@ -46,7 +44,8 @@ func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter 
 		return "", []string{}, nil
 	}
 	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		// 未收藏响应中的 tags 可能属于作品自身，保持空的收藏状态。
+		// Tags in an unbookmarked response may describe the work itself, so report
+		// an empty bookmark state.
 		return "", []string{}, nil
 	}
 	tags := []string{}

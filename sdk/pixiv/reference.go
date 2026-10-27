@@ -11,7 +11,8 @@ import (
 // ReferenceKind identifies the stable Pixiv page type a parsed URL points to.
 type ReferenceKind string
 
-// ReferenceKind values define the supported ReferenceKind filesystem.
+// ReferenceKindArtwork and the other ReferenceKind values name the Pixiv page
+// types ParseURL recognizes.
 const (
 	ReferenceKindArtwork       ReferenceKind = "artwork"
 	ReferenceKindNovel         ReferenceKind = "novel"

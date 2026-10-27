@@ -5,7 +5,8 @@ import "github.com/FlanChanXwO/pixiv-cli/sdk"
 // UgoiraQuality identifies a ugoira archive quality offered by upstream.
 type UgoiraQuality string
 
-// UgoiraQuality values define the supported UgoiraQuality filesystem.
+// UgoiraQualityMedium and UgoiraQualityOriginal name the archives upstream may
+// publish for an animation.
 const (
 	// UgoiraQualityMedium is the reduced-size archive, when upstream provides
 	// one.

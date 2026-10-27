@@ -12,7 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// appAPIHost 是 continuation next_url 唯一接受的 host。
+// appAPIHost is the only host accepted in a continuation next_url.
 const appAPIHost = "app-api.pixiv.net"
 
 // cursorBindingVersion is the Pixiv cursor binding version. Bump it only when
@@ -20,8 +20,10 @@ const appAPIHost = "app-api.pixiv.net"
 // fail closed instead of being misinterpreted.
 const cursorBindingVersion = 1
 
-// 搜索新增批内 checkpoint 与账号绑定，recommended/related 改为多参数
-// continuation 回放；这些变更都只使对应 operation 的旧 cursor 显式失效。
+// Search gained in-batch checkpoints and account binding, while recommended and
+// related now replay multi-parameter continuations. Each change retires only the
+// cursors of the operations it affects, and they fail with InvalidCursor rather
+// than restarting silently.
 func operationCursorBindingVersion(op string) int {
 	switch op {
 	case "SearchArtworks", "RecommendedArtworks", "RecommendedNovels", "RelatedArtworks":
@@ -30,10 +32,11 @@ func operationCursorBindingVersion(op string) int {
 	return cursorBindingVersion
 }
 
-// continuationEnvelope is the opaque payload embedded in a Pixiv cursor. It
-// never contains tokens, cookies, signed URLs, search text, or local paths.
-// Params 仅承载 recommended 这类上游以多参数表达续页的 endpoint 的结构化
-// 续页参数（offset、bookmark 游标、viewed 下标数组等），不含 next_url 原文。
+// continuationEnvelope is the opaque payload carried by a Pixiv cursor. It never
+// contains tokens, cookies, signed URLs, search text, or local paths. Params
+// holds the structured continuation parameters of endpoints such as
+// recommended, which express the next page as offset, bookmark cursor, and
+// viewed index arrays; the raw next_url is never stored.
 type continuationEnvelope struct {
 	Key      string     `json:"k"`
 	Value    int64      `json:"v"`
@@ -122,8 +125,9 @@ func (c *Client) continuationState(op string, baseQuery url.Values, cur sdk.Curs
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.Value < 0 || envelope.Consumed < 0 {
 		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
-	// 两种合法 payload 形态：单键 continuation（Key+Value）与 recommended
-	// 家族的多参数集（Params）；二者都不允许为空。
+	// A payload is either a single-key continuation (Key+Value) or a
+	// multi-parameter set (Params) for the recommended family; neither may be
+	// empty.
 	if envelope.Key == "" && len(envelope.Params) == 0 {
 		return continuationEnvelope{}, newError(op, sdk.InvalidCursor, "cursor payload is malformed")
 	}
@@ -200,8 +204,9 @@ func (c *Client) continuationOffsetExists(op string, baseQuery url.Values, cur s
 	return offset, true, nil
 }
 
-// continuationParams 解码多参数 continuation（recommended 家族）。零 cursor
-// 表示首页并返回 nil；payload 未携带 Params 时显式 InvalidCursor，不静默重启。
+// continuationParams decodes a multi-parameter continuation from the
+// recommended family. A zero cursor means the first page and returns nil; a
+// payload without Params returns InvalidCursor instead of restarting silently.
 func (c *Client) continuationParams(op string, baseQuery url.Values, cur sdk.Cursor) (url.Values, error) {
 	if cur.IsZero() {
 		return nil, nil
@@ -318,7 +323,8 @@ func newCursorInstanceID() (string, error) {
 	return hex.EncodeToString(raw[:]), nil
 }
 
-// continuationSpec 描述单条 endpoint 的 next_url 白名单。
+// continuationSpec lists the next_url query keys one endpoint accepts and how
+// to read its continuation values.
 type continuationSpec struct {
 	path      string
 	keys      []string
@@ -328,9 +334,10 @@ type continuationSpec struct {
 	ignored   []string
 }
 
-// parseContinuation 校验 next_url 并提取唯一的 typed continuation 值。
-// next_url 必须指向固定的 App API host 与当前端点 path；query 只允许出现
-// 已登记的键，每个键一次，未知键或越界值一律 malformed。
+// parseContinuation validates next_url and extracts its single typed
+// continuation value. The URL must point at the fixed App API host and the
+// endpoint's path, each query key must be registered and appear once, and any
+// unknown key or out-of-range value is rejected as malformed.
 func parseContinuation(rawURL string, spec continuationSpec) (string, int64, error) {
 	if rawURL == "" || spec.path == "" || len(spec.keys) == 0 {
 		return "", 0, pixivapi.MalformedResponse()
@@ -379,8 +386,9 @@ func parseContinuation(rawURL string, spec continuationSpec) (string, int64, err
 	return continuationKey, value, nil
 }
 
-// parseContinuationParams 校验 next_url 并返回完整查询集，供 recommended
-// 这类“上游用多参数表达续页”的端点整体回放；rawURL 为空表示没有下一页。
+// parseContinuationParams validates next_url and returns its full query set so
+// endpoints such as recommended can replay it as a unit. An empty rawURL means
+// there is no next page.
 func parseContinuationParams(rawURL string, spec continuationSpec) (url.Values, bool, error) {
 	if rawURL == "" {
 		return nil, false, nil
@@ -411,8 +419,9 @@ func parseContinuationParams(rawURL string, spec continuationSpec) (url.Values, 
 	return values, true, nil
 }
 
-// validateContinuationParams 校验已结构化的 continuation 参数集：未知、空值
-// 或重复的标量参数 fail closed，不交给传输层。
+// validateContinuationParams checks an already structured parameter set.
+// Unknown keys, empty values, and repeated scalar values fail closed before the
+// request reaches the transport.
 func validateContinuationParams(values url.Values, spec continuationSpec) error {
 	if len(values) == 0 {
 		return pixivapi.MalformedResponse()
@@ -450,15 +459,17 @@ func validateContinuationParams(values url.Values, spec continuationSpec) error 
 	return nil
 }
 
-// next 读取单一 continuation 的 typed value；rawURL 为空表示没有下一页。
-// allowZero 的 Spec 接受 0，其余 Spec 由 parseContinuation 拒绝 0。
+// next reads the typed value of a single continuation. A nil rawURL means there
+// is no next page; a spec with allowZero accepts zero, and every other spec
+// rejects it in parseContinuation.
 func (s continuationSpec) next(rawURL *string) (int64, bool, error) {
 	_, value, ok, err := s.parseValue(rawURL)
 	return value, ok, err
 }
 
-// parseValue 校验 next_url 的 path、query 与 continuation 值。offset 必须能
-// 无损转换为 int，与公开游标的 offset 语义保持一致。
+// parseValue validates the next_url path, query, and continuation value. An
+// offset must convert to int without loss so it matches the public cursor's
+// offset semantics.
 func (s continuationSpec) parseValue(rawURL *string) (string, int64, bool, error) {
 	if rawURL == nil {
 		return "", 0, false, nil
@@ -473,7 +484,8 @@ func (s continuationSpec) parseValue(rawURL *string) (string, int64, bool, error
 	return key, value, true, nil
 }
 
-// offset 解析只允许单一 offset 的续页；offset 必须是正 int。
+// offset accepts only a single offset continuation, and the offset must be a
+// positive int.
 func (s continuationSpec) offset(rawURL *string) (int, bool, error) {
 	value, hasNext, err := s.value(rawURL)
 	if err != nil || !hasNext {
@@ -485,8 +497,8 @@ func (s continuationSpec) offset(rawURL *string) (int, bool, error) {
 	return int(value), true, nil
 }
 
-// keyValue 返回单一 continuation 的 key 与值，供 series 与 latest 这类允许
-// 两种续页形式的端点构建 cursor。
+// keyValue returns the key and value of a single continuation for endpoints
+// such as series and latest, which accept either continuation form.
 func (s continuationSpec) keyValue(rawURL *string) (string, int64, bool, error) {
 	key, value, ok, err := s.parseValue(rawURL)
 	if err != nil || !ok {
@@ -498,7 +510,8 @@ func (s continuationSpec) keyValue(rawURL *string) (string, int64, bool, error) 
 	return key, value, true, nil
 }
 
-// value 解析单一 typed continuation key，并拒绝缺失与重复。
+// value resolves a single typed continuation key and rejects missing or
+// repeated keys.
 func (s continuationSpec) value(rawURL *string) (int64, bool, error) {
 	_, value, ok, err := s.parseValue(rawURL)
 	if err != nil || !ok {
@@ -510,7 +523,8 @@ func (s continuationSpec) value(rawURL *string) (int64, bool, error) {
 	return value, true, nil
 }
 
-// params 整体回放多参数续页，返回上游 next_url 的完整查询集。
+// params replays a multi-parameter next page, returning the complete query set
+// from the upstream next_url.
 func (s continuationSpec) params(rawURL *string) (url.Values, bool, error) {
 	if rawURL == nil {
 		return nil, false, nil
@@ -522,7 +536,8 @@ func (s continuationSpec) params(rawURL *string) (url.Values, bool, error) {
 	return values, true, nil
 }
 
-// continuationKeyValue 解码多 key 续页游标；零游标表示首页。
+// continuationKeyValue decodes a multi-key continuation cursor; the zero cursor
+// means the first page.
 func (c *Client) continuationKeyValue(operation string, base url.Values, cur sdk.Cursor, spec continuationSpec) (string, int64, error) {
 	if cur.IsZero() {
 		return spec.keys[0], 0, nil
