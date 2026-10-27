@@ -183,8 +183,8 @@ func (e Env) ConsumeActionRecords(cmd *cobra.Command, state *input.State, operat
 	return input.ConsumeActionRecords(cmd.Context(), state.Reader(e.In), e.Err, operation, onError, allowedTypes, invoke, e.UsageError)
 }
 
-// AutoNDJSON 决定列表命令是否输出记录流：显式 --json 或配置的 JSON 模式优先；
-// 两者都没有时，只要 stdout 不是终端就输出记录流，除非已显式请求 --ndjson。
+// AutoNDJSON 决定列表命令是否输出记录流：显式 --ndjson 直接选择记录流；
+// 否则显式 --json 或配置的 JSON 模式优先，两者都没有时只要 stdout 不是终端就输出记录流。
 // 结果记录在命令上，执行边界据此把提前关闭的管道判为正常结束。
 func (e Env) AutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
 	effective := ndjson

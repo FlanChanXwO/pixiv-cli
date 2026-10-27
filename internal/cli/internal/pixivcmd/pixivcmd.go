@@ -56,7 +56,8 @@ func Read[T any](r Runner, ctx context.Context, request Request, invoke func(con
 	return result, nil
 }
 
-// Write 执行一次修改。只要请求已经发出就按已提交处理：传输错误无法证明服务端拒绝了它。
+// Write 执行一次修改。从进入修改回调起就按已提交处理，即使 invoke 在发出请求前返回错误，
+// 因为错误无法证明请求没有送达，不能让账号池把它当作未提交操作重放。
 func (r Runner) Write(ctx context.Context, request Request, invoke func(context.Context, *pixiv.Client) error) error {
 	return r.executor(ctx, request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		return true, invoke(ctx, client)

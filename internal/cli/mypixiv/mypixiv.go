@@ -30,7 +30,8 @@ type commandRunner struct {
 	run pixivcmd.Runner
 }
 
-// New 构造 `pixiv mypixiv` 命令组；用户与作品两个子命令共享同一次账号读取。
+// New 构造 `pixiv mypixiv` 命令组；用户与作品两个子命令共用同一个执行端口，
+// 但各自执行时都会重新选择账号。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}

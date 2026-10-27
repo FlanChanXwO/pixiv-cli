@@ -12,7 +12,8 @@ import (
 // CallbackHandlingResult 只携带不含授权码或 token 的本地 bridge URL，或 remote
 // relay 返回的一次性最终页 session。callback 本身绝不写入 stdout/stderr。
 type CallbackHandlingResult struct {
-	// LocalRelayURL 是交给浏览器继续登录的本地 bridge 地址，不含授权码或 token。
+	// LocalRelayURL 会把本次 Pixiv callback 放进 fragment，可能包含授权码；
+	// 只有 bridge 的基础地址可以记录，完整值按敏感数据处理。
 	LocalRelayURL string
 	// RemoteCallback 是远程 relay 返回的一次性结果会话；与 LocalRelayURL 至多一个非零。
 	RemoteCallback *RemoteCallbackSession

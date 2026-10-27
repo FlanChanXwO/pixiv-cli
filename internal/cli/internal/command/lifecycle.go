@@ -124,7 +124,8 @@ func DownloadCommand() Execution { return Normal() }
 // FanboxData 给 FANBOX 数据命令使用普通生命周期。
 func FanboxData() Execution { return Normal() }
 
-// FanboxAuth 不使用普通启动钩子：FANBOX 登录不需要 Pixiv 配置和默认文件的启动副作用。
+// FanboxAuth 仍运行 root 启动钩子，但不确保默认配置文件；FANBOX 登录只需要清理待安装更新、
+// 维护 pixiv:// handler 和检查自动更新，不需要 Pixiv 配置的启动副作用。
 func FanboxAuth() Execution {
 	return Execution{StartupHooks: true, AutomaticUpdate: true}
 }
