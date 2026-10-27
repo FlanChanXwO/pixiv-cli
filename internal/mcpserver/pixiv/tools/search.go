@@ -1,5 +1,3 @@
-// pixiv search tools.
-
 package tools
 
 import (
@@ -26,7 +24,7 @@ type artworkSearchOutcome struct {
 	Filter *outputs.BookmarkFilter
 }
 
-// The MCP account port supplies no verified membership evidence.
+// MCP 账号端口不提供已核实的会员身份证据。
 const bookmarkMembershipUnknown = searchfilter.BookmarkMembershipUnknown
 
 type artworkSearchRequest struct {
@@ -36,8 +34,8 @@ type artworkSearchRequest struct {
 	Filter   *filters.IllustFilter
 }
 
-// searchArtworks 在 MCP adapter 内执行 bookmark 候选筛选。
-// auto 只在当前已验证策略下解析为 local；server 不做未经证实的降级。
+// searchArtworks 在 MCP 适配层执行收藏候选筛选。auto 只解析为当前已验证的策略 local，
+// 服务端不做未经证实的降级。
 func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Client], request artworkSearchRequest) (artworkSearchOutcome, error) {
 	var outcome artworkSearchOutcome
 	filter := searchfilter.BookmarkRange{
@@ -70,7 +68,7 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 		candidateQuery := request.Query
 		candidateQuery.CursorContext = filter.CursorContext()
 		if filter.Local() {
-			// App API bounds 只是 candidate 条件；local 必须枚举正常候选流再本地复核。
+			// App API 的区间只是候选条件；local 策略必须枚举正常结果流后在本地复核。
 			candidateQuery.BookmarkMin = nil
 			candidateQuery.BookmarkMax = nil
 		}
@@ -114,8 +112,7 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 	return outcome, nil
 }
 
-// bookmarkSearchError maps shared bookmark validation to the tool's existing
-// SDK error class.
+// bookmarkSearchError 把共享的收藏参数校验错误映射为该工具原有的 SDK 错误类别。
 func bookmarkSearchError(err error) error {
 	kind := sdk.InvalidArgument
 	switch {
@@ -127,7 +124,7 @@ func bookmarkSearchError(err error) error {
 	return sdk.NewError("pixiv", "SearchArtworks", kind, sdk.WithDetail(err.Error()))
 }
 
-// bookmarkOutput maps shared filter metadata to the published structured field.
+// bookmarkOutput 把共享筛选元数据映射到已发布的 filter 字段。
 func bookmarkOutput(outcome searchfilter.BookmarkOutcome) *outputs.BookmarkFilter {
 	return &outputs.BookmarkFilter{
 		Min:          outcome.Min,
@@ -154,8 +151,6 @@ func searchArtworkPages(ctx context.Context, client *pixiv.Client, query pixiv.S
 	}
 	return sdk.Page[pixiv.Artwork]{Items: items, Next: next}, nil
 }
-
-// registerSearchIllust 注册 pixiv_search_illust。
 func (t pixivTools) registerSearchIllust(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.searchIllustHandler(ctx, input)
@@ -183,8 +178,8 @@ type searchIllustIn struct {
 	IllustFilter     *filters.IllustFilter `json:"illust_filter,omitempty"`
 }
 
-// searchIllustInputSchema 显式发布稳定筛选枚举。go-sdk 会在解码 handler 输入前
-// 校验该 schema，因此非法枚举不会打开 SDK snapshot 或发起网络请求。
+// searchIllustInputSchema 发布稳定的筛选枚举。go-sdk 在解码 handler 输入前校验 schema，
+// 非法枚举不会打开 SDK snapshot，也不会发出网络请求。
 func searchIllustInputSchema() map[string]any {
 	stringProperty := func(description string) map[string]any {
 		return map[string]any{"type": "string", "description": description}
@@ -228,8 +223,8 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 	if in.Sort == "" {
 		in.Sort = string(pixiv.SortModeDateDesc)
 	}
-	// 官方 App 以日期边界而非 duration 表达半年和一年，先在本地展开，
-	// 使 MCP 与 CLI 的快捷日期语义保持一致。
+	// 官方 App 用日期边界表达半年与一年，不认 duration；先展开成日期，保持 MCP 与 CLI
+	// 的快捷日期语义一致。
 	if in.StartDate == "" && in.EndDate == "" {
 		if startDate, endDate, ok := quickDateRange(in.Duration, time.Now()); ok {
 			in.Duration = ""
@@ -341,8 +336,8 @@ func validMCPDate(value string) bool {
 
 const tokyoOffsetSeconds = 9 * 60 * 60
 
-// quickDateRange 将 Pixiv 的长日期快捷项转换为包含边界的日本日期。
-// App 搜索接口对半年和一年使用 start_date/end_date，而不是可靠的 duration 枚举。
+// quickDateRange 把半年、一年这类快捷项换算成含边界的日本日期。App 搜索接口对这两个
+// 区间使用 start_date/end_date，duration 枚举不可靠。
 func quickDateRange(value string, now time.Time) (startDate, endDate string, ok bool) {
 	today := now.In(time.FixedZone("Asia/Tokyo", tokyoOffsetSeconds))
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
@@ -358,8 +353,6 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 	}
 	return start.Format("2006-01-02"), today.Format("2006-01-02"), true
 }
-
-// registerSearchNovel 注册 pixiv_search_novel。
 func (t pixivTools) registerSearchNovel(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_novel", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for novels using keywords with supported filters.", InputSchema: searchNovelInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchNovelIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.searchNovelHandler(ctx, input)
@@ -375,8 +368,8 @@ type searchNovelIn struct {
 	toolrun.ListIn
 }
 
-// searchNovelInputSchema 只声明 App API 的稳定检索语义与已接通的本地筛选。
-// rating、正文长度和原创筛选在可靠接口证据与完整跨批次语义确定前不发布。
+// searchNovelInputSchema 只声明 App API 稳定的检索语义和已经接通的本地筛选；rating、
+// 正文长度与原创筛选缺少可靠接口证据和跨批次语义，暂不发布。
 func searchNovelInputSchema() map[string]any {
 	stringProperty := func(description string) map[string]any {
 		return map[string]any{"type": "string", "description": description}
@@ -431,8 +424,6 @@ func (t pixivTools) searchNovelHandler(ctx context.Context, in searchNovelIn) (*
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out), out, nil
 }
-
-// registerSearchUser 注册 pixiv_search_user。
 func (t pixivTools) registerSearchUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for users/artists on Pixiv.", InputSchema: schemas.List(map[string]any{
 		"word":        map[string]any{"type": "string", "minLength": 1, "description": "User search keyword."},

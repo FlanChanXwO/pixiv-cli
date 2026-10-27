@@ -1,5 +1,3 @@
-// Own animation subscriptions, worker lifetimes, and temporary-file capacity.
-
 package mediaproxy
 
 import (
@@ -54,9 +52,8 @@ type animationJob struct {
 	timer                         *time.Timer
 }
 
-// ConfigureAnimations creates this service's private workspace before any requests.
-// Unknown legacy directories are deliberately left alone: their ownership cannot
-// be proved by a directory name or a reused process ID.
+// ConfigureAnimations 在服务开始处理请求前建立本进程的私有工作目录。无法证明归属的旧目录
+// 一律不动：目录名与复用的进程号都不可信。
 func (s *Service) ConfigureAnimations(ctx context.Context, capacity int64) error {
 	if capacity <= 0 || s.reads == nil || s.animations != nil {
 		return errors.New("invalid animation configuration")
@@ -75,7 +72,8 @@ func (s *Service) ConfigureAnimations(ctx context.Context, capacity int64) error
 	return nil
 }
 
-// CloseAnimations joins workers and pinned transfers before removing private files.
+// CloseAnimations 等 worker 与进行中的传输结束后再删除私有文件。重复调用安全，但首次
+// 关闭留下的 watchErr 与 cleanupErr 仍会随每次调用返回。
 func (s *Service) CloseAnimations() error {
 	a := s.animations
 	if a == nil {
@@ -135,8 +133,8 @@ func (s *Service) animationClaims(ctx context.Context, account, artwork int64) (
 	return c, nil
 }
 
-// PrepareAnimation returns promptly; a subscriber, rather than the tool request,
-// owns the worker lifetime. Every prepare receives its own unguessable handle.
+// PrepareAnimation 快速返回：编码 worker 的生命周期归订阅者所有，不随发起请求的 tool
+// 调用结束。每次 prepare 都得到独立的不可猜测 handle。
 func (s *Service) PrepareAnimation(ctx context.Context, account, artwork int64, format string) (AnimationStatus, error) {
 	a := s.animations
 	if a == nil {
@@ -168,7 +166,7 @@ func (s *Service) PrepareAnimation(ctx context.Context, account, artwork int64, 
 	if a.closed || a.ctx.Err() != nil {
 		return AnimationStatus{}, errors.New("animation service closed")
 	}
-	// 会话获取可能等待；发布前不能沿用等待前的授权判断。
+	// 会话获取可能阻塞，发布前重新授权。
 	if err := s.authorized(ctx, c); err != nil {
 		return AnimationStatus{}, err
 	}
@@ -203,7 +201,7 @@ func (s *Service) PrepareAnimation(ctx context.Context, account, artwork int64, 
 	return s.animationOutputLocked(j, handle), nil
 }
 
-// watchSessionLocked registers the worker before Close can start joining it.
+// watchSessionLocked 先把监听 worker 登记进 sessionWG，Close 才会等待到它。
 func (a *animationState) watchSessionLocked(j *animationJob, invalidated <-chan struct{}) {
 	if invalidated == nil {
 		return
@@ -223,7 +221,7 @@ func (a *animationState) watchSessionLocked(j *animationJob, invalidated <-chan 
 	}()
 }
 
-// AnimationSubscription revalidates both grant and current credential generation.
+// AnimationSubscription 重新校验 grant 与当前凭据版本，并报告或释放订阅。
 func (s *Service) AnimationSubscription(ctx context.Context, account int64, handle string, release bool) (AnimationStatus, error) {
 	a := s.animations
 	if a == nil {
@@ -231,7 +229,7 @@ func (s *Service) AnimationSubscription(ctx context.Context, account int64, hand
 	}
 	c, err := s.animationClaims(ctx, account, 0)
 	if err != nil {
-		// 已失效的同一授权仍需停止既有任务；外部句柄不能取消其他授权的工作。
+		// 同一授权失效时要停掉已存在的任务；其他授权的 handle 不受影响。
 		a.mu.Lock()
 		if j := a.handles[handle]; ctx.Err() == nil && j != nil && c.Grant != "" && j.claim.Grant == c.Grant && j.claim.Account == account {
 			a.invalidateLocked(j, "expired", "authorization")
@@ -257,7 +255,7 @@ func (s *Service) AnimationSubscription(ctx context.Context, account int64, hand
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	authorizationErr := s.authorized(ctx, j.claim)
-	// 短控制请求取消不是授权失效，不能终止独立订阅持有的任务。
+	// 短控制请求被取消只结束这次查询，独立订阅持有的编码任务继续。
 	if requestErr := ctx.Err(); requestErr != nil {
 		return AnimationStatus{}, requestErr
 	}
@@ -327,7 +325,7 @@ func (a *animationState) cleanLocked(j *animationJob) {
 		a.used -= j.used
 		j.used = 0
 	} else if a.cleanupErr == nil {
-		// 保留首个删除错误与占用预算，最终清理成功也不抹去运行期故障。
+		// 保留第一个删除错误与已占用预算，运行期故障始终可见。
 		a.cleanupErr = fmt.Errorf("animation temporary cleanup: %w", err)
 	}
 }

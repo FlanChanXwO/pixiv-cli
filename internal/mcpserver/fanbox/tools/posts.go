@@ -1,5 +1,3 @@
-// fanbox posts tools.
-
 package tools
 
 import (
@@ -17,7 +15,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerCreator 注册 fanbox_creator。
 func (t fanboxTools) registerCreator(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get one FANBOX creator profile."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorIn) (*mcp.CallToolResult, creatorOut, error) {
 		return t.creatorHandler(ctx, input)
@@ -67,7 +64,6 @@ type creatorIn struct {
 	CreatorID string `json:"creator_id" jsonschema:"required FANBOX creator id"`
 }
 
-// registerCreatorPosts 注册 fanbox_creator_posts。
 func (t fanboxTools) registerCreatorPosts(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_posts", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, InputSchema: creatorPostsInputSchema(), Description: "List posts from a FANBOX creator, optionally for one non-empty tag."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorPostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
 		return t.creatorPostsHandler(ctx, input)
@@ -115,8 +111,6 @@ func creatorPostsInputSchema() *jsonschema.Schema {
 	schema.Properties["tag"] = &jsonschema.Schema{Type: "string", Description: "Optional non-empty creator tag."}
 	return schema
 }
-
-// registerCreators 注册 fanbox_creators。
 func (t fanboxTools) registerCreators(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creators", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List supporting or following FANBOX creators."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorsIn) (*mcp.CallToolResult, creatorsOut, error) {
 		return t.creatorsHandler(ctx, input)
@@ -171,7 +165,6 @@ type creatorsIn struct {
 	toolrun.ListIn
 }
 
-// registerCreatorTags 注册 fanbox_creator_tags。
 func (t fanboxTools) registerCreatorTags(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_creator_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List tags used by a FANBOX creator."}, func(ctx context.Context, request *mcp.CallToolRequest, input creatorTagsIn) (*mcp.CallToolResult, creatorTagsOut, error) {
 		return t.creatorTagsHandler(ctx, input)
@@ -212,7 +205,6 @@ type creatorTagsIn struct {
 	CreatorID string `json:"creator_id" jsonschema:"required FANBOX creator id"`
 }
 
-// registerFeed 注册 fanbox_feed。
 func (t fanboxTools) registerFeed(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_feed", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, InputSchema: feedInputSchema(), Description: "Browse the FANBOX home or supporting feed."}, func(ctx context.Context, request *mcp.CallToolRequest, input feedIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
 		return t.feedHandler(ctx, input)
@@ -255,8 +247,6 @@ func feedInputSchema() *jsonschema.Schema {
 	schema.Properties["source"].Enum = []any{"home", "supporting"}
 	return schema
 }
-
-// registerPost 注册 fanbox_post。
 func (t fanboxTools) registerPost(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_post", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get one FANBOX post."}, func(ctx context.Context, request *mcp.CallToolRequest, input postIn) (*mcp.CallToolResult, outputs.PostOut, error) {
 		return t.postHandler(ctx, input)
@@ -286,7 +276,6 @@ type postIn struct {
 	PostID string `json:"post_id" jsonschema:"required FANBOX post id"`
 }
 
-// registerResolveURL 注册 fanbox_resolve_url。
 func (t fanboxTools) registerResolveURL(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_resolve_url", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(false)}, Description: "Resolve a FANBOX page URL into a typed reference."}, func(ctx context.Context, request *mcp.CallToolRequest, input resolveURLIn) (*mcp.CallToolResult, resolveURLOut, error) {
 		return t.resolveURLHandler(ctx, input)
@@ -323,7 +312,7 @@ type resolveURLIn struct {
 	URL string `json:"url" jsonschema:"required FANBOX page URL"`
 }
 
-// postList preserves the FANBOX list envelope while traversal owns pagination.
+// postList 让 traversal 负责分页，同时保留 FANBOX 自己的列表 envelope。
 func postList(ctx context.Context, limit *int, plan toolrun.ListPlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) (*mcp.CallToolResult, outputs.PostsOut, error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	items, more, err := collectPages(ctx, plan, fetch)
@@ -345,7 +334,7 @@ func collectPages[T any](ctx context.Context, plan toolrun.ListPlan, fetch func(
 		page, err := fetch(ctx, cursor)
 		return page.Items, page.Next, err
 	})
-	// Shared traversal retains its cursor diagnostic; FANBOX wire keeps the cursor private.
+	// 共享 traversal 保留 cursor 诊断，FANBOX 的线上输出不暴露 cursor。
 	if err != nil && strings.HasPrefix(err.Error(), "pagination cursor repeated: ") {
 		err = &paginationCycleError{cause: err}
 	}
@@ -354,5 +343,8 @@ func collectPages[T any](ctx context.Context, plan toolrun.ListPlan, fetch func(
 
 type paginationCycleError struct{ cause error }
 
+// Error 返回固定的 cursor 循环错误文本。
 func (e *paginationCycleError) Error() string { return "pagination cursor repeated" }
+
+// Unwrap 返回触发循环的原始错误，保留 errors.Is/As 分类。
 func (e *paginationCycleError) Unwrap() error { return e.cause }

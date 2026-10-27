@@ -80,7 +80,7 @@ func (a *authorizer) exchange(r *http.Request, form url.Values) (map[string]any,
 	defer a.mu.Unlock()
 	var pair map[string]any
 	codeHash := sha256.Sum256([]byte(form.Get("code")))
-	// 与 reset/注册共用文件锁；重新读取 generation，不能提交锁外旧快照。
+	// 与 reset、注册共用文件锁；锁内重新读取 generation，避免提交锁外取的旧快照。
 	err := filelock.WithPrivateLock(r.Context(), a.store.Path, func() error {
 		state, err := a.readState(r.Context())
 		if err != nil {
@@ -118,7 +118,7 @@ func (a *authorizer) exchange(r *http.Request, form url.Values) (map[string]any,
 		if err := a.store.save(r.Context(), state); err != nil {
 			return err
 		}
-		// 写盘失败保留 code，客户端可重试；只有提交成功才消费和发布 token。
+		// 写盘失败时保留 code 供客户端重试；只有提交成功才消费 code 并返回 token。
 		delete(a.codes, codeHash)
 		pair = map[string]any{"access_token": access, "refresh_token": refresh, "token_type": "Bearer", "expires_in": 3600, "scope": request.Scope}
 		return nil
@@ -131,7 +131,7 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// RFC 7636 §4.1：43–128 个 unreserved ASCII 字符，不接受任意字符串。
+// validVerifier 按 RFC 7636 §4.1 只接受 43–128 个 unreserved ASCII 字符。
 func validVerifier(value string) bool {
 	if len(value) < 43 || len(value) > 128 {
 		return false
@@ -144,13 +144,13 @@ func validVerifier(value string) bool {
 	return true
 }
 
-// refresh 在调用者持有文件锁时旋转；重放撤销也必须先成功写盘。
+// refresh 要求调用方已持有文件锁；发现重放时先撤销写盘成功才返回 invalid_grant。
 func (a *authorizer) refresh(r *http.Request, form url.Values, state State) (map[string]any, error) {
 	if form.Get("resource") != a.issuer+"/mcp" {
 		return nil, errInvalidGrant
 	}
 	hash := tokenHash(form.Get("refresh_token"))
-	// 单 owner 的 grant 与重放历史很小，线性扫描比维护 hash 索引更简单。
+	// 单 owner 的 grant 与重放历史都很小，线性扫描比维护 hash 索引更简单。
 	for id, grant := range state.Grants {
 		used := slices.Contains(grant.UsedRefreshHashes, hash)
 		if grant.RefreshHash != hash && !used {

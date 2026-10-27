@@ -1,4 +1,9 @@
-// Pixiv tool registration and the product tool set.
+// Package tools 实现 Pixiv 的 MCP 工具：输入 schema、SDK 调用、分页与结构化输出。
+//
+// 包的组成：[Register] 按注入端口注册全部 Pixiv 工具，其余文件按实体分组实现。
+// 作品、收藏、评论、小说、用户、搜索、时间线与媒体各有独立文件；公共输出在
+// internal/outputs，执行与分页在 internal/toolhost。媒体、账号、登录与下载端口缺失时
+// 依赖它的工具不注册；pixiv_reverse_search 始终注册，缺少 Searcher 时调用返回配置错误。
 package tools
 
 import (
@@ -9,8 +14,8 @@ import (
 
 type pixivTools struct{ app *toolhost.App }
 
-// Register adds every Pixiv tool. A tool whose media, account, login, download,
-// or reverse-search port is absent stays unregistered, as before.
+// Register 按可用端口注册 Pixiv 工具。缺少媒体、账号、登录或下载端口时，依赖它的工具
+// 不会注册。pixiv_reverse_search 例外：它总会注册，缺少 Searcher 时调用才返回配置错误。
 func Register(app *toolhost.App, server *mcp.Server) {
 	ports := app.SDKPorts()
 	if ports.Media != nil {

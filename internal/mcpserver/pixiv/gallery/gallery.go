@@ -1,4 +1,8 @@
-// Package gallery owns the optional Pixiv MCP Apps view, never product credentials.
+// Package gallery 发布可选的 Pixiv MCP Apps 视图：资源缓存用的版本 URI、视图 HTML 与
+// 工具上的 UI 元数据。
+//
+// 包的组成：[Register] 注册视图资源，[Attach] 把视图挂到作品相关工具上。这里不需要
+// 产品凭据；媒体 URL 由 mediaproxy 提供，视图不可用时工具结果保持不变。
 package gallery
 
 import (
@@ -25,7 +29,7 @@ func versionURI(media *mediaproxy.Service) string {
 	return uri + "/sha256-" + hex.EncodeToString(digest[:])
 }
 
-// Register always publishes the view; non-UI hosts retain the same tool results.
+// Register 总是发布视图与两个资源地址；不支持 Apps 的 host 只是不渲染，工具结果不变。
 func Register(server *mcp.Server, media *mediaproxy.Service) {
 	read := func(_ context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 		requestURI := request.Params.URI
@@ -46,11 +50,11 @@ func Register(server *mcp.Server, media *mediaproxy.Service) {
 	}
 	server.AddResource(&mcp.Resource{URI: uri, Name: "pixiv_gallery", MIMEType: mime, Description: "Pixiv artwork previews through the standard MCP Apps bridge."}, read)
 	server.AddResource(&mcp.Resource{URI: versionURI(media), Name: "pixiv_gallery_versioned", MIMEType: mime, Description: "Current Gallery UI revision for host resource caching."}, read)
-	// Keep historical view references readable after a build; revisions are cache keys, not integrity proofs.
+	// 构建后旧视图引用仍要能读；sha256 段只是缓存键，不承担完整性校验。
 	server.AddResourceTemplate(&mcp.ResourceTemplate{URITemplate: uri + "/sha256-{digest}", Name: "pixiv_gallery_history", MIMEType: mime}, read)
 }
 
-// Attach associates discovery and complete media with the view without replacing structured results.
+// Attach 把视图版本 URI 挂到指定工具的 Meta，不改动工具的结构化结果。
 func Attach(tool *mcp.Tool, media *mediaproxy.Service) {
 	switch tool.Name {
 	case "pixiv_show_gallery", "pixiv_show_artwork", "pixiv_artwork_media":

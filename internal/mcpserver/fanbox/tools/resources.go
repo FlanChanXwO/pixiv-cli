@@ -1,5 +1,3 @@
-// fanbox resources tools.
-
 package tools
 
 import (
@@ -22,7 +20,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerOpenResource 注册 fanbox_open_resource。
 func (t fanboxTools) registerOpenResource(server *mcp.Server) {
 	toolrun.ProtectInput(server, "fanbox_open_resource", func() *mcp.CallToolResult {
 		out := openResourceOut{Error: "invalid_request"}
@@ -102,7 +99,7 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 		if strings.HasPrefix(declared, "image/") && !strings.HasPrefix(detected, "image/") {
 			return sdk.NewError("fanbox", "OpenResource", sdk.MalformedUpstreamResponse)
 		}
-		// 图片按实际bytes识别；其它附件保留有效的专用MIME（如ZIP容器中的Office文件）。
+		// 图片按实际字节嗅探；其他附件保留有效的专用 MIME，例如 ZIP 容器里的 Office 文件。
 		out.ContentType = declared
 		if strings.HasPrefix(detected, "image/") || declared == "" {
 			out.ContentType = detected
@@ -144,7 +141,8 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 	return result, out, nil
 }
 
-// APNG的acTL必须位于首个IDAT之前；遍历chunk而非搜索压缩payload中的同名字节。
+// isAPNG 要求 acTL 出现在首个 IDAT 之前，因此逐个遍历 chunk；压缩载荷里的同名字节
+// 不参与判断。
 func isAPNG(data []byte) bool {
 	for offset := 8; len(data)-offset >= 12; {
 		size := uint64(binary.BigEndian.Uint32(data[offset : offset+4]))

@@ -1,5 +1,3 @@
-// Parse MCP page/limit inputs and construct logical-page output metadata.
-
 package toolrun
 
 import (
@@ -7,13 +5,13 @@ import (
 	"math"
 )
 
-// ListIn distinguishes an omitted limit (one batch) from zero (all results).
+// ListIn 区分省略 limit（读取一个默认批次）与 limit=0（返回全部结果）。
 type ListIn struct {
 	Page  *int `json:"page,omitempty" jsonschema:"1-based logical page; requires a positive limit"`
 	Limit *int `json:"limit,omitempty" jsonschema:"maximum items; 0 returns all items"`
 }
 
-// ListPlan is a validated logical-page request.
+// ListPlan 保存校验后的逻辑分页请求；OneBatch 为 true 时不按 limit 截断。
 type ListPlan struct {
 	Page     int
 	Limit    int
@@ -21,7 +19,7 @@ type ListPlan struct {
 	Skip     int
 }
 
-// PaginationOut contains the shared logical-page wire fields.
+// PaginationOut 保存两个产品共用的分页输出字段；NextPage 只在已知下一页时非 nil。
 type PaginationOut struct {
 	Page     int  `json:"page"`
 	Limit    *int `json:"limit"`
@@ -30,7 +28,7 @@ type PaginationOut struct {
 	NextPage *int `json:"next_page"`
 }
 
-// ParseListPlan validates external list input before SDK work begins.
+// ParseListPlan 在开始 SDK 工作前校验外部输入；page 必须配正数 limit，溢出时返回错误。
 func ParseListPlan(input ListIn) (ListPlan, error) {
 	if input.Page != nil && *input.Page <= 0 {
 		return ListPlan{}, errors.New("page must be a positive integer")
@@ -53,7 +51,7 @@ func ParseListPlan(input ListIn) (ListPlan, error) {
 	return ListPlan{Page: 1, Limit: *input.Limit}, nil
 }
 
-// ListPagination describes the returned logical page; batch cursors stay product-owned.
+// ListPagination 描述本次返回的逻辑页；批次 cursor 由各产品自己维护。
 func ListPagination(plan ListPlan, limit *int, returned int, hasMore bool) PaginationOut {
 	out := PaginationOut{Page: plan.Page, Limit: limit, Returned: returned, HasMore: hasMore}
 	if hasMore && limit != nil && *limit > 0 && plan.Page < math.MaxInt {
