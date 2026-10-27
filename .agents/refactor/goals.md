@@ -14,6 +14,8 @@
 
 2026-10-26 补充：新增 G45，修正 G40、G41 记录下来的遗留问题（NDJSON 退出码、input 包的全局状态、重复的收藏过滤、mediaproxy 固定参数、D10 字面量）；G30、G31、G32、G34 改为依赖 G45，G29、G33 不受影响。
 
+2026-10-27 补充：新增 G46，把规格中仍然有效的长期规则整理成中英文编码手册（docs/*/maintainers/coding-standards.md），四个开发类 skill 改为引导，AGENTS.md 改为路由地图（路由表增加“完成前检查”列，只保留硬约束）；G34 改为依赖 G46，不再把规则写进 skill。
+
 2026-10-24 起冻结各 goal 语句：执行中发现的新问题记录在 PR 描述和最终汇报中，由 G28（代码）或 G34（文档、skill）统一处理，不再修改尚在执行的 goal。
 
 | Goal | worktree | 依赖 | 可并行 |
@@ -62,7 +64,8 @@
 | G43 | `refactor-g43-changelog` | 无 | 是 |
 | G44 | `refactor-g44-tests-rewrite` | G35、G36、G37、G38 | 否 |
 | G45 | `refactor-g45-leftovers` | G39、G40、G41、G42、G43、G44 | 是 |
-| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45 | 否 |
+| G46 | `refactor-g46-handbook` | G29、G30、G31、G32、G33、G45 | 否 |
+| G34 | `refactor-g34-finish` | G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45、G46 | 否 |
 
 ## G01：go mod tidy
 
@@ -2601,34 +2604,106 @@
 - 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、假设与阻塞项、G30–G32 与 G34 需要知道的事。
 ```
 
-## G34：文档、skill 收尾并删除 refactor 目录
+## G46：编码手册、skill 引导与 AGENTS.md 路由地图
 
 ```text
-/goal 执行 pixiv-cli 重构规格的 G34：文档、skill 收尾并删除 refactor 目录。
+/goal 执行 pixiv-cli 重构规格的 G46：编码手册、skill 引导与 AGENTS.md 路由地图。
 
 【本 goal】
-工作项：C2（规格 C 组）。
-- 删除 .agents/refactor/ 整个目录。
-- 在 pixiv-cli-develop 与 pixiv-cli-review 中写入过度防御的判定（规格 3.4.2 的 P-m：删除什么、保留哪些边界），作为长期规则。
-- 确认 pixiv-cli-test 与规格 3.4.4 的清单和上限一致（由 G44 写入），作为长期规则。
-- 在 pixiv-cli-code-commenting 中写入 3.5.1 的注释规则与正反例，在 pixiv-cli-develop、pixiv-cli-review 中写入 P-d 的扩充（同一机制收归到字段类型或值类型），作为长期规则。
-- 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 和各 skill 中与重构结果相关的路径和放置规则；把规格第 6 节的示例整理到 pixiv-cli-develop 的 references/go-examples.md（删除前先从本目录复制需要的内容），示例中的文件名按重构后的实际命名改写（例如 wire.go 已改为领域文件与 response.go）。
+工作项：C4（规格 C 组）。目标是让编码规则只有一个出处：规则正文写在中英文编码手册里，skill 只引导读手册的哪几节、按什么流程做、怎么自查，AGENTS.md 只做路由和列出硬约束。规格目录会被 G34 删除，本 goal 要把其中仍然有效的长期规则全部迁出。
+- 新建 docs/en/maintainers/coding-standards.md 与 docs/zh-CN/maintainers/coding-standards.md，两版章节和规则一致。注释示例按规格 3.5.1 的语言规则书写（sdk/ 的示例用英文，其余用简体中文），两版使用相同的示例。章节如下：
+  - 风格基线：Google Go Style Guide（Guide、Decisions、Best Practices）为基础，与本手册冲突时以本手册为准；go.mod 指定的 Go 版本与 gofmt；代码要让只有 Go 基础的工程师读懂，不为未来需求预留抽象。
+  - 命名与术语：规格 3.1.2，包括只约束新代码的补充规则（不用 Kind/Type/Item/Object/Misc 等泛名、不用缩写）。
+  - 声明放置与文件命名：规格 3.1、3.1.1、3.1.3。
+  - 命名常量：规格 3.2（含 D10 的放置表，以及有含义的值约束新增和触及代码的规则）。
+  - 只在边界检查、不过度防御：规格 3.4.2 的 P 系列判定（删除什么、保留哪些边界），包括 P-d 的扩充（同一机制收归到字段类型或值类型）；不做内部兼容层；限额、超时、重试、截断、降级只在有依据时添加（取自 AGENTS.md）。
+  - 程序输出：日志、错误字符串、CLI 与 MCP 输出用英文。
+  - 包文档与注释：规格 3.5、3.5.1 的全部规则与正反例。
+  - 测试提交规则：从 pixiv-cli-test 迁来的七项契约清单、数量上限、CI 选中测试的保留、低价值测试的删除（规格 3.4.4），规则内容不变。
+  - 示例：从规格第 6 节挑选仍然适用的例子，精简后放进对应章节；文件名和签名按当前代码改写（例如 wire.go 已改为领域文件与 response.go）；只说明迁移过程的例子不保留。
+  - 如何应用与审查：新文件完整遵守；修改已有文件时补齐触及部分；全库补齐是独立任务；CI 通过不代表这些规则已满足。
+- 规格 3.3 的横切关注点归属，以及 AGENTS.md 中的结构规则（cmd/pixiv 保持精简、command owner 与共享 CLI 支持的位置、MCP 按产品分包、反向搜索的 composition root 例外、共享机制的归属），写进中英文 docs/*/maintainers/architecture.md；已有的不重复写。
+- AGENTS.md 改为路由地图，保持英文：
+  - 路由表增加“完成前检查”列，写明每类任务交付前要核对什么；补上编码手册、architecture.md、development.md、CONTRIBUTING 的入口。
+  - 只保留不加载任何 skill 也必须遵守的硬约束，每条一两句：密钥不进日志、错误、fixture、PR 和产物，账号库不用于调试（含 auth export 等既有例外）；真实 Pixiv/FANBOX 调用、浏览器凭据、图片上传和账号写入需要明确授权；新增依赖或安装工具先获批准；创建 PR 不等于获准合并、打 tag、发布、修改分支保护或使用生产密钥；App-only 边界；CLI 机器输出干净，MCP stdio 的 stdout 只给 JSON-RPC，HTTP 需要 OAuth，失败不伪装成成功；Git 写操作在独立 worktree 中进行。
+  - 其余内容（Working agreement 中的流程、Go 版本与 gofmt、注释语言、frontend 嵌入、Red/Green、评审与交付说明、计划工具的用法等）挪到编码手册、architecture.md、development.md、相应 skill 或 CONTRIBUTING；与目的地已有内容重复的直接删除。
+- pixiv-cli-develop、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-test 改为引导：何时使用、先读手册哪几节、按什么流程做、怎么自查；规则正文只留在手册。其他 skill 中复述手册规则的地方改为链接。skill 保持英文，frontmatter 与 agents/openai.yaml 的描述随之更新。
+- 更新所有指向被移走内容的链接和锚点，至少包括：CONTRIBUTING.md、CONTRIBUTING.zh-CN.md、docs/*/maintainers/development.md、docs/*/maintainers/architecture.md、pixiv-cli-pr、pixiv-cli-review、pixiv-cli-mcp-tool 中指向 pixiv-cli-test#decide-whether-test-code-must-change 等锚点的链接。CONTRIBUTING 两版中的编码规则摘要改为链接手册。
+- 在 docs/index.md、docs/index-zh-CN.md 等维护者文档入口中加入编码手册。
+- 只改文档、AGENTS.md 和 skill；不改代码、测试和 workflow；不修改 .agents/refactor/。
+
+【验收】
+- 两版编码手册存在，章节与规则一致；PR 描述给出“规格小节 → 手册章节”的对照表，覆盖 3.1、3.1.1、3.1.2、3.1.3、3.2、3.4.2、3.4.4、3.5、3.5.1，以及从 AGENTS.md、skill 迁来的规则。
+- AGENTS.md 只包含路由表（含“完成前检查”列）、硬约束和权威引用；PR 描述给出原 AGENTS.md 每一条规则的去向，没有规则被无声删除。
+- 四个 skill 只保留流程、自查和链接，不再复述手册里的规则；PR 描述列出改动前后的行数。
+- 仓库内 Markdown 链接和锚点全部有效；中英文文档内容一致。
+- 第 9 节的完整检查通过。
+
+【依据】
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 3 节、第 6 节、第 7 节的 7.0 和 C 组、第 9 节。第 6 节示例只固定职责划分和数据流向，签名以当前代码为准。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md、CONTRIBUTING.md、docs/en/maintainers/ 下的文档，以及 .agents/skills/ 下的全部 skill（重点是 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-docs、pixiv-cli-pr、pixiv-cli-commit-message）。
+
+【worktree 与分支】
+- 名称：refactor-g46-handbook
+- 路径：/Users/flanchan/.codex/worktrees/refactor-g46-handbook/pixiv-cli
+- 分支：refactor/g46-handbook
+- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G45。未满足就标为阻塞并结束。
+- 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g46-handbook /Users/flanchan/.codex/worktrees/refactor-g46-handbook/pixiv-cli origin/main 创建。
+- 全部工作都在这个 worktree 中进行。goal-N/ 工作目录和临时比对输出加入 .git/info/exclude，不提交。
+
+【提交与合并】
+按规格 7.0「每个 goal 的提交要求」执行：
+- 按逻辑单元分次提交（例如：编码手册；architecture.md；AGENTS.md；skill；链接与入口）。
+- 只修改本 goal 负责的文件。
+- 验收要点全部有证据后，跑一次第 9 节的完整检查，按 pixiv-cli-pr 写 PR 描述（changelog 条目写 internal only），并用 prmeta 校验，然后向 main 创建 PR。
+- 当前 head 的必需检查全部通过、机器人评审意见逐条处理之后，再 squash 合并。回复评审意见前先确认线程对应的文件和行。
+- 合并后删除远端分支和 worktree。
+- 无法合并时不强推、不绕过分支保护，写明原因后停止。
+
+【真实账号】
+本 goal 不运行真实环境测试。
+
+【授权】
+- 已授权：本 goal 的 commit、push、创建 PR，验收与检查通过后 squash 合并到 main。
+- 未授权：发布版本、打 tag、修改分支保护、force push、新增依赖、修改 .agents/refactor/。
+
+【不确定时】
+- 不向用户提问，不修改规格中的设计决策，不改变规则的含义；规则在规格、AGENTS.md 与 skill 之间有出入时，以规格为准，并在 PR 描述中列出。
+- 选择最保守的做法继续推进，并把假设写进 PR 描述。
+- 无法在假设下继续的部分标为阻塞，在最终汇报中列出。
+- 不做 G34 的工作项（sdk.md、release notes 草稿、删除 .agents/refactor/）。
+
+【完成标准】
+- PR 已合并进 main，上面的每条验收要点都有证据。
+- 最终汇报包括：PR 链接、合并提交、实际运行的检查及结果、规格到手册的对照、AGENTS.md 规则去向、假设与阻塞项、G34 需要知道的事。
+```
+
+## G34：文档收尾并删除 refactor 目录
+
+```text
+/goal 执行 pixiv-cli 重构规格的 G34：文档收尾并删除 refactor 目录。
+
+【本 goal】
+工作项：C2（规格 C 组）。长期规则已由 G46 写进编码手册（docs/*/maintainers/coding-standards.md），本 goal 不再把规则写进 skill。
+- 核对编码手册、architecture.md、AGENTS.md 与 skill 已覆盖规格中仍然有效的长期规则；发现遗漏时按归属补进权威文件：编码规则补进编码手册，结构规则补进 architecture.md（两者中英文同步），硬约束补进 AGENTS.md；不写回 skill。
+- 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 中与重构结果相关的路径（D7 的协议包位置、6.9 的日志归属），G46 已写的不重复。
 - 以 G41 产出的 changelog 草稿为基础、按 G43 的规则，汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
+- 确认 .agents/refactor/ 以外的文件中没有指向它的链接或引用，然后删除 .agents/refactor/ 整个目录；删除后再对整个仓库扫描一次。
 
 【验收】
 - 文档中的链接和引用路径都有效；中英文内容一致。
-- .agents/refactor/ 已删除。
+- 仓库中没有指向 .agents/refactor/ 的引用；.agents/refactor/ 已删除。
 
 【依据】
-- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。第 6 节示例只固定职责划分和数据流向，签名以当时的代码为准。
-- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md，以及 .agents/skills/ 下的 pixiv-cli-develop、pixiv-cli-test、pixiv-cli-code-commenting、pixiv-cli-review、pixiv-cli-pr、pixiv-cli-commit-message。
+- 规格：仓库内的 .agents/refactor/spec.md，以 origin/main 上的版本为准。先通读第 1–3 节、第 7 节的 7.0 和本 goal 涉及的工作项、第 9 节、第 10 节。
+- 仓库：github.com/FlanChanXwO/pixiv-cli（本机路径 /Users/flanchan/Developer/Projects/GithubProjects/pixiv-cli）。先读 AGENTS.md、docs/en/maintainers/coding-standards.md，以及 .agents/skills/ 下的 pixiv-cli-docs、pixiv-cli-pr、pixiv-cli-commit-message、pixiv-cli-release-notes。
 - 规格中的统计数字基于 ef4accb9；以当前 origin/main 的实际代码为准，有出入时写进工作记录和 PR 描述。
 
 【worktree 与分支】
 - 名称：refactor-g34-finish
 - 路径：/Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli
 - 分支：refactor/g34-finish
-- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45（依赖已于 2026-10-26 调整，以本条为准）。未满足就标为阻塞并结束。
+- 开始前用 gh 确认依赖已满足：G29、G30、G31、G32、G33、G39、G40、G41、G42、G43、G45、G46（依赖已于 2026-10-27 调整，以本条为准）。未满足就标为阻塞并结束。
 - 满足后执行 git fetch origin main，再用 git worktree add -b refactor/g34-finish /Users/flanchan/.codex/worktrees/refactor-g34-finish/pixiv-cli origin/main 创建。
 - 全部工作都在这个 worktree 中进行。goal-N/ 工作目录、临时探针和基线比对输出加入 .git/info/exclude，不提交。
 
