@@ -38,6 +38,11 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 	if err := validateArtworkPagePlan(request.Plan); err != nil {
 		return outcome, err
 	}
+	// The flag layer validates bounds first; this keeps the shared search
+	// contract intact for direct callers (the test seam and future owners).
+	if err := searchfilter.ValidateBookmarkRange(request.Query.BookmarkMin, request.Query.BookmarkMax); err != nil {
+		return outcome, bookmarkSearchError(err)
+	}
 	membership, err := searchfilter.NormalizeBookmarkMembership(string(request.Membership))
 	if err != nil {
 		return outcome, bookmarkSearchError(err)

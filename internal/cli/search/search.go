@@ -511,12 +511,16 @@ func resolveBookmarkRange(cmd *cobra.Command, opts options) (*int, *int, error) 
 	return bookmarkMin, bookmarkMax, nil
 }
 
+// resolveBookmarkFilterStrategy validates the flag vocabulary only. The
+// shared resolver rejects server strategies later, when it knows whether a
+// range is being filtered and what membership evidence exists.
 func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy, error) {
-	strategy, err := searchfilter.ResolveBookmarkStrategy(value, searchfilter.BookmarkMembershipUnknown, false)
-	if err != nil {
+	switch searchfilter.BookmarkStrategy(value) {
+	case searchfilter.BookmarkStrategyAuto, searchfilter.BookmarkStrategyLocal, searchfilter.BookmarkStrategyBestEffort, searchfilter.BookmarkStrategyServer:
+		return searchfilter.BookmarkStrategy(value), nil
+	default:
 		return "", errors.New("bookmark-strategy must be one of auto, local, best_effort, server")
 	}
-	return strategy, nil
 }
 
 // Published --period selectors. Half-year and year expand to a date range, so
