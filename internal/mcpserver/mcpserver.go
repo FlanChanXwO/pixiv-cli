@@ -2,8 +2,8 @@
 // Streamable HTTP、OAuth 入站保护和服务生命周期。
 //
 // 包的组成：[New] 注册两个产品的工具，[RunStdio] 与 [RunHTTP] 分别启动两种传输，
-// [NewHTTPHandler] 只组装可挂到既有 listener 的 handler。两个产品共享协议 server，
-// SDK、账号、OAuth 授权状态和请求生命周期保持独立。
+// [NewHTTPHandler] 只组装可挂到既有 listener 的 handler。两个产品共享协议 server 和
+// 同一份 MCP owner OAuth 授权状态；各自的 SDK、产品账号与请求生命周期保持独立。
 package mcpserver
 
 import (

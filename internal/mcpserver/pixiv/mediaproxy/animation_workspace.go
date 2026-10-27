@@ -52,7 +52,7 @@ func cleanupAnimationWorkspaces(parent string) error {
 		if err != nil || string(body) != animationWorkspaceMarker {
 			continue
 		}
-		// OS 文件锁被释放即可证明进程已终止，不必依赖可能被复用的 PID。
+		// 能取得 OS 文件锁说明当前没有进程持有该目录，不必依赖可能被复用的 PID。
 		release, acquired, err := filelock.TryPrivateLock(filepath.Join(root, "instance"))
 		if err != nil {
 			return err

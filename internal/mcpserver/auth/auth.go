@@ -353,7 +353,8 @@ func validRedirect(raw string) bool {
 	}
 }
 
-// RequireCanonical 要求请求的 Host 与 Origin 都等于配置的部署地址，转发头不参与判断。
+// RequireCanonical 要求请求的 Host 等于配置的部署地址；Origin 缺省时只校验 Host，
+// 提供时也必须匹配。转发头不参与判断。
 func (h *Handler) RequireCanonical(next http.Handler) http.Handler {
 	// resource 来自已验证的 canonical base，忽略请求中的 Host。
 	base, _ := url.Parse(h.resource)

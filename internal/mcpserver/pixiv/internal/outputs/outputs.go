@@ -61,8 +61,8 @@ func DetailError(err error) (*mcp.CallToolResult, Detail, error) {
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
-// RecommendedPagination 分别保存四条推荐流的分页；某条流没有结果时对应字段为 nil。
-// next_cursor 只对单一的 kind 与筛选组合有效。
+// RecommendedPagination 分别保存四条推荐流的分页。请求没有处理的流对应字段为 nil；
+// 处理过但结果为零条时字段非 nil。next_cursor 只对单一的 kind 与筛选组合有效。
 type RecommendedPagination struct {
 	Illust *toolhost.PaginationOut `json:"illust,omitempty"`
 	Manga  *toolhost.PaginationOut `json:"manga,omitempty"`

@@ -10,8 +10,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// AccountStatus 承载账号工具的输出；保存失败时仍保留本地选择状态，并把安全错误码写进
-// Error。
+// AccountStatus 承载账号工具的输出。请求失败时选择状态与凭据状态都写成 unknown、
+// Accounts 为空数组，Error 只放安全错误码。
 type AccountStatus struct {
 	accounts.Status
 	Login *accounts.LoginStatus `json:"login,omitempty"`

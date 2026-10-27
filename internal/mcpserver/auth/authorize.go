@@ -139,7 +139,8 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	if err != nil {
 		return authorizationReply{Status: 400, Error: "invalid_request"}
 	}
-	// 注册 URI 原有的 query 保持不变；预置的 code 与 error 由本次授权结果覆盖。
+	// 注册 URI 可以带自己的 query，但预置 OAuth 结果参数（code、error、state、iss 等）
+	// 会返回 400 invalid_request，不会被本次授权结果覆盖。
 	for _, key := range []string{"code", "error", "error_description", "error_uri", "state", "iss"} {
 		if callbackQuery.Has(key) {
 			return authorizationReply{Status: 400, Error: "invalid_request"}

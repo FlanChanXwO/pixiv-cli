@@ -16,7 +16,7 @@ import (
 )
 
 // Session 表示一次账号只读租约。Version 标识凭据版本；Invalidated 关闭后该租约的缓存
-// 作废。调用方负责关闭 Lease。
+// 作废，但只有调用 ConfigureAnimations 后才有人监听并执行失效。调用方负责关闭 Lease。
 type Session struct {
 	Lease       *lifecycle.Lease[*pixiv.Client]
 	Version     string

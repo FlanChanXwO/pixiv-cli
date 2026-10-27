@@ -72,7 +72,8 @@ func (s *Service) ConfigureAnimations(ctx context.Context, capacity int64) error
 	return nil
 }
 
-// CloseAnimations 等 worker 与进行中的传输结束后再删除私有文件；重复调用不会报错。
+// CloseAnimations 等 worker 与进行中的传输结束后再删除私有文件。重复调用安全，但首次
+// 关闭留下的 watchErr 与 cleanupErr 仍会随每次调用返回。
 func (s *Service) CloseAnimations() error {
 	a := s.animations
 	if a == nil {

@@ -16,7 +16,8 @@ import (
 )
 
 // registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中交给反向搜图服务，
-// 输出只暴露来源类别与摘要；provider、pixiv-only、代理和凭据来自启动快照。
+// 输出只暴露来源类别与摘要。provider 可由请求覆盖，缺省取启动快照；pixiv-only、代理与
+// 凭据只来自启动快照。
 func (t pixivTools) registerReverseSearch(server *mcp.Server) {
 	// SDK 的 schema 与类型错误会带出输入值，所以只替换尚未进入 typed handler 的失败；
 	// handler 总是返回完整 envelope，provider 的部分结果与错误原样保留。
