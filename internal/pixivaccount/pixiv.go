@@ -88,7 +88,8 @@ type PoolSelectionError struct {
 	EarliestFrozenUntil *int64
 }
 
-// Error 输出固定的英文分类文本，不包含账号凭据或候选列表；nil 接收者也能安全调用。
+// Error 输出固定英文前缀并拼接 Kind 文本。Kind 是导出字段，调用方可写入任意值，
+// 因此输出不保证不含凭据或候选列表；nil 接收者也能安全调用。
 func (e *PoolSelectionError) Error() string {
 	if e == nil {
 		return "pixiv account pool selection failed"

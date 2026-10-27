@@ -20,8 +20,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
-// ErrUnknownBrowser 等 sentinel 是 provider 的稳定错误分类。所有错误消息都是静态
-// 字符串，绝不包含 cookie 值、加密密钥、绝对路径或 profile 内容。
+// ErrUnknownBrowser 等 sentinel 是 provider 的稳定错误分类；它们的消息是静态字符串，
+// 不含 cookie 值、加密密钥、绝对路径或 profile 内容。非 sentinel 错误可能带上安全的
+// profile identifier。
 var (
 	ErrUnknownBrowser             = errors.New("browsercookies: unknown browser")
 	ErrQueryInvalid               = errors.New("browsercookies: invalid cookie query")
