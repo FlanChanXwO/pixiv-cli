@@ -1,4 +1,9 @@
-// Package filters 持有 Pixiv MCP 实体 list tool 的本地筛选契约与实现。
+// Package filters 实现 Pixiv MCP 列表工具的本地筛选：读取调用方通过 context 传入的
+// 结构化条件，在每个上游批次进入逻辑分页前过滤并按实体身份去重。
+//
+// 包的组成：[IllustFilter]、[NovelFilter] 与 [UserFilter] 是各实体公开的筛选字段，
+// [WithIllustFilter] 等函数校验后写入 context，[FilterPage] 与 [MatchesIllust] 执行
+// 匹配。筛选发生在 limit 计数之前，未命中的条目不会占位。
 package filters
 
 import (
@@ -9,8 +14,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// IllustFilter 仅出现在 artwork list tool 的 schema 中。筛选在每个上游批次进入
-// 逻辑分页前执行，避免把不匹配项计入 limit。
+// IllustFilter 描述 artwork 列表的本地筛选条件；字段为零值时该条件不生效。
 type IllustFilter struct {
 	ID       *int64   `json:"id,omitempty" jsonschema:"optional positive illustration ID"`
 	Type     string   `json:"type,omitempty" jsonschema:"illust, manga, or ugoira"`
@@ -19,20 +23,19 @@ type IllustFilter struct {
 	MinPages *int     `json:"min_pages,omitempty" jsonschema:"minimum page count"`
 }
 
-// NovelFilter 仅出现在 novel list tool 的 schema 中。
+// NovelFilter 描述 novel 列表的本地筛选条件；字段为零值时该条件不生效。
 type NovelFilter struct {
 	ID       *int64   `json:"id,omitempty" jsonschema:"optional positive novel ID"`
 	Tags     []string `json:"tags,omitempty" jsonschema:"all exact tags required"`
 	MinViews *int     `json:"min_views,omitempty" jsonschema:"minimum public view count"`
 }
 
-// UserFilter 仅出现在 user list tool 的 schema 中。
+// UserFilter 描述 user 列表的本地筛选条件；ID 为空时匹配所有用户。
 type UserFilter struct {
 	ID *int64 `json:"id,omitempty" jsonschema:"optional positive user ID"`
 }
 
-// IllustFilterSchema 固定 artwork 筛选字段，避免错误实体的字段在 MCP 协议层被
-// 悄然接受。
+// IllustFilterSchema 返回 artwork 筛选的封闭 schema，其他实体的字段在这里会被拒绝。
 func IllustFilterSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -47,7 +50,7 @@ func IllustFilterSchema() map[string]any {
 	}
 }
 
-// NovelFilterSchema 固定 novel 筛选字段。
+// NovelFilterSchema 返回 novel 筛选的封闭 schema。
 func NovelFilterSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -60,7 +63,7 @@ func NovelFilterSchema() map[string]any {
 	}
 }
 
-// UserFilterSchema 固定 user 筛选字段。
+// UserFilterSchema 返回 user 筛选的封闭 schema。
 func UserFilterSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -79,7 +82,8 @@ type value struct {
 	user   *UserFilter
 }
 
-// WithIllustFilter 在打开 SDK client 前校验结构化筛选，非法输入不会产生网络请求。
+// WithIllustFilter 校验 artwork 筛选并写入返回的 context；非法输入在打开 SDK client
+// 之前就返回错误。
 func WithIllustFilter(ctx context.Context, filter *IllustFilter) (context.Context, error) {
 	if err := validateIllustFilter(filter); err != nil {
 		return nil, err
@@ -87,7 +91,7 @@ func WithIllustFilter(ctx context.Context, filter *IllustFilter) (context.Contex
 	return withFilters(ctx, value{illust: filter}), nil
 }
 
-// WithNovelFilter 校验 novel 筛选。
+// WithNovelFilter 校验 novel 筛选并写入返回的 context。
 func WithNovelFilter(ctx context.Context, filter *NovelFilter) (context.Context, error) {
 	if err := validateNovelFilter(filter); err != nil {
 		return nil, err
@@ -95,7 +99,7 @@ func WithNovelFilter(ctx context.Context, filter *NovelFilter) (context.Context,
 	return withFilters(ctx, value{novel: filter}), nil
 }
 
-// WithUserFilter 校验 user 筛选。
+// WithUserFilter 校验 user 筛选并写入返回的 context。
 func WithUserFilter(ctx context.Context, filter *UserFilter) (context.Context, error) {
 	if err := validateUserFilter(filter); err != nil {
 		return nil, err
@@ -103,7 +107,7 @@ func WithUserFilter(ctx context.Context, filter *UserFilter) (context.Context, e
 	return withFilters(ctx, value{user: filter}), nil
 }
 
-// WithMixedFilters 校验 recommended 各实体的结构化筛选。
+// WithMixedFilters 校验 recommended 三类实体的筛选并一次性写入 context。
 func WithMixedFilters(ctx context.Context, illust *IllustFilter, novel *NovelFilter, user *UserFilter) (context.Context, error) {
 	if err := validateIllustFilter(illust); err != nil {
 		return nil, err
@@ -121,13 +125,13 @@ func withFilters(ctx context.Context, filters value) context.Context {
 	return context.WithValue(ctx, contextKey{}, filters)
 }
 
-// fromContext 读取当前筛选。
+// fromContext 读取 context 中的筛选；没有设置时三个值都为 nil。
 func fromContext(ctx context.Context) (illust *IllustFilter, novel *NovelFilter, user *UserFilter) {
 	filters, _ := ctx.Value(contextKey{}).(value)
 	return filters.illust, filters.novel, filters.user
 }
 
-// validateIllustFilter 校验 artwork 筛选。
+// validateIllustFilter 允许 nil，其余字段按公开 schema 的取值范围校验。
 func validateIllustFilter(filter *IllustFilter) error {
 	if filter == nil {
 		return nil
@@ -147,7 +151,7 @@ func validateIllustFilter(filter *IllustFilter) error {
 	return nil
 }
 
-// validateNovelFilter 校验 novel 筛选。
+// validateNovelFilter 允许 nil，其余字段按公开 schema 的取值范围校验。
 func validateNovelFilter(filter *NovelFilter) error {
 	if filter == nil {
 		return nil
@@ -161,7 +165,7 @@ func validateNovelFilter(filter *NovelFilter) error {
 	return nil
 }
 
-// validateUserFilter 校验 user 筛选。
+// validateUserFilter 允许 nil，其余字段按公开 schema 的取值范围校验。
 func validateUserFilter(filter *UserFilter) error {
 	if filter != nil && filter.ID != nil && *filter.ID <= 0 {
 		return errors.New("user_filter.id must be positive")
@@ -169,7 +173,8 @@ func validateUserFilter(filter *UserFilter) error {
 	return nil
 }
 
-// FilterPage 对单个上游批次执行本地筛选与去重；返回空时调用方不应计入 limit。
+// FilterPage 筛选单个上游批次，并把新出现的实体身份写入 seen。返回的切片不包含重复，
+// 也可能为空；空结果不计入 limit。
 func FilterPage[T any](ctx context.Context, items []T, seen map[string]struct{}) []T {
 	illust, novel, user := fromContext(ctx)
 	filtered := make([]T, 0, len(items))
@@ -213,7 +218,7 @@ func match(item any, filters value) (string, bool) {
 	}
 }
 
-// MatchesIllust 按已校验的结构化条件匹配一条作品；nil filter 匹配所有作品。
+// MatchesIllust 按条件匹配一条作品；filter 为 nil 时匹配所有作品。
 func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 	if filter == nil {
 		return true

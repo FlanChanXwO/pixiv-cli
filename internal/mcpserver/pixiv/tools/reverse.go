@@ -1,5 +1,3 @@
-// pixiv reverse tools.
-
 package tools
 
 import (
@@ -17,11 +15,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中传给 reversesearch.Service，输出永远只
-// 暴露 source kind/hash 摘要；provider、pixiv-only、代理和凭据来自启动快照。
+// registerReverseSearch 注册 pixiv_reverse_search。source 只在当前请求中交给反向搜图服务，
+// 输出只暴露来源类别与摘要；provider、pixiv-only、代理和凭据来自启动快照。
 func (t pixivTools) registerReverseSearch(server *mcp.Server) {
-	// SDK 的 schema/type 错误会包含输入值；仅拦截本 tool 尚未进入 typed handler 的失败。
-	// handler 总是返回完整 envelope，不能覆盖其 provider partial/error 结果。
+	// SDK 的 schema 与类型错误会带出输入值，所以只替换尚未进入 typed handler 的失败；
+	// handler 总是返回完整 envelope，provider 的部分结果与错误原样保留。
 	toolrun.ProtectInput(server, "pixiv_reverse_search", func() *mcp.CallToolResult {
 		out := emptyReverseSearchOutput()
 		safe := reverseSearchError(reversesearch.CodeInvalidRequest)
@@ -45,7 +43,7 @@ type reverseSearchInput struct {
 	Provider string              `json:"provider,omitempty"`
 }
 
-// reverseSearchImage 仅从 host 文件对象取下载地址；其余字段不进入 provider 或输出。
+// reverseSearchImage 只把下载地址交给 provider；MIME 类型与文件名不参与搜图，也不回显。
 type reverseSearchImage struct {
 	DownloadURL string `json:"download_url"`
 	FileID      string `json:"file_id"`
@@ -53,8 +51,8 @@ type reverseSearchImage struct {
 	FileName    string `json:"file_name,omitempty"`
 }
 
-// reverseSearchOutput 是 MCP 的完整 wire envelope。它刻意不把原始 source、
-// 临时路径、请求头、cookie 或 API key 放进 structured content。
+// reverseSearchOutput 是完整的 MCP wire envelope，structured content 里不出现原始 source、
+// 临时路径、请求头、cookie 或 API key。
 type reverseSearchOutput struct {
 	Input          reversesearch.Input             `json:"input"`
 	Providers      []reversesearch.ProviderSummary `json:"providers"`
@@ -193,12 +191,12 @@ func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearc
 		source = *input.Source
 		if strings.HasPrefix(strings.ToLower(source), "file://") {
 			parsed, err := url.Parse(source)
-			// file URI 只表示 server 本机绝对路径；不能静默丢弃 authority、查询或片段。
+			// file URI 只接受 server 本机绝对路径；带 authority、查询或片段时直接拒绝。
 			if err != nil || parsed.User != nil || (parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost")) || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(source, "#") || strings.ContainsRune(parsed.Path, 0) {
 				return reverseSearchError(reversesearch.CodeInvalidSource), out, nil
 			}
 			source = filepath.FromSlash(parsed.Path)
-			// Windows file:///C:/... 的首分隔符不属于盘符；其他平台不改路径。
+			// Windows 的 file:///C:/... 多出一个前导分隔符，需要去掉；其他平台保持原样。
 			if len(source) > 0 && filepath.VolumeName(source[1:]) != "" {
 				source = source[1:]
 			}
@@ -231,8 +229,8 @@ func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearc
 		Source: source, Provider: provider, PixivOnly: ports.PixivOnly,
 	})
 	out = outputFromResponse(response)
-	// 即使 Search 返回错误，response 也可能包含已完成的 Pixiv 结果（例如 Snapshot.Close 失败）。
-	// 先填充 records，使 isError=true 的结构化结果保留与 CLI 一致的完整 envelope。
+	// Search 返回错误时仍可能已有完成的 Pixiv 结果（例如 Snapshot.Close 失败），先填
+	// records，让 isError=true 的输出保留完整 envelope。
 	records, recordsErr := reverseSearchRecords(response.Results)
 	if recordsErr == nil {
 		out.Records = records

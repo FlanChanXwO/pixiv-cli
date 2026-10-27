@@ -1,5 +1,3 @@
-// pixiv media tools.
-
 package tools
 
 import (
@@ -35,11 +33,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// readAnimation reuses the CLI archive policy and Go encoder, but never
-// publishes their temporary filesystem paths as the MCP delivery contract.
+// readAnimation 复用 CLI 的归档策略与 Go 编码器，但临时文件路径不进入 MCP 交付契约。
 func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format string) (content []mcp.Content, page outputs.MediaPage, err error) {
 	generationStarted := time.Now()
-	// 在清理之后记录最终结果，包含清理失败且不暴露临时路径。
+	// 清理完成后再记录最终结果：清理失败也要带上，但不暴露临时路径。
 	defer func() {
 		count := 0
 		if err == nil {
@@ -123,13 +120,13 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	page = outputs.MediaPage{Page: 1, Filename: filename, MIMEType: mimeType, Size: len(data), ContentIndex: 0, PreviewContentIndex: new(1), ArchiveQuality: string(archive.Quality)}
 	contentMIME := mimeType
 	if format == "apng" {
-		// PNG 家族类型让宿主保留完整 APNG；结构化信息仍明确动画格式。
+		// 使用 PNG 家族类型让宿主保留完整 APNG；动画格式仍由结构化字段说明。
 		contentMIME = "image/png"
 	}
 	return []mcp.Content{&mcp.ImageContent{MIMEType: contentMIME, Data: data}, &mcp.ImageContent{MIMEType: "image/png", Data: preview.Bytes()}}, page, nil
 }
 
-// 阶段失败仅输出固定原因，保留业务错误通过原返回路径交付。
+// 阶段失败只写固定原因；业务错误仍走原返回路径。
 func observeMediaPhase(ctx context.Context, stage string, duration time.Duration, count int, err error) {
 	attrs := []slog.Attr{
 		slog.String(logging.AttrStage, stage),
@@ -178,7 +175,7 @@ func appAnimationContent(request *mcp.CallToolRequest, result *mcp.CallToolResul
 	if err != nil || json.Unmarshal(raw, &ui) != nil || !slices.Contains(ui.MIMETypes, "text/html;profile=mcp-app") {
 		return
 	}
-	// App 优先读取已发布的原质量文件，避免大控制响应阻塞宿主交付。
+	// App 优先读已发布的原质量文件，避免大的控制响应拖住宿主交付。
 	if result.Meta == nil {
 		result.Meta = mcp.Meta{}
 	}
@@ -210,9 +207,8 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	}
 	var content []mcp.Content
 	var source *pixiv.Client
-	// One lease binds detail and every page to the same account; partial bytes are
-	// never replayed with another account. Static reads stay in memory; the native
-	// animation encoder owns a per-call temporary workspace that is removed before delivery.
+	// 一个 lease 把作品详情与所有页绑定到同一账号，部分字节不会换账号重放。静态图在内存
+	// 中读取；原生编码器每次调用使用独立临时目录，并在交付前删除。
 	err := lifecycle.Run(ctx, t.app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
 		source = client
 		var runErr error
@@ -228,8 +224,7 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	return result, output, resultErr
 }
 
-// normalizeArtworkMediaRequest validates and deduplicates explicit page selections.
-// Artwork metadata later expands an omitted selection to all pages.
+// normalizeArtworkMediaRequest 校验并去重显式页号；省略页号时由作品元数据后续展开为全部页。
 func normalizeArtworkMediaRequest(in *artworkMediaIn, out *outputs.ArtworkMedia) string {
 	switch {
 	case in.IllustID <= 0:
@@ -389,7 +384,7 @@ func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage,
 	if err != nil {
 		return nil, "", 0, err
 	}
-	// Inspect bytes, not a possibly incorrect upstream header or URL extension.
+	// 按实际字节判断类型，不信任可能出错的上游 Content-Type 或 URL 扩展名。
 	mime = http.DetectContentType(data)
 	if !strings.HasPrefix(mime, "image/") {
 		return nil, "", 0, sdk.NewError("pixiv", "artwork_media", sdk.MalformedUpstreamResponse)
@@ -469,7 +464,7 @@ type galleryImage struct {
 type galleryFailure struct {
 	IllustID int64  `json:"illust_id"`
 	Error    string `json:"error"`
-	// Page names the failed page of a multi-page request; artwork-level failures omit it.
+	// Page 标出多页请求中失败的页；作品级失败不带页号。
 	Page int `json:"page,omitempty"`
 }
 type galleryOut struct {
@@ -516,7 +511,7 @@ func (t pixivTools) showGalleryHandler(ctx context.Context, in showGalleryIn) (*
 	return finish()
 }
 
-// normalizeGalleryRequest validates ids/pages/quality and fills defaults.
+// normalizeGalleryRequest 校验作品 ID、页码与画质，并补上缺省值。
 func normalizeGalleryRequest(in *showGalleryIn) bool {
 	if len(in.IllustIDs) == 0 || in.Page < 0 || (len(in.Pages) > 0 && in.Page != 0) {
 		return false
@@ -588,7 +583,7 @@ func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read, can
 		select {
 		case jobs <- index:
 		case <-ctx.Done():
-			// Cancellation before dispatch must not bypass the per-artwork failure path.
+			// 派发前取消也要走单个作品的失败路径，让结果里保留该作品的失败项。
 			for undispatched := index; undispatched < count; undispatched++ {
 				canceled(undispatched)
 			}
@@ -636,7 +631,7 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 			continue
 		}
 		item := galleryImage{IllustID: id, Page: page, URL: u}
-		// The avatar belongs to the artwork, so only its first delivered page carries it.
+		// 头像属于作品，只挂在第一个实际交付的页上。
 		if avatar {
 			avatar = false
 			item.AvatarURL, err = media.Issue(ctx, account.UserID, id, 1, "avatar")

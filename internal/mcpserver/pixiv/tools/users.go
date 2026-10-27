@@ -1,5 +1,3 @@
-// pixiv users tools.
-
 package tools
 
 import (
@@ -19,7 +17,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerUserArtworks 注册 pixiv_user_artworks。
 func (t pixivTools) registerUserArtworks(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
@@ -67,8 +64,6 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out), out, nil
 }
-
-// registerUserBookmarks 注册 pixiv_user_bookmarks。
 func (t pixivTools) registerUserBookmarks(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_bookmarks", InputSchema: userBookmarksInputSchema(), Description: "Browse a user's bookmarked artworks or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userBookmarksIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -76,7 +71,7 @@ func (t pixivTools) registerUserBookmarks(server *mcp.Server) {
 	})
 }
 
-// userBookmarksIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// userBookmarksIn 的 kind 选择作品或小说收藏；user_id 省略时使用当前认证账号。
 type userBookmarksIn struct {
 	Kind         string                `json:"kind" jsonschema:"content type"`
 	UserID       int64                 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
@@ -152,8 +147,6 @@ func userBookmarksInputSchema() *jsonschema.Schema {
 	schema.Properties["kind"].Enum = []any{kindArtwork, kindNovel}
 	return schema
 }
-
-// registerUserDetail 注册 pixiv_user_detail。
 func (t pixivTools) registerUserDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get a user's complete profile through the authenticated Pixiv SDK.", InputSchema: schemas.ClosedObject(map[string]any{
 		"user_id": schemas.PositiveInteger("Positive Pixiv user ID."),
@@ -162,13 +155,13 @@ func (t pixivTools) registerUserDetail(server *mcp.Server) {
 	})
 }
 
-// userDetailIn 只接受明确指定的目标用户，避免把请求误解析为当前认证账号。
+// userDetailIn 只接受显式 user_id，不存在省略即当前账号的回退。
 type userDetailIn struct {
 	UserID int64 `json:"user_id" jsonschema:"required positive Pixiv user ID"`
 }
 
-// userDetailHandler 将完整公开 SDK envelope 封装为单条 user record，避免详情 tool
-// 成为 records 契约的例外。
+// userDetailHandler 把公开 SDK 的用户结果压成一条 user record，让详情工具也遵循 records
+// 契约。
 func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 	if in.UserID <= 0 {
 		return outputs.DetailError(fmt.Errorf("user_id must be a positive integer"))
@@ -186,8 +179,6 @@ func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mc
 	out := outputs.Detail{Records: []record.Record{userRecord}}
 	return outputs.DetailResult(out), out, nil
 }
-
-// registerUserNovels 注册 pixiv_user_novels。
 func (t pixivTools) registerUserNovels(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_novels", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's novels through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":      schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),

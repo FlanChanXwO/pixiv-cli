@@ -1,5 +1,3 @@
-// Publish complete inline animation bytes as grant-scoped downloadable artifacts.
-
 package mediaproxy
 
 import (
@@ -14,9 +12,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// PublishAnimation retains already validated, complete encoded bytes for protected
-// download from the current account-owner read snapshot. It never fetches metadata
-// or encodes; failure leaves inline delivery intact.
+// PublishAnimation 把已经校验、完整编码的字节保存为当前账号读快照下的受保护下载；
+// 它不重新拉取元数据也不编码。发布失败不影响原有的内联交付。
 func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, format string, source *pixiv.Client, data, preview []byte) (out AnimationStatus, err error) {
 	if s == nil || s.animations == nil || artwork <= 0 || (format != "gif" && format != "apng") || len(data) == 0 || len(preview) == 0 {
 		return out, errCapability
@@ -30,7 +27,7 @@ func (s *Service) PublishAnimation(ctx context.Context, account, artwork int64, 
 		return out, err
 	}
 	defer lease.Lease.Close()
-	// 编码跨越凭据轮换时，旧快照的产物不能取得新版本的授权。
+	// 编码期间凭据可能已轮换，旧快照的产物只按旧版本授权。
 	if source == nil || lease.Lease.Value() != source {
 		return out, errCapability
 	}
@@ -53,8 +50,8 @@ func animationDigest(data, preview []byte) string {
 	return hex.EncodeToString(digest.Sum(nil))
 }
 
-// reserveAnimation 在锁内复核授权、复用已就绪的副本并预留完整下载字节。
-// ready 非 nil 时调用方直接返回该产物，不启动新的写入。
+// reserveAnimation 在锁内复核授权、复用已就绪的副本并预留完整下载字节。ready 非 nil
+// 时调用方直接返回它，不再启动写入。
 func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims, format, key string, size int64) (j *animationJob, ready *AnimationStatus, err error) {
 	a := s.animations
 	a.mu.Lock()
@@ -69,7 +66,7 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 			out := s.animationOutputLocked(existing, "")
 			return nil, &out, nil
 		}
-		// 正在发布的同键副本不能替换，避免使正在读取的文件失去 owner。
+		// 同键副本正在发布时保留原文件，正在读取的文件继续有 owner。
 		return nil, nil, errors.New("animation download not ready")
 	}
 	id, err := animationHandle()
@@ -84,7 +81,7 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 	}
 	workerCtx, cancel := context.WithCancel(a.ctx)
 	j = &animationJob{key: key, id: id, version: lease.Version, format: format, dir: dir, claim: c, expiry: s.expiry(c, lease), state: "encoding", ctx: workerCtx, cancel: cancel, last: time.Now(), size: size}
-	// 已知完整长度，写入前一次预留，避免不同填充者互相耗尽剩余空间。
+	// 长度已知，所以写入前一次预留，避免多个写入者把剩余空间各自耗光。
 	err = a.reserveLocked(j, size)
 	if err != nil {
 		j.done = true
@@ -101,10 +98,10 @@ func (s *Service) reserveAnimation(ctx context.Context, lease Session, c claims,
 	return j, nil, nil
 }
 
-// writeAnimation 写入已验证的字节并发布下载 capability；失败时撤销并清理工作目录。
+// writeAnimation 写入已验证的字节并发布下载 capability；失败时撤销预留并删除工作目录。
 func (s *Service) writeAnimation(ctx context.Context, j *animationJob, data, preview []byte) (out AnimationStatus, err error) {
 	a := s.animations
-	// Session acquisition also takes a.mu; only the final publication holds it.
+	// 获取会话时也会持有 a.mu；这里只在最终发布阶段持锁。
 	defer a.wg.Done()
 	defer func() {
 		a.mu.Lock()

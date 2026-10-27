@@ -1,5 +1,3 @@
-// pixiv download tools.
-
 package tools
 
 import (
@@ -33,7 +31,7 @@ type downloadIn struct {
 	Pages      string   `json:"pages,omitempty" jsonschema:"1-based page selection, e.g. 1,3-5; default all pages"`
 	Quality    string   `json:"quality,omitempty" jsonschema:"static image quality: original, regular, small, thumb, mini"`
 	UgoiraMode string   `json:"ugoira_mode,omitempty" jsonschema:"ugoira output mode: gif or apng; default gif"`
-	// Delivery selects the published local_path output contract.
+	// delivery 只有 local_path 一种取值，字段保留是为了让 schema 显式列出。
 	Delivery string `json:"delivery,omitempty" jsonschema:"delivery mode: local_path only"`
 }
 
@@ -104,7 +102,7 @@ func (t pixivTools) downloadHandler(ctx context.Context, in downloadIn) (*mcp.Ca
 	if err != nil {
 		return emptyDownloadError(delivery, "Could not build the download result: "+err.Error())
 	}
-	// MCP 下载只返回本地 path/file_uri/mime_type/页号/大小，不再内嵌 ImageContent。
+	// MCP 下载只返回本地 path、file_uri、MIME 类型、页号与大小，不内嵌图片内容。
 	result := downloadResult(out)
 	if len(out.Failures) > 0 {
 		result.IsError = true
@@ -125,8 +123,8 @@ func parseDownloadSources(in downloadIn) ([]string, error) {
 	return in.Srcs, nil
 }
 
-// downloadSources 把 MCP 下载请求交给 downloader.DownloadService：PID、作品/用户
-// URL 与受资源策略允许的直链都经 public SDK 解析，统一走 DownloadSources 编排。
+// downloadSources 把 MCP 请求交给共享 downloader：PID、作品或用户 URL 以及资源策略允许
+// 的直链都先经公开 SDK 解析，再统一走 DownloadSources。
 func downloadSources(ctx context.Context, app *toolhost.App, sources []string, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadReport, error) {
 	lease, err := app.OpenClient(ctx)
 	if err != nil {
@@ -198,8 +196,8 @@ func emptyDownloadError(delivery, text string) (*mcp.CallToolResult, downloadOut
 	return result, out, resultErr
 }
 
-// downloadOperationError 保留 operation error 发生前已经生成的结构化结果；
-// MCP 用 isError 表达工具级失败，不能用空结果覆盖已落盘的 partial items 或 failures。
+// downloadOperationError 保留失败前已生成的结构化结果并把 isError 置为 true；已落盘的
+// items 与 failures 原样返回。
 func downloadOperationError(delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
@@ -299,8 +297,8 @@ type downloadRandomIn struct {
 
 const (
 	downloadRandomDefaultCount = 5
-	// 一次请求可触发多个作品下载，每个作品又可展开为多页/多文件，全部产物
-	// 元数据会进入同一 structured response；20 约束作品数，避免无界放大下载工作与 JSON-RPC 输出。
+	// 一次请求可能展开为多个作品、多页、多文件，所有产物都写进同一个 structured
+	// response；把作品数限制在 20，避免下载任务与 JSON-RPC 输出无界放大。
 	downloadRandomMaxCount = 20
 )
 

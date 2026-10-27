@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// AnimationStatus contains control data only; binaries use protected media URLs.
+// AnimationStatus 只含控制信息与受保护的媒体 URL，不含二进制内容。
 type AnimationStatus struct {
 	// FrameCount 仅供 UI 缓存预算，不进入公开结构化输出。
 	FrameCount   int       `json:"-"`

@@ -1,4 +1,3 @@
-// Package auth 拥有 MCP owner 与 OAuth 的私有状态，不接触产品账号凭据。
 package auth
 
 import (
@@ -18,12 +17,16 @@ import (
 )
 
 var (
-	ErrNotInitialized     = errors.New("MCP owner is not initialized; run pixiv mcp auth init")
+	// ErrNotInitialized 表示状态文件尚不存在，调用方需要先执行 pixiv mcp auth init。
+	ErrNotInitialized = errors.New("MCP owner is not initialized; run pixiv mcp auth init")
+	// ErrAlreadyInitialized 表示状态文件已存在而本次初始化没有要求 reset。
 	ErrAlreadyInitialized = errors.New("MCP owner is already initialized; use pixiv mcp auth init --reset")
-	ErrInvalidState       = errors.New("MCP state is invalid")
+	// ErrInvalidState 表示状态文件内容不满足 Read 校验的结构。
+	ErrInvalidState = errors.New("MCP state is invalid")
 )
 
-// State 是唯一持久合同；owner verifier 同时是内存授权会话/code 的 generation。
+// State 持久化 auth 的全部状态。OwnerVerifier 同时充当内存中授权会话与 code 的
+// generation，reset 后旧会话自然失效。
 type State struct {
 	Version             int               `json:"version"`
 	OwnerVerifier       string            `json:"owner_verifier"`
@@ -32,15 +35,16 @@ type State struct {
 	SelectedPixivUserID int64             `json:"selected_pixiv_user_id"`
 }
 
-// Client 记录 public client metadata 与本地批准标记；map key 是 client ID，不保存 secret。
+// Client 保存一个已注册客户端的公开元数据；map key 即 client ID，也没有 client secret。
 type Client struct {
 	ClientName   string   `json:"client_name"`
 	RedirectURIs []string `json:"redirect_uris"`
-	// 只由 owner 同意流程设置，防止匿名注册挤掉已签发授权码的客户端。
+	// OwnerApproved 只由 owner 同意流程设置，避免匿名注册把已签发授权码的客户端挤掉。
 	OwnerApproved bool `json:"owner_approved,omitempty"`
 }
 
-// Grant 持久化 token verifier 而非原值；已用 refresh hashes 留给重放撤销检查。
+// Grant 保存 token 的 verifier 而不保存原值；UsedRefreshHashes 记录已用过的 refresh
+// token 摘要，重放时据此撤销整条 grant。
 type Grant struct {
 	ClientID          string               `json:"client_id"`
 	Resource          string               `json:"resource"`
@@ -51,15 +55,15 @@ type Grant struct {
 	Revoked           bool                 `json:"revoked"`
 }
 
-// Usable 判断 grant 是否仍授权该 canonical MCP 资源；凭据各自的到期时间由调用方检查。
+// Usable 报告 grant 未撤销、资源匹配且 scope 为 mcp；令牌是否过期由调用方另查。
 func (g Grant) Usable(resource string) bool {
 	return !g.Revoked && g.Resource == resource && g.Scope == "mcp"
 }
 
-// Store 只持有路径；每次操作从原子文件读取当前状态，不缓存 verifier。
+// Store 只保存状态文件路径，每次操作都从文件读最新快照，不缓存 verifier 或 grant。
 type Store struct{ Path string }
 
-// Read 读取当前快照；缺失状态不是可自动放行的空 owner。
+// Read 返回当前快照。状态文件不存在时返回 ErrNotInitialized，不会当作空 owner 放行。
 func (s Store) Read(ctx context.Context) (State, error) {
 	if s.Path == "" {
 		return State{}, errors.New("MCP state path is required")
@@ -74,7 +78,7 @@ func (s Store) Read(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	// 拒绝链接/设备文件，避免读写指向不同目标；权限错误不能通过 reset 掩盖。
+	// 拒绝链接与设备文件，避免读写命中不同目标；权限错误直接返回。
 	if !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0) {
 		return State{}, errors.New("MCP state must be a private regular file (0600)")
 	}
@@ -82,7 +86,7 @@ func (s Store) Read(ctx context.Context) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
-	// selected=0 明确表示尚未选择；缺字段/null 不能被当作首次初始化。
+	// selected=0 表示尚未选择；字段缺失或为 null 视为损坏状态。
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return State{}, ErrInvalidState
@@ -92,7 +96,7 @@ func (s Store) Read(ctx context.Context) (State, error) {
 			return State{}, ErrInvalidState
 		}
 	}
-	// 撤销标记不能默认为 false；空历史可为 null，但不能缺失。
+	// revoked 必须显式出现，缺字段视为损坏状态；used_refresh_hashes 可为 null。
 	var grants map[string]struct {
 		Revoked           *bool           `json:"revoked"`
 		UsedRefreshHashes json.RawMessage `json:"used_refresh_hashes"`
@@ -108,7 +112,7 @@ func (s Store) Read(ctx context.Context) (State, error) {
 	var state State
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
-	// JSON 错误可能带入原始字段值，边界只返回安全的类别。
+	// JSON 错误可能带出原始字段值，所以只返回安全的错误类别。
 	if err := decoder.Decode(&state); err != nil {
 		return State{}, ErrInvalidState
 	}
@@ -147,7 +151,8 @@ func (s Store) Read(ctx context.Context) (State, error) {
 	return state, nil
 }
 
-// Init 提交成功后才返回一次性 secret。reset 保留注册与账号选择，撤销全部 grants。
+// Init 在状态落盘后才返回一次性 owner secret。reset 保留客户端注册与账号选择，
+// 撤销全部 grant，并记录已有 grant 的客户端曾获批准。
 func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 	if s.Path == "" {
 		return "", errors.New("MCP state path is required")
@@ -162,13 +167,13 @@ func (s Store) Init(ctx context.Context, reset bool) (string, error) {
 		} else if !reset {
 			return ErrAlreadyInitialized
 		}
-		// 256 位机器随机值不是用户密码，持久化只需不可逆 SHA-256 verifier。
+		// 这是 256 位机器随机值，持久化不可逆摘要就足够。
 		candidate, err := randomAuthorizationValue()
 		if err != nil {
 			return err
 		}
 		state.OwnerVerifier = tokenHash(candidate)
-		// reset 清空 grant 前保留旧版本已经获得 owner 授权的证据。
+		// 清空 grant 前先标记这些客户端获过 owner 批准，避免旧授权记录随 grant 一起丢失。
 		for _, grant := range state.Grants {
 			client := state.Clients[grant.ClientID]
 			client.OwnerApproved = true
@@ -204,7 +209,7 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 			for _, grant := range state.Grants {
 				granted[grant.ClientID] = true
 			}
-			// 旧状态可能没有批准标记；任何已有 grant（含撤销项）仍保护其客户端。
+			// 旧状态可能没有 OwnerApproved；只要还有 grant（包括已撤销的）就保留该客户端。
 			for id, candidate := range state.Clients {
 				if !candidate.OwnerApproved && !granted[id] {
 					delete(state.Clients, id)
@@ -234,7 +239,7 @@ func (s Store) registerClient(ctx context.Context, client Client) (string, error
 	return id, err
 }
 
-// approveClient 与注册/reset 共用文件锁，批准提交成功后才能签发授权码。
+// approveClient 与注册、reset 共用同一把文件锁；批准写盘成功后才允许签发授权码。
 func (s Store) approveClient(ctx context.Context, clientID, generation, redirectURI string) error {
 	return filelock.WithPrivateLock(ctx, s.Path, func() error {
 		state, err := s.Read(ctx)
@@ -254,7 +259,7 @@ func (s Store) approveClient(ctx context.Context, clientID, generation, redirect
 	})
 }
 
-// save 仅供持有侧车锁的事务调用；成功落盘前不发布 secret、client 或 token。
+// save 只供已持有侧车锁的事务调用；落盘成功前不对外发布 secret、client 或 token。
 func (s Store) save(ctx context.Context, state State) error {
 	body, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -264,20 +269,21 @@ func (s Store) save(ctx context.Context, state State) error {
 	return err
 }
 
-// SelectPixivUser 只保存账号 ID；调用方先核验本地账号，不在此复制凭据或修改 CLI default。
+// SelectPixivUser 只写入账号 ID；调用方须先确认本地账号存在，这里不复制凭据，也不改
+// CLI 的默认账号。
 func (s Store) SelectPixivUser(ctx context.Context, userID int64) error {
 	_, _, err := s.selectPixivUser(ctx, userID, nil)
 	return err
 }
 
-// InitializePixivUser adopts the initial account only if no selection has committed yet.
+// InitializePixivUser 只在尚无账号选择时采用 initial 账号，并返回最终选中的账号 ID。
 func (s Store) InitializePixivUser(ctx context.Context, userID int64) (int64, error) {
 	selected, _, err := s.selectPixivUser(ctx, userID, func(selected int64) (bool, error) { return selected == 0, nil })
 	return selected, err
 }
 
-// SelectPixivUserIf checks local eligibility and commits under the same state filelock.
-// eligible must not write MCP state; it receives identity only, never credentials.
+// SelectPixivUserIf 在同一把状态文件锁内检查 eligible 并提交选择，避免用过期信息覆盖
+// 显式选择。eligible 只能读，拿到账号身份而不会拿到凭据。
 func (s Store) SelectPixivUserIf(ctx context.Context, userID int64, eligible func(int64) (bool, error)) (bool, error) {
 	if eligible == nil {
 		return false, errors.New("MCP selection condition is required")

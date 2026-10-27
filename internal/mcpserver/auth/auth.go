@@ -1,5 +1,10 @@
-// auth.go 组装 OAuth 路由与入站保护，提供各授权阶段共用的随机值生成。
-
+// Package auth 为 MCP HTTP 端点提供单 owner 的 OAuth 授权与私有的持久状态。
+//
+// 包的组成：[NewHandler] 组装 discovery、动态客户端注册、授权与 token 路由，
+// [Handler.RequireBearer] 校验访问令牌，[Handler.RequireCanonical] 把请求绑定到配置的
+// 部署地址；[Store] 保存客户端、grant 与选中的 Pixiv 账号 ID。授权流程的状态机在
+// authorize.go，token 兑换与轮换在 token.go。这里只保存 MCP owner 自身的凭据摘要，
+// Pixiv 账号凭据仍由账号存储持有。
 package auth
 
 import (
@@ -23,22 +28,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 )
 
-// OAuth control messages contain metadata and opaque identifiers, never media.
-// Bound unauthenticated allocation and persisted DCR growth for this single-owner server.
+// OAuth 控制消息只含元数据与不透明标识。未认证请求的内存分配和持久化 DCR 条目
+// 都设上限，避免单 owner 服务被撑爆。
 const maxOAuthBody = 64 << 10
 const maxOAuthEntries = 1024
 const controlBodyReadTimeout = 10 * time.Second
 
 var errOAuthCapacity = errors.New("OAuth capacity reached")
 
-// Handler 同时持有 OAuth 路由及 canonical resource 的 bearer 边界，不管理 listener。
+// Handler 持有 OAuth 路由与 canonical resource 的 bearer 边界，listener 由调用方管理。
 type Handler struct {
 	routes                http.Handler
 	store                 Store
 	resource, metadataURL string
 }
 
-// ServeHTTP 处理 discovery、注册、授权与 token 请求。
+// ServeHTTP 分发 discovery、注册、授权与 token 请求；其他路径返回 404。
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.routes.ServeHTTP(w, r) }
 
 func randomAuthorizationValue() (string, error) {
@@ -49,7 +54,7 @@ func randomAuthorizationValue() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(value), nil
 }
 
-// RequireBearer 包装 MCP handler；鉴权只影响新请求，不取消已授权请求。
+// RequireBearer 只对新请求校验访问令牌；已进入处理的请求不会因令牌过期被中断。
 func (h *Handler) RequireBearer(next http.Handler) http.Handler {
 	protected := sdkauth.RequireBearerToken(h.verify, &sdkauth.RequireBearerTokenOptions{
 		ResourceMetadataURL: h.metadataURL, Scopes: []string{"mcp"},
@@ -60,25 +65,28 @@ func (h *Handler) RequireBearer(next http.Handler) http.Handler {
 	})
 }
 
-// SDK 会重设 SSE 缓存头；在实际提交时守住私有结果边界，而非只在进入 handler 前设置。
+// SDK 会重设 SSE 缓存头，所以每次提交响应时都重新写上 no-store。
 type privateResponseWriter struct{ http.ResponseWriter }
 
+// WriteHeader 在提交状态码时重设缓存头。
 func (w privateResponseWriter) WriteHeader(status int) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.ResponseWriter.WriteHeader(status)
 }
 
+// Write 在写入响应体时重设缓存头。
 func (w privateResponseWriter) Write(p []byte) (int, error) {
 	w.Header().Set("Cache-Control", "no-store")
 	return w.ResponseWriter.Write(p)
 }
 
+// FlushError 在 flush 前重设缓存头，保留 SSE 流式交付。
 func (w privateResponseWriter) FlushError() error {
 	w.Header().Set("Cache-Control", "no-store")
 	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
-// 让 ResponseController 的 deadline/full-duplex 等能力仍可到达底层连接。
+// Unwrap 保留 ResponseController 的 deadline 与 full-duplex 能力。
 func (w privateResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (h *Handler) verify(ctx context.Context, token string, request *http.Request) (*sdkauth.TokenInfo, error) {
@@ -99,8 +107,8 @@ func (h *Handler) verify(ctx context.Context, token string, request *http.Reques
 	return nil, sdkauth.ErrInvalidToken
 }
 
-// ParseBaseURL 校验并返回规范化的公开 MCP base URL（去掉末尾斜杠），只接受显式配置。
-// 客户端会归一化 dot segments；拒绝可能使 issuer 与 discovery 路径不一致的配置。
+// ParseBaseURL 返回去掉末尾斜杠的公开 MCP base URL，并拒绝会使 issuer 与 discovery
+// 路径不一致的配置。客户端会归一化 dot segment，所以这类路径必须在配置阶段就挡下。
 func ParseBaseURL(canonicalBase string) (*url.URL, error) {
 	base, err := url.Parse(strings.TrimRight(canonicalBase, "/"))
 	if err != nil || base.User != nil || base.Opaque != "" ||
@@ -116,8 +124,9 @@ func ParseBaseURL(canonicalBase string) (*url.URL, error) {
 	return base, nil
 }
 
-// NewHandler 构造独立 discovery/DCR/authorize/token handler 及 bearer 包装器；canonicalBase 不从请求头推断。
-// 不启动 listener 或读取文件；注册、授权与 token 操作要求 store 已初始化，并在每次请求内读取最新状态。
+// NewHandler 组装 discovery、DCR、authorize、token 路由和 bearer 包装器。
+// canonicalBase 只来自显式配置，不从请求头推断；函数本身不启动 listener。store 必须
+// 已初始化，注册、授权与 token 操作都在请求内读取最新状态。
 func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 	base, err := ParseBaseURL(canonicalBase)
 	if err != nil {
@@ -132,7 +141,7 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 	resource := sdkauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
 		Resource: issuer + "/mcp", AuthorizationServers: []string{issuer}, ScopesSupported: []string{"mcp"},
 	})
-	// RFC 8414 §3 / RFC 9728 §3：well-known 插入 host 与 path 之间。
+	// RFC 8414 §3 与 RFC 9728 §3 要求 well-known 段插在 host 与 path 之间。
 	metadata := map[string]any{
 		"authorization_response_iss_parameter_supported": true,
 		"issuer":                                issuer,
@@ -147,7 +156,7 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 	}
 	routes := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if status := readControlRequest(w, r); status != 0 {
-			// 保留失败读取的截止时间并关闭连接，避免 net/http 在返回后无限排空请求体。
+			// 保留失败读取的截止时间并关闭连接，否则 net/http 返回后会继续排空请求体。
 			r.Close = true
 			w.Header().Set("Connection", "close")
 			code := "invalid_request"
@@ -181,7 +190,8 @@ func NewHandler(canonicalBase string, store Store) (*Handler, error) {
 	return &Handler{routes: routes, store: store, resource: issuer + "/mcp", metadataURL: base.Scheme + "://" + base.Host + "/.well-known/oauth-protected-resource" + prefix + "/mcp"}, nil
 }
 
-// 仅缓冲最多 64 KiB 的 OAuth 控制消息；读取限时与请求头预算一致，不作用于 MCP/媒体。
+// readControlRequest 把 OAuth 控制请求体限制在 64 KiB 并读到内存，读取超时只作用于
+// 控制请求，不影响 MCP 与媒体传输。
 func readControlRequest(w http.ResponseWriter, r *http.Request) int {
 	controller := http.NewResponseController(w)
 	if err := controller.SetReadDeadline(time.Now().Add(controlBodyReadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
@@ -265,7 +275,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func registrationClient(body io.Reader) (Client, string) {
-	// 未使用的扩展 metadata 按 RFC 7591 忽略，不抓取 logo、JWKS 或 client URL。
+	// 未使用的扩展 metadata 按 RFC 7591 忽略；不抓取 logo、JWKS 或 client URL。
 	var input struct {
 		ClientName   string          `json:"client_name"`
 		RedirectURIs []string        `json:"redirect_uris"`
@@ -321,7 +331,7 @@ func registrationClient(body io.Reader) (Client, string) {
 			}
 		}
 	}
-	// 所有注册采用同一 public-client profile；响应明确返回实际采用的 metadata。
+	// 所有注册共用同一个 public-client profile，响应里回显实际采用的 metadata。
 	return Client{ClientName: input.ClientName, RedirectURIs: input.RedirectURIs}, ""
 }
 
@@ -338,14 +348,14 @@ func validRedirect(raw string) bool {
 		return u.Opaque == "" && validHTTPAuthority(u) &&
 			(strings.EqualFold(u.Hostname(), "localhost") || net.ParseIP(u.Hostname()).IsLoopback())
 	default:
-		// RFC 8252 §8.4 的 reverse-domain 私有 scheme 防止与执行性/通用 scheme 混用。
+		// RFC 8252 §8.4 的 reverse-domain 私有 scheme 用来避免与可执行或通用 scheme 混用。
 		return strings.Contains(u.Scheme, ".") && (u.Path != "" || u.Opaque != "" || u.Host != "")
 	}
 }
 
-// RequireCanonical 将入站 Host/Origin 绑定到配置的部署地址，不信任转发头。
+// RequireCanonical 要求请求的 Host 与 Origin 都等于配置的部署地址，转发头不参与判断。
 func (h *Handler) RequireCanonical(next http.Handler) http.Handler {
-	// resource 只由已验证的 canonical base 构造。
+	// resource 来自已验证的 canonical base，忽略请求中的 Host。
 	base, _ := url.Parse(h.resource)
 	origin := browserOrigin(base.Scheme + "://" + base.Host)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -355,7 +365,7 @@ func (h *Handler) RequireCanonical(next http.Handler) http.Handler {
 			http.Error(w, "Forbidden: request does not match canonical MCP origin", http.StatusForbidden)
 			return
 		}
-		// 标准库 trusted-origin 使用字符串比较；仅在同源校验通过后统一大小写/默认端口表示。
+		// 标准库的 trusted-origin 按字符串比较；同源校验通过后再统一大小写和默认端口写法。
 		if len(origins) == 1 && origins[0] != base.Scheme+"://"+base.Host {
 			r = r.Clone(r.Context())
 			r.Header.Set("Origin", base.Scheme+"://"+base.Host)

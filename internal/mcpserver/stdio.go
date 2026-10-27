@@ -1,5 +1,3 @@
-// stdio.go 在输入断开时取消 JSON-RPC 调用，并保留输出流的所有权。
-
 package mcpserver
 
 import (
@@ -10,8 +8,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// RunStdio serves JSON-RPC, cancels active tools on input loss or process shutdown,
-// and waits for their cleanup before the caller releases SDK resources.
+// RunStdio 运行 JSON-RPC 服务；输入断开或进程退出时取消在途工具，等它们清理完再返回，
+// 之后调用方才能释放 SDK 资源。
 func RunStdio(ctx context.Context, server *mcp.Server, in io.Reader, out io.Writer) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -35,6 +33,7 @@ type stdioReader struct {
 	cancel context.CancelCauseFunc
 }
 
+// Read 在任何读错误（包括 io.EOF）时取消服务，让工具停止处理已无法交付的请求。
 func (r stdioReader) Read(p []byte) (int, error) {
 	n, err := r.ReadCloser.Read(p)
 	if err != nil {
@@ -45,4 +44,5 @@ func (r stdioReader) Read(p []byte) (int, error) {
 
 type stdioWriter struct{ io.Writer }
 
+// Close 不关闭调用方提供的输出流。
 func (stdioWriter) Close() error { return nil }

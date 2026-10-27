@@ -1,5 +1,3 @@
-// pixiv novels tools.
-
 package tools
 
 import (
@@ -16,7 +14,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerNovelBookmarkDetail 注册 pixiv_novel_bookmark_detail。
 func (t pixivTools) registerNovelBookmarkDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one novel.", OutputSchema: schemas.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelBookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return t.novelBookmarkDetailHandler(ctx, input)
@@ -40,8 +37,6 @@ func (t pixivTools) novelBookmarkDetailHandler(ctx context.Context, in novelBook
 	out := outputs.BookmarkDetail{Bookmarked: result.Restrict != "", Restrict: string(result.Restrict), Tags: append([]string{}, result.Tags...)}
 	return outputs.NovelBookmarkDetailResult(out, in.NovelID), out, nil
 }
-
-// registerNovelContent 注册 pixiv_novel_content。
 func (t pixivTools) registerNovelContent(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_content", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read the complete structured content of one Pixiv novel.", OutputSchema: schemas.NovelContentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelContentIn) (*mcp.CallToolResult, outputs.NovelContent, error) {
 		return t.novelContentHandler(ctx, input)
@@ -65,8 +60,6 @@ func (t pixivTools) novelContentHandler(ctx context.Context, in novelContentIn) 
 	out := outputs.NovelContent{Content: result}
 	return outputs.NovelContentResult(result.NovelID), out, nil
 }
-
-// registerNovelDetail 注册 pixiv_novel_detail。
 func (t pixivTools) registerNovelDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information for one Pixiv novel.", OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelDetailIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.novelDetailHandler(ctx, input)
@@ -94,8 +87,6 @@ func (t pixivTools) novelDetailHandler(ctx context.Context, in novelDetailIn) (*
 	out := outputs.Detail{Records: []record.Record{novelRecord}}
 	return outputs.DetailResult(out), out, nil
 }
-
-// registerNovelSeries 注册 pixiv_novel_series。
 func (t pixivTools) registerNovelSeries(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_novel_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse novels in a Pixiv series.", OutputSchema: schemas.NovelSeriesOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input novelSeriesIn) (*mcp.CallToolResult, outputs.NovelSeries, error) {
 		return t.novelSeriesHandler(ctx, input)

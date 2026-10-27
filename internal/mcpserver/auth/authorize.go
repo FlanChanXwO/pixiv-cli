@@ -108,7 +108,7 @@ func (a *authorizer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if reply.Page != nil {
 		// Chromium 同时约束表单后的重定向；只放行已精确匹配的 callback origin。
-		// 注册 origin 不能成为 CSP 通配符或额外 directive。
+		// 注册 origin 只作为精确的 form-action 目标写入 CSP。
 		source := strings.NewReplacer(";", "%3B", "*", "%2A", "'", "%27").Replace(reply.Page.RedirectOrigin)
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' "+source+"; frame-ancestors 'none'; base-uri 'none'")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -139,7 +139,7 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	if err != nil {
 		return authorizationReply{Status: 400, Error: "invalid_request"}
 	}
-	// 不覆盖注册 URI 的 query，也不把预置 code/error 当作本次授权结果。
+	// 注册 URI 原有的 query 保持不变；预置的 code 与 error 由本次授权结果覆盖。
 	for _, key := range []string{"code", "error", "error_description", "error_uri", "state", "iss"} {
 		if callbackQuery.Has(key) {
 			return authorizationReply{Status: 400, Error: "invalid_request"}
@@ -200,7 +200,7 @@ func (a *authorizer) prepare(r *http.Request) authorizationReply {
 	return authorizationReply{Cookie: cookie, Page: &consentPage{Action: a.endpoint, ClientName: client.ClientName, RedirectOrigin: origin, RedirectURI: request.RedirectURI, CSRF: csrf, Verified: session.Verified}}
 }
 
-// browserOrigin 只比较 scheme/host/有效端口，不把路径或 opaque Origin 当作同源。
+// browserOrigin 只比较 scheme、host 与有效端口，同源判断忽略路径和 opaque Origin。
 func browserOrigin(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.User != nil || u.Opaque != "" || u.Path != "" ||
@@ -296,7 +296,7 @@ func (a *authorizer) submit(r *http.Request) authorizationReply {
 		if err != nil {
 			return authorizationReply{Status: 500, Error: "server_error"}
 		}
-		// 身份升级时更换浏览器会话，旧匿名 cookie/表单不能继承 owner 身份。
+		// 升级身份时更换浏览器会话，旧匿名 cookie 与表单随之作废。
 		delete(a.sessions, cookie.Value)
 		for csrf, other := range a.forms {
 			if other.SessionID == cookie.Value {

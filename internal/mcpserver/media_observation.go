@@ -25,12 +25,13 @@ func observeMediaResult(lifecycleCtx context.Context, request mcp.Request, resul
 	return &observedMediaResult{Result: result, logger: logging.From(lifecycleCtx)}
 }
 
-// 在 SDK 实际序列化边界计时，不提前编码、不记录结果正文。
+// observedMediaResult 在 SDK 实际序列化时计时，不提前编码，也不记录结果正文。
 type observedMediaResult struct {
 	mcp.Result
 	logger *slog.Logger
 }
 
+// MarshalJSON 记录序列化耗时与字节数；失败时只记录安全原因，不记录结果正文。
 func (r *observedMediaResult) MarshalJSON() ([]byte, error) {
 	started := time.Now()
 	data, err := json.Marshal(r.Result)

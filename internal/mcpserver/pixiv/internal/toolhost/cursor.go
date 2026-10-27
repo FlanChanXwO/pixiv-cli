@@ -12,9 +12,9 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// CollectCursorWith 为 discovery 复用查询绑定与完整批次续读；bindingInput
-// 必须是清除 cursor 后的原始 typed input，不能丢失 owner 的筛选字段。
-// envelope 不提供授权；SDK 仍验证内部 cursor 的 operation/query/账号绑定。
+// CollectCursorWith 让 discovery 共用查询绑定与完整批次续读。bindingInput 必须是清掉
+// cursor 后的原始 typed input，否则筛选字段会从绑定里丢失。外层 envelope 不授权，
+// SDK 仍会校验内部 cursor 的 operation/query/账号绑定。
 func CollectCursorWith[T any](ctx context.Context, app *App, operation string, bindingInput any, cursor *string, input toolrun.ListIn, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, PaginationOut, error) {
 	plan, err := toolrun.ParseListPlan(input)
 	if err != nil {
@@ -47,7 +47,7 @@ func CollectCursorWith[T any](ctx context.Context, app *App, operation string, b
 	return items, page, nil
 }
 
-// CursorBinding 只封装参数摘要与 wire codec，不提供身份或访问权限。
+// CursorBinding 封装参数摘要与 wire codec，本身不携带身份或访问权限。
 type CursorBinding struct {
 	operation string
 	query     string
@@ -63,7 +63,8 @@ func BindCursor(operation string, input any) (CursorBinding, error) {
 	return CursorBinding{operation: operation, query: hex.EncodeToString(digest[:])}, nil
 }
 
-// Decode 校验外层 tool/query，再交由 SDK 验证内部 continuation。
+// Decode 先校验外层 tool 与 query，再交给 SDK 校验内部 continuation，返回其中的
+// SDK cursor；cursor 为 nil 时返回零值。
 func (b CursorBinding) Decode(cursor *string) (sdk.Cursor, error) {
 	if cursor == nil {
 		return sdk.Cursor{}, nil
@@ -82,7 +83,7 @@ func (b CursorBinding) Decode(cursor *string) (sdk.Cursor, error) {
 	return sdk.ParseCursor(string(payload))
 }
 
-// Encode 保留完整 SDK checkpoint；耗尽时不生成 wire cursor。
+// Encode 保留完整 SDK checkpoint；next 为零值时返回空串，表示没有下一页。
 func (b CursorBinding) Encode(next sdk.Cursor) (string, error) {
 	if next.IsZero() {
 		return "", nil

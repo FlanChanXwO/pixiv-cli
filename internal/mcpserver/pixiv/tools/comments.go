@@ -1,5 +1,3 @@
-// Comment read/mutation tools and upstream page metadata accumulation.
-
 package tools
 
 import (
@@ -16,7 +14,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerCommentCreate 注册 pixiv_comment_create。
 func (t pixivTools) registerCommentCreate(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_create", Description: "Create a top-level comment on an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(commentCreateCommentProperties(), []string{"kind", "id", "comment"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -24,7 +21,7 @@ func (t pixivTools) registerCommentCreate(server *mcp.Server) {
 	})
 }
 
-// commentCreateIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// commentCreateIn 的 kind 决定评论作品还是小说；输出沿用评论 mutation 的 envelope。
 type commentCreateIn struct {
 	Kind    string `json:"kind"`
 	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
@@ -80,8 +77,6 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 		})
 	})
 }
-
-// registerCommentDelete 注册 pixiv_comment_delete。
 func (t pixivTools) registerCommentDelete(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_delete", Description: "Delete an artwork or novel comment by comment ID.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"kind", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -89,7 +84,7 @@ func (t pixivTools) registerCommentDelete(server *mcp.Server) {
 	})
 }
 
-// commentDeleteIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// commentDeleteIn 的 kind 决定删除作品还是小说下的评论。
 type commentDeleteIn struct {
 	Kind      string `json:"kind"`
 	CommentID int64  `json:"comment_id" jsonschema:"positive comment ID"`
@@ -120,8 +115,6 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 		})
 	})
 }
-
-// registerCommentReply 注册 pixiv_comment_reply。
 func (t pixivTools) registerCommentReply(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_reply", Description: "Reply to an artwork or novel comment.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(commentReplyCommentProperties(), []string{"kind", "id", "comment", "parent_comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -129,7 +122,7 @@ func (t pixivTools) registerCommentReply(server *mcp.Server) {
 	})
 }
 
-// commentReplyIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// commentReplyIn 的 kind 决定评论所属的作品或小说，parent_comment_id 为被回复的评论。
 type commentReplyIn struct {
 	Kind            string `json:"kind"`
 	ID              int64  `json:"id" jsonschema:"positive artwork or novel ID"`
@@ -189,8 +182,6 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 		})
 	})
 }
-
-// registerCommentStamp 注册 pixiv_comment_stamp。
 func (t pixivTools) registerCommentStamp(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_stamp", Description: "Add a stamp comment to an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(commentStampCommentProperties(), []string{"kind", "id", "stamp_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -198,7 +189,7 @@ func (t pixivTools) registerCommentStamp(server *mcp.Server) {
 	})
 }
 
-// commentStampIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// commentStampIn 的 kind 决定贴图落在作品还是小说下；stamp_id 是 Pixiv 的贴图编号。
 type commentStampIn struct {
 	Kind    string `json:"kind"`
 	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
@@ -258,8 +249,6 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 		})
 	})
 }
-
-// registerComments 注册 pixiv_comments。
 func (t pixivTools) registerComments(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comments", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Read comments for a Pixiv artwork or novel.", InputSchema: commentsInputSchema(),
 		OutputSchema: schemas.CommentOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input commentsIn) (*mcp.CallToolResult, outputs.Comments, error) {
@@ -267,7 +256,7 @@ func (t pixivTools) registerComments(server *mcp.Server) {
 	})
 }
 
-// commentsIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// commentsIn 的 kind 决定读取作品还是小说的评论。
 type commentsIn struct {
 	Kind string `json:"kind"`
 	ID   int64  `json:"id" jsonschema:"positive artwork or novel ID"`
@@ -320,13 +309,13 @@ func commentsInputSchema() map[string]any {
 	return schema
 }
 
-// commentMetadata 只缓存上游明确提供的评论总数与访问控制信息。
+// commentMetadata 只记录上游明确给出的评论总数与访问控制，缺字段时不补默认值。
 type commentMetadata struct {
 	Total  *int64
 	Access *pixiv.CommentAccessControl
 }
 
-// Set 从评论页记录首个可用的元数据。
+// Set 只采用评论页里第一个出现的总数与访问控制，后续页不再覆盖。
 func (m *commentMetadata) Set(page pixiv.CommentPage) {
 	if m.Total == nil && page.Total != nil {
 		m.Total = page.Total

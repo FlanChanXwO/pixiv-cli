@@ -1,4 +1,8 @@
-// Package outputs defines FANBOX tool envelopes and safe resource projections.
+// Package outputs 定义 FANBOX 工具的文本摘要、结构化 envelope 与安全的资源投影。
+//
+// 包的组成：[Result] 生成工具的文本摘要；[ResourceOut]、[PostAssetOut] 与 [PostOut]
+// 是只暴露不透明 ref、不带下载地址的输出形态，[ResourceOutFrom] 与 [PostOutFrom]
+// 负责从 SDK 模型转换。
 package outputs
 
 import (
@@ -10,7 +14,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Result 统一 MCP tool 的文本摘要；完整实体只存在于 structured output。
+// Result 生成 MCP tool 的文本摘要；完整实体只放在 structured output 里，message 为空时
+// 输出 OK。
 func Result(isError bool, message string) *mcp.CallToolResult {
 	if message == "" {
 		message = "OK"
@@ -21,13 +26,13 @@ func Result(isError bool, message string) *mcp.CallToolResult {
 	}
 }
 
-// ResourceOut 是资源引用的安全输出形态。
+// ResourceOut 只暴露资源的 opaque ref 与是否需要凭据。
 type ResourceOut struct {
 	Ref                 string `json:"ref"`
 	RequiresCredentials bool   `json:"requires_credentials,omitempty"`
 }
 
-// ResourceOutFrom 把 opaque Resource 转为安全输出。
+// ResourceOutFrom 只保留资源的 opaque ref 与凭据要求；零值 ref 返回 nil。
 func ResourceOutFrom(res sdk.Resource) *ResourceOut {
 	if res.Ref.IsZero() {
 		return nil
@@ -35,7 +40,7 @@ func ResourceOutFrom(res sdk.Resource) *ResourceOut {
 	return &ResourceOut{Ref: res.Ref.String(), RequiresCredentials: res.RequiresCredentials}
 }
 
-// PostAssetOut 是帖子资产的安全输出形态。
+// PostAssetOut 表示帖子中的一个资产；Resource 与 Thumbnail 只暴露不透明 ref。
 type PostAssetOut struct {
 	ID        string       `json:"id"`
 	Kind      string       `json:"kind"`
@@ -44,7 +49,8 @@ type PostAssetOut struct {
 	Thumbnail *ResourceOut `json:"thumbnail,omitempty"`
 }
 
-// PostOut 是 FANBOX 帖子的安全输出形态。
+// PostOut 承载不带原始资源地址的 FANBOX 帖子。PublishedAt 为 RFC 3339 UTC 文本，
+// 时间未知时为空串。
 type PostOut struct {
 	ID            string         `json:"id"`
 	Title         string         `json:"title"`
@@ -58,7 +64,7 @@ type PostOut struct {
 	Assets        []PostAssetOut `json:"assets"`
 }
 
-// PostOutFrom 把 SDK post 转为安全输出。
+// PostOutFrom 丢弃 Body 中的下载地址，只保留资源 ref；Assets 总是非 nil。
 func PostOutFrom(post fanbox.Post) PostOut {
 	published := ""
 	if !post.PublishedAt.IsZero() {
@@ -91,7 +97,7 @@ func PostOutFrom(post fanbox.Post) PostOut {
 	return out
 }
 
-// PostsOut 是帖子列表 tool 的输出 envelope。
+// PostsOut 承载帖子列表工具的输出。
 type PostsOut struct {
 	Posts      []PostOut             `json:"posts"`
 	Pagination toolrun.PaginationOut `json:"pagination"`

@@ -1,5 +1,3 @@
-// fanbox users tools.
-
 package tools
 
 import (
@@ -12,7 +10,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerCurrentUser 注册 fanbox_current_user。
 func (t fanboxTools) registerCurrentUser(server *mcp.Server) {
 	toolrun.AddTool(t.calls, server, &mcp.Tool{Name: "fanbox_current_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Show the current authenticated FANBOX user."}, func(ctx context.Context, request *mcp.CallToolRequest, input currentUserIn) (*mcp.CallToolResult, currentUserOut, error) {
 		return t.currentUserHandler(ctx, input)

@@ -1,5 +1,3 @@
-// pixiv bookmarks tools.
-
 package tools
 
 import (
@@ -18,7 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerBookmarkAdd 注册 pixiv_bookmark_add。
 func (t pixivTools) registerBookmarkAdd(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_add", Description: "Add an artwork or novel bookmark.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "id": schemas.PositiveInteger("Positive artwork or novel ID."), "restrict": map[string]any{"type": "string", "description": "public or private; omitted or empty uses SDK default."}, "tags": map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "string"}}}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -26,7 +23,7 @@ func (t pixivTools) registerBookmarkAdd(server *mcp.Server) {
 	})
 }
 
-// bookmarkAddIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// bookmarkAddIn 的 kind 决定写入作品还是小说收藏；输出沿用原操作的 mutation envelope。
 type bookmarkAddIn struct {
 	Kind     string   `json:"kind"`
 	ID       int64    `json:"id" jsonschema:"artwork ID"`
@@ -51,8 +48,6 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 		})
 	})
 }
-
-// registerBookmarkDetail 注册 pixiv_bookmark_detail。
 func (t pixivTools) registerBookmarkDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get the current user's bookmark state for one artwork.", OutputSchema: schemas.BookmarkDetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkDetailIn) (*mcp.CallToolResult, outputs.BookmarkDetail, error) {
 		return t.bookmarkDetailHandler(ctx, input)
@@ -77,8 +72,8 @@ func (t pixivTools) bookmarkDetailHandler(ctx context.Context, in bookmarkDetail
 	return outputs.BookmarkDetailResult(out, in.IllustID), out, nil
 }
 
-// registerBookmarkListAll 注册 additive bookmark_list_all operation，不改变
-// user_bookmarks 或 user_novel_bookmarks 的 wire contract。
+// registerBookmarkListAll 注册 bookmark_list_all，把作品与小说收藏合并成一个序列；
+// user_bookmarks 与 user_novel_bookmarks 的 wire 契约保持不变。
 func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_list_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
@@ -94,7 +89,8 @@ func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 	})
 }
 
-// bookmarkListAllIn 是 bookmark_list_all 的 closed additive input contract。
+// bookmarkListAllIn 定义 bookmark_list_all 的封闭输入；restrict 与 tag 同时作用于两类
+// 收藏。
 type bookmarkListAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
@@ -107,8 +103,10 @@ type bookmarkCursor struct {
 	consumed int
 }
 
+// IsZero 报告是否既没有消费批内条目，也没有上游 cursor。
 func (c bookmarkCursor) IsZero() bool { return c.consumed == 0 && c.upstream.IsZero() }
 
+// String 把上游 cursor 与已消费条数序列化成稳定的 cursor 文本；零值返回空串。
 func (c bookmarkCursor) String() string {
 	if c.IsZero() {
 		return ""
@@ -232,8 +230,6 @@ func bookmarkCheckpoint(cursor bookmarkCursor, position int) (bookmarkCursor, er
 	}
 	return bookmarkCursor{upstream: cursor.upstream, consumed: cursor.consumed + position}, nil
 }
-
-// registerBookmarkRemove 注册 pixiv_bookmark_remove。
 func (t pixivTools) registerBookmarkRemove(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_remove", Description: "Remove an artwork or novel bookmark.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "id": schemas.PositiveInteger("Positive artwork or novel ID.")}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -241,7 +237,7 @@ func (t pixivTools) registerBookmarkRemove(server *mcp.Server) {
 	})
 }
 
-// bookmarkRemoveIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// bookmarkRemoveIn 的 kind 决定删除作品还是小说收藏；输出沿用原操作的 mutation envelope。
 type bookmarkRemoveIn struct {
 	Kind string `json:"kind"`
 	ID   int64  `json:"id" jsonschema:"artwork ID"`
@@ -264,8 +260,6 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 		})
 	})
 }
-
-// registerBookmarkTags 注册 pixiv_bookmark_tags。
 func (t pixivTools) registerBookmarkTags(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_tags", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "List artwork (default) or novel bookmark tags.", InputSchema: bookmarkTagsInputSchema(), OutputSchema: schemas.BookmarkTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
 		return t.bookmarkTagsHandler(ctx, input)
@@ -328,8 +322,8 @@ func bookmarkTagsInputSchema() map[string]any {
 	}
 }
 
-// registerBookmarkTagsAll 注册 additive bookmark_tags_all operation，不改变
-// bookmark_tags(kind=artwork/novel) 的 output contract。
+// registerBookmarkTagsAll 注册 bookmark_tags_all，返回带内容类型的合并标签；
+// bookmark_tags(kind=artwork/novel) 的输出契约保持不变。
 func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_tags_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
@@ -344,7 +338,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 	})
 }
 
-// bookmarkTagsAllIn 是 bookmark_tags_all 的 closed additive input contract。
+// bookmarkTagsAllIn 是 bookmark_tags_all 的封闭输入，分页字段与共享列表一致。
 type bookmarkTagsAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`
@@ -356,8 +350,10 @@ type bookmarkTagsCursor struct {
 	consumed int
 }
 
+// IsZero 报告是否既没有消费批内条目，也没有上游 cursor。
 func (c bookmarkTagsCursor) IsZero() bool { return c.consumed == 0 && c.upstream.IsZero() }
 
+// String 把上游 cursor 与已消费条数序列化成稳定的 cursor 文本；零值返回空串。
 func (c bookmarkTagsCursor) String() string {
 	if c.IsZero() {
 		return ""

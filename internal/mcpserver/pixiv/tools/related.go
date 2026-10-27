@@ -1,5 +1,3 @@
-// User relation tools and their SDK pagination.
-
 package tools
 
 import (
@@ -18,7 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerBlockedUsers 注册 pixiv_blocked_users。
 func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
@@ -45,8 +42,6 @@ func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) 
 	}
 	return t.listUserRelations(ctx, "blocked", userID, in.Restrict, plan, in.Limit)
 }
-
-// registerFollowUser 注册 pixiv_follow_user。
 func (t pixivTools) registerFollowUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_follow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Follow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input followUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.followUserHandler(ctx, input)
@@ -66,8 +61,6 @@ func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mc
 		})
 	})
 }
-
-// registerMypixiv 注册 pixiv_mypixiv。
 func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_mypixiv", Description: "Browse MyPixiv artworks, novels or users for the authenticated account.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel, kindUser)}, "kind"),
@@ -76,7 +69,7 @@ func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	})
 }
 
-// mypixivIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// mypixivIn 的 kind 选择作品、小说或用户列表；输出统一为 records envelope。
 type mypixivIn struct {
 	Kind string `json:"kind"`
 
@@ -169,8 +162,6 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out), out, nil
 }
-
-// registerUnfollowUser 注册 pixiv_unfollow_user。
 func (t pixivTools) registerUnfollowUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_unfollow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Unfollow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input unfollowUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.unfollowUserHandler(ctx, input)
@@ -189,8 +180,6 @@ func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) 
 		})
 	})
 }
-
-// registerUserRelations 注册 pixiv_user_relations。
 func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_relations", Description: "Browse followers, following or related users; restrict applies only to followers/following.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "user_filter": filters.UserFilterSchema()}, "relation"),
@@ -199,7 +188,7 @@ func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	})
 }
 
-// userRelationsIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// userRelationsIn 的 kind 区分关注者、关注中、相关用户与屏蔽列表。
 type userRelationsIn struct {
 	Relation   string              `json:"relation"`
 	UserID     int64               `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`
@@ -227,8 +216,8 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 	return t.listUserRelations(ctx, in.Relation, userID, in.Restrict, plan, in.Limit)
 }
 
-// listUserRelations 在账号池重放边界内收集 followers/following/related/blocked 用户列表并
-// 输出统一 records envelope；调用方负责解析账号与分页计划。
+// listUserRelations 在账号池重放边界内收集关注者、关注中、相关或屏蔽用户，输出统一的
+// records envelope；账号与分页计划由调用方解析。
 func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolrun.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
