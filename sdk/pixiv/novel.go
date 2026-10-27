@@ -1,6 +1,3 @@
-// novel 领域：详情、排行、推荐、系列、搜索、时间线、用户小说与正文。
-// 请求类型、响应结构与映射、continuation Spec 都在本文件；共用映射在 response.go。
-
 package pixiv
 
 import (
@@ -13,9 +10,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// novelWire 是 App API 所有 novel 响应的共同结构。search 要求
-// x_restrict/text_length/is_original 存在，其余端点把缺失值当作零值；因此这三
-// 个字段保持指针，由调用端点决定是否要求。
+// novelWire is the shape every App API novel response shares. Search requires
+// x_restrict, text_length, and is_original, while other endpoints treat a missing
+// value as zero; the three stay pointers so each endpoint decides whether to
+// require them.
 type novelWire struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
@@ -61,8 +59,8 @@ type novelSeriesWire struct {
 	NextURL *string                          `json:"next_url"`
 }
 
-// mapNovel 把一份上游 novel 响应映射为公开模型。cover 与 user profile 都经
-// 受 policy 校验的资源边界创建。
+// mapNovel maps one upstream novel response to the public model. The cover and
+// user profile are created through the policy-checked resource boundary.
 func (c *Client) mapNovel(value novelWire) (Novel, error) {
 	published, err := parseUTCTime(value.CreateDate)
 	if err != nil {
@@ -275,9 +273,9 @@ func (c *Client) NovelContent(ctx context.Context, request NovelContentRequest) 
 	return NovelContent{}, newError("NovelContent", sdk.ContentUnavailable, "novel content is unsupported by the v1 App API")
 }
 
-// RecommendedNovels lists recommended novels. RecommendedNovels
-// lists recommended novels. 续页以上游 next_url 的多参数
-// 集整体回放（offset、already_recommended、bookmark 游标）。
+// RecommendedNovels lists recommended novels. The next page replays the
+// multi-parameter upstream next_url as a unit (offset, already_recommended, and
+// bookmark cursor).
 func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovelsRequest) (sdk.Page[Novel], error) {
 	ctx = logging.WithOperation(ctx, "RecommendedNovels")
 	query := url.Values{}
@@ -381,8 +379,9 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 	return c.novelOffsetPage(ctx, "MyPixivNovels", pixivapi.PathNovelMyPixiv, query, query, offset, novelMyPixivContinuation, false)
 }
 
-// novelOffsetPage 是所有 offset 续页 novel 列表的共同实现，端点之间只有
-// 路径、query、游标绑定值、continuation allowlist 与搜索字段要求不同。
+// novelOffsetPage backs every offset-paginated novel list. Endpoints differ only
+// in path, query, cursor binding value, continuation allowlist, and whether
+// search fields are required.
 func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, base, query url.Values, offset int, spec continuationSpec, requireSearchFields bool) (sdk.Page[Novel], error) {
 	query = cloneValues(query)
 	if offset > 0 {

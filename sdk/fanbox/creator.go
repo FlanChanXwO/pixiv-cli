@@ -1,6 +1,3 @@
-// FANBOX 创作者操作：资料、支持中/关注中的创作者列表和 featured tags。
-// 请求类型、响应结构与映射在本文件；分页和游标在 pagination.go。
-
 package fanbox
 
 import (
@@ -50,7 +47,8 @@ type tagWire struct {
 // CreatorListKind selects the kind of creator list.
 type CreatorListKind string
 
-// CreatorListKind values define the supported creator lists.
+// CreatorListSupporting and CreatorListFollowing select the two creator lists
+// the account exposes.
 const (
 	CreatorListSupporting CreatorListKind = "supporting"
 	CreatorListFollowing  CreatorListKind = "following"
@@ -62,7 +60,7 @@ type CreatorRequest struct {
 }
 
 // CreatorsRequest lists supporting or following creators. Repeat the original
-// Kind when continuing with Cursor.
+// Kind when continuing with a cursor, or the cursor is rejected.
 type CreatorsRequest struct {
 	Kind   CreatorListKind
 	Cursor sdk.Cursor

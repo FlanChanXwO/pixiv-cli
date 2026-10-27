@@ -6,13 +6,14 @@ import (
 	"time"
 )
 
-// Reason is a stable, machine-readable error classification shared by both
-// product SDKs. Reasons are part of the v1 compatibility contract: a reason
-// may only be added, never removed, renamed, or reused for a different meaning.
+// Reason classifies a failure in a form both product SDKs share and callers can
+// match on. Reasons are part of the v1 contract: new reasons may be added, but
+// an existing one is never removed, renamed, or reused for another meaning.
 type Reason string
 
-// The v1 error reasons are the stable, machine-readable classifications shared
-// by both product SDKs.
+// InvalidArgument and the remaining reasons are the stable v1 classifications
+// both product SDKs return. A reason may be added, never removed, renamed, or
+// reused for another meaning.
 const (
 	InvalidArgument           Reason = "invalid_argument"
 	InvalidCursor             Reason = "invalid_cursor"
@@ -31,11 +32,12 @@ const (
 	RemovedSetting            Reason = "removed_setting"
 )
 
-// Transport classifies the transport layer a failure originated in. It helps
-// callers distinguish network-level failures from classified upstream errors.
+// Transport identifies the layer a transport failure came from, which lets
+// callers tell network problems apart from classified upstream errors.
 type Transport string
 
-// Transport kinds classify the transport layer a failure originated in.
+// TransportHTTP and the other Transport values name the layer a failure came
+// from.
 const (
 	TransportHTTP  Transport = "http"
 	TransportTLS   Transport = "tls"
@@ -44,20 +46,19 @@ const (
 )
 
 // RetryAdvice carries retry information derived only from verified upstream
-// sources. Safe expresses that the operation can be safely retried from an
-// operation-commit perspective; it does not mean the SDK retries automatically.
-// After is only populated from a validated upstream value and is meaningful
-// when HasAfter is true.
+// sources. Safe means the operation can be retried without risking a duplicate
+// commit; the SDK never retries on its own. After comes from a validated
+// upstream value and is meaningful only when HasAfter is true.
 type RetryAdvice struct {
 	Safe     bool
 	After    time.Time
 	HasAfter bool
 }
 
-// Error is a classified, redacted error returned by the product SDKs and by
-// this package's parsing helpers. It implements error, errors.Is, and
-// errors.As, and its Unwrap chain preserves context.Canceled and
-// context.DeadlineExceeded when one of those caused the failure.
+// Error carries a classified, redacted failure from the product SDKs and this
+// package's parsing helpers. It implements error, errors.Is, and errors.As, and
+// its Unwrap chain preserves context.Canceled and context.DeadlineExceeded when
+// one of those caused the failure.
 //
 // The error chain never contains raw URLs, request headers, response bodies,
 // tokens, cookies, proxy userinfo, browser paths, or configuration content.
@@ -74,7 +75,7 @@ type Error struct {
 	cause error
 }
 
-// ErrorOption configures a classified error during construction.
+// ErrorOption adds classification fields while NewError builds an Error.
 type ErrorOption func(*Error)
 
 // WithCause attaches a redacted underlying cause. The chain must not contain
@@ -84,8 +85,8 @@ func WithCause(cause error) ErrorOption {
 	return func(e *Error) { e.cause = cause }
 }
 
-// WithHTTPStatus attaches the normalized upstream HTTP status code. Zero is
-// treated as "not provided".
+// WithHTTPStatus records the normalized upstream HTTP status; zero means
+// upstream reported none.
 func WithHTTPStatus(status int) ErrorOption {
 	return func(e *Error) { e.HTTPStatus = status }
 }
@@ -116,8 +117,8 @@ func NewError(product, operation string, reason Reason, opts ...ErrorOption) *Er
 	return e
 }
 
-// Error returns a safe, human-readable summary. It never includes raw upstream
-// artifacts; the cause is expected to be a redacted classification.
+// Error renders a human-readable summary that never includes raw upstream
+// artifacts; the cause is a redacted classification.
 func (e *Error) Error() string {
 	head := e.Product
 	if head == "" {
@@ -137,8 +138,8 @@ func (e *Error) Error() string {
 // the chain (for example to match context.Canceled).
 func (e *Error) Unwrap() error { return e.cause }
 
-// Is reports whether target is an *Error with the same Reason. This lets a
-// classified error match a Reason-only sentinel.
+// Is matches target by Reason, letting a classified error match a Reason-only
+// sentinel.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
 	if !ok || t == nil {
@@ -147,7 +148,7 @@ func (e *Error) Is(target error) bool {
 	return t.Reason != "" && e.Reason == t.Reason
 }
 
-// ReasonOf returns the sdk.Reason of err when it is or wraps an *Error, and the
+// ReasonOf returns the Reason of err when it is or wraps an *Error, and the
 // empty string otherwise.
 func ReasonOf(err error) Reason {
 	var target *Error

@@ -1,6 +1,3 @@
-// bookmark 领域：作品与小说的收藏详情、收藏列表和收藏标签。
-// 收藏写操作在 mutation.go；请求类型与 continuation Spec 都在本文件。
-
 package pixiv
 
 import (
@@ -35,7 +32,8 @@ type bookmarkDetailWire struct {
 	} `json:"bookmark_detail"`
 }
 
-// bookmarkDetail 将作品与小说的未收藏响应归一为空状态，只保留已登记的收藏标签。
+// bookmarkDetail normalizes an unbookmarked artwork or novel response to the
+// empty state and keeps only registered bookmark tags.
 func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter string, id int64) (Restrict, []string, error) {
 	var raw bookmarkDetailWire
 	if err := c.app.GetJSON(ctx, path, url.Values{parameter: {itoa(id)}}, &raw); err != nil {
@@ -46,7 +44,8 @@ func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter 
 		return "", []string{}, nil
 	}
 	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		// 未收藏响应中的 tags 可能属于作品自身，保持空的收藏状态。
+		// Tags in an unbookmarked response may describe the work itself, so report
+		// an empty bookmark state.
 		return "", []string{}, nil
 	}
 	tags := []string{}
@@ -204,8 +203,8 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 }
 
 // UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
-// novels. The candidate upstream endpoint currently has no continuation
-// contract, so a non-zero cursor is rejected instead of being guessed.
+// novels. The upstream endpoint offers no continuation, so a non-zero cursor
+// returns InvalidCursor.
 func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
 	ctx = logging.WithOperation(ctx, "UserNovelBookmarkTags")
 	if request.UserID <= 0 {
@@ -237,9 +236,9 @@ func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBoo
 	return sdk.Page[BookmarkTag]{Items: items}, nil
 }
 
-// NovelBookmark reads the current user's bookmark detail for one novel.
-// The upstream route is a candidate and is kept endpoint-oriented; it does
-// not expose novel metadata or mutation outcome through this method.
+// NovelBookmark reads the current user's bookmark detail for one novel. It
+// returns the visibility and tags only; novel metadata and mutation outcomes
+// come from the other novel operations.
 func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
 	ctx = logging.WithOperation(ctx, "NovelBookmark")
 	if request.NovelID <= 0 {
@@ -283,9 +282,8 @@ type UserNovelBookmarksRequest struct {
 }
 
 // UserNovelBookmarkTagsRequest lists the bookmark tags of one user's
-// bookmarked novels. The candidate upstream endpoint currently has no
-// continuation contract; Cursor is retained so the public page shape can be
-// extended without replacing this request type when that contract is frozen.
+// bookmarked novels. Cursor must stay zero because the upstream endpoint
+// offers no continuation.
 type UserNovelBookmarkTagsRequest struct {
 	UserID   int64
 	Restrict Restrict

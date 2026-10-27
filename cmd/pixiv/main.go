@@ -1,3 +1,5 @@
+// pixiv 是 Pixiv 与 FANBOX 的命令行入口。它从 main 转发参数、
+// 标准流和进程信号，命令树与运行时的构造在 internal/cli。
 package main
 
 import (
@@ -13,8 +15,9 @@ func main() {
 	os.Exit(run(os.Args, os.Stdin, os.Stdout, os.Stderr))
 }
 
-// run 将 Ctrl+C 与终止信号作为根 context 传入 CLI；defer stop 解除 signal 包安装的处理器，
-// 使嵌入式测试和未来重复调用不会遗留 handler。CLI runtime 在 Run 返回前显式关闭。
+// run 把中断与终止信号转成根 context 后交给 CLI。
+// defer stop 解除 signal 安装的处理器，嵌入式调用不会遗留 handler；
+// CLI runtime 在 Run 返回前自行关闭。
 func run(args []string, in *os.File, out, errOut *os.File) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

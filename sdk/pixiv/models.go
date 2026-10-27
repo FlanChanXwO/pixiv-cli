@@ -11,7 +11,8 @@ import (
 // recommendation sources.
 type Restrict string
 
-// Restrict values select the bookmark or following visibility scope.
+// RestrictPublic is the public scope, visible to other users; RestrictPrivate
+// keeps the item visible only to its owner.
 const (
 	RestrictPublic  Restrict = "public"
 	RestrictPrivate Restrict = "private"
@@ -20,7 +21,8 @@ const (
 // ArtworkKind distinguishes the artwork types unified in Artwork.
 type ArtworkKind string
 
-// ArtworkKind values distinguish the artwork types unified in Artwork.
+// ArtworkKindIllustration, ArtworkKindManga, and ArtworkKindUgoira are the
+// three upstream types Artwork represents.
 const (
 	ArtworkKindIllustration ArtworkKind = "illustration"
 	ArtworkKindManga        ArtworkKind = "manga"
@@ -30,14 +32,14 @@ const (
 	ArtworkKindUnknown ArtworkKind = "unknown"
 )
 
-// Tag is a single Pixiv tag. TranslatedName is empty when upstream provided no
-// translation.
+// Tag names one artwork or novel tag. TranslatedName is empty when upstream
+// provided no translation.
 type Tag struct {
 	Name           string `json:"name"`
 	TranslatedName string `json:"translated_name"`
 }
 
-// ImageResource is a first-party image exposed through the shared resource
+// ImageResource exposes a first-party image through the shared resource
 // contract. Variant records the upstream size role (for example "original",
 // "medium", or "square_medium") when upstream provided one. Width and Height
 // are zero when upstream did not provide them.
@@ -48,8 +50,8 @@ type ImageResource struct {
 	Height   int          `json:"height"`
 }
 
-// Stamp is a Pixiv comment stamp. Image is a first-party resource identified
-// by the stable stamp ID; upstream does not provide image dimensions here.
+// Stamp identifies one Pixiv comment stamp. Image is a first-party resource
+// keyed by the stable stamp ID; upstream provides no image dimensions here.
 type Stamp struct {
 	ID    int64         `json:"id"`
 	Image ImageResource `json:"image"`
@@ -64,7 +66,7 @@ type ArtworkPage struct {
 	Height    int           `json:"height"`
 }
 
-// ArtworkSeriesSummary 是作品响应中的系列标识摘要。
+// ArtworkSeriesSummary identifies the series an artwork belongs to.
 type ArtworkSeriesSummary struct {
 	ID    int64  `json:"id"`
 	Title string `json:"title"`
@@ -98,7 +100,7 @@ type Artwork struct {
 	Cover          ImageResource `json:"cover"`
 	Pages          []ArtworkPage `json:"pages,omitempty"`
 
-	// Viewer 与 safety 字段为 nil 表示当前 endpoint 未提供该值。
+	// Nil viewer and safety fields mean the current endpoint did not provide them.
 	IsBookmarked          *bool                 `json:"is_bookmarked,omitempty"`
 	IsMuted               *bool                 `json:"is_muted,omitempty"`
 	Visible               *bool                 `json:"visible,omitempty"`
@@ -208,7 +210,8 @@ type UserPreview struct {
 	Novels  []Novel   `json:"novels"`
 }
 
-// Comment is a single comment on an artwork or novel.
+// Comment carries one comment left on an artwork or novel, with its parent
+// chain and author already resolved.
 type Comment struct {
 	ID            int64     `json:"id"`
 	User          User      `json:"user"`
@@ -259,7 +262,8 @@ type CommentPage struct {
 	AccessControl *CommentAccessControl `json:"access_control"`
 }
 
-// NovelSeries is an addressable novel series.
+// NovelSeries identifies a novel series, addressable by its stable upstream
+// ID.
 type NovelSeries struct {
 	ID          int64  `json:"id"`
 	Title       string `json:"title"`
@@ -328,7 +332,8 @@ func marshalBookmarkDetail(restrict Restrict, tags []string) ([]byte, error) {
 // SearchTarget selects which novel or artwork fields a search query matches.
 type SearchTarget string
 
-// SearchTarget values select which fields a search query matches.
+// SearchTargetPartialMatchForTags matches tags flexibly; the other values match
+// exact tags, title and caption text, or free keywords.
 const (
 	SearchTargetPartialMatchForTags SearchTarget = "partial_match_for_tags"
 	SearchTargetExactMatchForTags   SearchTarget = "exact_match_for_tags"
@@ -339,7 +344,8 @@ const (
 // SortMode orders search results.
 type SortMode string
 
-// SortMode values define the supported SortMode filesystem.
+// SortModeDateDesc and the other SortMode values order search results by
+// publication date or popularity.
 const (
 	SortModeDateDesc    SortMode = "date_desc"
 	SortModeDateAsc     SortMode = "date_asc"
@@ -349,7 +355,8 @@ const (
 // DurationFilter narrows search results to a recent publication window.
 type DurationFilter string
 
-// DurationFilter values define the supported DurationFilter filesystem.
+// DurationLastDay, DurationLastWeek, and DurationLastMonth narrow results to a
+// recent publication window.
 const (
 	DurationLastDay   DurationFilter = "within_last_day"
 	DurationLastWeek  DurationFilter = "within_last_week"
@@ -359,7 +366,8 @@ const (
 // RankingMode selects an artwork or novel ranking category.
 type RankingMode string
 
-// RankingMode values define the supported RankingMode filesystem.
+// RankingModeDay and the other RankingMode values select an artwork or novel
+// ranking category, including the R18 and manga variants.
 const (
 	RankingModeDay             RankingMode = "day"
 	RankingModeDayMale         RankingMode = "day_male"
@@ -382,7 +390,8 @@ const (
 // SearchContentType filters artwork search results by kind.
 type SearchContentType string
 
-// SearchContentType values define the supported SearchContentType filesystem.
+// SearchContentTypeAll and the other SearchContentType values filter artwork
+// search results by kind.
 const (
 	SearchContentTypeAll             SearchContentType = "all"
 	SearchContentTypeIllustAndUgoira SearchContentType = "illust-and-ugoira"
@@ -394,7 +403,8 @@ const (
 // SearchAIMode filters artwork search results by AI-generated content.
 type SearchAIMode string
 
-// SearchAIMode values define the supported SearchAIMode filesystem.
+// SearchAIModeAll, SearchAIModeExclude, and SearchAIModeOnly filter search
+// results by AI-generated content.
 const (
 	SearchAIModeAll     SearchAIMode = "all"
 	SearchAIModeExclude SearchAIMode = "exclude"
@@ -404,7 +414,8 @@ const (
 // SearchAspectRatio filters artwork search results by aspect ratio.
 type SearchAspectRatio string
 
-// SearchAspectRatio values define the supported SearchAspectRatio filesystem.
+// SearchAspectRatioAll and the other SearchAspectRatio values filter search
+// results by aspect ratio.
 const (
 	SearchAspectRatioAll       SearchAspectRatio = "all"
 	SearchAspectRatioLandscape SearchAspectRatio = "landscape"
@@ -415,7 +426,8 @@ const (
 // SearchResolution filters artwork search results by resolution band.
 type SearchResolution string
 
-// SearchResolution values define the supported SearchResolution filesystem.
+// SearchResolutionAll and the other SearchResolution values filter search
+// results by resolution band.
 const (
 	SearchResolutionAll    SearchResolution = "all"
 	SearchResolutionHigh   SearchResolution = "high"

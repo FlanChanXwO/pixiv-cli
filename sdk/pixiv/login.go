@@ -1,5 +1,3 @@
-// One-shot PKCE login state and SDK credentials; OAuth owns the exchange transport.
-
 package pixiv
 
 import (
@@ -38,7 +36,9 @@ type loginSessionState struct {
 	authorizationURL string
 	verifier         string
 	state            string
-	used             atomic.Bool
+	// used is swapped once before the code exchange so concurrent Complete calls
+	// cannot exchange the same code twice.
+	used atomic.Bool
 }
 
 // BeginLogin creates a one-shot programmatic login session. The session does

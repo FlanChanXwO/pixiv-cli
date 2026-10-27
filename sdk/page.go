@@ -2,8 +2,7 @@ package sdk
 
 import "encoding/json"
 
-// Page holds one page of results from a list operation and the cursor needed
-// to fetch the next page.
+// Page pairs one page of list results with the cursor for the next page.
 //
 // A successful page with no items must have a non-nil empty Items slice rather
 // than a nil slice. Next.IsZero() reports that there is no further page; a

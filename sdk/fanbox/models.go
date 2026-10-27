@@ -9,14 +9,15 @@ import (
 // AssetKind distinguishes first-party image and file assets.
 type AssetKind string
 
-// AssetKind values define the supported AssetKind filesystem.
+// AssetKindImage and AssetKindFile distinguish the two media kinds a post body
+// can carry.
 const (
 	AssetKindImage AssetKind = "image"
 	AssetKindFile  AssetKind = "file"
 )
 
-// ImageResource is a first-party FANBOX image exposed through the shared
-// resource contract.
+// ImageResource exposes a first-party FANBOX image through the shared resource
+// contract.
 type ImageResource struct {
 	Resource sdk.Resource `json:"resource"`
 	Variant  string       `json:"variant"`
@@ -24,22 +25,23 @@ type ImageResource struct {
 	Height   int          `json:"height"`
 }
 
-// FileResource is a first-party FANBOX file exposed through the shared resource
+// FileResource exposes a first-party FANBOX file through the shared resource
 // contract.
 type FileResource struct {
 	Resource sdk.Resource `json:"resource"`
 	Name     string       `json:"name"`
 }
 
-// CreatorSummary is a creator identity used in list results.
+// CreatorSummary identifies a creator in list results without the full
+// profile.
 type CreatorSummary struct {
 	ID   string        `json:"id"`
 	Name string        `json:"name"`
 	Icon ImageResource `json:"icon"`
 }
 
-// Creator is a creator profile. Optional fields remain zero when upstream does
-// not provide them.
+// Creator is a creator profile; optional fields stay zero when upstream omits
+// them. PlanFee carries the upstream plan fee value unchanged.
 type Creator struct {
 	CreatorSummary
 	HasAdultContent   bool          `json:"has_adult_content"`
@@ -49,10 +51,11 @@ type Creator struct {
 	HasSupportingPlan bool          `json:"has_supporting_plan"`
 }
 
-// PostBlockKind is the structured kind of a post body block.
+// PostBlockKind classifies a structured block of a post body.
 type PostBlockKind string
 
-// PostBlockKind values define the supported PostBlockKind filesystem.
+// PostBlockImage, PostBlockFile, PostBlockArticle, and PostBlockVideo name the
+// block shapes the SDK decodes.
 const (
 	PostBlockImage   PostBlockKind = "image"
 	PostBlockFile    PostBlockKind = "file"
@@ -63,13 +66,13 @@ const (
 	PostBlockUnknown PostBlockKind = "unknown"
 )
 
-// PostImageBlock is a first-party image block in a post body.
+// PostImageBlock carries a first-party image inside a post body.
 type PostImageBlock struct {
 	Resource sdk.Resource `json:"resource"`
 	Caption  string       `json:"caption"`
 }
 
-// PostFileBlock is a first-party file block in a post body.
+// PostFileBlock carries a first-party file attachment inside a post body.
 type PostFileBlock struct {
 	Resource sdk.Resource `json:"resource"`
 	Name     string       `json:"name"`
@@ -111,8 +114,9 @@ type PostBlock struct {
 	Unknown *PostUnknownBlock `json:"unknown"`
 }
 
-// Asset is one first-party media asset of a post. Assets are flattened in
-// upstream display order, including article image blocks.
+// Asset is one first-party media item of a post, including images inside
+// article blocks. Assets lists every image before every file, so it does not
+// preserve the cross-type order of Blocks.
 type Asset struct {
 	ID        string        `json:"id"`
 	Kind      AssetKind     `json:"kind"`
@@ -121,18 +125,18 @@ type Asset struct {
 	Thumbnail ImageResource `json:"thumbnail"`
 }
 
-// PostBody is the structured body of a post. Text carries the caption text;
-// Blocks preserve the ordered block structure; Assets flatten every first-party
-// media item in display order. Restricted posts have a nil Body and only a
-// summary.
+// PostBody carries a post's caption text, its ordered Blocks, and every
+// first-party media item flattened into Assets. Assets groups images before
+// files; Blocks is the source of cross-type display order. Restricted posts have
+// a nil Body and only summary fields.
 type PostBody struct {
 	Text   string      `json:"text"`
 	Blocks []PostBlock `json:"blocks"`
 	Assets []Asset     `json:"assets"`
 }
 
-// Post is a FANBOX post. PublishedAt is the UTC publication time. A restricted
-// post carries only the summary fields and a nil Body.
+// Post is a FANBOX post. PublishedAt is UTC. A restricted post carries only
+// summary fields and a nil Body.
 type Post struct {
 	ID            string        `json:"id"`
 	Title         string        `json:"title"`
@@ -147,7 +151,7 @@ type Post struct {
 	Body          *PostBody     `json:"body"`
 }
 
-// User is the current authenticated FANBOX identity.
+// User is the identity of the session that opened the client.
 type User struct {
 	UserID        int64  `json:"user_id"`
 	DisplayName   string `json:"display_name"`
