@@ -1,4 +1,4 @@
-// Package timeline owns the authenticated `pixiv timeline` command group.
+// Package timeline 提供 pixiv timeline 命令组：关注用户的新作品与全站最新作品、小说。
 package timeline
 
 import (
@@ -32,7 +32,7 @@ type commandRunner struct {
 	run pixivcmd.Runner
 }
 
-// New builds the actual `pixiv timeline` command group.
+// New 构造 `pixiv timeline` 命令组；following 与 latest 共用分页、代理覆盖和输出判定。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}

@@ -1,4 +1,7 @@
-// Package user owns the Pixiv user command group.
+// Package user 提供 pixiv user 命令组：用户搜索、详情、作品、收藏、关注关系与屏蔽列表。
+//
+// 包的组成：[New] 组装命令组，[NewSearch] 组装用户搜索，[SearchOptions] 携带搜索参数；
+// 输出在 presentation.go。
 package user
 
 import (
@@ -31,8 +34,7 @@ type commandRunner struct {
 	runner pixivcmd.Runner
 }
 
-// currentUserID keeps the user commands' typed unauthorized classification
-// when the opened account has no identity.
+// currentUserID 在已打开账号没有身份时保留类型化的未认证错误，避免退化成通用失败。
 func currentUserID(client *pixiv.Client) (int64, error) {
 	if id := client.UserID(); id > 0 {
 		return id, nil
@@ -41,8 +43,7 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 		sdk.WithDetail("cannot determine current user id"))
 }
 
-// New builds the actual `pixiv user` command group. follow is assembled by the
-// composition root so this owner does not import a sibling command package.
+// New 构造 `pixiv user` 命令组。follow 命令由组合根注入，本包不直接依赖同级的 follow 包。
 func New(env command.Env, runner pixivcmd.Runner, follow func() *cobra.Command) *cobra.Command {
 	a := commandRunner{env: env, runner: runner}
 	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
@@ -63,15 +64,14 @@ func New(env command.Env, runner pixivcmd.Runner, follow func() *cobra.Command) 
 	return cmd
 }
 
-// NewSearch builds the canonical user-search command for the compatible
-// `pixiv user search` route and root `pixiv search --type user` execution.
+// NewSearch 构造用户搜索命令，同时服务 `pixiv user search` 和
+// `pixiv search --type user` 两个入口。
 func NewSearch(env command.Env, runner pixivcmd.Runner) *cobra.Command {
 	return commandRunner{env: env, runner: runner}.newSearchCommand()
 }
 
-// SearchOptions carries the flags a compatible route already parsed for the
-// canonical user search. It exists so `pixiv search --type user` runs this
-// owner's execution instead of a second copy.
+// SearchOptions 携带兼容入口已解析的用户搜索 flag，让 `pixiv search --type user`
+// 复用这里的执行逻辑。
 type SearchOptions struct {
 	command.Options
 	NDJSON bool
@@ -79,7 +79,7 @@ type SearchOptions struct {
 	Page   int
 }
 
-// RunSearch executes the canonical user search for a compatible route.
+// RunSearch 按 SearchOptions 执行用户搜索；兼容入口调用它避免复制搜索逻辑。
 func RunSearch(cmd *cobra.Command, env command.Env, runner pixivcmd.Runner, args []string, opts SearchOptions) error {
 	return commandRunner{env: env, runner: runner}.runSearch(cmd, args, listOptions{
 		Options: opts.Options,

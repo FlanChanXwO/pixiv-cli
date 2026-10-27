@@ -1,4 +1,6 @@
-// Package auth owns local FANBOX authentication commands and secret prompts.
+// Package auth 提供 pixiv fanbox auth 命令组：FANBOX session 的导入、列表、选择、移除与状态检查。
+//
+// 包的组成：[New] 组装命令树，[BrowserProvider] 抽象浏览器凭据读取。
 package auth
 
 import (
@@ -41,12 +43,12 @@ type removeOptions struct {
 	yes     bool
 }
 
-// BrowserProvider reads one FANBOXSESSID from a browser profile.
+// BrowserProvider 从浏览器 profile 读取一个 FANBOXSESSID；reader 负责选择 profile。
 type BrowserProvider interface {
 	ReadSession(context.Context, string, string) (string, error)
 }
 
-// New builds the actual `pixiv fanbox auth` command group.
+// New 构造 `pixiv fanbox auth` 命令组；account 服务延迟打开，构造命令树不访问账号库。
 func New(env command.Env, accounts func() (*fanboxaccount.Service, error), browser BrowserProvider) *cobra.Command {
 	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{

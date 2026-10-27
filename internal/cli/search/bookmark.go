@@ -38,8 +38,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 	if err := validateArtworkPagePlan(request.Plan); err != nil {
 		return outcome, err
 	}
-	// The flag layer validates bounds first; this keeps the shared search
-	// contract intact for direct callers (the test seam and future owners).
+	// flag 层先校验边界；直接调用共享搜索时仍保留同样的约束。
 	if err := searchfilter.ValidateBookmarkRange(request.Query.BookmarkMin, request.Query.BookmarkMax); err != nil {
 		return outcome, bookmarkSearchError(err)
 	}
@@ -129,8 +128,7 @@ func validateArtworkPagePlan(plan pagination.PagePlan) error {
 	return nil
 }
 
-// bookmarkSearchError maps shared bookmark validation to this command's public
-// SDK error class while keeping the established messages.
+// bookmarkSearchError 把共享收藏校验错误映射成公开 SDK 的错误类别，并保留既有消息。
 func bookmarkSearchError(err error) error {
 	kind := sdk.InvalidArgument
 	switch {

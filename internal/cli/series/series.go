@@ -1,4 +1,4 @@
-// Package series owns the Pixiv artwork and novel series listing command.
+// Package series 提供 pixiv series 命令，列出作品或小说系列的条目。
 package series
 
 import (
@@ -30,7 +30,7 @@ type commandRunner struct {
 	exec   pixivcmd.Executor
 }
 
-// New builds the actual `pixiv series` command.
+// New 构造 `pixiv series` 命令；SERIES_ID_OR_URL 由请求解析器判定作品或小说系列。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	options := options{}

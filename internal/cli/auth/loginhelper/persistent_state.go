@@ -1,6 +1,3 @@
-// Persistent URL-handler manifest used to restore a user's previous pixiv://
-// association. Manifest contents are non-secret.
-
 package loginhelper
 
 import (

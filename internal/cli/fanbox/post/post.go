@@ -1,4 +1,6 @@
-// Package post owns FANBOX content listing and post presentation command.
+// Package post 提供 FANBOX 内容浏览命令：创作者、帖子、标签、home 与 supporting。
+//
+// 包的组成：[Commands] 组装整组命令，[PostsFetch] 生成帖子分页读取。
 package post
 
 import (
@@ -23,7 +25,7 @@ type commandRunner struct {
 	open func() (*session.Fanbox, error)
 }
 
-// Commands returns FANBOX content leaf commands for the root FANBOX group.
+// Commands 返回 FANBOX 内容叶子命令；open 延迟到实际执行时才打开账号。
 func Commands(env command.Env, open func() (*session.Fanbox, error)) []*cobra.Command {
 	a := commandRunner{env: env, open: open}
 	leaves := []*cobra.Command{

@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ReverseSearchRequest 是 search owner 传给反向搜图构造端口的单次请求。
+// ReverseSearchRequest 保存 search owner 传给反向搜图端口的一次请求。
 // 具体 provider client、凭据和快照生命周期仍由上层组合与 reversesearch.Service 管理。
 type ReverseSearchRequest struct {
 	Source             string
@@ -25,7 +25,7 @@ type ReverseSearchRequest struct {
 	HTTPSProxyOverride *string
 }
 
-// ReverseSearchFunc 是 CLI owner 使用的反向搜图窄执行端口。
+// ReverseSearchFunc 让 CLI owner 在不依赖 provider 包的情况下执行反向搜图。
 type ReverseSearchFunc func(context.Context, ReverseSearchRequest) (reversesearch.Response, error)
 
 func (a commandRunner) runReverseSearch(cmd *cobra.Command, source string, opts options) error {
@@ -217,7 +217,7 @@ func (a commandRunner) writeReverseSearchWarning(response reversesearch.Response
 	return err
 }
 
-// nonNil keeps empty JSON arrays as [] rather than null.
+// nonNil 让空 JSON 数组序列化为 []，避免输出 null。
 func nonNil[T any](values []T) []T {
 	if values == nil {
 		return []T{}

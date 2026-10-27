@@ -1,4 +1,7 @@
-// Package comment owns the Pixiv comment listing command and its presenters.
+// Package comment 提供 pixiv comment 命令：评论列表、发表、回复、删除和 stamp 列表。
+//
+// 包的组成：[New] 组装命令树。
+// 目标解析共用 [github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver]。
 package comment
 
 import (
@@ -41,7 +44,7 @@ type commandRunner struct {
 	exec   pixivcmd.Executor
 }
 
-// New builds the actual `pixiv comment` command.
+// New 构造 `pixiv comment` 命令及其增删改子命令；ID 统一由请求解析器确定作品或小说。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	options := options{}
@@ -269,7 +272,7 @@ func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOpt
 	if err := validateCommentType(cmd, opts.typ); err != nil {
 		return err
 	}
-	// sticker-only comments intentionally forward an empty --comment value.
+	// 只发 stamp 的评论会显式保留空的 --comment，SDK 据此区分纯贴纸和带文字评论。
 	if opts.stampID <= 0 {
 		return errors.New("--stamp-id must be positive")
 	}

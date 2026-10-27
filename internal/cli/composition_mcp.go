@@ -1,6 +1,3 @@
-// MCP 运行时装配：Pixiv/FANBOX SDK 端口、stdio/HTTP 生命周期与 MCP 登录。
-// 依赖由 composition.go 打开并登记；本文件只把一次 mcp 请求组装成 server。
-
 package cli
 
 import (
@@ -86,7 +83,7 @@ func pixivRequest(account pixivmcpserver.Account) pixivcmd.Request {
 func (a app) runMCPStdio(ctx context.Context, runtime settings.RuntimeConfig, sdkPorts pixivmcpserver.SDKPorts, fanboxPorts fanboxmcpserver.SDKPorts, ports pixivSDKPorts, request mcp.Request) error {
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
 	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: defaultDownloadService(), Path: runtime.DownloadPath, FilenameTemplate: runtime.FilenameTemplate, DirectoryTemplate: runtime.DirectoryTemplate}
-	// Resolve once through the local Facade, then pin all phases to that identity.
+	// 只经本地 Facade 解析一次身份，后续阶段固定使用同一账号，避免并发请求各选到不同账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		err := ports.execute(ctx, pixivcmd.Request{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *sdkpixiv.Client) (bool, error) {
 			account.UserID = client.UserID()
@@ -224,7 +221,7 @@ func initMCPAuth(ctx context.Context, reset bool) (string, error) {
 }
 
 func (a app) newMCPLogin(ctx context.Context, baseURL string, selection mcpaccounts.Selection, proxy *string) (*mcpaccounts.Login, error) {
-	// Login serializes starts; retain one successfully opened account service.
+	// 登录启动串行执行；成功后保留同一个账号服务，后续完成步骤复用它。
 	var service *pixivaccount.LoginService
 	return mcpaccounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
 		if service == nil {
@@ -250,7 +247,7 @@ func (a app) newMCPLogin(ctx context.Context, baseURL string, selection mcpaccou
 			AuthorizationURL: start.AuthorizationURL,
 			AcceptsCallback:  start.AcceptsCallbackURL,
 			Complete: func(ctx context.Context, callback string) (mcpaccounts.LoginResult, error) {
-				// This composition root owns explicit proxy/direct clients, not the SDK.
+				// 显式代理 client 由组合根创建，关闭也由它负责。
 				if options.HTTPClient != nil {
 					defer options.HTTPClient.CloseIdleConnections()
 				}

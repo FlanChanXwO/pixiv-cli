@@ -27,6 +27,7 @@ func newJSONArraySpool() (*jsonArraySpool, error) {
 	return &jsonArraySpool{file: file, first: true}, nil
 }
 
+// Write 把一条已编码的 JSON 值追加进数组，必要时补逗号。
 func (s *jsonArraySpool) Write(value []byte) (int, error) {
 	if !s.first {
 		if _, err := s.file.WriteString(","); err != nil {
@@ -58,8 +59,7 @@ func (s *jsonArraySpool) close() error {
 	return removeErr
 }
 
-// markNDJSON records detail's resolved output mode and installs the
-// broken-pipe policy only when a record stream will be written.
+// markNDJSON 记录 detail 的输出模式，只在确实要写记录流时安装 broken-pipe 策略。
 func (a commandRunner) markNDJSON(cmd *cobra.Command, enabled bool) {
 	command.SetOutputNDJSON(cmd, enabled)
 	if enabled && a.env.EnablePipelineSignal != nil {

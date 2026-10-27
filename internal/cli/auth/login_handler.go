@@ -1,6 +1,3 @@
-// Hidden desktop protocol callbacks: routes pixiv:// links and installs the
-// persistent URL handler.
-
 package auth
 
 import (

@@ -1,5 +1,3 @@
-// One-shot relay server session used by remote Pixiv login.
-
 package auth
 
 import (

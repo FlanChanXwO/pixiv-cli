@@ -1,5 +1,3 @@
-// Terminal prompts shared by every command owner.
-
 package command
 
 import (
@@ -15,8 +13,7 @@ import (
 
 var errPromptNotTTY = errors.New("interactive prompt is only available on a TTY")
 
-// terminalFD requires both streams to be terminals: prompts write to out, and a
-// password is read from the terminal's file descriptor without echoing.
+// terminalFD 要求输入和输出都是终端：提示写往 out，密码从终端的 fd 读取而不回显。
 func terminalFD(in io.Reader, out io.Writer) (int, error) {
 	reader, okIn := in.(interface{ Fd() uintptr })
 	writer, okOut := out.(interface{ Fd() uintptr })
@@ -30,13 +27,13 @@ func terminalFD(in io.Reader, out io.Writer) (int, error) {
 	return fd, nil
 }
 
-// CanPrompt reports whether both input and output are terminals.
+// CanPrompt 报告输入和输出是否都是终端，决定能否发起交互式提问。
 func (e Env) CanPrompt() bool {
 	_, err := terminalFD(e.In, e.Out)
 	return err == nil
 }
 
-// PromptInput reads one non-empty answer; empty input uses defaultValue.
+// PromptInput 读取一个非空回答；直接回车时使用 defaultValue，空答案会重新提问。
 func (e Env) PromptInput(message, defaultValue string) (string, error) {
 	if _, err := terminalFD(e.In, e.Out); err != nil {
 		return "", err
@@ -64,7 +61,7 @@ func (e Env) PromptInput(message, defaultValue string) (string, error) {
 	}
 }
 
-// PromptSecret reads an answer without echoing it.
+// PromptSecret 读取密码并在输入过程中关闭回显；空答案会重新提问。
 func (e Env) PromptSecret(message string) (string, error) {
 	fd, err := terminalFD(e.In, e.Out)
 	if err != nil {
@@ -90,7 +87,7 @@ func (e Env) PromptSecret(message string) (string, error) {
 	}
 }
 
-// PromptSelect prints options as a numbered list and returns the chosen one.
+// PromptSelect 打印编号选项并返回用户选择的那一项。
 func (e Env) PromptSelect(message string, options []string) (string, error) {
 	if len(options) == 0 {
 		return "", errors.New("no available options")
@@ -119,7 +116,7 @@ func (e Env) PromptSelect(message string, options []string) (string, error) {
 	}
 }
 
-// PromptConfirm reads y/yes, n/no, or the default for an empty answer.
+// PromptConfirm 接受 y/yes、n/no；直接回车使用 defaultValue。
 func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
 	if _, err := terminalFD(e.In, e.Out); err != nil {
 		return false, err
@@ -148,8 +145,7 @@ func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
 	}
 }
 
-// readLine returns one line without its terminator. A final line that ends at
-// EOF is still an answer, matching a terminal's last line before close.
+// readLine 返回去掉行尾的一行；EOF 前的最后一行也算回答，与终端关闭前的行为一致。
 func readLine(reader *bufio.Reader, w io.Writer, prompt string) (string, error) {
 	if err := writePrompt(w, "%s", prompt); err != nil {
 		return "", err

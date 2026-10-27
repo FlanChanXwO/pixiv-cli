@@ -1,6 +1,3 @@
-// Pixiv auth account commands: list, import/export, selection, checks, refresh,
-// and pool state. Account domain access is adapted in account_service.go.
-
 package auth
 
 import (
@@ -15,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// premiumStatusUnknown is printed when the refresh result has no premium evidence.
+// 刷新结果没有会员证据时输出 premiumStatusUnknown，不能据此断言账号不是会员。
 const premiumStatusUnknown = "unknown"
 
 type accountImportOptions struct {

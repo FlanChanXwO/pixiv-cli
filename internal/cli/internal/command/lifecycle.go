@@ -1,9 +1,13 @@
-// Package command 提供所有 CLI command owner 共用的无状态生命周期声明。
+// Package command 提供 CLI 各 command owner 共用的执行环境、生命周期声明、逻辑分页和输出暂存。
+//
+// 包的组成：[Env] 承载输入输出与 flag 绑定。
+// [Execution] 声明启动、更新和 MCP 等执行要求，[Plan] 表示逻辑分页，
+// [JSONArraySpool] 暂存单数组 JSON。
 package command
 
 import "github.com/spf13/cobra"
 
-// LifecycleAnnotationKey 是 command owner 与 composition root 之间的生命周期契约。
+// LifecycleAnnotationKey 存放 command owner 与 composition root 之间的生命周期契约。
 // 声明存放在 Cobra command 本身，避免进程级 command-pointer registry 泄漏状态。
 const LifecycleAnnotationKey = "pixiv-cli.lifecycle"
 
@@ -11,8 +15,8 @@ const LifecycleAnnotationKey = "pixiv-cli.lifecycle"
 // 把下游关闭管道造成的 EPIPE 视为正常结束。
 const OutputNDJSONAnnotationKey = "pixiv-cli.output-ndjson"
 
-// SetOutputNDJSON records whether this execution writes canonical NDJSON to
-// stdout. The root reads it to treat a downstream closed pipe as success.
+// SetOutputNDJSON 记录本次执行是否向 stdout 写标准 NDJSON；root 据此把下游关闭管道
+// 导致的 EPIPE 判为正常结束。
 func SetOutputNDJSON(cmd *cobra.Command, enabled bool) {
 	if cmd.Annotations == nil {
 		cmd.Annotations = make(map[string]string)
@@ -24,16 +28,16 @@ func SetOutputNDJSON(cmd *cobra.Command, enabled bool) {
 	cmd.Annotations[OutputNDJSONAnnotationKey] = "false"
 }
 
-// OutputNDJSON reports the decision recorded by [SetOutputNDJSON].
+// OutputNDJSON 读取 [SetOutputNDJSON] 记录的结果；未记录时返回 false。
 func OutputNDJSON(cmd *cobra.Command) bool {
 	return cmd.Annotations[OutputNDJSONAnnotationKey] == "true"
 }
 
-// offlineAnnotationKey marks a command execution whose classified input keeps
-// automatic update checks off. The auth owner sets it; the update owner reads it.
+// offlineAnnotationKey 标记本次执行不运行自动更新检查。auth 侧写入，update 侧读取；
+// 含凭据的输入分类成功后不再发起额外网络请求。
 const offlineAnnotationKey = "pixiv-cli.offline"
 
-// SetOffline records that this execution must skip the automatic update check.
+// SetOffline 让本次执行跳过自动更新检查，供会消费凭据或产生副作用的命令使用。
 func SetOffline(cmd *cobra.Command) {
 	if cmd.Annotations == nil {
 		cmd.Annotations = make(map[string]string)
@@ -41,21 +45,25 @@ func SetOffline(cmd *cobra.Command) {
 	cmd.Annotations[offlineAnnotationKey] = "true"
 }
 
-// IsOffline reports whether [SetOffline] was called for this execution.
+// IsOffline 报告本次执行是否调用过 [SetOffline]。
 func IsOffline(cmd *cobra.Command) bool {
 	return cmd.Annotations[offlineAnnotationKey] == "true"
 }
 
-// Execution 描述 root 在命令执行前后负责的通用生命周期行为。业务资源由各
-// command owner 的窄依赖端口按需创建，不在这里声明或定位。
+// Execution 描述 root 在命令执行前后负责的通用生命周期行为；业务资源由各
+// command owner 的窄依赖端口按需创建，不经过这里定位。
 type Execution struct {
-	StartupHooks    bool
-	EnsureConfig    bool
+	// StartupHooks 启用启动阶段的系统副作用：清理待安装更新和 pixiv:// handler。
+	StartupHooks bool
+	// EnsureConfig 确保默认配置文件存在，并在配置允许时启动日志。
+	EnsureConfig bool
+	// AutomaticUpdate 在命令成功后检查更新。
 	AutomaticUpdate bool
-	MCP             bool
+	// MCP 启用 MCP transport 专用的 broken-pipe 策略。
+	MCP bool
 }
 
-// Bind 把静态生命周期声明写入 command 自身。
+// Bind 把生命周期声明写进 command 的 annotation，子命令继承时逐级向上查找。
 func Bind(command *cobra.Command, execution Execution) {
 	if command.Annotations == nil {
 		command.Annotations = make(map[string]string)
@@ -73,43 +81,56 @@ func For(command *cobra.Command) Execution {
 	return Execution{StartupHooks: true}
 }
 
-// Normal 返回普通成功 CLI leaf 的共同生命周期。
+// Normal 返回普通 CLI 叶子命令的生命周期：启动钩子、确保配置并检查自动更新。
 func Normal() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true, AutomaticUpdate: true}
 }
 
+// AuthExport 关闭全部钩子：导出只写文档中约定的 stdout，不能混入启动或更新输出。
 func AuthExport() Execution { return Execution{} }
 
+// HiddenCallback 关闭全部钩子；系统协议回调必须只处理本次 URL。
 func HiddenCallback() Execution { return Execution{} }
 
+// AuthAccount 给账号管理叶子使用普通生命周期。
 func AuthAccount() Execution { return Normal() }
 
+// AuthLogin 给浏览器登录使用普通生命周期。
 func AuthLogin() Execution { return Normal() }
 
+// AuthBundleImport 不检查自动更新，避免导入凭据后立即发起无关网络请求。
 func AuthBundleImport() Execution {
 	result := AuthAccount()
 	result.AutomaticUpdate = false
 	return result
 }
 
+// ConfigPath 显式列出与 Normal 相同的字段；config path 需要配置目录，但不执行数据命令。
 func ConfigPath() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true, AutomaticUpdate: true}
 }
 
+// UpdateCommand 不运行自动更新检查，避免 update 命令递归触发自己。
 func UpdateCommand() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true}
 }
 
+// PixivData 给 Pixiv 数据命令使用普通生命周期。
 func PixivData() Execution { return Normal() }
 
+// DownloadCommand 给下载命令使用普通生命周期。
 func DownloadCommand() Execution { return Normal() }
 
+// FanboxData 给 FANBOX 数据命令使用普通生命周期。
 func FanboxData() Execution { return Normal() }
 
+// FanboxAuth 仍运行 root 启动钩子，但不确保默认配置文件；FANBOX 登录只需要清理待安装更新、
+// 维护 pixiv:// handler 和检查自动更新，不需要 Pixiv 配置的启动副作用。
 func FanboxAuth() Execution {
 	return Execution{StartupHooks: true, AutomaticUpdate: true}
 }
 
+// PixivMCP 启用启动钩子并确保配置，同时标记 MCP transport 以安装对应的管道策略。
 func PixivMCP() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true, MCP: true}
 }

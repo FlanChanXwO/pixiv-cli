@@ -1,4 +1,4 @@
-// Package ranking owns the Pixiv artwork and novel ranking command.
+// Package ranking 提供 pixiv ranking 命令，读取 Pixiv 作品与小说排行。
 package ranking
 
 import (
@@ -29,7 +29,7 @@ type commandRunner struct {
 	runner pixivcmd.Runner
 }
 
-// New builds the actual `pixiv ranking` command.
+// New 构造 `pixiv ranking` 命令，作品和小说排行共用同一套分页与输出。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	options := options{typ: string(resolver.ResultKindArtwork), mode: string(pixiv.RankingModeDay)}

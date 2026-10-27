@@ -1,8 +1,5 @@
 //go:build windows
 
-// Windows pixiv:// protocol registration through HKCU, including restoration
-// of the previous registry tree and delegation to its ProgID.
-
 package loginhelper
 
 import (
@@ -23,9 +20,8 @@ const defaultWindowsURLHandlerRegistryKey = `HKCU\Software\Classes\pixiv`
 const previousWindowsURLHandlerProgID = `pixiv-cli.previous-pixiv`
 const previousWindowsURLHandlerRegistryKey = `HKCU\Software\Classes\` + previousWindowsURLHandlerProgID
 
-// urlHandlerInstaller owns the Windows registry and shell boundaries. Production
-// code uses newURLHandlerInstaller; tests construct it with isolated keys and
-// recording commands.
+// urlHandlerInstaller 持有 Windows 注册表与 shell 边界。生产代码经 newURLHandlerInstaller
+// 构造；测试使用隔离的注册表键和记录型命令。
 type urlHandlerInstaller struct {
 	executable    func() (string, error)
 	runRegistry   func(context.Context, ...string) error

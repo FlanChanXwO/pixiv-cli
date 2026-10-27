@@ -14,6 +14,7 @@ import (
 // 也不会把浏览器路径带入用户可见错误。
 type SystemBrowserProvider struct{}
 
+// ReadSession 从系统浏览器读取 FANBOXSESSID；浏览器路径不会进入用户可见错误。
 func (SystemBrowserProvider) ReadSession(ctx context.Context, browser, profileID string) (session string, returnErr error) {
 	provider, err := system.New(browser)
 	if err != nil {

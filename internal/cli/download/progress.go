@@ -20,17 +20,19 @@ func NewProgressRendererForTerminal(errOut io.Writer) (func(sdk.SaveProgress), b
 	return renderer.Report, true
 }
 
-// ProgressRenderer serializes terminal progress updates for one download command.
+// ProgressRenderer 把一次下载命令的进度更新串行写入终端，避免多批下载交错的进度行。
 type ProgressRenderer struct {
 	writer   io.Writer
 	mu       sync.Mutex
 	finished bool
 }
 
+// NewProgressRenderer 创建只写一个终端的进度渲染器。
 func NewProgressRenderer(writer io.Writer) *ProgressRenderer {
 	return &ProgressRenderer{writer: writer}
 }
 
+// Report 串行输出一次保存进度；总数为 0 的未知进度不打印。
 func (r *ProgressRenderer) Report(progress sdk.SaveProgress) {
 	if progress.Total <= 0 {
 		return

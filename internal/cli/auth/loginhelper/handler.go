@@ -1,6 +1,3 @@
-// Routes pixiv:// callbacks to the local bridge, an explicit remote handoff,
-// or the previously registered URL handler.
-
 package loginhelper
 
 import (
@@ -15,14 +12,17 @@ import (
 // CallbackHandlingResult 只携带不含授权码或 token 的本地 bridge URL，或 remote
 // relay 返回的一次性最终页 session。callback 本身绝不写入 stdout/stderr。
 type CallbackHandlingResult struct {
-	LocalRelayURL    string
-	RemoteCallback   *RemoteCallbackSession
+	// LocalRelayURL 会把本次 Pixiv callback 放进 fragment，可能包含授权码；
+	// 只有 bridge 的基础地址可以记录，完整值按敏感数据处理。
+	LocalRelayURL string
+	// RemoteCallback 是远程 relay 返回的一次性结果会话；与 LocalRelayURL 至多一个非零。
+	RemoteCallback *RemoteCallbackSession
+	// RemoteLoginStart 只在收到 pixiv://remote-login 链接时填写，交由桌面端继续远程登录。
 	RemoteLoginStart *RemoteLoginStart
 }
 
-// callbackHandler routes a pixiv:// callback to the active local bridge, an
-// explicit remote handoff, or the previous URL handler. Production uses the
-// package defaults; tests construct it with recording dependencies.
+// callbackHandler 把 pixiv:// 回调分派给本地 bridge、显式建立的远程 handoff，或先前的
+// URL handler。生产代码使用包内默认实现；测试可换成记录型依赖。
 type callbackHandler struct {
 	relayURL       func(string) (string, error)
 	forwardRemote  func(context.Context, string) (*RemoteCallbackSession, error)

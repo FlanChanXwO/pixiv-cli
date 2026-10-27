@@ -1,6 +1,8 @@
-// Remote Pixiv login handoff: deep-link parsing, relay requests, and the private
-// one-shot state shared with the desktop callback handler.
-
+// Package loginhelper 接收 pixiv:// 回调，并管理远程登录中转与桌面协议关联。
+//
+// 包的组成：[HandleCallback] 分派系统回调，[StartRemoteLogin] 与 [RemoteCallbackSession]
+// 管理远程 relay，[Install] 和 [EnsurePersistentIfNeeded] 维护桌面 handler。回调与 relay
+// 的私有状态只留在本包，登录命令的上层流程在 auth 包。
 package loginhelper
 
 import (
@@ -30,19 +32,17 @@ const (
 
 var errNoActiveRemoteLogin = errors.New("no active remote login handoff")
 
-// remoteLoginHandoff owns the relay transport and conditional local cleanup.
-// Production code uses newRemoteLoginHandoff; same-package tests construct it
-// with a recording client or a failing cleanup.
+// remoteLoginHandoff 持有 relay 传输和一次性的本地清理。生产代码经 newRemoteLoginHandoff
+// 构造；同包测试可以换成记录型 client 或会失败的清理函数。
 type remoteLoginHandoff struct {
-	// httpClient never follows relay redirects. Request bodies contain a one-time
-	// proof and the Pixiv callback, so a 307/308 must not replay them to a new origin.
+	// httpClient 不跟随 relay 重定向：请求体含一次性 proof 和 Pixiv callback，
+	// 307/308 不能把它们重放到另一个 origin。
 	httpClient *http.Client
 	clear      func(activeRemoteLogin) error
 }
 
-// handoffHTTPClient never follows relay redirects. Request bodies contain a
-// one-time proof and the Pixiv callback, so a 307/308 must not replay them to a
-// new origin. It is shared so successive hand-offs reuse connections.
+// handoffHTTPClient 不跟随 relay 重定向：请求体含一次性 proof 和 Pixiv callback，
+// 307/308 不能把它们重放到另一个 origin。共享同一个 client 以复用连接。
 var handoffHTTPClient = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
@@ -54,8 +54,8 @@ func newRemoteLoginHandoff() remoteLoginHandoff {
 	}
 }
 
-// RemoteLoginStart 是 session page 交给 desktop handler 的一次性请求。它不包含
-// OAuth URL、token 或任何持久设备身份；proof 仅绑定这次会话。
+// RemoteLoginStart 承载 session page 交给 desktop handler 的一次性请求，
+// 不含 OAuth URL、token 或任何持久设备身份；proof 只绑定这次会话。
 type RemoteLoginStart struct {
 	Origin    string
 	SessionID string

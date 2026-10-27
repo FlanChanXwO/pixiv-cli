@@ -1,4 +1,6 @@
-// Package detail owns the Pixiv entity detail command and terminal presenter.
+// Package detail 提供 pixiv detail 命令，输出作品、小说、用户等实体的详情。
+//
+// 包的组成：[New] 组装命令树，[Options] 记录实体类型与输出选择；JSON 暂存在 output.go。
 package detail
 
 import (
@@ -23,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Options 是 detail 自己声明的 flags。它只保存 Cobra 解析结果，不创建资源。
+// Options 保存 detail 自己声明的 flag，只承接 Cobra 解析结果，不创建资源。
 type Options struct {
 	command.Options
 	input  *inputcmd.State
@@ -38,7 +40,7 @@ type commandRunner struct {
 	runner pixivcmd.Runner
 }
 
-// New builds the actual `pixiv detail` command.
+// New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	options := Options{typ: string(resolver.ResultKindArtwork)}

@@ -1,12 +1,5 @@
 package cli
 
-// 本文件负责 CLI 生产依赖装配：账号服务、Pixiv/FANBOX SDK 端口、下载服务与
-// 命令树依赖。MCP runtime 在 composition_mcp.go，反向搜图在 composition_search.go，
-// SDK options 翻译在 composition_options.go。
-//
-// 装配顺序即资源所有权顺序：这里打开的数据库与 SDK 资源都登记到 a.closeState，
-// 由 execution.go 统一关闭。
-
 import (
 	"context"
 	"crypto/sha256"
@@ -193,7 +186,7 @@ func defaultDownloadService() downloader.DownloadService {
 	}}
 }
 
-// commandEnv is the one execution environment every command owner receives.
+// commandEnv 构造所有 command owner 共用的执行环境；JSON 默认值按调用读取当前配置。
 func (a app) commandEnv() command.Env {
 	return command.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, EnablePipelineSignal: a.enablePipelineSignal, ResolveJSON: func(override *bool) (bool, error) {
 		if override != nil {
@@ -207,8 +200,7 @@ func (a app) commandEnv() command.Env {
 	}}
 }
 
-// commandExecutor loads the pool once per command tree and runs requests
-// through the public SDK replay boundary.
+// commandExecutor 在每个命令树内只打开一次账号池，之后所有请求都走公开 SDK 的重放边界。
 func (a app) commandExecutor() pixivcmd.Executor {
 	var once sync.Once
 	var ports pixivSDKPorts
@@ -222,7 +214,7 @@ func (a app) commandExecutor() pixivcmd.Executor {
 	}
 }
 
-// newAuthCommand constructs the Pixiv auth group with its account leaf.
+// newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开数据库。
 func (a app) newAuthCommand() *cobra.Command {
 	var once sync.Once
 	var account authcommands.AccountService

@@ -1,6 +1,3 @@
-// FANBOX command group. Leaf owners construct their own children; this file
-// only fixes the group's help text, flags, and order.
-
 package cli
 
 import (
@@ -9,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newFanboxCommand assembles the FANBOX product group.
+// newFanboxCommand 组装 FANBOX 产品组，只固定组的帮助文本、持久 flag 和子命令顺序。
 func newFanboxCommand(env command.Env, children []*cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fanbox",

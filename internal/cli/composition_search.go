@@ -1,5 +1,3 @@
-// 反向搜图的 CLI 与 MCP 装配：固定传输、凭据和 provider 默认值。
-
 package cli
 
 import (
@@ -58,7 +56,7 @@ func newMCPReverseSearchPorts(runtime settings.RuntimeConfig, request mcp.Reques
 	}, nil
 }
 
-// reverseSearchPort builds the reverse-search executor once per command tree.
+// reverseSearchPort 为每次命令树构造反向搜图端口；每次调用按当前配置重新读取 provider 和代理。
 func (a app) reverseSearchPort() search.ReverseSearchPort {
 	return func(ctx context.Context, request search.ReverseSearchRequest) (reversesearch.Response, error) {
 		runtime, err := a.runtimeConfig()

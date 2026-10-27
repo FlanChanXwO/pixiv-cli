@@ -1,6 +1,3 @@
-// Package pipeline owns the CLI's explicit stdin input codecs and their
-// resolved per-command state. It does not know any Pixiv or FANBOX business
-// semantics.
 package input
 
 import (
@@ -15,33 +12,33 @@ import (
 	"golang.org/x/term"
 )
 
-// Codec identifies the input protocol a command explicitly owns.
+// Codec 指明命令显式声明的 stdin 输入协议。
 type Codec string
 
 const (
-	// NoInput keeps stdin reserved for command-specific protocols such as MCP.
+	// NoInput 保留 stdin 给 MCP 等命令自有协议。
 	NoInput Codec = "none"
-	// TextValue maps the complete stdin stream to one positional value.
+	// TextValue 把整个 stdin 流映射成一个位置参数值。
 	TextValue Codec = "text-value"
-	// TextOrRecord distinguishes one raw value from the canonical NDJSON stream.
+	// TextOrRecord 区分单个原始值与标准 NDJSON 记录流。
 	TextOrRecord Codec = "text-or-record"
 )
 
-// Mode is the result of resolving a TextOrRecord stream.
+// Mode 记录 TextOrRecord 解析后得到文本还是记录。
 type Mode string
 
 const (
-	TextMode   Mode = "text"
+	// TextMode 表示 stdin 被解析成一个文本值。
+	TextMode Mode = "text"
+	// RecordMode 表示 stdin 被解析成 NDJSON 记录流。
 	RecordMode Mode = "record"
 )
 
-// InputSpec is the explicit input contract for one Cobra command.
+// InputSpec 是一条 Cobra 命令的显式输入契约。
 //
-// FillPosition is the zero-based positional slot filled by stdin. A command
-// with one required or optional value normally uses zero. A command such as
-// "config set KEY [VALUE]" uses one, so an explicit KEY remains the first
-// argument and only the omitted VALUE is read. MaxArgs is -1 for variadic
-// commands.
+// FillPosition 指定 stdin 填入的位置参数下标（从 0 开始）。只有一个必填或可选值的命令
+// 通常填 0；"config set KEY [VALUE]" 这类命令填 1，保留显式的 KEY 作为第一个参数，只读取
+// 省略的 VALUE。MaxArgs 为 -1 表示参数数量可变。
 type InputSpec struct {
 	Codec        Codec
 	MinArgs      int
@@ -53,12 +50,12 @@ type InputSpec struct {
 	IsTTY        func(io.Reader) bool
 }
 
-// AnnotationKey lets architecture checks prove that a command has a declared
-// codec without inspecting Use strings or inferring arity from help text.
+// AnnotationKey 让架构检查确认命令声明了输入 codec，不需要解析 Use 字符串或
+// 从帮助文本推断参数个数。
 const AnnotationKey = "pixiv-cli.input-spec"
 
-// State holds one command instance's resolved input. The command constructor
-// owns it; nothing is keyed by *cobra.Command or shared between executions.
+// State 保存一条命令实例解析后的输入。命令构造函数持有它；不按 *cobra.Command 建索引，
+// 也不在多次执行之间共享。
 type State struct {
 	resolved *resolvedInput
 }
@@ -69,9 +66,8 @@ type resolvedInput struct {
 	mode   Mode
 }
 
-// Args returns the positional arguments after stdin resolution. It falls back
-// to the caller's slice when Args has not run, for example when a test invokes
-// RunE directly.
+// Args 返回 stdin 解析后的位置参数；解析尚未发生时返回调用方的切片，
+// 例如测试直接调用 RunE 的场景。
 func (s *State) Args(fallback []string) []string {
 	if s == nil || s.resolved == nil {
 		return fallback
@@ -79,8 +75,7 @@ func (s *State) Args(fallback []string) []string {
 	return s.resolved.args
 }
 
-// Reader returns the replayable reader selected by the codec. Commands that do
-// not read stdin keep the configured reader.
+// Reader 返回 codec 选定的可重放 reader；不读取 stdin 的命令保留配置的 reader。
 func (s *State) Reader(fallback io.Reader) io.Reader {
 	if s == nil || s.resolved == nil || s.resolved.reader == nil {
 		return fallback
@@ -88,7 +83,7 @@ func (s *State) Reader(fallback io.Reader) io.Reader {
 	return s.resolved.reader
 }
 
-// Mode reports how the TextOrRecord stream was classified.
+// Mode 报告 TextOrRecord 流被判定为文本还是记录。
 func (s *State) Mode() Mode {
 	if s == nil || s.resolved == nil {
 		return TextMode
@@ -96,10 +91,8 @@ func (s *State) Mode() Mode {
 	return s.resolved.mode
 }
 
-// Bind attaches an InputSpec to cmd and returns the state resolved for this
-// command instance. It wraps the existing positional validator and RunE so
-// business code observes the resolved positional slice, while record consumers
-// can retrieve the replayable reader from State.Reader.
+// Bind 把 InputSpec 挂到 cmd 上并返回本次命令实例的输入状态。它包装原有的位置参数校验和
+// RunE，使业务代码看到解析后的参数切片，记录消费者则从 State.Reader 取得可重放 reader。
 func Bind(cmd *cobra.Command, spec InputSpec) *State {
 	if cmd == nil {
 		return nil
@@ -110,9 +103,8 @@ func Bind(cmd *cobra.Command, spec InputSpec) *State {
 	}
 	cmd.Annotations[AnnotationKey] = annotationValue(spec)
 	if spec.Codec == NoInput {
-		// NoInput is a declaration for architecture checks and command-tree
-		// inventory only. Protocol owners such as MCP keep their original Args
-		// and RunE so the generic resolver never touches their input stream.
+		// NoInput 只服务架构检查和命令树清单；MCP 等协议 owner 保留原来的 Args 和 RunE，
+		// 通用解析器不会碰它们的输入流。
 		return state
 	}
 
@@ -200,8 +192,7 @@ func shouldRead(command *cobra.Command, args []string, spec InputSpec) bool {
 	if spec.MaxArgs >= 0 && len(args) >= spec.MaxArgs {
 		return false
 	}
-	// If the command is missing two or more required positional values, keep
-	// Cobra's original usage error and do not guess which value stdin represents.
+	// 缺少两个以上必填位置参数时保留 Cobra 原有的使用错误，不猜测 stdin 对应哪一个值。
 	if spec.MinArgs > spec.FillPosition+1 {
 		return false
 	}
@@ -249,15 +240,14 @@ func modeForCodec(codec Codec) Mode {
 	return TextMode
 }
 
-// IsTTY recognizes only an actual terminal file. In-memory and pipe readers
-// are intentionally treated as non-TTY so embedded callers get pipe semantics.
+// IsTTY 只把真正的终端文件当作 TTY；内存和管道 reader 按非 TTY 处理，
+// 让嵌入式调用方得到管道语义。
 func IsTTY(reader io.Reader) bool {
 	file, ok := reader.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
 }
 
-// ReadValue reads the complete stream and removes exactly one trailing LF or
-// CRLF. It does not trim whitespace, split words, or impose a size limit.
+// ReadValue 读完整个流并只去掉一个行尾 LF 或 CRLF；不去空白、不拆词、不设大小上限。
 func ReadValue(reader io.Reader) (string, error) {
 	if reader == nil {
 		return "", errors.New("stdin input reader is nil")
@@ -269,9 +259,8 @@ func ReadValue(reader io.Reader) (string, error) {
 	return string(StripOneTrailingLineEnding(body)), nil
 }
 
-// FirstNonWhitespace returns the first byte that is not JSON whitespace. The
-// record codec only needs the JSON-defined leading whitespace set; keeping the
-// check byte-oriented avoids decoding or rewriting opaque input bytes.
+// FirstNonWhitespace 返回第一个非 JSON 空白的字节。记录 codec 只需要 JSON 定义的前导
+// 空白集合；按字节判断可以避免解码或改写不透明的输入内容。
 func FirstNonWhitespace(body []byte) (byte, bool) {
 	for _, one := range body {
 		if !isJSONWhitespace(one) {
@@ -290,7 +279,7 @@ func isJSONWhitespace(one byte) bool {
 	}
 }
 
-// StripOneTrailingLineEnding preserves all input except one final LF or CRLF.
+// StripOneTrailingLineEnding 只去掉末尾的一个 LF 或 CRLF，其余字节原样保留。
 func StripOneTrailingLineEnding(body []byte) []byte {
 	if bytes.HasSuffix(body, []byte("\r\n")) {
 		return body[:len(body)-2]
