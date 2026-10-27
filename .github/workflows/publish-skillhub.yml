@@ -2,9 +2,9 @@
 name: Publish SkillHub skill
 
 on:
-  # Release 由 github.token 创建，它刻意不能再次触发 release workflow，因此所有发布
-  # 与 Homebrew 门禁结束后用 workflow_run 交接。恢复发布时它的 head branch 是 main，
-  # 确切的 tag 只能取自 Release 的已验证 handoff artifact。
+  # prepare_release 在最终审批前写出不可变 handoff，publish 在审批后发布 GitHub Release。
+  # Release workflow 成功后本 publisher 用 workflow_run 消费该 handoff；Homebrew 与之并行，
+  # 不是前置门禁。恢复发布时 head branch 是 main，确切的 tag 只能取自 handoff。
   workflow_run:
     workflows:
       - Release

@@ -30,8 +30,8 @@ func runFormula(arguments []string) error {
 	return runRender(arguments[1:])
 }
 
-// runRender 从 release 产物的 checksums.txt 取 version、URL 与 SHA-256；模板本身不保存
-// 任何版本或 digest。
+// runRender 只从 release 产物的 checksums.txt 取归档的 SHA-256；version 来自 --version，
+// URL 由 version 与仓库标识生成。模板本身不保存任何版本或 digest。
 func runRender(arguments []string) error {
 	flags := flag.NewFlagSet("render", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)

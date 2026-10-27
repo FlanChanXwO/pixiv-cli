@@ -15,9 +15,10 @@ import (
 	"strings"
 )
 
-// releaseHandoff 保存 Release workflow 产出的不可变交接清单：一次成功 Release run 的
-// 身份与产物事实。downstream publisher 只读取其中记录的 identity 与 checksum，
-// 不再自行构建或推断 tag 与版本。
+// releaseHandoff 保存当前 Release run 的不可变交接清单：run 身份与产物事实。它由
+// prepare_release 在审批前写出，只说明产物属于哪个 run，不证明发布已经成功；downstream
+// publisher 读取其中的 identity 与 checksum，并自行确认 run 状态，不再自行构建或推断
+// tag 与版本。
 type releaseHandoff struct {
 	Repository          string            `json:"repository"`
 	ReleaseRunID        int64             `json:"release_run_id"`

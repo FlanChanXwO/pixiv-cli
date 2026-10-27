@@ -2,8 +2,9 @@
 name: Publish ClawHub skill
 
 on:
-  # Release 在发布与 Homebrew 门禁都通过后才写出不可变 tag artifact。GitHub 的 release
-  # token 不能再次触发 release 事件，因此用 workflow_run 作为受信异步交接。
+  # prepare_release 在最终审批前写出不可变 handoff，publish 在审批后发布 GitHub Release。
+  # Release workflow 成功后本 publisher 用 workflow_run 消费该 handoff；Homebrew 与之并行，
+  # 不是前置门禁。
   workflow_run:
     workflows:
       - Release

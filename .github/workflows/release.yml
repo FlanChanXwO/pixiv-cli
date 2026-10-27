@@ -1,4 +1,4 @@
-# tag push 触发的发布流水线：校验不可变 tag、构建与签名产物，再进入审批并发布 GitHub Release。
+# tag push 触发的发布流水线：校验不可变 tag、构建并校验产物，审批后签名并发布 GitHub Release。
 name: Release
 
 on:
