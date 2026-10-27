@@ -62,7 +62,7 @@ func (e *fatalRecordPipelineError) Unwrap() error { return e.err }
 // 这类错误由调用方原样返回，不会被写成一条记录动作失败。
 func FatalRecordPipeline(err error) error { return &fatalRecordPipelineError{err: err} }
 
-// consumeNDJSONRecords 逐行解析 NDJSON 并顺序处理记录。它不使用 Scanner，避免
+// ConsumeNDJSONRecords 逐行解析 NDJSON 并顺序处理记录。它不使用 Scanner，避免
 // 合法的大记录受隐藏 token 限制；每次回调结束后才读取下一行，以便取消后不启动新任务。
 func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation string, failFast bool, consume func(context.Context, record.Record) error) error {
 	reader := bufio.NewReader(in)
@@ -124,9 +124,10 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 	return nil
 }
 
-// --on-error 接受的取值。
 const (
-	RecordFailureSkip     = "skip"
+	// RecordFailureSkip 让失败记录只写诊断，然后继续处理后续记录。
+	RecordFailureSkip = "skip"
+	// RecordFailureFailFast 遇到第一条失败记录就停止并返回非零退出状态。
 	RecordFailureFailFast = "fail-fast"
 )
 
