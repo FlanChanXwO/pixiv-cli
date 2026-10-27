@@ -1,5 +1,3 @@
-// http.go 组装 Streamable HTTP、OAuth 与媒体路由，并管理 listener 和写入观测。
-
 package mcpserver
 
 import (
@@ -22,8 +20,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// NewHTTPHandler 将专用 server 绑定到 ctx 的服务生命周期并组装 HTTP/OAuth 路由。
-// owner 必须已初始化；同一 server 不应再次绑定到另一生命周期。
+// NewHTTPHandler 把 server 绑定到 ctx 并组装 OAuth、MCP 与媒体路由。
+// store 必须已初始化；同一个 server 只能绑定一次生命周期。
 func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, store auth.Store, login *accounts.Login, media *mediaproxy.Service) (http.Handler, error) {
 	authorization, err := auth.NewHandler(baseURL, store)
 	if err != nil {
@@ -43,7 +41,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 		Stateless: true,
 		// 新 revision 的 POST 就是请求生命周期；断线后不再继续无法交付的工具工作。
 		PropagateRequestCancellation: true,
-		// RequireCanonical 严格校验 Host 后才进入 SDK；反向代理保留公网 Host，不能被 localhost 自动检查误拒。
+		// Host 已由 RequireCanonical 严格校验；反向代理保留公网 Host，需要跳过 localhost 自动检查。
 		DisableLocalhostProtection: true,
 		CrossOriginProtection:      protection,
 	})
@@ -64,7 +62,7 @@ func NewHTTPHandler(ctx context.Context, server *mcp.Server, baseURL string, sto
 			return
 		}
 		if login != nil && strings.HasPrefix(r.URL.EscapedPath(), relayURL.EscapedPath()+"/") {
-			// Preserve escaped canonical prefixes instead of ServeMux path cleaning.
+			// 保留转义后的规范前缀，避免 ServeMux 清理路径后改写已发布的资源地址。
 			request := r.Clone(r.Context())
 			request.URL.Path = strings.TrimPrefix(r.URL.Path, relayURL.Path)
 			request.URL.RawPath = strings.TrimPrefix(r.URL.EscapedPath(), relayURL.EscapedPath())
@@ -95,7 +93,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string
 		return err
 	}
 	httpServer := &http.Server{Handler: handler,
-		// Bound slow header admission without timing out legitimate media/tool work.
+		// 限制慢速请求头，同时不打断正常推进的媒体与工具工作。
 		ReadHeaderTimeout: 10 * time.Second,
 		BaseContext:       func(net.Listener) context.Context { return ctx }}
 	served := make(chan error, 1)
@@ -116,7 +114,7 @@ func RunHTTP(ctx context.Context, server *mcp.Server, listenAddr, baseURL string
 	}
 }
 
-// 只记录 HTTP writer 接受的字节，不代表客户端收齐；保留 SDK framing 与取消行为。
+// observeHTTPWriter 只包装 POST：它记录 writer 接受的字节，客户端是否收齐由传输层决定。
 func observeHTTPWriter(lifecycleCtx, requestCtx context.Context, writer http.ResponseWriter, method string) http.ResponseWriter {
 	if method != http.MethodPost {
 		return writer
@@ -129,13 +127,18 @@ type observedHTTPWriter struct {
 	lifecycleCtx, requestCtx context.Context
 }
 
+// Unwrap 让 ResponseController 仍能到达底层连接。
 func (w *observedHTTPWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Write 记录实际接受的字节数；短写按传输中断处理。
 func (w *observedHTTPWriter) Write(p []byte) (int, error) {
 	started := time.Now()
 	n, err := w.ResponseWriter.Write(p)
 	w.observe("mcp_http_write", n, started, err != nil || n != len(p))
 	return n, err
 }
+
+// FlushError 记录 flush 结果，让 SSE 卡住时有可诊断的日志。
 func (w *observedHTTPWriter) FlushError() error {
 	started := time.Now()
 	err := http.NewResponseController(w.ResponseWriter).Flush()

@@ -24,7 +24,7 @@ func newAnimationWorkspace(parent string) (string, func() error, error) {
 		_ = os.RemoveAll(root)
 		return "", nil, errors.Join(err, errors.New("animation instance lock unavailable"))
 	}
-	// Publish the ownership marker only after taking the lifetime filelock.
+	// 先取得生命周期文件锁，再发布所有权标记。
 	if err = os.WriteFile(filepath.Join(root, "owner"), []byte(animationWorkspaceMarker), 0600); err != nil {
 		_ = release()
 		_ = os.RemoveAll(root)
@@ -52,7 +52,7 @@ func cleanupAnimationWorkspaces(parent string) error {
 		if err != nil || string(body) != animationWorkspaceMarker {
 			continue
 		}
-		// A released OS lock proves termination without trusting a reused PID.
+		// 能取得 OS 文件锁说明当前没有进程持有该目录，不必依赖可能被复用的 PID。
 		release, acquired, err := filelock.TryPrivateLock(filepath.Join(root, "instance"))
 		if err != nil {
 			return err

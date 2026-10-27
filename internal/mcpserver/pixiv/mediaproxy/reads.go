@@ -1,5 +1,3 @@
-// Read account-owned sessions and cache grant/version-scoped artwork metadata.
-
 package mediaproxy
 
 import (
@@ -17,7 +15,8 @@ import (
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
 
-// Session is an account-owner read lease with an opaque invalidation generation.
+// Session 表示一次账号只读租约。Version 标识凭据版本；Invalidated 关闭后该租约的缓存
+// 作废，但只有调用 ConfigureAnimations 后才有人监听并执行失效。调用方负责关闭 Lease。
 type Session struct {
 	Lease       *lifecycle.Lease[*pixiv.Client]
 	Version     string
@@ -26,7 +25,7 @@ type Session struct {
 	Invalidated <-chan struct{}
 }
 
-// AnimationObservation contains safe phase metrics, never identity or capabilities.
+// AnimationObservation 记录动图阶段的耗时与字节数，不含身份、URL 或 capability。
 type AnimationObservation struct {
 	Stage              string
 	Duration           time.Duration
@@ -35,14 +34,13 @@ type AnimationObservation struct {
 	CancellationSource string
 }
 
-// cacheTTL and readConcurrency are fixed production values; only Capacity is
-// user-configurable.
+// cacheTTL 与 readConcurrency 是固定的生产取值，只有 Capacity 来自用户配置。
 const (
 	cacheTTL        = 15 * time.Minute
 	readConcurrency = 4
 )
 
-// Config is loaded once at server startup; observers receive fixed stage names only.
+// Config 在服务启动时加载一次；观察回调只会收到固定的阶段名。
 type Config struct {
 	Capacity         int64
 	Observe          func(context.Context, string, time.Duration)
@@ -62,7 +60,7 @@ type readState struct {
 	flights                   map[string]*metadataFlight
 }
 
-// Configure installs read sessions and the shared metadata/image budget before serving.
+// Configure 必须在开始服务前调用，安装读会话与元数据、图片共享的字节预算。
 func (s *Service) Configure(config Config, open func(context.Context, int64) (Session, error)) error {
 	if config.Capacity < 0 || open == nil {
 		return errors.New("invalid gallery read configuration")
@@ -141,8 +139,8 @@ func (s *Service) expiry(c claims, session Session) time.Time {
 	return expiry
 }
 
-// cache publication and invalidation use the cache mutex, preventing a late fill
-// from repopulating content after the invalidation notification was consumed.
+// canCache 判断内容是否仍可写入缓存：服务已关闭、会话失效或当前 grant 不再有效时都返回
+// false，避免迟到的填充把已撤销的内容写回。
 func (s *Service) canCache(ctx context.Context, c claims, session Session) bool {
 	if s.animations != nil && s.animations.ctx.Err() != nil {
 		return false
@@ -183,7 +181,7 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 	if s.reads == nil {
 		return query()
 	}
-	// Metadata is shared by all pages/qualities but never by different grants or sessions.
+	// 元数据在页与画质之间共享，但不同 grant 或会话之间从不共享。
 	c.Page = 0
 	c.Quality = ""
 	key := contentKey(c, session, "metadata")
@@ -208,7 +206,7 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 			return flight.artwork, flight.err
 		}
 	}
-	// A fill may have completed between the first lookup and taking the flight lock.
+	// 第一次查询与取得 flight 锁之间，填充可能已经完成。
 	if value, ok, err := s.cachedArtwork(key); ok || err != nil {
 		state.mu.Unlock()
 		return value, err
@@ -234,7 +232,7 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 	return value, err
 }
 
-// Artwork reauthorizes cached Gallery metadata; mutable bookmark state is never stored.
+// Artwork 复用 Gallery 元数据缓存前重新校验当前 grant；缓存里不保存会变的收藏状态。
 func (s *Service) Artwork(ctx context.Context, account, artwork int64) (pixiv.Artwork, error) {
 	info := sdkauth.TokenInfoFromContext(ctx)
 	if info == nil {
@@ -253,14 +251,14 @@ func (s *Service) Artwork(ctx context.Context, account, artwork int64) (pixiv.Ar
 	return s.metadata(ctx, c, session)
 }
 
-// ConcurrentReads reports the fixed Gallery query worker count.
+// ConcurrentReads 返回固定的 Gallery 查询并发数。
 func (s *Service) ConcurrentReads() int { return readConcurrency }
 
-// HasReadSessions reports whether Configure installed the cached read path.
+// HasReadSessions 报告 Configure 是否安装了带缓存的读取路径。
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
 
-// cachedResource 是进程内缓存的私有资源格式。它显式保留定位信息；不能嵌入
-// sdk.Resource，否则会继承其安全 MarshalJSON 并丢掉 URL。
+// cachedResource 是进程内的私有缓存格式，显式保留定位信息。它没有嵌入
+// sdk.Resource，以免继承其安全 MarshalJSON 后丢掉 URL。
 type cachedResource struct {
 	Ref                 *sdk.ResourceRef  `json:"ref,omitempty"`
 	URL                 string            `json:"url,omitempty"`
@@ -371,7 +369,7 @@ func (s *Service) cachedArtwork(key string) (pixiv.Artwork, bool, error) {
 	if !ok {
 		return pixiv.Artwork{}, false, nil
 	}
-	// Metadata entries contain exactly one JSON payload written by marshalArtwork.
+	// 每个元数据条目只有一段由 marshalArtwork 写出的 JSON。
 	var wire cachedArtwork
 	if err := json.Unmarshal(chunks[0], &wire); err != nil {
 		return pixiv.Artwork{}, false, fmt.Errorf("decode Gallery metadata cache: %w", err)

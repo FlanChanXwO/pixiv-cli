@@ -1,5 +1,3 @@
-// Authenticate animation artifact requests and pin files through HTTP delivery.
-
 package mediaproxy
 
 import (
@@ -37,7 +35,7 @@ func (s *Service) serveAnimation(w http.ResponseWriter, r *http.Request) {
 	s.deliverAnimation(w, r, j, kind, download)
 }
 
-// animationRequest 校验方法、路径签名，并返回已签发的产物及其类别。
+// animationRequest 校验方法、路径与签名，返回对应产物及其类别；校验失败时已写出响应。
 func (s *Service) animationRequest(w http.ResponseWriter, r *http.Request) (kind string, j *animationJob, download, ok bool) {
 	if r.Method != "GET" && r.Method != "HEAD" {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -71,12 +69,12 @@ func (s *Service) animationRequest(w http.ResponseWriter, r *http.Request) (kind
 	return parts[1], j, download, true
 }
 
-// pinAnimation 复核授权与有效期后固定产物，返回的释放函数在传输结束时调用。
+// pinAnimation 在复核授权与有效期后 pin 住产物；返回的释放函数必须在传输结束时调用。
 func (s *Service) pinAnimation(w http.ResponseWriter, r *http.Request, j *animationJob) (release func(), ok bool) {
 	a := s.animations
 	if err := s.animationSessionValid(r.Context(), j); err != nil {
 		a.mu.Lock()
-		// 单次传输取消不代表共享产物的授权或账号版本失效。
+		// 单次传输被取消不影响共享产物的授权，也不改变账号版本。
 		if r.Context().Err() == nil {
 			a.invalidateLocked(j, "expired", "authorization")
 		}
@@ -103,7 +101,7 @@ func (s *Service) pinAnimation(w http.ResponseWriter, r *http.Request, j *animat
 	}, true
 }
 
-// deliverAnimation 提交头部并复制已固定的产物；取消或长度不符时中止连接。
+// deliverAnimation 提交响应头并复制已固定的产物；请求取消或长度不符时中止连接。
 func (s *Service) deliverAnimation(w http.ResponseWriter, r *http.Request, j *animationJob, kind string, download bool) {
 	name := "animation." + j.format
 	contentType := "image/" + j.format
@@ -138,7 +136,7 @@ func (s *Service) deliverAnimation(w http.ResponseWriter, r *http.Request, j *an
 	s.transferAnimation(w, r, j, file, info.Size())
 }
 
-// transferAnimation 在请求或产物失效时中断写入，并记录实际交付字节。
+// transferAnimation 在请求或产物失效时中断写入，并记录实际交付的字节数。
 func (s *Service) transferAnimation(w http.ResponseWriter, r *http.Request, j *animationJob, file *os.File, size int64) {
 	transferCtx, cancel := context.WithCancel(r.Context())
 	stopJob := context.AfterFunc(j.ctx, cancel)
@@ -148,7 +146,7 @@ func (s *Service) transferAnimation(w http.ResponseWriter, r *http.Request, j *a
 	var abortErr error
 	stop := context.AfterFunc(transferCtx, func() {
 		defer close(aborted)
-		// 已取消才中断写入；仅关闭文件不能解除阻塞的网络 Write。
+		// 只有取消才中断写入；关闭文件无法解除阻塞中的网络 Write。
 		abortErr = errors.Join(http.NewResponseController(w).SetWriteDeadline(time.Now()), file.Close())
 	})
 	finish := sync.OnceFunc(func() {
@@ -156,7 +154,7 @@ func (s *Service) transferAnimation(w http.ResponseWriter, r *http.Request, j *a
 			<-aborted
 		}
 	})
-	// callback 必须在 handler 返回前结束，不能再操作被复用的 ResponseWriter。
+	// 回调必须在 handler 返回前结束，之后 ResponseWriter 会被复用。
 	defer finish()
 	started := time.Now()
 	n, err := io.Copy(w, file)
@@ -172,7 +170,7 @@ func (s *Service) transferAnimation(w http.ResponseWriter, r *http.Request, j *a
 	}
 }
 
-// animationCancellationSource 记录固定类别，便于区分请求、传输、产物与服务侧中断。
+// animationCancellationSource 返回固定的取消类别，区分请求、传输、产物与服务侧中断。
 func (s *Service) animationCancellationSource(requestCtx, transferCtx context.Context, j *animationJob, event *AnimationObservation) {
 	event.CancellationSource = "transport"
 	if requestCtx.Err() != nil {

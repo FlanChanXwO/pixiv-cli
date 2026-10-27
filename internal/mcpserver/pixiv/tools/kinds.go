@@ -1,19 +1,16 @@
-// Entity kind values shared by the Pixiv MCP tool schemas and handlers.
-
 package tools
 
 import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// kindAll is the aggregate selector used by recommendation and artwork lists.
+// kindAll 是推荐与作品列表共用的聚合选择值。
 const kindAll = "all"
 
-// contentNovel extends pixiv.SearchContentType for the latest timeline, whose
-// published schema also accepts novels; the SDK search type has no such value.
+// contentNovel 给最新时间线补充小说类型；公开 schema 接受它，而 SDK 的搜索类型没有该取值。
 const contentNovel pixiv.SearchContentType = "novel"
 
-// Entity kinds reuse the published SDK reference values.
+// 实体 kind 直接复用 SDK 公开的引用类型取值。
 const (
 	kindArtwork = string(pixiv.ReferenceKindArtwork)
 	kindNovel   = string(pixiv.ReferenceKindNovel)

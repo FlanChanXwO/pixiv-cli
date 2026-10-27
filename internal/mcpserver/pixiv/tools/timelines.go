@@ -1,5 +1,3 @@
-// pixiv timelines tools.
-
 package tools
 
 import (
@@ -17,7 +15,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerTimelineFollowing 注册 pixiv_timeline_following。
 func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_following", Description: "Browse artworks or novels from followed users.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel)}, "kind"),
@@ -26,7 +23,7 @@ func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	})
 }
 
-// timelineFollowingIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// timelineFollowingIn 的 kind 选择作品或小说；输出统一为 records envelope。
 type timelineFollowingIn struct {
 	Kind string `json:"kind"`
 
@@ -94,8 +91,6 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out), out, nil
 }
-
-// registerTimelineLatest 注册 pixiv_timeline_latest。
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
 		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(contentNovel))}, "content_type"),
@@ -104,7 +99,7 @@ func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	})
 }
 
-// timelineLatestIn 要求显式选择目标类型；输出仍保留原操作的字段与语义。
+// timelineLatestIn 的 kind 选择插画、漫画或小说；输出统一为 records envelope。
 type timelineLatestIn struct {
 	ContentType pixiv.SearchContentType `json:"content_type"`
 

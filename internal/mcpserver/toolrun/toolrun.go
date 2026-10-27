@@ -1,4 +1,9 @@
-// Package toolrun owns shared MCP invocation diagnostics and list contracts.
+// Package toolrun 提供两个产品共用的 MCP 调用支持：一次调用内的诊断 scope、工具注册
+// 包装，以及输入校验失败的统一结果。
+//
+// 包的组成：[Scope] 与 [NewScope] 分配调用 ID 并持有日志入口，[AddTool] 注册工具并
+// 记录失败，[ProtectInput] 把 SDK 参数的原始诊断换成工具声明的安全结果。逻辑分页的
+// 输入解析与输出字段在 paging.go。
 package toolrun
 
 import (
@@ -12,7 +17,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Scope assigns call IDs within one product runtime.
+// Scope 在一个产品运行时内分配递增的调用 ID，并保存执行日志入口。
 type Scope struct {
 	logger  *slog.Logger
 	counter atomic.Uint64
@@ -20,14 +25,13 @@ type Scope struct {
 
 type invocationKey struct{}
 
-// NewScope retains the execution logger; nil keeps tools silent.
+// NewScope 保留执行日志；logger 为 nil 时工具保持静默。
 func NewScope(logger *slog.Logger) *Scope {
 	return &Scope{logger: cmp.Or(logger, slog.New(slog.DiscardHandler))}
 }
 
-// AddTool supplies call context and credential-safe diagnostics.
-// SDK argument rejections keep their result layout with fixed text; handler
-// results and errors pass unchanged to the MCP SDK.
+// AddTool 注册工具，并为每次调用附上调用上下文与不含凭据的诊断。SDK 参数拒绝时保留
+// 固定文案的结果布局；handler 的结果与错误原样交给 MCP SDK。
 func AddTool[In, Out any](scope *Scope, server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
 	ProtectInput(server, tool.Name, func() *mcp.CallToolResult {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "invalid_request"}}}
@@ -43,7 +47,8 @@ func AddTool[In, Out any](scope *Scope, server *mcp.Server, tool *mcp.Tool, hand
 	})
 }
 
-// ProtectInput replaces SDK validation diagnostics before a typed handler runs.
+// ProtectInput 在 typed handler 执行前拦截 SDK 的参数校验诊断，换成 failure 给出的安全
+// 结果；handler 已经执行时不动其结果。
 func ProtectInput(server *mcp.Server, name string, failure func() *mcp.CallToolResult) {
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
@@ -51,7 +56,7 @@ func ProtectInput(server *mcp.Server, name string, failure func() *mcp.CallToolR
 			if !ok || call.Params.Name != name {
 				return next(ctx, method, request)
 			}
-			// Product-specific guards share the marker, regardless of middleware order.
+			// 各产品自己的 guard 共用这个标记；中间件安装顺序不影响结论。
 			invoked, ok := ctx.Value(invocationKey{}).(*bool)
 			if !ok {
 				invoked = new(bool)

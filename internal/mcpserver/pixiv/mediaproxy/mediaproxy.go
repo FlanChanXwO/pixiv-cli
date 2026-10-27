@@ -1,4 +1,10 @@
-// Package mediaproxy delivers only capability-authorized Pixiv images, never arbitrary URLs.
+// Package mediaproxy 按 capability 交付 Pixiv 图片与 Gallery 动图，客户端无法用它代理任意
+// URL。
+//
+// 包的组成：[Service] 与 [New] 持有签名密钥、OAuth 状态读取和 SDK lease 端口，
+// [Service.Issue] 签发绑定账号、作品、页码、画质与 OAuth grant 的 URL，
+// [Service.ServeHTTP] 校验后流式交付。读会话与元数据缓存在 reads.go，字节预算与 pin 在
+// cache.go，动图订阅、编码与下载在 animation_*.go。
 package mediaproxy
 
 import (
@@ -24,6 +30,7 @@ import (
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
 
+// Service 保存媒体签发的进程内密钥、OAuth 状态与动图、读缓存状态。
 type Service struct {
 	animations *animationState
 	reads      *readState
@@ -42,7 +49,7 @@ type claims struct {
 
 var errCapability = errors.New("image authorization unavailable")
 
-// New owns a process-local signing key; restarting invalidates issued image URLs.
+// New 生成进程内签名密钥；服务重启后此前签发的图片 URL 全部失效。
 func New(base string, store auth.Store, open func(context.Context, int64) (*lifecycle.Lease[*pixiv.Client], error)) (*Service, error) {
 	if _, err := auth.ParseBaseURL(base); err != nil {
 		return nil, err
@@ -56,14 +63,19 @@ func New(base string, store auth.Store, open func(context.Context, int64) (*life
 	}
 	return s, nil
 }
+
+// Origin 返回公开的媒体 origin，供 Gallery 视图的 CSP 使用。
 func (s *Service) Origin() string { u, _ := url.Parse(s.base); return u.Scheme + "://" + u.Host }
-func (s *Service) Path() string   { u, _ := url.Parse(s.base); return u.EscapedPath() + "/media/" }
+
+// Path 返回媒体路由的转义前缀，匹配时必须保留转义形式。
+func (s *Service) Path() string { u, _ := url.Parse(s.base); return u.EscapedPath() + "/media/" }
+
 func valid(c claims) bool {
 	return c.Account > 0 && c.Artwork > 0 && c.Page > 0 && (c.Quality == "thumbnail" || c.Quality == "regular" || c.Quality == "original" || (c.Quality == "avatar" && c.Page == 1))
 }
 
-// Issue scopes access to one account/artwork/page/quality and the issuing OAuth grant.
-// The internal avatar quality selects only the artwork author's profile image on page 1.
+// Issue 签发一个只对给定账号、作品、页码、画质与 OAuth grant 有效的 URL。avatar 画质
+// 只用于第 1 页，定位作品作者的头像。
 func (s *Service) Issue(ctx context.Context, account, artwork int64, page int, quality string) (string, error) {
 	if s == nil {
 		return "", errCapability
@@ -124,7 +136,8 @@ func (s *Service) verify(ctx context.Context, token string) (claims, error) {
 	return c, s.authorized(ctx, c)
 }
 
-// ServeHTTP intentionally logs neither the path capability nor upstream errors.
+// ServeHTTP 分发动图与静态图片请求。日志里不出现路径 capability，也不记录上游错误
+// 正文。
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.EscapedPath(), s.Path()+"animation/") {
 		s.serveAnimation(w, r)
@@ -323,7 +336,7 @@ func (s *Service) openImage(w http.ResponseWriter, r *http.Request, c claims, se
 		http.Error(w, "Image unavailable", 502)
 		return nil, "", nil, 0, false
 	}
-	// Sniff before committing headers; do not wait for the complete image.
+	// 先嗅探类型再提交响应头，整张图边读边转发。
 	prefix := make([]byte, 512)
 	n, err := io.ReadFull(res.Body, prefix)
 	prefix = prefix[:n]

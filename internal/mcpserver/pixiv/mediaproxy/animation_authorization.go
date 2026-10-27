@@ -20,12 +20,12 @@ func (s *Service) startAnimationAuthorizationWatch() error {
 	if err != nil {
 		return err
 	}
-	// 授权状态通过原子替换发布，监听父目录而不是旧文件 inode。
+	// 授权状态用原子替换发布，所以监听父目录；旧文件的 inode 在替换后失效。
 	dir := filepath.Dir(path)
 	if err := watcher.Add(dir); err != nil {
 		return errors.Join(err, watcher.Close())
 	}
-	// Windows 只报告目录内部变化；父目录监听补齐目录本身被移动的通知。
+	// Windows 只报告目录内部的变化，父目录监听补上目录本身被移动的通知。
 	if runtime.GOOS == "windows" {
 		if err := watcher.Add(filepath.Dir(dir)); err != nil {
 			return errors.Join(err, watcher.Close())
@@ -72,7 +72,7 @@ func (s *Service) revalidateAnimationGrants() {
 	if a.closed || a.ctx.Err() != nil {
 		return
 	}
-	// 读取与枚举共享发布锁，旧快照不能应用到稍后加入的任务。
+	// 读取与枚举共用发布锁，稍后加入的任务只接受新快照。
 	state, err := s.store.Read(a.ctx)
 	for _, job := range a.jobs {
 		grant, ok := state.Grants[job.claim.Grant]
@@ -111,7 +111,7 @@ func (s *Service) animationAuthorizationWatchFailed() {
 	if a.ctx.Err() != nil {
 		return
 	}
-	// 不能观察撤销时停止接收和交付，关闭时报告固定错误而非私密路径。
+	// 无法观察撤销时停止接收与交付；关闭时返回固定错误，不暴露私密路径。
 	a.watchErr = errors.New("animation authorization watcher failed")
 	a.closed = true
 	for _, job := range a.jobs {

@@ -5,7 +5,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// ArtworkMedia indexes complete media in content or negotiated App metadata.
+// ArtworkMedia 描述一次作品媒体请求的结果：每页的索引、大小与失败项。Complete 为 false
+// 时 Error 或 Failures 说明缺了哪一页。
 type ArtworkMedia struct {
 	IllustID       int64          `json:"illust_id"`
 	Title          string         `json:"title"`
@@ -18,6 +19,7 @@ type ArtworkMedia struct {
 	Error          string         `json:"error,omitempty"`
 }
 
+// MediaPage 记录一页媒体的交付信息；Filename 与 ArchiveQuality 只在有对应产物时填写。
 type MediaPage struct {
 	Filename            string `json:"filename,omitempty"`
 	PreviewContentIndex *int   `json:"preview_content_index,omitempty"`
@@ -28,16 +30,19 @@ type MediaPage struct {
 	ContentIndex        int    `json:"content_index"`
 }
 
+// MediaFailure 记录单页失败；作品级失败放在 ArtworkMedia.Error，不伪造页号。
 type MediaFailure struct {
 	Page       int    `json:"page"`
 	Error      string `json:"error"`
 	HTTPStatus int    `json:"http_status,omitempty"`
 }
 
+// NewArtworkMedia 返回所有切片均为空数组的初始结果，便于稳定序列化。
 func NewArtworkMedia(id int64) ArtworkMedia {
 	return ArtworkMedia{IllustID: id, RequestedPages: []int{}, DeliveredPages: []int{}, Pages: []MediaPage{}, Failures: []MediaFailure{}}
 }
 
+// MediaResult 用交付内容生成结果；没有内容时退回 out.Error，仍缺省为 media_incomplete。
 func MediaResult(out ArtworkMedia, content []mcp.Content) (*mcp.CallToolResult, ArtworkMedia, error) {
 	if len(content) == 0 {
 		text := out.Error
@@ -49,6 +54,7 @@ func MediaResult(out ArtworkMedia, content []mcp.Content) (*mcp.CallToolResult, 
 	return &mcp.CallToolResult{IsError: !out.Complete, Content: content}, out, nil
 }
 
+// ProtectMediaInput 把参数校验失败替换成媒体工具声明的结构化 envelope。
 func ProtectMediaInput(server *mcp.Server, name string) {
 	toolrun.ProtectInput(server, name, func() *mcp.CallToolResult {
 		out := NewArtworkMedia(0)

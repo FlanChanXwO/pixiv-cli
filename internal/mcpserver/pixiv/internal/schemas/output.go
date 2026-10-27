@@ -1,5 +1,3 @@
-// MCP output schemas preserve open entity records and explicit wire envelopes.
-
 package schemas
 
 import (
@@ -10,13 +8,13 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// OpenObjectSchema 返回允许任意附加属性的开放对象 schema。
+// OpenObjectSchema 返回允许任意附加属性的对象 schema，让 SDK 记录的未知字段通过。
 func OpenObjectSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{Type: "object", AdditionalProperties: &jsonschema.Schema{}}
 }
 
-// CommentInputSchema 返回 artwork/novel comments 共用的稳定输入 schema。
-// stamp_id 属于评论 mutation 的独立字段，不能借 read tool 的兼容边界暴露。
+// CommentInputSchema 返回作品与小说评论共用的封闭输入 schema；stamp_id 只属于评论
+// mutation，读接口不接受。
 func CommentInputSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -30,7 +28,7 @@ func CommentInputSchema() map[string]any {
 	}
 }
 
-// CommentOutputSchema 返回评论输出的 schema。
+// CommentOutputSchema 返回评论输出的 schema，comments 与 pagination 必填。
 func CommentOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "object",
@@ -60,7 +58,7 @@ func NovelContentOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// NovelSeriesOutputSchema 描述小说系列元数据与实体记录的 envelope。
+// NovelSeriesOutputSchema 返回小说系列元数据与实体记录 envelope 的 schema。
 func NovelSeriesOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "object",
@@ -96,8 +94,8 @@ func BookmarkTagsOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// BookmarkTagsAllOutputSchema 描述 additive bookmark_tags_all 的 typed 标签
-// envelope。legacy bookmark_tags 继续使用开放的旧标签对象 schema。
+// BookmarkTagsAllOutputSchema 返回 bookmark_tags_all 的 typed 标签 envelope schema；
+// bookmark_tags 仍沿用开放的对象 schema。
 func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "object",
@@ -139,11 +137,10 @@ func BookmarkDetailOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// RecordsOutputSchema 描述共享实体 records 协议。Record 保留 SDK 和调用方的
-// 未知字段，不能由 Go 的未导出字段自动推导为封闭对象；因此显式允许记录对象的
-// 额外属性，同时约束每条记录都具备稳定身份字段。
+// RecordsOutputSchema 返回共享 records envelope 的 schema。记录需要保留 SDK 与调用方
+// 的未知字段，所以记录对象开放；每条记录仍须具备稳定的身份字段。
 func RecordsOutputSchema() *jsonschema.Schema {
-	// jsonschema resolver 要求树形节点；开放属性 schema 也不能跨位置共享指针。
+	// jsonschema resolver 要求树形节点，开放属性 schema 的每个位置各用一个新指针。
 	return &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
@@ -202,8 +199,8 @@ func RecordsOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// RecommendedOutputSchema 描述 recommended 的四路聚合 envelope。推荐流的
-// pagination 只允许已公开的四个 subtype，SDK continuation 仍留在适配层。
+// RecommendedOutputSchema 返回 recommended 四路聚合 envelope 的 schema。pagination
+// 只公开四种流类型，SDK continuation 不进入协议。
 func RecommendedOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "object",
@@ -225,13 +222,12 @@ func RecommendedOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// TrendingTagsOutputSchema 描述 trending_tags_illust 的稳定顶层 envelope；
-// tags.items 直接由 public 模型推导，确保嵌套 artwork 的可选字段与实际 JSON
-// 序列化契约同步，同时不把 SDK continuation 或原始响应字段提升为顶层协议。
+// TrendingTagsOutputSchema 返回 trending_tags_illust 顶层 envelope 的 schema。
+// tags.items 从公开模型推导，嵌套作品的可选字段与 JSON 序列化保持一致；SDK
+// continuation 与原始响应字段不提升为顶层协议。
 func TrendingTagsOutputSchema() *jsonschema.Schema {
-	// Resource 的 JSON 形态由它的 MarshalJSON 决定：只有 opaque ref 与
-	// requires_credentials，序列化零值时是 null。schema 推导看不到方法实现，
-	// 因此显式给出这一类型，保持与输出契约一致。
+	// Resource 由 MarshalJSON 决定 JSON 形态，只输出 opaque ref 与 requires_credentials，
+	// 零值序列化成 null。schema 推导看不到方法实现，所以这里显式声明。
 	tagSchema, err := jsonschema.For[pixiv.TrendingTag](&jsonschema.ForOptions{
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
 			reflect.TypeFor[sdk.Resource](): {
@@ -243,9 +239,8 @@ func TrendingTagsOutputSchema() *jsonschema.Schema {
 		},
 	})
 	if err != nil {
-		// TrendingTag 只包含 JSON Schema 支持的公开模型字段；如果这里失败，
-		// 说明契约本身已超出 schema 支持范围，继续注册错误 schema 会比在
-		// composition root 直接暴露问题更危险。
+		// TrendingTag 只含 JSON Schema 支持的公开字段；推导失败说明模型已超出 schema
+		// 能力，此时宁可启动失败，也不要注册一个错误的 schema。
 		panic(err)
 	}
 	return &jsonschema.Schema{
@@ -262,7 +257,7 @@ func TrendingTagsOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// DetailOutputSchema 描述只返回实体记录的 detail envelope。
+// DetailOutputSchema 返回只含实体记录数组的 detail envelope schema。
 func DetailOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type:                 "object",

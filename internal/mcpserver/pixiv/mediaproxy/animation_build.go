@@ -27,6 +27,7 @@ type animationWriter struct {
 	file    *os.File
 }
 
+// Write 检查任务 context 仍有效后写入暂存文件，并累计实际字节数。
 func (w animationWriter) Write(data []byte) (int, error) {
 	if err := w.ctx.Err(); err != nil {
 		return 0, err
@@ -48,10 +49,10 @@ func (w animationWriter) Write(data []byte) (int, error) {
 }
 func (s *Service) buildAnimation(ctx context.Context, j *animationJob) {
 	a := s.animations
-	// 串行暂存生产者，避免排队任务耗尽当前编码所需空间。
+	// 生产者串行暂存，避免排队任务把当前编码需要的空间耗尽。
 	started := time.Now()
 	var err error
-	// 清理结束后在锁外通知，保留首个取消来源且不输出任务标识。
+	// 清理完再在锁外通知，保留第一个取消来源且不输出任务标识。
 	defer func() {
 		a.mu.Lock()
 		source := j.cancellationSource
@@ -126,7 +127,7 @@ func (s *Service) generateAnimation(ctx context.Context, j *animationJob) error 
 	return s.encodeAnimationPreview(ctx, j, session, meta, archiveBytes)
 }
 
-// animationSourceSession 确认账号版本未变并取得该作品的元数据快照。
+// animationSourceSession 确认账号版本未变，并取得该作品的元数据快照。
 func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (Session, error) {
 	session, err := s.session(ctx, j.claim.Account)
 	if err != nil {
@@ -148,7 +149,7 @@ func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (
 	return session, nil
 }
 
-// downloadAnimationArchive 读取 ugoira 元数据并把帧归档写入私有工作目录。
+// downloadAnimationArchive 读取 ugoira 元数据，把帧归档写入私有工作目录。
 func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob, session Session) (pixiv.UgoiraMetadata, int64, error) {
 	started := time.Now()
 	meta, err := session.Lease.Value().UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: j.claim.Artwork})
@@ -200,7 +201,7 @@ func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob,
 	return meta, n, nil
 }
 
-// observeArchiveFailure 只记录固定类别，避免底层读取错误携带签名地址。
+// observeArchiveFailure 只记录固定类别，避免底层读取错误带出签名地址。
 func (s *Service) observeArchiveFailure(ctx context.Context, n int64, err error) {
 	var timeout net.Error
 	switch {
@@ -214,7 +215,7 @@ func (s *Service) observeArchiveFailure(ctx context.Context, n int64, err error)
 	}
 }
 
-// encodeAnimationPreview 编码请求的格式、生成 PNG 预览并校验会话仍然有效。
+// encodeAnimationPreview 编码请求的格式、生成 PNG 预览，并确认会话仍然有效。
 func (s *Service) encodeAnimationPreview(ctx context.Context, j *animationJob, session Session, meta pixiv.UgoiraMetadata, archiveBytes int64) error {
 	frames := make([]ugoira.Frame, len(meta.Frames))
 	for i, frame := range meta.Frames {
@@ -261,9 +262,9 @@ func (s *Service) encodeAnimationPreview(ctx context.Context, j *animationJob, s
 	return s.animationSessionValid(ctx, j)
 }
 
-// encodeAnimation 在写入前按实际输出预留磁盘预算，并记录编码各阶段耗时。
+// encodeAnimation 按实际输出预留磁盘空间，并记录编码各阶段耗时。
 func (s *Service) encodeAnimation(ctx context.Context, j *animationJob, frames []ugoira.Frame, output string) error {
-	// Reserve actual writes rather than the maximum output: spare capacity must retain ready artifacts.
+	// 按实际写入预留，不为最大可能输出预留；剩余容量要留给已完成的产物。
 	a := s.animations
 	limit := uint64(a.capacity)
 	var reserved int64
@@ -307,7 +308,7 @@ func (s *Service) encodeAnimation(ctx context.Context, j *animationJob, frames [
 		err = statErr
 	}
 	a.mu.Lock()
-	// 失败时保留预留，直到目录确实删除；删除故障不能隐藏磁盘占用。
+	// 失败时保留预留直到目录确实删除，磁盘占用始终可见。
 	if err == nil {
 		j.frames = len(frames)
 		a.used -= reserved - size

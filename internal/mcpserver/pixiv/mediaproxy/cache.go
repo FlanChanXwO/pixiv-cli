@@ -1,5 +1,3 @@
-// Account for cached and in-flight bytes, pin readers, and evict expired content.
-
 package mediaproxy
 
 import (
@@ -36,8 +34,7 @@ func (c *contentCache) remove(e *list.Element) {
 	c.lru.Remove(e)
 }
 
-// invalidate retains pinned bytes until their readers release them.
-// The predicate runs under the same mutex as publication.
+// invalidate 让已被 pin 的字节留到读者释放；判断函数与发布操作在同一把锁下运行。
 func (c *contentCache) invalidate(reject func(string) bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -76,7 +73,7 @@ func (c *contentCache) putValidated(key string, data []byte, expires time.Time, 
 	}
 }
 
-// Filling buffers share the same budget as completed entries and cannot be evicted.
+// cacheFill 表示正在填充的缓冲：它和已完成条目共用字节预算，也不会被淘汰。
 type cacheFill struct {
 	cache  *contentCache
 	chunks [][]byte
@@ -113,6 +110,9 @@ func (f *cacheFill) abort() {
 	f.done = true
 	f.chunks = nil
 }
+
+// commitValidated 在缓存锁内重新运行 validate；失效与发布共用这把锁，迟到的填充无法
+// 在失效通知处理完之后复活条目。
 func (f *cacheFill) commitValidated(key string, expires time.Time, validate func() bool) {
 	if f.done {
 		return
@@ -146,7 +146,7 @@ func (f *cacheFill) commitValidated(key string, expires time.Time, validate func
 	})
 }
 
-// load pins a payload until the caller finishes decoding or transferring it.
+// load pin 住命中的载荷直到调用方解码或传输完；返回的释放函数只能调用一次。
 func (c *contentCache) load(key string) ([][]byte, func(), bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

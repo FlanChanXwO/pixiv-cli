@@ -1,5 +1,3 @@
-// pixiv artworks tools.
-
 package tools
 
 import (
@@ -21,7 +19,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// registerIllustDetail 注册 pixiv_illust_detail。
 func (t pixivTools) registerIllustDetail(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_detail", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get detailed information from exactly one artwork ID or supported Pixiv URL.", OutputSchema: schemas.DetailOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustReferenceIn) (*mcp.CallToolResult, outputs.Detail, error) {
 		return t.illustDetailHandler(ctx, input)
@@ -71,8 +68,6 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 	}
 	return reference.ID, nil
 }
-
-// registerIllustRanking 注册 pixiv_illust_ranking。
 func (t pixivTools) registerIllustRanking(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRankingHandler(ctx, input)
@@ -150,8 +145,6 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out), out, nil
 }
-
-// registerIllustRecommended 注册 pixiv_illust_recommended。
 func (t pixivTools) registerIllustRecommended(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get personalized artwork recommendations.", InputSchema: recommendedArtworkInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedArtworkIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRecommendedHandler(ctx, input)
@@ -201,8 +194,6 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out), out, nil
 }
-
-// registerIllustRelated 注册 pixiv_illust_related。
 func (t pixivTools) registerIllustRelated(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_related", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Find artworks related to a specific illustration.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input relatedIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustRelatedHandler(ctx, input)
@@ -244,8 +235,6 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 	out := outputs.Records{Records: recordItems, Pagination: page}
 	return outputs.Result(out), out, nil
 }
-
-// registerIllustSeries 注册 pixiv_illust_series。
 func (t pixivTools) registerIllustSeries(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_series", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse artworks in a Pixiv series.", OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input illustSeriesIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.illustSeriesHandler(ctx, input)
@@ -282,8 +271,6 @@ func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) 
 	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 	return outputs.Result(out), out, nil
 }
-
-// registerRecommended 注册 pixiv_recommended。
 func (t pixivTools) registerRecommended(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_recommended", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get typed personalized recommendations through the Pixiv SDK.", InputSchema: recommendedInputSchema(), OutputSchema: schemas.RecommendedOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
 		return t.recommendedHandler(ctx, input)
@@ -542,7 +529,7 @@ func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Cli
 	return err
 }
 
-// streamInput 与客户端单 kind 续读参数一致，不把 all 的其他流筛选带过去。
+// streamInput 只携带客户端所选 kind 的续读参数。
 func streamInput(in recommendedIn, kind string) recommendedIn {
 	in.Kind = kind
 	in.Cursor = nil
@@ -571,8 +558,6 @@ func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string,
 	}
 	return binding.Encode(next)
 }
-
-// registerTrendingTagsIllust 注册 pixiv_trending_tags_illust。
 func (t pixivTools) registerTrendingTagsIllust(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: schemas.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
 		return t.trendingTagsIllustHandler(ctx, input)
