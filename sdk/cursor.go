@@ -1,5 +1,3 @@
-// Opaque cursor envelopes and query bindings for product SDK pagination.
-
 package sdk
 
 import (
@@ -13,15 +11,14 @@ import (
 	"strings"
 )
 
-// cursorFormatVersion is the encoding version of the cursor envelope. It is
-// internal to this package and independent of the product binding version;
-// decoding rejects envelopes whose format version is unknown so that future
-// additive changes are explicit.
+// cursorFormatVersion versions the cursor envelope independently of the
+// product binding version. Decoding rejects unknown versions, so additive
+// envelope changes stay explicit rather than silently reinterpreting old cursors.
 const cursorFormatVersion = 1
 
-// cursorEnvelope is the versioned, JSON-marshalable form of a cursor. It must
-// never contain tokens, cookies, signed URLs, raw search text, or local paths.
-// Instance is only a non-secret client binding for ephemeral cursors.
+// cursorEnvelope is what a cursor encodes. It must never contain tokens,
+// cookies, signed URLs, raw search text, or local paths; Instance is only a
+// non-secret client binding for ephemeral cursors.
 type cursorEnvelope struct {
 	Version     int    `json:"v"`
 	Product     string `json:"p"`
@@ -35,10 +32,10 @@ type cursorEnvelope struct {
 	instanceSet bool   `json:"-"`
 }
 
-// Cursor is an opaque continuation token carried by sdk.Page. Its value is
-// owned by the product SDK and cannot be constructed through a struct literal;
-// callers receive cursors from page results, persist them through the Text or
-// JSON codecs, and pass them back through the matching request struct.
+// Cursor is the opaque continuation token carried by sdk.Page. Its value
+// belongs to the product SDK, which creates it; callers receive cursors from
+// page results, persist them through the Text or JSON codecs, and pass them back
+// through the matching request struct.
 //
 // A cursor is bound to a product, operation, binding version, and query digest.
 // Product SDKs revalidate those bindings when a caller continues pagination and
@@ -48,7 +45,7 @@ type Cursor struct {
 	text string
 }
 
-// CursorOption adjusts the binding metadata of a cursor during construction.
+// CursorOption adds binding metadata while NewCursor builds a cursor.
 type CursorOption func(*cursorEnvelope)
 
 // WithCursorIdentity binds a verified non-secret identity (for example an
@@ -122,8 +119,7 @@ func NewCursor(product, operation string, bindingVersion int, queryHash string, 
 	return Cursor{text: base64.RawURLEncoding.EncodeToString(raw)}, nil
 }
 
-// IsZero reports whether the cursor is the zero value, which means there is no
-// further page.
+// IsZero reports whether there is no further page.
 func (c Cursor) IsZero() bool { return c.text == "" }
 
 // MarshalText returns the route-safe unpadded base64url text encoding of the
@@ -166,9 +162,8 @@ func (c *Cursor) UnmarshalJSON(data []byte) error {
 	return c.UnmarshalText([]byte(text))
 }
 
-// String returns the route-safe text encoding of the cursor. It is safe to log
-// and persist; an ephemeral cursor may still be rejected when used by another
-// client instance or process.
+// String returns the text encoding. It is safe to log and persist, although an
+// ephemeral cursor may still be rejected by another client instance or process.
 func (c Cursor) String() string { return c.text }
 
 // ParseCursor decodes a cursor from its route-safe unpadded base64url text
@@ -213,9 +208,9 @@ func ValidateCursorInstance(c Cursor, instance string) error {
 	return nil
 }
 
-// CursorPayload returns the opaque upstream continuation state embedded in the
-// cursor. It is intended for product SDK implementations that re-attach
-// per-request secrets when continuing an operation.
+// CursorPayload returns the opaque upstream continuation state, letting product
+// SDK implementations re-attach per-request secrets when continuing an
+// operation.
 func CursorPayload(c Cursor) ([]byte, error) {
 	if c.IsZero() {
 		return nil, NewError("", "CursorPayload", InvalidCursor, WithDetail("zero cursor"))
@@ -227,7 +222,7 @@ func CursorPayload(c Cursor) ([]byte, error) {
 	return env.Payload, nil
 }
 
-// CursorIdentity returns the verified non-secret identity bound to the cursor,
+// CursorIdentity reports the verified non-secret identity bound to the cursor,
 // if any.
 func CursorIdentity(c Cursor) (identity string, ok bool) {
 	if c.IsZero() {
@@ -240,8 +235,9 @@ func CursorIdentity(c Cursor) (identity string, ok bool) {
 	return env.Identity, true
 }
 
-// CursorEphemeral reports whether the cursor is only valid for the client
-// instance that produced it because no identity could be verified at creation.
+// CursorEphemeral reports whether the cursor is valid only for the client
+// instance that produced it, which happens when creation could not verify an
+// identity.
 func CursorEphemeral(c Cursor) bool {
 	if c.IsZero() {
 		return false
@@ -273,7 +269,7 @@ func decodeCursor(text string) (cursorEnvelope, error) {
 
 // CursorQueryHash returns the stable binding digest of a base request query.
 // Keys and repeated values are sorted without modifying query; product SDKs
-// exclude continuation parameters before calling it.
+// remove continuation parameters before calling it.
 func CursorQueryHash(query url.Values) string {
 	keys := make([]string, 0, len(query))
 	for key := range query {

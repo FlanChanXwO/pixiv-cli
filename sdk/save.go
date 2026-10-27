@@ -1,5 +1,3 @@
-// Atomic resource saving, progress reporting, and cancellation for product SDKs.
-
 package sdk
 
 import (
@@ -10,25 +8,25 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
-// SaveProgress reports incremental progress while a resource is being saved.
-// Total is the expected size in bytes when known, otherwise zero; Done is the
-// number of bytes read from the resource stream so far.
+// SaveProgress reports incremental progress during a save. Total is the
+// expected size in bytes, or zero when unknown; Done is the number of bytes read
+// so far.
 type SaveProgress struct {
 	Total int64
 	Done  int64
 }
 
-// SaveOptions configures a single-resource atomic save. SaveResource writes to
-// an atomic destination under Path, so a partially transferred file never
-// appears at the final path. Progress, when non-nil, is called as bytes are
-// read from the stream; it must not block or perform network I/O.
+// SaveOptions controls a single-resource atomic save. Path receives the
+// completed file, so a partially transferred file never appears there. Progress,
+// when non-nil, runs on the reading goroutine; it must not block or perform
+// network I/O.
 type SaveOptions struct {
 	Path     string
 	Progress func(SaveProgress)
 }
 
-// SavedResource reports the result of SaveResource. ContentType is the media
-// type reported by the product's save operation.
+// SavedResource reports where a product save finished and the size it wrote.
+// ContentType comes from the product's own response metadata.
 type SavedResource struct {
 	Path        string
 	Size        int64
