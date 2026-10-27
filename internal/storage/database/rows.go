@@ -1,5 +1,3 @@
-// GORM 行结构、列名和账号池候选的显式映射；查询和写入在 repository.go、pool.go。
-
 package database
 
 import (

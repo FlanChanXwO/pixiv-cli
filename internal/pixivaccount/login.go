@@ -1,6 +1,3 @@
-// 浏览器登录与公开 SDK 一次性 LoginSession 的连接：开始登录、校验回调、保存凭据。
-// 账号选择与默认账号规则在 accounts.go。
-
 package pixivaccount
 
 import (
@@ -16,22 +13,24 @@ type LoginService struct {
 	Pixiv *Service
 }
 
-// LoginRequest 是 login 的本地请求值；连接策略由调用方转换为 public SDK
+// LoginRequest 保存 login 的本地请求值；连接策略由调用方转换为 public SDK
 // 的 LoginOptions，业务服务不读取配置或创建 proxy transport。
 type LoginRequest struct {
 	Options pixiv.LoginOptions
 }
 
+// LoginStart 保存一次浏览器登录的不透明 SDK session 与授权 URL。
 type LoginStart struct {
 	session          *pixiv.LoginSession
 	AuthorizationURL string
 }
 
+// LoginCompleteRequest 携带回调 URL 或授权码，以及保存成功后是否切换默认账号。
 type LoginCompleteRequest struct {
 	CallbackOrCode string
 	UseAfterLogin  bool
-	// PreserveDefault leaves CLI selection untouched; on post-save summary failure,
-	// the returned identity still reports the account that was persisted.
+	// PreserveDefault 保持现有默认账号；保存成功但读取摘要失败时，返回的身份仍指向已
+	// 持久化的账号。
 	PreserveDefault bool
 }
 
@@ -43,7 +42,7 @@ func (s LoginService) Start(request LoginRequest) (LoginStart, error) {
 	return LoginStart{session: session, AuthorizationURL: session.AuthorizationURL()}, nil
 }
 
-// AcceptsCallbackURL 是浏览器、loopback 和手工 URL 输入的非消耗性校验入口。它把
+// AcceptsCallbackURL 在不消耗 session 的前提下校验浏览器、loopback 与手工 URL；它把
 // state/verifier 保持在 public SDK 的不透明 LoginSession 内，调用方只能得到布尔结果。
 func (s LoginStart) AcceptsCallbackURL(rawURL string) bool {
 	return s.session != nil && s.session.AcceptsCallbackURL(rawURL)
@@ -53,7 +52,7 @@ func (s LoginService) Complete(ctx context.Context, start LoginStart, request Lo
 	if start.session == nil {
 		return AccountSummary{}, errors.New("login session is not initialized")
 	}
-	// A login is one-shot; release only the HTTP transport owned by this SDK session.
+	// 登录只执行一次；这里只释放该 SDK session 自己创建的 HTTP 传输。
 	defer start.session.CloseIdleConnections()
 	credentials, err := start.session.Complete(ctx, request.CallbackOrCode)
 	if err != nil {

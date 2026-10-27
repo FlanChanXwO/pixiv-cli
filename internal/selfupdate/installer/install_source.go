@@ -20,6 +20,7 @@ const pixivCLIImportPath = "github.com/FlanChanXwO/pixiv-cli"
 // InstallSource 表示当前二进制可由哪个安装渠道更新。
 type InstallSource string
 
+// InstallSourceDevelopment 等值是 [InstallSource] 的全部取值，对应本工具支持的安装渠道。
 const (
 	InstallSourceDevelopment    InstallSource = "development"
 	InstallSourceHomebrewStable InstallSource = "homebrew-stable"

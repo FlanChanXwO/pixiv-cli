@@ -1,6 +1,10 @@
-// Package database 管理 Pixiv / FANBOX 鉴权状态的单一 SQLite 数据库。
-// 它只保存鉴权数据与 Pixiv account-pool 租约状态，不保存普通配置、下载
-// archive、缓存、请求日志或浏览器 profile。
+// Package database 管理 Pixiv 与 FANBOX 鉴权状态的单一 SQLite 数据库。
+//
+// 数据库只保存鉴权数据与 Pixiv 账号池调度状态，不保存普通配置、下载 archive、缓存、
+// 请求日志或浏览器 profile。
+//
+// 包的组成：[Open] 打开或创建数据库并完成迁移，[DB] 提供账号读写端口；
+// repository.go 与 pool.go 分别承载账号查询和账号池调度，migrate.go 维护迁移 ledger。
 package database
 
 import (
@@ -20,6 +24,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+// DB 持有鉴权数据库的 SQL 与 GORM 句柄；调用方使用后必须 Close。
 type DB struct {
 	sql  *sql.DB
 	orm  *gorm.DB

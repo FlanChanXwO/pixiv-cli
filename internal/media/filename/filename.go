@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Fields 是一次文件名或目录模板渲染可用的作品字段。
+// Fields 提供一次文件名或目录模板渲染可用的作品字段。
 type Fields struct {
 	ID         int64
 	Author     string

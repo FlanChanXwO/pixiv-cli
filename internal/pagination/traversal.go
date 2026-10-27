@@ -1,7 +1,3 @@
-// Package pagination 提供逻辑分页、遍历与有序聚合流。
-//
-// 本包只处理 execute 生命周期、分页计划和 opaque cursor，不负责账号选择、
-// 网络策略、过滤语义或任何具体产品的错误映射。
 package pagination
 
 import (
@@ -19,7 +15,7 @@ var ErrExecuteNotConfigured = errors.New("traversal: execute function is not con
 // committed=true 表示本次尝试已经越过交付或副作用边界。
 type Execute[C any] func(context.Context, func(context.Context, C) (committed bool, err error)) error
 
-// PagedReadResult 是逻辑分页结果；opaque cursor 不离开 traversal。
+// PagedReadResult 回报一次逻辑分页实际返回的条数，opaque cursor 不离开 traversal。
 type PagedReadResult[T any] struct {
 	Items   []T
 	HasMore bool

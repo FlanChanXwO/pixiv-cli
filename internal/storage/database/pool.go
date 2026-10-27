@@ -1,6 +1,3 @@
-// Pixiv 账号池的调度状态查询和 membership 写入。
-// 事务内的状态读取在 repository.go 的 SelectPixiv。
-
 package database
 
 import (

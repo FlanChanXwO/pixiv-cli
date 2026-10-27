@@ -1,10 +1,10 @@
-// 本文件声明配置键（别名），与 RuntimeConfig 字段上的 alias 标签一一对应。
-
 package settings
 
-// Key 是配置别名，与 RuntimeConfig 字段上的 alias 标签一一对应。
+// Key 指定配置别名，与 RuntimeConfig 字段上的 alias 标签一一对应。
 type Key string
 
+// 以下 Key 是 config.toml 的扁平别名，与 [RuntimeConfig] 字段上的 alias 标签一一对应；
+// 键的含义见对应字段的注释，[Store.Set] 与 [Store.Get] 只接受这里列出的值。
 const (
 	KeyAccountPoolEnabled                 Key = "account_pool_enabled"
 	KeyAccountPoolStrategy                Key = "account_pool_strategy"

@@ -26,8 +26,8 @@ type AutomaticUpdateRequest struct {
 	BuildInfo version.Info
 }
 
-// AutomaticUpdateNotice 是 CLI 可安全展示的更新提示。
-// UpdateCommand 是安装来源对应的准确后续命令，不会在检查阶段执行。
+// AutomaticUpdateNotice 携带 CLI 可安全展示的更新提示。
+// UpdateCommand 给出安装来源对应的准确后续命令，不会在检查阶段执行。
 type AutomaticUpdateNotice struct {
 	Source         InstallSource
 	CurrentVersion string

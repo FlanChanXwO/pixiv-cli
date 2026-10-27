@@ -10,8 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 )
 
-// re-exports from the release package: release values, channel policy, the
-// release cache port, and the GitHub release client.
+// 以下别名转发 release 包的公开类型：release 值、渠道策略、缓存端口与 GitHub client。
 type (
 	Release              = release.Release
 	ReleaseCheckOptions  = release.ReleaseCheckOptions
@@ -20,8 +19,7 @@ type (
 	ReleaseClientOptions = release.ReleaseClientOptions
 )
 
-// re-exports from the installer package: install-source detection and the
-// release installer.
+// 以下别名转发 installer 包的安装来源检测与 release 安装器。
 type (
 	InstallSource           = installer.InstallSource
 	SourceDetector          = installer.SourceDetector
@@ -30,6 +28,7 @@ type (
 	ReleaseInstaller        = installer.ReleaseInstaller
 )
 
+// InstallSourceDevelopment 等常量转发 installer 包的安装来源取值。
 const (
 	InstallSourceDevelopment    = installer.InstallSourceDevelopment
 	InstallSourceHomebrewStable = installer.InstallSourceHomebrewStable
@@ -38,7 +37,7 @@ const (
 	InstallSourceRelease        = installer.InstallSourceRelease
 )
 
-// re-exports from the process package: the no-shell command runner.
+// 以下别名转发 process 包的不经 shell 的命令执行器。
 type (
 	Command       = process.Command
 	CommandRunner = process.CommandRunner
@@ -53,7 +52,7 @@ var (
 	ReleaseSigningKeyID         = installer.ReleaseSigningKeyID
 )
 
-// ReleaseSigningPublicKey 是生产 Release 签名使用的受信 Ed25519 公钥。
+// ReleaseSigningPublicKey 保存生产 Release 签名使用的受信 Ed25519 公钥。
 var ReleaseSigningPublicKey = installer.ReleaseSigningPublicKey
 
 // NewGitHubReleaseClient 建立 GitHub Releases 查询客户端。未显式注入 Cache 时，

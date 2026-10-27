@@ -1,5 +1,3 @@
-// Chromium 密文格式识别与 Local State 密钥解包；平台文件只读取系统秘密后端。
-
 package chromium
 
 import (

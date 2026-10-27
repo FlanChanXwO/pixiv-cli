@@ -1,5 +1,3 @@
-// 资源文件命名与发布：从 URL 取扩展名，按上游 MIME 或文件签名修正扩展名。
-
 package downloader
 
 import (

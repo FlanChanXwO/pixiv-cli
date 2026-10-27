@@ -1,8 +1,8 @@
 // Package safari 实现 Safari provider。
 //
-// 它解析 Cookies.binarycookies 二进制格式，读取明文 cookie；值看起来加密
-// （非 UTF-8）时返回明确分类。macOS 上 Safari 未安装时 Discover 返回
-// ErrNotInstalled。
+// 它解析 Cookies.binarycookies 二进制格式并读取明文 cookie；值看起来加密
+// （非 UTF-8）时返回明确分类。Safari 未安装时 DiscoverProfiles 返回
+// [browsercookies.ErrNotInstalled]。
 package safari
 
 import (

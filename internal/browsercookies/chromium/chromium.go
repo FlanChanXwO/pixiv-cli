@@ -1,7 +1,12 @@
 // Package chromium 实现 Chrome 与 Edge（共享 Chromium cookie 格式）provider。
 //
-// 它从当前平台的用户数据目录发现 profile，用只读 sqlite3 查询 Cookies
-// 数据库，并通过对应 OS 的秘密后端解密 Chromium cookie value。
+// 它从当前平台的用户数据目录发现 profile，用只读 sqlite3 查询 Cookies 数据库，
+// 并通过对应 OS 的秘密后端解密 cookie value；provider 在 init 中调用
+// [browsercookies.Register] 注册。
+//
+// 包的组成：provider 实现 [browsercookies.Provider]；chromecrypto.go、decrypt.go 与
+// legacy_keys_unix.go 处理密文格式和密钥解包，darwin.go、linux.go、windows.go 提供
+// 各平台的秘密后端，paths_*.go 给出用户数据根目录。
 package chromium
 
 import (

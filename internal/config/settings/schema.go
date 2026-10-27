@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-// 本文件把配置声明从"手写的 settingSpecs 事实表"迁移为"结构体字段标签"。
-// 字段标签是唯一事实来源；本文件负责把它派生为内部元数据，并继续通过既有的
-// 公开 SettingSpec 视图对外提供，避免 CLI 消费者感知迁移。
-//
-// 反射用于静态声明解析和配置绑定，不进入内容查询、分页或下载执行路径。
-
 // 标签名。它们由本项目的绑定实现解释，不是 Go 或 TOML 库的原生标签。
 const (
 	tagConfig  = "config"  // TOML 路径；"-" 表示不参与配置绑定
@@ -146,8 +140,8 @@ func configPathParts(field reflect.StructField, rawPath string) ([]string, error
 	return parts, nil
 }
 
-// configGroupType unwraps optional pointers and reports whether the field is a
-// nested configuration group; OptionalString is a value, not a group.
+// configGroupType 解开可选指针，判断字段是否为嵌套配置组；OptionalString 是值而不是
+// 配置组。
 func configGroupType(field reflect.StructField) (reflect.Type, bool) {
 	nested := field.Type
 	if nested.Kind() == reflect.Pointer {

@@ -1,5 +1,3 @@
-// FlareSolverr control protocol validates clearance-only browser state.
-
 package ascii2d
 
 import (

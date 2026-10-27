@@ -7,7 +7,7 @@ import (
 	"os/exec"
 )
 
-// Command 是无需 shell 解析的程序及其参数。
+// Command 描述无需 shell 解析的程序及其参数。
 type Command struct {
 	Name string
 	Args []string

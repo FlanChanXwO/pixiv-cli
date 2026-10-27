@@ -1,5 +1,6 @@
 // Package paths 定义本机私有状态的路径命名空间与最小权限要求。
-// 它不包含 Pixiv 协议、MCP 传输或业务配置解析。
+//
+// 本包只解析本机路径与权限，不包含 Pixiv 协议、MCP 传输或业务配置解析。
 package paths
 
 import (
@@ -8,9 +9,11 @@ import (
 )
 
 const (
-	// AppDataDirName 是本项目所有本机持久状态的唯一根目录名。
-	AppDataDirName  = ".pixiv-cli"
-	PrivateDirMode  = 0o700
+	// AppDataDirName 指定本项目所有本机持久状态的唯一根目录名。
+	AppDataDirName = ".pixiv-cli"
+	// PrivateDirMode 指定私有目录的权限位。
+	PrivateDirMode = 0o700
+	// PrivateFileMode 指定私有文件的权限位。
 	PrivateFileMode = 0o600
 )
 

@@ -1,5 +1,3 @@
-// Required response-field decoding shared by Pixiv endpoint mappings.
-
 package pixivapi
 
 import (
@@ -7,11 +5,9 @@ import (
 	"encoding/json"
 )
 
-// Present records whether a response field appeared; Valid records successful
-// decoding for T. Explicit null is present but invalid. Endpoint owners decide
-// which fields are required and report their own contextual failures.
-// A reused outer wire value must be cleared before decoding: missing fields
-// do not invoke these decoders.
+// Present 记录响应字段是否出现，Valid 记录 T 是否解码成功。显式 null 记为出现但无效；
+// 哪些字段必需、失败如何报告由端点 owner 决定。复用外层 wire 值前必须清零：缺失字段
+// 不会调用这里的解码方法。
 
 // RequiredList 解码一个必需数组字段，并保留其存在性与有效性。
 type RequiredList[T any] struct {

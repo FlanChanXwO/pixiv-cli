@@ -1,5 +1,3 @@
-// Authenticated JSON and media requests, redirect policy, and safe external failures.
-
 package fanboxapi
 
 import (
@@ -24,10 +22,8 @@ const (
 	requestKindMedia
 )
 
-// MediaRequest is the controlled request surface for FANBOX resource reads.
-// It deliberately contains only the method and conditional headers that the
-// public resource contract permits; callers cannot inject arbitrary headers or
-// credentials into the product transport.
+// MediaRequest 保存 FANBOX 资源读取允许的请求面：只有 method 与条件头，调用方无法向产品
+// 传输注入任意头或凭据。
 type MediaRequest struct {
 	Method          string
 	Range           string
@@ -36,9 +32,8 @@ type MediaRequest struct {
 	IfRange         string
 }
 
-// GetJSONURL performs one authenticated request against a server-provided
-// continuation. The continuation is validated against the FANBOX host policy
-// before it reaches the transport.
+// GetJSONURL 向服务端提供的续页 URL 发起一次带会话的请求；URL 在进入传输前先按
+// FANBOX 主机策略校验。
 func (s *Client) GetJSONURL(ctx context.Context, endpoint string, target any) error {
 	response, err := s.do(ctx, endpoint, requestKindFanbox, true, "application/json, text/plain, */*")
 	if err != nil {
@@ -56,16 +51,15 @@ func (s *Client) GetJSONURL(ctx context.Context, endpoint string, target any) er
 	return err
 }
 
-// ValidateAPIURL applies the same HTTPS/FANBOX host policy used by the native
-// transport. Endpoint families call it before handing server continuations to
-// a transport implementation.
+// ValidateAPIURL 按原生传输使用的 HTTPS 与 FANBOX 主机策略校验 URL；端点族把服务端续页
+// 交给传输前先调用它。
 func ValidateAPIURL(rawURL string) error {
 	_, err := parseAllowedURL(rawURL, requestKindFanbox)
 	return err
 }
 
-// ValidateMediaURL applies the media host policy without opening a request.
-// sdk/fanbox uses it to validate every locator it exposes.
+// ValidateMediaURL 只按媒体主机策略校验，不发起请求；sdk/fanbox 用它校验每个对外暴露
+// 的 locator。
 func ValidateMediaURL(rawURL string) error {
 	_, err := parseAllowedURL(rawURL, requestKindMedia)
 	return err
@@ -75,10 +69,8 @@ func (s *Client) do(ctx context.Context, rawURL string, kind requestKind, includ
 	return s.doWithRequest(ctx, rawURL, kind, includeCookie, accept, http.MethodGet, nil)
 }
 
-// doWithRequest adds the small, product-controlled resource request surface to
-// the shared FANBOX transport. Callers cannot pass arbitrary headers; the
-// public SDK constructs the allowlisted Range/conditional headers before this
-// function is reached.
+// doWithRequest 在共享 FANBOX 传输上发送产品控制的资源请求。调用方不能传任意头；
+// 公开 SDK 在本函数之前构造允许的 Range 与条件头。
 func (s *Client) doWithRequest(ctx context.Context, rawURL string, kind requestKind, includeCookie bool, accept, method string, headers http.Header) (*http.Response, error) {
 	method = strings.ToUpper(strings.TrimSpace(method))
 	if method == "" {
@@ -91,9 +83,8 @@ func (s *Client) doWithRequest(ctx context.Context, rawURL string, kind requestK
 	if !errors.Is(err, ErrChallenge) || s.flareSolverr == nil {
 		return response, err
 	}
-	// A challenge after cached clearance invalidates only this Client's in-memory
-	// state. The original request is allowed one fresh solve and one native
-	// replay; a second challenge is returned to the caller.
+	// 缓存 clearance 后再次遇到 challenge 只作废本 Client 的内存状态：原请求允许一次
+	// 重新求解和一次原生重放，第二次 challenge 返回给调用方。
 	s.invalidateSolverState()
 	if _, solveErr := s.waitForSolver(ctx); solveErr != nil {
 		return nil, solveErr
@@ -106,8 +97,7 @@ func (s *Client) doWithRequest(ctx context.Context, rawURL string, kind requestK
 	return response, err
 }
 
-// OpenMedia exposes the narrow conditional resource request surface
-// without allowing arbitrary caller headers or credentials.
+// OpenMedia 提供带条件头的窄资源请求面，不允许调用方传任意头或凭据。
 func (s *Client) OpenMedia(ctx context.Context, mediaURL string, request MediaRequest) (*http.Response, error) {
 	header := make(http.Header)
 	for _, field := range []struct{ name, value string }{
@@ -128,8 +118,8 @@ func (s *Client) OpenMedia(ctx context.Context, mediaURL string, request MediaRe
 	return response, nil
 }
 
-// safeMediaReadCloser maps external stream failures to safe errors while
-// preserving byte-for-byte media streaming and explicit close semantics.
+// safeMediaReadCloser 把外部流错误映射为安全错误，同时保持逐字节媒体传输与显式关闭
+// 语义。
 type safeMediaReadCloser struct {
 	ctx  context.Context
 	body io.ReadCloser
@@ -391,8 +381,7 @@ func credentialCookieAllowed(kind requestKind, host string) bool {
 	case requestKindFanbox:
 		return fanboxCookieHost(host)
 	case requestKindMedia:
-		// The recorded attachment contract requires the same session on
-		// downloads.fanbox.cc, but never on Pixiv/CDN or third-party hosts.
+		// 附件契约要求 downloads.fanbox.cc 使用同一会话，Pixiv/CDN 与第三方主机不使用。
 		return host == DownloadsHost
 	default:
 		return false

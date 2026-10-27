@@ -1,4 +1,9 @@
-// Package version 统一拥有仓库级 release version identity。
+// Package version 提供构建期嵌入的版本元数据和 SemVer 解析、比较与渠道判定。
+//
+// [Version] 由发布构建通过 -ldflags -X 覆盖。
+//
+// 包的组成：[Version] 与 [Info] 是构建元数据，[Semantic] 与 [Parse] 处理已校验
+// 版本，[Compare]、[Validate] 与 [Channel] 提供比较和分类。
 package version
 
 import (

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Failure 是 adapter 向 facade 交付的脱敏失败。它绝不保存响应 body、URL、
+// Failure 表示 adapter 向 facade 交付的脱敏失败。它绝不保存响应 body、URL、
 // header、token、cookie 或 Web envelope message；只有取消和 deadline 可作为
 // 可 unwrap 的底层原因，以保留 Go 的 context 语义。
 type Failure struct {
@@ -23,9 +23,10 @@ type Failure struct {
 	cause         error
 }
 
-// TransportKind 是 adapter 交付给 facade 的安全传输失败子类。
+// TransportKind 标记传输失败的安全子类，供 facade 决定错误映射。
 type TransportKind string
 
+// TransportDNS 等值是 [TransportKind] 的全部取值，分类只依赖标准库的 typed cause。
 const (
 	TransportDNS               TransportKind = "dns"
 	TransportTLS               TransportKind = "tls"
@@ -36,8 +37,11 @@ const (
 	TransportUnknown           TransportKind = "unknown"
 )
 
+// FailureKind 枚举 [Failure] 的稳定分类。
 type FailureKind string
 
+// FailureHTTPStatus 表示上游返回非 2xx；FailureMalformed 表示响应无法解码；
+// FailureResourceForbidden 表示资源 locator 未通过策略；FailureTransport 表示传输失败。
 const (
 	FailureHTTPStatus        FailureKind = "http_status"
 	FailureMalformed         FailureKind = "malformed_response"
@@ -45,19 +49,28 @@ const (
 	FailureTransport         FailureKind = "transport"
 )
 
+// ErrMalformedResponse 可由 [errors.Is] 用来识别 malformed 失败。
 var ErrMalformedResponse = errors.New("pixiv upstream returned a malformed response")
 
+// HTTPStatus 构造不带 Retry-After 的非 2xx 失败。
 func HTTPStatus(status int) Failure {
 	return Failure{Kind: FailureHTTPStatus, StatusCode: status}
 }
+
+// HTTPStatusWithRetryAfter 构造带可选 Retry-After 的非 2xx 失败；present 为 false 时
+// RetryAfter 无意义。
 func HTTPStatusWithRetryAfter(status int, retryAfter time.Duration, present bool) Failure {
 	return Failure{
 		Kind: FailureHTTPStatus, StatusCode: status, RetryAfter: retryAfter, HasRetryAfter: present,
 	}
 }
+
+// MalformedResponse 构造响应无法解码的失败。
 func MalformedResponse() Failure {
 	return Failure{Kind: FailureMalformed}
 }
+
+// Transport 把传输错误转成脱敏失败；取消与 deadline 保留为可 unwrap 的原因。
 func Transport(err error) Failure {
 	var failure Failure
 	if errors.As(err, &failure) {
@@ -128,7 +141,11 @@ func (e Failure) Error() string {
 		return "pixiv upstream transport failed"
 	}
 }
+
+// Unwrap 返回保留的 context 取消或 deadline 原因。
 func (e Failure) Unwrap() error { return e.cause }
+
+// Is 支持用 [ErrMalformedResponse] 判断 malformed 失败。
 func (e Failure) Is(target error) bool {
 	return target == ErrMalformedResponse && e.Kind == FailureMalformed
 }

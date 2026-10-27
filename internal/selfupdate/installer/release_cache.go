@@ -1,5 +1,3 @@
-// Private GitHub release cache persistence using the shared atomic writer.
-
 package installer
 
 import (
@@ -14,7 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
 
-// NewFileReleaseCache stores release metadata at a private, atomically replaced path.
+// NewFileReleaseCache 返回以私有权限原子替换的 release 元数据缓存。
 func NewFileReleaseCache(cachePath string) release.ReleaseCache {
 	return &fileReleaseCache{cachePath: cachePath}
 }

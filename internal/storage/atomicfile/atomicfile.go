@@ -1,4 +1,11 @@
 // Package atomicfile 提供协议无关的原子落盘原语。
+//
+// 写入先在目标同目录创建临时文件并同步，再按平台替换目标；替换失败时由
+// [Result] 说明目标与源文件的状态。
+//
+// 包的组成：[AtomicWrite] 流式写文件，[ReplaceFile] 与 [ReplaceFileWithBackup]
+// 执行平台替换，[SyncParentDirectory] 同步目录项，[MustPreserveReplacementSource]
+// 判断错误是否要求保留源文件。
 package atomicfile
 
 import (

@@ -1,5 +1,3 @@
-// Aggregator owns provider fan-out, stable ordering and partial failures.
-
 package reversesearch
 
 import (
@@ -16,6 +14,7 @@ type Aggregator struct {
 	ascii2d  ASCII2DClient
 }
 
+// NewAggregator 组合 SauceNAO 与 ascii2d 端口；Close 按相反顺序释放两者。
 func NewAggregator(sauceNAO ProviderClient, ascii2d ASCII2DClient) *Aggregator {
 	return &Aggregator{sauceNAO: sauceNAO, ascii2d: ascii2d}
 }

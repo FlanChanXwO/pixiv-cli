@@ -1,6 +1,3 @@
-// Pixiv App and OAuth route names and query/form parameters.
-// Request sending and retry policy belong to pixivapi.go and oauth.
-
 package pixivapi
 
 // App API 路径。

@@ -1,3 +1,4 @@
+// MCP gallery 的前端逻辑：接收宿主消息、渲染作品卡片并处理分页、灯箱与收藏。
 
 "use strict";
 (() => {
@@ -195,7 +196,7 @@
           await navigator.clipboard.writeText(record.id);
           copied = true;
         } catch (_) {
-          // Some embedded hosts omit clipboard-write permission; use their native selection copy.
+          // 部分嵌入宿主不授予 clipboard-write 权限，改用宿主提供的原生选区复制。
           try {
             const range = document.createRange(), selection = document.getSelection();
             range.selectNodeContents(copy); selection.removeAllRanges(); selection.addRange(range);
@@ -234,7 +235,7 @@
     if (!/<a\b/i.test(source)) { text("p", decode(source), parent, "caption"); return; }
     const caption = text("p", "", parent, "caption");
     let end = 0;
-    // Rebuild supported links from text; never insert upstream HTML or attributes into the document.
+    // 只按文本重建受支持的链接，绝不把上游 HTML 或属性插入文档。
     for (const match of source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi)) {
       text("span", decode(source.slice(end, match.index)), caption);
       const label = decode(match[2]);
@@ -272,10 +273,10 @@
         if (tagSearchLocked || epoch !== view || disposed) return;
         lockTagSearch(true);
         try {
-          // The message outlives local navigation: cancelling a view does not cancel the agent's turn.
+          // 消息生命周期长于本地页面跳转：取消查看不会取消 agent 的这一轮对话。
           const result = await request("ui/message", {role:"user", content:[{type:"text", text:"Search Pixiv for the exact tag " + JSON.stringify(tag.name) + " and show the matching artworks in a gallery."}]});
           if (result?.isError) throw new Error("Message rejected");
-          // shortcut: no host turn-completion signal; keep this instance locked until remount.
+          // shortcut: 宿主没有提供轮次完成信号；在重新挂载前保持本实例锁定。
         } catch (_) { if (!disposed) { lockTagSearch(false); status.className = ""; status.textContent = "Tag search could not be sent. Try again."; } }
       });
       chip.className = "tag";
@@ -300,26 +301,26 @@
     const row = {list, update: () => { toggle.hidden = !expanded && list.scrollWidth <= group.clientWidth; }};
     tagRows.add(row); resize?.observe(list); row.update();
   }
-  // The tool's entry for one page, if the result covers it at all.
+  // 返回工具结果中这一页的条目；结果未覆盖该页时返回 undefined。
   function capabilityEntry(result, id, page) {
     return result?.structuredContent?.images?.find(item => Number(item?.illust_id) === Number(id) && item.page === page);
   }
-  // Only the canonical origin returned by our media tool is allowed; CSP also pins it.
+  // 只接受媒体工具返回的规范 origin，CSP 也把来源固定在它上面。
   function capabilityURL(result, id, page) {
     const origin = result?.structuredContent?.media_origin, item = capabilityEntry(result, id, page);
     if (!item || typeof origin !== "string" || !/^https?:\/\/[^/?#@]+$/.test(origin) || typeof item.url !== "string" || !item.url.startsWith(origin + "/") || !item.url.includes("/media/") || /[?#]/.test(item.url)) return undefined;
     return item.url;
   }
   const pageRange = total => Array.from({length: Number.isSafeInteger(total) && total > 0 ? total : 1}, (_, index) => index + 1);
-  // Decodes a neighbouring page off-screen so a later turn shows it from the session cache at once.
+  // 在屏幕外预先解码相邻页，翻到该页时可直接从会话缓存显示。
   function warm(key, url) {
     if (!url || cached(key) || disposed) return;
     const image = document.createElement("img"); image.alt = ""; image.referrerPolicy = "no-referrer";
     image.addEventListener("load", () => { if (!disposed) remember(key, image, image.naturalWidth * image.naturalHeight * 8, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); }); });
     image.src = url;
   }
-  // A page turn drawn as a rotating cube over `surface`. The content swaps through `go` once the turn
-  // lands, so the existing load, cache and failure paths still decide what is actually shown.
+  // 在 surface 上以旋转立方体绘制翻页动画；动画落定后才通过 go 切换内容，
+  // 实际显示什么仍由既有的加载、缓存与失败路径决定。
   function cubePager(surface, {current, currentSource, source, valid, go}) {
     let cube, rotor, side = 0, busy = false;
     const motion = () => typeof window.matchMedia === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches && typeof surface.animate === "function" && Boolean(currentSource());
@@ -348,18 +349,18 @@
       animation.onfinish = animation.oncancel = () => {
         busy = false;
         if (target === undefined) { clear(); return; }
-        // A decoded target swaps in under the cube; otherwise the normal loading state takes over at once.
+        // 目标页已解码时在立方体下直接换上；否则立即交给常规加载状态。
         const ready = Boolean(source(target)), pending = go(target);
         if (ready) Promise.resolve(pending).finally(clear); else clear();
       };
     }
     return {
-      // Follows a horizontal drag; false means no turn is drawn (reduced motion, busy, nothing shown).
+      // 跟随水平拖动；返回 false 表示不绘制翻页（减少动态效果、正忙或没有可显示内容）。
       drag(dx) {
         if (busy || !motion()) return false;
         const direction = dx < 0 ? 1 : -1, target = current() + direction, open = valid(target);
         if (!cube || side !== direction) build(direction, open ? target : undefined);
-        // Past the first or last page the cube only gives a little before springing back.
+        // 越过首页或末页时，立方体只小幅倾斜后回弹。
         const limit = open ? 90 : 18;
         place(Math.max(-limit, Math.min(limit, dx / (half() * 2 || 1) * 90)));
         return true;
@@ -370,7 +371,7 @@
         land(commit && valid(target) ? target : undefined);
         return true;
       },
-      // Buttons, keys and the slider turn one face towards the target, even when it is several pages away.
+      // 按钮、键盘与滑块都让立方体转向目标页，即使目标相隔数页。
       turn(target) {
         if (!valid(target) || target === current() || busy) return;
         if (!motion()) { go(target); return; }
@@ -388,7 +389,7 @@
     if (open) { const link = action("", frame, open); link.className = "media-open"; link.title = "Open artwork"; link.setAttribute?.("aria-label", "Open " + String(record.title || "artwork")); link.append(image); } else frame.append(image);
     const fitThumbnail = () => { if (quality === "thumbnail" && image.naturalWidth > 0 && image.naturalHeight > 0) frame.style.aspectRatio = image.naturalWidth + " / " + image.naturalHeight; };
     fitThumbnail();
-    // Letterboxing shows a blurred copy of the same image rather than flat bars; retained images never fire load.
+    // 留边处使用同图的模糊副本，而不是纯色条；已保留的图片不会再触发 load。
     const backdrop = () => { if (quality !== "thumbnail" && image.src) frame.style.setProperty?.("--frame-image", "url(" + JSON.stringify(image.src) + ")"); };
     if (retained) backdrop();
     const overlay = document.createElement("div"); overlay.className = "media-state"; frame.append(overlay);
@@ -402,7 +403,7 @@
       if (!active || epoch !== view || disposed) return;
       busy = false; broken = false; image.hidden = false; overlay.hidden = true; retry.hidden = true; fitThumbnail();
       backdrop();
-      // Include decoded pixels and an encoded-image allowance; browser/GPU overhead is outside this estimate.
+      // 估算包含解码后的像素与编码图片的空间；浏览器与 GPU 开销不计入。
       const bytes = image.naturalWidth * image.naturalHeight * 8;
       remember(key, image, bytes, () => { if (!proxyImages.has(image)) image.removeAttribute("src"); });
       onReady?.();
@@ -548,7 +549,7 @@
         if (!current(token)) return;
         selected = item;
         for (const other of images) other.image.hidden = other !== item;
-        // Keep loaded media in this view: assigning src again would trigger another no-store download.
+        // 已加载的媒体保留在当前视图：重新赋值 src 会触发一次 no-store 下载。
         if (item.state === "idle") { item.state = "loading"; item.image.src = item.url; }
         message.textContent = item.state === "ready" ? item.ready : item.state === "failed" ? failure : item.loading;
       };
@@ -561,7 +562,7 @@
         item.loaded = () => {
           if (!current(token)) return;
           item.state = "ready";
-          // Count every decoded animation frame; unknown frame counts are not retained.
+          // 按每个解码后的动画帧计数；帧数未知时不保留该缓存。
           const pixels = Number(image.naturalWidth || artwork.width) * Number(image.naturalHeight || artwork.height);
           const frames = result._meta?.["pixiv/animationFrameCount"];
           let bytes = pixels * 8;
@@ -589,7 +590,7 @@
       if (!["gif","apng"].includes(format.value)) { message.textContent = "Invalid animation format."; return; }
       release(); media.replaceChildren(); const token = generation, selectedFormat = format.value;
       reading = true; load.disabled = true; message.textContent = "Preparing animation…";
-      // Keep prepare responses reachable after navigation so late handles can be released.
+      // 跳转后仍保留 prepare 响应，让迟到的句柄能被释放。
       try { receiveState(await request("tools/call", {name:"pixiv_gallery_animation",arguments:{action:"prepare",illust_id:id,format:selectedFormat}}), token, selectedFormat); }
       catch (_) { failed(token); }
     });
@@ -629,9 +630,9 @@
     const dialog = document.createElement("dialog"); dialog.className = "original-viewer";
     dialog.setAttribute("aria-label", String(artwork.title || "Artwork")); cards.append(dialog);
     const top = text("div", "", dialog, "original-top");
-    // A fullscreen host draws its own close control; ours stays for inline hosts, with Escape as well.
+    // 全屏宿主自带关闭控件，本页的关闭按钮留给内嵌宿主，Esc 同样可用。
     const close = iconAction("Close original", "close", top, cleanup, true); close.hidden = hostContext.displayMode === "fullscreen";
-    // Fullscreen hosts may float their own input over the bottom; CSS keeps the dock above it.
+    // 全屏宿主可能在底部浮起自己的输入框，CSS 让工具栏停在其上方。
     if (close.hidden) dialog.setAttribute("data-fullscreen", "");
     const stage = text("div", "", dialog, "original-stage");
     let front = document.createElement("img"); front.className = "original-image"; front.alt = ""; front.hidden = true; front.referrerPolicy = "no-referrer"; stage.append(front);
@@ -648,7 +649,7 @@
     const counter = text("span", "", dock, "original-count"); counter.hidden = total === 1;
     if (total > 1) counter.append(icon("pages"));
     const pageLabel = text("span", "", counter);
-    // Stepped zoom is for mouse users; touch screens pinch instead (hidden for coarse pointers).
+    // 分级缩放面向鼠标用户；触屏用双指缩放，粗指针设备下隐藏该控件。
     const out = iconAction("Zoom out", "minus", dock, () => scale(-0.25), true); out.className = "icon-button original-step";
     const readout = text("span", "Fit", dock, "original-zoom");
     const plus = iconAction("Zoom in", "plus", dock, () => scale(0.25), true); plus.className = "icon-button original-step";
@@ -664,11 +665,11 @@
       downloadButton.setAttribute("aria-label", "Download viewed original"); downloadButton.title = "Download viewed original";
       downloadButton.append(icon("download")); downloadButton.hidden = true;
     }
-    // Controls only appear once an image can be acted on.
+    // 只有图片可操作后才显示控件。
     const toggleControls = enabled => { out.disabled = plus.disabled = fit.disabled = !enabled; dock.hidden = !enabled; };
     toggleControls(false);
     function setLoading(loading) { spinner.hidden = !loading; dialog.setAttribute("aria-busy", String(loading)); }
-    // A fullscreen host may size its panel to the image instead of a fixed wide pane.
+    // 全屏宿主可能按图片尺寸收窄面板，而不是固定宽幅。
     function preferImageWidth() {
       if (!shown || hostContext.displayMode !== "fullscreen" || !(front.naturalWidth > 0 && front.naturalHeight > 0)) return;
       const {x, y} = stagePadding(), height = (Number(stage.clientHeight) || 0) - y;
@@ -676,7 +677,7 @@
     }
     function stagePadding() {
       const computed = globalThis.getComputedStyle?.(stage);
-      // A real 0px padding must stay 0; only an unavailable style falls back to 16px.
+      // 真实的 0px padding 必须保留为 0，只有取不到样式时才回退到 16px。
       const pad = name => { const value = parseFloat(computed?.[name]); return Number.isFinite(value) ? value : 16; };
       return {x: pad("paddingLeft") + pad("paddingRight"), y: pad("paddingTop") + pad("paddingBottom")};
     }
@@ -692,7 +693,7 @@
       if (!shown) return;
       zoom = next;
       const actual = zoom === "actual", fitted = zoom === "fit", percent = actual || fitted ? 1 : Math.max(0.5, Math.min(4, zoom));
-      // Fit is pure CSS so any host resize (panel, maximize, rotation) re-fits without measuring.
+      // 适配尺寸完全交给 CSS，宿主改变面板、最大化或旋转时无需重新测量。
       front.className = "original-image" + (actual ? " original-actual" : fitted ? " original-fit" : "");
       if (fitted) front.style.width = front.style.height = "";
       else {
@@ -702,7 +703,7 @@
       }
       readout.textContent = actual ? "1:1" : percent === 1 ? "Fit" : Math.round(percent * 100) + "%";
       fit.setAttribute("aria-pressed", String(actual)); fit.setAttribute("aria-label", actual ? "Fit to window" : "Actual size");
-      // The icon shows what a tap will do, since the pressed state has no background on touch.
+      // 触屏按下态没有背景，图标本身说明点按后的动作。
       fit.replaceChildren(icon(actual ? "shrink" : "size"));
       stage.className = "original-stage" + (actual || percent > 1 ? " original-zoomed" : "");
     }
@@ -722,7 +723,7 @@
     function dropPlaceholder() { placeholder?.remove(); placeholder = undefined; }
     function failed() {
       if (closed) return;
-      // Expired or rejected capabilities must not be reused by the explicit retry.
+      // 显式重试不能复用已过期或被拒的 capability。
       originalBatch = undefined;
       // 渐进加载失败时撤下半张原图，恢复此前已显示的页面。
       dropPlaceholder(); back.hidden = true; if (shown) front.hidden = false;
@@ -772,7 +773,7 @@
         const retained = cached(key)?.value;
         let nextURL = retained?.src;
         if (!retained) {
-          // One call signs every original page; a page the batch does not cover falls back to its own call.
+          // 一次调用为全部原图页签名；批次未覆盖的页再单独调用。
           originalBatch ??= request("tools/call", {name:"pixiv_show_gallery",arguments:{illust_ids:[id],pages:pageRange(total),quality:"original"}}, epoch);
           let result = await originalBatch;
           if (closed || mine !== token || epoch !== view || disposed) return;
@@ -798,14 +799,14 @@
         dialog.setAttribute("data-progressive", String(progressive));
         incoming.hidden = false;
         if (progressive) { front.hidden = true; incoming.className = "original-image original-streaming"; incoming.style.visibility = ""; }
-        // Without a placeholder, keep the decoded page visible until the original HTTP stream has decoded.
+        // 没有占位图时，保持已解码页面可见，直到原图 HTTP 流解码完成。
         else { incoming.className = "original-image original-incoming"; incoming.style.visibility = "hidden"; }
         if (!retained) incoming.src = nextURL;
         try { await incoming.decode(); } catch (_) { if (mine === token && !closed) { forget(key); failed(); } return; }
         if (closed || mine !== token || epoch !== view || disposed) return;
         commit(progressive);
         remember(key, front, front.naturalWidth * front.naturalHeight * 8, () => { if (!proxyImages.has(incoming)) incoming.removeAttribute("src"); });
-        // Neighbouring originals decode in the background from the same batch, so the next turn is instant.
+        // 相邻原图从同一批次在后台解码，翻到下一页时可直接显示。
         for (const near of [number + 1, number - 1]) {
           if (near >= 1 && near <= total) originalBatch?.then(batch => { if (!closed) warm("original-image:" + id + ":" + near, capabilityURL(batch, id, near)); }, () => {});
         }
@@ -835,7 +836,7 @@
     let pinch, swipe;
     stage.addEventListener("touchstart", event => {
       if (event.touches?.length === 2) {
-        // A second finger turns a started swipe into a pinch, so any half-drawn turn springs back.
+        // 第二根手指落下时把已开始的滑动改为缩放，并让半途的翻页回弹。
         swipe = undefined; pager.release(false);
         const [a,b] = event.touches; pinch = {distance:Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY), zoom:typeof zoom === "number" ? zoom : 1}; // fit and actual both start from the fitted scale
       } else if (event.touches?.length === 1 && (zoom === "fit" || zoom === 1)) swipe = {x:event.touches[0].clientX, y:event.touches[0].clientY};
@@ -859,7 +860,7 @@
       const commit = Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5;
       if (!pager.release(commit) && commit) goTo(selectedPage + (dx < 0 ? 1 : -1));
     }, {passive:true});
-    // The system can interrupt a touch without touchend; never leave a half-drawn turn on screen.
+    // 系统可能在未收到 touchend 时中断触摸，不能让半途的翻页留在屏幕上。
     stage.addEventListener("touchcancel", () => { pinch = swipe = undefined; pager.release(false); }, {passive:true});
     dialog.addEventListener("keydown", event => {
       if (event.key === "ArrowLeft") { event.preventDefault(); show(selectedPage - 1); }
@@ -954,9 +955,9 @@
       const authorCard = text("div", "", authorRow, "author-card");
       const author = artworkAuthor(artwork, authorCard);
       let initialPreview;
-      // One call signs every page; a rejected batch is dropped so a later retry asks again.
+      // 一次调用为全部页面签名；批次被拒时丢弃，下次重试会重新请求。
       const detailPreview = () => initialPreview ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], pages:pageRange(artwork.page_count), quality:"regular"}}, epoch).catch(error => { initialPreview = undefined; throw error; });
-      // A page the batch does not cover falls back to its own call; a covered but invalid entry still fails.
+      // 批次未覆盖的页单独调用；批次覆盖但条目无效时仍然失败。
       const pageSource = page => async () => {
         const batch = await detailPreview();
         return capabilityEntry(batch, id, page) ? batch : request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:[id], page, quality:"regular"}}, epoch);
@@ -992,7 +993,7 @@
         const media = document.createElement("div"); media.className = "page-media"; viewer.append(media);
         let selectedPage = 1, preview, displayed, previousPage, nextPage, progress, position, counter, counterLabel;
         let swiped = false;
-        // Pointer capture retargets taps to the media container; swipes must not open the original.
+        // 指针捕获把点击重定向到媒体容器；滑动不得打开原图。
         media.addEventListener("click", event => { if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch); });
         media.addEventListener("dblclick", event => {
           if (!swiped && !event.target?.closest("button")) originalViewer(id, selectedPage, artwork, epoch);
@@ -1008,13 +1009,13 @@
               if (selectedPage !== page || epoch !== view || disposed) return;
               if (displayed) { displayed.dispose(); displayed.frame.remove(); }
               displayed = replacement; replacement.frame.className = "media-frame";
-              // Warm neighbours only from a batch already requested; speculation never costs a host round trip.
+              // 只预热已请求批次中的相邻页，预取不额外产生宿主往返。
               for (const near of [page + 1, page - 1]) {
                 if (validPage(near)) initialPreview?.then(batch => { if (epoch === view) warm("image:" + id + ":" + near + ":regular", capabilityURL(batch, id, near)); }, () => {});
               }
             });
             preview = replacement;
-            // Size the frame from the artwork, not vh: the host resizes this iframe to its content height.
+            // 按作品尺寸而非 vh 设定画面比例：宿主会把 iframe 调整到内容高度。
             const size = pageSize(artwork, page);
             if (size) replacement.frame.style.aspectRatio = size.width + " / " + size.height;
             if (displayed) replacement.frame.className = "media-frame page-pending";
@@ -1022,7 +1023,7 @@
           }
           if (progress) {
             progress.value = String(page); position.textContent = counterLabel.textContent = page + " / " + total;
-            // Unavailable directions disappear instead of showing a dead control.
+            // 不可用的方向直接隐藏，不留下无效控件。
             previousPage.disabled = previousPage.hidden = page === 1; nextPage.disabled = nextPage.hidden = page === total;
           }
         };
@@ -1030,7 +1031,7 @@
           const pager = cubePager(media, {current: () => selectedPage, currentSource: () => displayed?.image.src || "", source: page => cached("image:" + id + ":" + page + ":regular")?.value?.src || "", valid: validPage, go: loadPage});
           previousPage = iconAction("Previous image", "previous", viewer, () => pager.turn(selectedPage - 1), true); previousPage.className = "icon-button page-previous";
           nextPage = iconAction("Next image", "next", viewer, () => pager.turn(selectedPage + 1), true); nextPage.className = "icon-button page-next";
-          // The slider is on demand: the counter pill opens it as an overlay instead of reserving a row.
+          // 页码滑块按需出现：点计数胶囊以浮层展开，不额外占用一行。
           const navigation = document.createElement("div"); navigation.className = "page-navigation"; navigation.hidden = true; viewer.append(navigation);
           counter = action("", viewer, () => {
             navigation.hidden = !navigation.hidden;
@@ -1038,7 +1039,7 @@
             counter.setAttribute("aria-label", navigation.hidden ? "Show page slider" : "Hide page slider");
           });
           counter.className = "page-counter"; counter.setAttribute("aria-expanded", "false"); counter.setAttribute("aria-label", "Show page slider");
-          // The button keeps a full touch target; only its label is drawn as the small pill.
+          // 按钮保留完整触摸区域，只有标签绘制成小胶囊。
           counterLabel = text("span", "", counter, "page-counter-label");
           progress = document.createElement("input"); progress.type = "range"; progress.min = "1"; progress.max = String(total); progress.step = "1"; progress.setAttribute("aria-label", "Image progress"); navigation.append(progress);
           position = text("output", "", navigation, "page-position");
@@ -1046,7 +1047,7 @@
           progress.addEventListener("change", () => { const page = Number(progress.value); if (validPage(page) && page !== selectedPage) pager.turn(page); });
           let gesture;
           media.addEventListener("pointerdown", event => { if (event.target?.closest("button")) return; if (event.isPrimary !== false && event.button === 0) { swiped = false; gesture = {id:event.pointerId, x:event.clientX, y:event.clientY, horizontal:false}; media.setPointerCapture?.(event.pointerId); } });
-          // Once a drag is clearly horizontal the cube follows the finger; pan-y keeps vertical scrolling with the chat.
+          // 拖动明确为水平后立方体跟随手指；pan-y 让垂直滚动仍交给聊天窗口。
           media.addEventListener("pointermove", event => {
             if (!gesture || gesture.id !== event.pointerId) return;
             const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
@@ -1058,7 +1059,7 @@
             const start = gesture; gesture = undefined;
             if (!start || start.id !== event.pointerId) return;
             const dx = event.clientX - start.x, dy = event.clientY - start.y;
-            // A full touch target of horizontal travel distinguishes swipes from taps.
+            // 用完整触摸宽度内的水平位移区分滑动与点按。
             const commit = Math.abs(dx) >= 44 && Math.abs(dx) > Math.abs(dy) * 1.5;
             if (!start.horizontal && !commit) return;
             swiped = true; event.preventDefault();
@@ -1115,7 +1116,7 @@
     const enable = () => {
       save.disabled = apply.disabled = remove.disabled = visibility.disabled = busy || !state;
       refresh.disabled = busy;
-      // Unknown state swaps the heart for an icon-only retry; the reason stays in the assistive status.
+      // 状态未知时用心形图标位置显示重试，原因留在辅助状态文本中。
       save.hidden = !state && !busy;
       retry.disabled = busy; retry.hidden = Boolean(state) || busy;
       remove.hidden = !state?.bookmarked;
@@ -1286,7 +1287,7 @@
     const epoch = view;
     if (Number.isSafeInteger(result.structuredContent?.illust_id) && result.structuredContent.illust_id > 0 && Array.isArray(result.structuredContent.pages)) {
       const {illust_id: id, title, pages} = result.structuredContent;
-      // Static media reuses the full detail page; animations keep their embedded playback view.
+      // 静态媒体复用完整详情页，动画保留内嵌播放视图。
       if (serverTools && pages.length && !pages.some(page => Number.isSafeInteger(page?.preview_content_index))) {
         if (Number.isSafeInteger(pages[0]?.page) && pages[0].page > 0) remember("page:" + id, pages[0].page, 8);
         openDetail({id: String(id), type: "illust", title});
@@ -1295,7 +1296,7 @@
     }
     const records = result.structuredContent?.records;
     if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
-    // A single artwork goes straight to detail; without tool calls or a valid ID detail cannot load, so keep the card.
+    // 单件作品直接进入详情；没有 tool 调用或有效 ID 时详情无法加载，因此保留卡片。
     const only = records.length === 1 ? records[0] : undefined;
     if (serverTools && ["illust", "manga", "ugoira"].includes(only?.type) && Number.isSafeInteger(Number(only.id)) && Number(only.id) > 0) { openDetail(only); return; }
     status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? "" : "No results.";
@@ -1311,9 +1312,9 @@
       });
     }
     let thumbnails;
-    // Historical URLs expire or lose their signing key on restart; acquire current capabilities once per view.
+    // 历史 URL 会过期或在校验 key 变更后失效，每次视图只获取一次当前 capability。
     const currentThumbnails = serverTools ? () => thumbnails ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:records.filter(record => record && ["illust", "manga", "ugoira"].includes(record.type) && Number.isSafeInteger(Number(record.id)) && Number(record.id) > 0).map(record => Number(record.id)),page:1,quality:"thumbnail"}}, epoch) : result;
-    // Failures usually share a cause (expired capabilities); one retry renews every failed card in one batch.
+    // 失败通常同因（capability 过期），一次重试批量续订所有失败卡片。
     const thumbs = [];
     const retryFailed = () => {
       const failed = thumbs.filter(thumb => thumb.media.failed());

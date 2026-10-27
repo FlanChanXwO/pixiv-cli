@@ -1,5 +1,3 @@
-// 本地路径与 file URI 的转换，以及 URL path 提取。
-
 package downloader
 
 import (

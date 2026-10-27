@@ -1,3 +1,6 @@
+// Package httpclient 构造公开 SDK 使用的 HTTP client，并按显式代理配置设置 Transport。
+//
+// client 不包含认证、内容请求或资源下载逻辑，这些由各协议包负责。
 package httpclient
 
 import (
@@ -10,7 +13,7 @@ import (
 // errInvalidProxy 是代理配置错误对外呈现的稳定分类文本。
 var errInvalidProxy = errors.New("invalid proxy configuration")
 
-// HTTPClient 是公开 SDK 创建 operation transport 的内部基础设施；它不构造
+// HTTPClient 创建公开 SDK 使用的 operation transport；它不构造
 // Source，也不包含内容、认证或资源 facade。
 func HTTPClient(proxyValue string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()

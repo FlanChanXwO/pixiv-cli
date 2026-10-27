@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// StreamReadResult 是可重放聚合流的逻辑分页结果。State 由产品 owner
+// StreamReadResult 回报可重放聚合流的一次逻辑分页结果。State 由产品 owner
 // 进一步编码为自己的 opaque cursor；traversal 不解释其中的 cursor。
 type StreamReadResult[T any, C Cursor] struct {
 	Items   []T

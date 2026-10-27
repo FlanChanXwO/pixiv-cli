@@ -1,12 +1,11 @@
-// 反搜错误保留稳定分类、安全消息和供 errors.Is/As 使用的原始原因。
-
 package reversesearch
 
 import "errors"
 
-// ErrorCode 是跨 CLI/MCP 边界保持稳定的错误分类。
+// ErrorCode 枚举跨 CLI/MCP 边界保持稳定的错误分类。
 type ErrorCode string
 
+// 以下 Code 是跨 CLI/MCP 边界保持稳定的错误分类；新增值时同步调用方映射。
 const (
 	CodeUnknown                   ErrorCode = "unknown"
 	CodeInvalidRequest            ErrorCode = "invalid_request"

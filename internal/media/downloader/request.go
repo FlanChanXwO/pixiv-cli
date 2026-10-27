@@ -1,5 +1,3 @@
-// 下载请求的取值类型、页码解析与质量/容器校验。
-
 package downloader
 
 import (
@@ -13,6 +11,8 @@ import (
 // DownloadQuality 选择静态图片的下载分辨率。
 type DownloadQuality string
 
+// DownloadQualityOriginal 等取值对应 Pixiv 图片的 upstream 质量档位，取自原图到缩略图的
+// 顺序；空值由调用方按 original 处理。
 const (
 	DownloadQualityOriginal DownloadQuality = "original"
 	DownloadQualityRegular  DownloadQuality = "regular"
@@ -24,6 +24,7 @@ const (
 // UgoiraFormat 选择 ugoira 的最终动画容器。
 type UgoiraFormat string
 
+// UgoiraFormatGIF 与 UgoiraFormatAPNG 是可编码的两种 animage 容器；空值按 GIF 处理。
 const (
 	UgoiraFormatGIF  UgoiraFormat = "gif"
 	UgoiraFormatAPNG UgoiraFormat = "apng"

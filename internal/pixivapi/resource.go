@@ -1,5 +1,3 @@
-// Pixiv media policy, validated locator cache, and credential-free resource streaming.
-
 package pixivapi
 
 import (
@@ -11,7 +9,7 @@ import (
 	"strings"
 )
 
-// OpenRequest describes a resource read with SDK-validated method and headers.
+// OpenRequest 描述一次资源读取；Method 为空时按 GET 发送，Header 由调用方校验后传入。
 type OpenRequest struct {
 	URL    string
 	Method string
@@ -25,8 +23,8 @@ type Response struct {
 	Body       io.ReadCloser
 }
 
-// OpenResource streams an allowlisted URL without product credentials.
-// The final URL is checked after an injected redirect callback can modify it.
+// OpenResource 以不带产品凭据的 client 流式读取允许列表内的 URL；注入的 redirect
+// 回调改写目标后，最终 URL 仍会再次校验。
 func (c *Client) OpenResource(ctx context.Context, request OpenRequest) (*Response, error) {
 	if err := c.ValidateResourceURL(request.URL); err != nil {
 		return nil, Failure{Kind: FailureResourceForbidden}
@@ -46,7 +44,7 @@ func (c *Client) OpenResource(ctx context.Context, request OpenRequest) (*Respon
 	}
 	req.Header.Set("Referer", AppReferer)
 	req.Header.Set("User-Agent", AppUserAgent)
-	// Keep caller settings while excluding the credential-bearing Cookie jar.
+	// 复制调用方设置，但去掉可能携带凭据的 Cookie jar。
 	httpClient := *c.http
 	httpClient.Jar = nil
 	originalRedirect := httpClient.CheckRedirect
@@ -72,7 +70,7 @@ func (c *Client) OpenResource(ctx context.Context, request OpenRequest) (*Respon
 	return &Response{StatusCode: resp.StatusCode, Header: resp.Header, Body: resp.Body}, nil
 }
 
-// ValidateResourceURL applies the Pixiv media scheme, host, and path policy.
+// ValidateResourceURL 按 Pixiv 媒体的 scheme、主机与路径策略校验 rawURL。
 func (c *Client) ValidateResourceURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -81,8 +79,8 @@ func (c *Client) ValidateResourceURL(rawURL string) error {
 	return validateResourceURL(parsed, c.allowedResourceHosts)
 }
 
-// ValidStampURL applies the upstream stamp contract: an absolute request URI
-// on an official media host, independent of caller-added resource hosts.
+// ValidStampURL 按上游 stamp 契约校验绝对 request URI：必须位于官方媒体主机，不接受
+// 调用方额外添加的资源主机。
 func ValidStampURL(rawURL string) bool {
 	parsed, err := url.ParseRequestURI(rawURL)
 	return err == nil && validateResourceURL(parsed, nil) == nil
@@ -118,7 +116,7 @@ func allowedResourceHost(host string, extra []string) bool {
 	return false
 }
 
-// CacheResource registers only locators validated before public model exposure.
+// CacheResource 只登记已通过校验的 locator；ref 是公开模型持有的不透明引用。
 func (c *Client) CacheResource(ref, rawURL string) error {
 	if err := c.ValidateResourceURL(rawURL); err != nil {
 		return err
@@ -129,7 +127,7 @@ func (c *Client) CacheResource(ref, rawURL string) error {
 	return nil
 }
 
-// CachedResource retrieves a locator registered in this runtime.
+// CachedResource 返回本运行时为 ref 登记的 locator。
 func (c *Client) CachedResource(ref string) (string, bool) {
 	c.resourceMu.RLock()
 	rawURL, ok := c.resourceURLs[ref]

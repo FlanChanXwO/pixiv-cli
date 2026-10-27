@@ -1,8 +1,10 @@
 // Package firefox 实现 Firefox provider。
 //
 // 它从 profiles.ini 发现 profile，从 cookies.sqlite 读取明文 cookie；值看起来
-// 加密（非 UTF-8）时返回明确分类。Firefox 未安装时 Discover 返回
-// ErrNotInstalled，New 本身仍返回可用 provider。
+// 加密（非 UTF-8）时返回明确分类。Firefox 未安装时 DiscoverProfiles 返回
+// [browsercookies.ErrNotInstalled]，构造 provider 本身仍成功。
+//
+// 包的组成：provider 实现 [browsercookies.Provider]；paths_*.go 按平台给出用户数据根目录。
 package firefox
 
 import (

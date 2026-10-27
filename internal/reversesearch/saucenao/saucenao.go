@@ -1,4 +1,7 @@
 // Package saucenao 实现 SauceNAO multipart JSON API 协议适配器。
+//
+// 包的组成：[New] 按 [Options] 构造 [Client]，[Client] 实现 reversesearch 的
+// provider 端口，负责上传图片并映射结果与额度。
 package saucenao
 
 import (
@@ -18,12 +21,13 @@ import (
 
 const defaultEndpoint = "https://saucenao.com/search.php"
 
-// Options 是 SauceNAO adapter 的构造依赖。凭据不会进入每次查询请求模型。
+// Options 提供 SauceNAO adapter 的构造依赖。凭据不会进入每次查询请求模型。
 type Options struct {
 	APIKey     string
 	HTTPClient *http.Client
 }
 
+// Client 通过 SauceNAO multipart API 上传图片并返回匹配结果与额度。
 type Client struct {
 	apiKey     string
 	httpClient *http.Client
@@ -31,6 +35,7 @@ type Client struct {
 
 var _ reversesearch.Closer = (*Client)(nil)
 
+// New 使用 options 中的 API key 与 HTTP client 构造 SauceNAO client。
 func New(options Options) *Client {
 	return &Client{apiKey: options.APIKey, httpClient: options.HTTPClient}
 }

@@ -1,5 +1,3 @@
-// 收藏筛选策略的 continuation binding；匹配规则见 searchfilter.go。
-
 package searchfilter
 
 import (
