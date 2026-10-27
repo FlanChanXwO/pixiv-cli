@@ -33,10 +33,13 @@ type Snapshot struct {
 	closed bool
 }
 
+// Kind 返回快照来自本地文件还是 HTTP(S) URL。
 func (s *Snapshot) Kind() SourceKind { return s.kind }
 
+// SHA256 返回快照内容的十六进制摘要，只作为身份标识，不提供完整性校验。
 func (s *Snapshot) SHA256() string { return s.sha256 }
 
+// Size 返回快照的字节数。
 func (s *Snapshot) Size() int64 { return s.size }
 
 // Open 从快照起点返回响应 ctx 取消的独立 reader，不暴露临时文件路径。
@@ -70,6 +73,8 @@ func (s *Snapshot) Close() error {
 	return nil
 }
 
+// Load 把文件或 HTTP(S) source 复制成私有快照；返回的快照由调用方 Close。路径不存在、
+// 不是普通文件或上游响应失败都返回带稳定分类的错误。
 func (l *Loader) Load(ctx context.Context, source string) (*Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

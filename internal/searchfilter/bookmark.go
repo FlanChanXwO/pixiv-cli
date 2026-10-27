@@ -46,7 +46,8 @@ const (
 	BookmarkCompletenessCompleteForSource BookmarkCompleteness = "complete_for_source"
 )
 
-// 收藏范围规则错误；调用方映射到自己的公开错误类别，并保留现有用户可见文案。
+// ErrBookmarkMinimum 等 sentinel 是收藏范围规则错误；调用方映射到自己的公开错误类别，
+// 并保留现有用户可见文案。
 var (
 	ErrBookmarkMinimum    = errors.New("bookmark minimum must be zero or positive")
 	ErrBookmarkMaximum    = errors.New("bookmark maximum must be zero or positive")

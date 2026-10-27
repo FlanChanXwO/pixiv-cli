@@ -12,7 +12,7 @@ import (
 // Rating 给出产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。
 type Rating string
 
-// Rating 的 canonical 值。
+// RatingAll 等值是 [Rating] 的 canonical 取值，覆盖 sfw、r18、r18g、mature 与 all。
 const (
 	RatingAll    Rating = "all"
 	RatingSFW    Rating = "sfw"
@@ -24,7 +24,8 @@ const (
 // ContentType 枚举 artwork 结果的本地 subtype/selector 语义。
 type ContentType string
 
-// ContentType 的 canonical 值。
+// ContentTypeAll 等值是 [ContentType] 的 canonical 取值，与 public SDK 的内容类型
+// 字符串保持一致。
 const (
 	ContentTypeAll             ContentType = ContentType(pixiv.SearchContentTypeAll)
 	ContentTypeIllustAndUgoira ContentType = "illust-and-ugoira"

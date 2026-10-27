@@ -71,18 +71,27 @@ func New(refreshToken string, cfg Config) *Client {
 	}
 }
 
+// RefreshTokenValue 返回当前 refresh token；读取时持有读锁，调用方不应把它写进日志。
 func (c *Client) RefreshTokenValue() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.refreshToken
 }
+
+// AccessToken 返回当前 access token；尚未登录或兑换时为空字符串。
 func (c *Client) AccessToken() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.accessToken }
-func (c *Client) UserID() int64       { c.mu.RLock(); defer c.mu.RUnlock(); return c.userID }
-func (c *Client) UserName() string    { c.mu.RLock(); defer c.mu.RUnlock(); return c.userName }
+
+// UserID 返回最近一次兑换得到的 Pixiv 用户 ID；未知时为 0。
+func (c *Client) UserID() int64 { c.mu.RLock(); defer c.mu.RUnlock(); return c.userID }
+
+// UserName 返回最近一次兑换得到的 Pixiv 用户名；未知时为空字符串。
+func (c *Client) UserName() string { c.mu.RLock(); defer c.mu.RUnlock(); return c.userName }
 
 // Expiry 返回 access token 的过期时间；上游未提供正的有效时长时为零值。
 func (c *Client) Expiry() time.Time { c.mu.RLock(); defer c.mu.RUnlock(); return c.expiresAt }
 
+// Refresh 用 refresh token 换取新的 access token，并在成功后原地更新当前凭据；本地
+// refresh token 缺失或校验失败时直接返回该错误，不发起请求。
 func (c *Client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
 	refreshToken := c.refreshToken
@@ -142,6 +151,8 @@ func RandomURLToken(size int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(body), nil
 }
 
+// ExchangeAuthorizationCode 用授权码与 PKCE verifier 兑换 token，成功后替换 client 的
+// 当前凭据；code 或 verifier 为空、上游响应缺少任一 token 时返回错误。
 func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier string) (AuthCodeToken, error) {
 	code, verifier = strings.TrimSpace(code), strings.TrimSpace(verifier)
 	if code == "" {

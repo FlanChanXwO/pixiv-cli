@@ -1,6 +1,6 @@
 package fanboxapi
 
-// FANBOX API 路径，相对 APIBaseURL。
+// PathCreatorGet 等常量是 FANBOX API 路径，相对 APIBaseURL。
 const (
 	PathCreatorGet           = "creator.get"
 	PathCreatorListFollowing = "creator.listFollowing"
@@ -13,7 +13,7 @@ const (
 	PathPostListSupporting   = "post.listSupporting"
 )
 
-// query 参数名。
+// ParamCreatorID 等常量是 FANBOX query 参数名。
 const (
 	ParamCreatorID = "creatorId"
 	ParamPostID    = "postId"

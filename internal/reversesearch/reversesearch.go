@@ -191,6 +191,8 @@ func (s *Service) Close() error {
 	return s.payloads.Close()
 }
 
+// Search 校验 provider，载入一次不可变快照，再把快照交给编排器查询。快照在返回前
+// 删除，其关闭错误与查询错误一起返回；nil context 返回 invalid_request。
 func (s *Service) Search(ctx context.Context, request Request) (response Response, err error) {
 	if ctx == nil {
 		return Response{}, NewError(CodeInvalidRequest, "reverse search context is required", nil)

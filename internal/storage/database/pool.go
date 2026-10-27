@@ -10,6 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
+// SetPixivSchedulable 在持锁事务中一次更新给定账号的调度开关。任一 UID 不存在时
+// 整批回滚并返回 [pixivaccount.ErrNotFound]。
 func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulable bool) error {
 	return d.withLock(ctx, func() error {
 		if err := validatePoolUserIDs(userIDs); err != nil {

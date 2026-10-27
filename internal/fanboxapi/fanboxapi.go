@@ -27,11 +27,11 @@ const (
 	// PostListPageLimit 指定 FANBOX 列表路由使用的 upstream 页大小参数，续页仍由服务端
 	// 返回的 URL 决定。
 	PostListPageLimit = 10
-	// userAgent 是既有的 Firefox 请求头基线；TLS 指纹在 transport.go 中独立配置。
+	// userAgent 保存既有的 Firefox 请求头基线；TLS 指纹在 transport.go 中独立配置。
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
 )
 
-// 分类 sentinel 错误；公开 SDK 层依据它们做进一步分类。
+// ErrForbidden 等 sentinel 是传输层的分类错误；公开 SDK 层依据它们做进一步分类。
 var (
 	// ErrForbidden 表示 FANBOX 拒绝访问（非 Cloudflare challenge）。
 	ErrForbidden = errors.New("fanbox: forbidden")

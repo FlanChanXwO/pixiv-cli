@@ -16,6 +16,8 @@ type RequiredList[T any] struct {
 	Valid   bool
 }
 
+// UnmarshalJSON 先把字段标记为已出现；数组解码失败时返回错误，Present 保持 true 供
+// 端点报告上下文。
 func (l *RequiredList[T]) UnmarshalJSON(data []byte) error {
 	*l = RequiredList[T]{Present: true}
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
@@ -35,6 +37,8 @@ type RequiredObject[T any] struct {
 	Valid   bool
 }
 
+// UnmarshalJSON 先把字段标记为已出现；对象解码失败时返回错误，Present 保持 true 供
+// 端点报告上下文。
 func (o *RequiredObject[T]) UnmarshalJSON(data []byte) error {
 	*o = RequiredObject[T]{Present: true}
 	data = bytes.TrimSpace(data)

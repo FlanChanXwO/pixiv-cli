@@ -88,6 +88,7 @@ type PoolSelectionError struct {
 	EarliestFrozenUntil *int64
 }
 
+// Error 输出固定的英文分类文本，不包含账号凭据或候选列表；nil 接收者也能安全调用。
 func (e *PoolSelectionError) Error() string {
 	if e == nil {
 		return "pixiv account pool selection failed"
