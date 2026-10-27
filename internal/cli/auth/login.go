@@ -1,6 +1,3 @@
-// Pixiv browser OAuth login: loopback callback server, remote relay handoff,
-// and classification of the returned sign-in input.
-
 package auth
 
 import (
@@ -27,7 +24,7 @@ const (
 	defaultLoginAddr = "127.0.0.1:0"
 )
 
-// loginServerResult 是一次登录输入分类的最终结果：要么携带可直接用于 OAuth
+// loginServerResult 保存一次登录输入分类的最终结果：要么携带可直接交给 OAuth
 // Complete 的 code，要么携带稳定、不泄露细节的错误类别。Code/Err 绝不包含
 // refresh token。
 type loginServerResult struct {
@@ -197,7 +194,7 @@ func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCa
 	}
 }
 
-// loginServer owns one loopback callback listener and its browser-facing pages.
+// loginServer 持有一个 loopback 回调监听器和它面向浏览器的页面；每个实例只服务一次登录。
 type loginServer struct {
 	controller              controller
 	ctx                     context.Context

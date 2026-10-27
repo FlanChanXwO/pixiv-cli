@@ -1,5 +1,3 @@
-// Relay server configuration and validation for remote Pixiv login.
-
 package auth
 
 import (

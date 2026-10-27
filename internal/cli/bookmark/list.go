@@ -1,6 +1,3 @@
-// Bookmark list reads: artwork, novel, and the typed all-stream.
-// Command construction lives in bookmark.go.
-
 package bookmark
 
 import (

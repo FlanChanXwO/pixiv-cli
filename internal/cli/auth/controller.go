@@ -1,5 +1,3 @@
-// The auth controller and its group-wide runtime wiring.
-
 package auth
 
 import (
@@ -8,7 +6,7 @@ import (
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
-// controller owns the auth command tree and its execution environment.
+// controller 保存 auth 命令树共用的执行环境和延迟打开的账号、登录服务。
 type controller struct {
 	env     command.Env
 	support Support
@@ -19,12 +17,13 @@ func newController(env command.Env, support Support) controller {
 }
 
 type runtimeServices struct {
-	Account     AccountService
-	Login       pixivaccount.LoginService
+	Account AccountService
+	Login   pixivaccount.LoginService
+	// LoadRuntime 每次调用读取最新配置；登录与检查需要当前代理设置。
 	LoadRuntime func() (settings.RuntimeConfig, error)
 }
 
-// services opens the account and login backing for one auth leaf.
+// services 为单个 auth 叶子打开账号与登录服务；构造命令树时不调用，避免提前打开数据库。
 func (a controller) services() (runtimeServices, error) {
 	account, err := a.support.Account()
 	if err != nil {

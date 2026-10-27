@@ -1,6 +1,3 @@
-// Bookmark tag reads: single-product and typed all-stream.
-// Command construction lives in bookmark.go.
-
 package bookmark
 
 import (

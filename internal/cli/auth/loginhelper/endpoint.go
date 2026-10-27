@@ -1,6 +1,3 @@
-// Private loopback bridge endpoint shared by the CLI login process and the
-// desktop pixiv:// callback handler.
-
 package loginhelper
 
 import (
@@ -22,7 +19,7 @@ const callbackEndpointFilename = "url-handler-endpoint"
 // 正常状态；调用方可继续尝试已配置的远程 relay。
 var errNoActiveLocalCallback = errors.New("pixiv login callback is no longer active")
 
-// CallbackCommand 是 desktop protocol handler 调回当前 CLI binary 的隐藏入口名。
+// CallbackCommand 供 desktop protocol handler 调回当前 CLI binary；
 // 它只由本包生成的系统关联使用，不是公开 CLI 命令。
 const CallbackCommand = "_callback"
 

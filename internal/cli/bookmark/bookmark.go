@@ -1,4 +1,7 @@
-// Package bookmark owns Pixiv bookmark reads and mutations.
+// Package bookmark 提供 pixiv bookmark 命令组：作品与小说的收藏列表、标签、详情、添加与移除。
+//
+// 包的组成：[New] 组装命令树。
+// 分页读取与输出共用 [github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd]。
 package bookmark
 
 import (
@@ -89,10 +92,12 @@ type bookmarkStreamCursor struct {
 	consumed int
 }
 
+// IsZero 报告 cursor 是否仍处于流的起点。
 func (c bookmarkStreamCursor) IsZero() bool {
 	return c.upstream.IsZero() && c.consumed == 0
 }
 
+// String 输出上游 cursor 与已消费数量的组合，供日志和错误文本使用。
 func (c bookmarkStreamCursor) String() string {
 	if c.IsZero() {
 		return ""
@@ -100,7 +105,7 @@ func (c bookmarkStreamCursor) String() string {
 	return fmt.Sprintf("%s#%d", c.upstream.String(), c.consumed)
 }
 
-// New builds the actual `pixiv bookmark` group command.
+// New 构造 `pixiv bookmark` 命令组；作品与小说的收藏操作都经由同一个重放边界。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
 	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}

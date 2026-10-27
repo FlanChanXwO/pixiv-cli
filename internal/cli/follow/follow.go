@@ -1,4 +1,4 @@
-// Package follow owns Pixiv follow mutations.
+// Package follow 提供 pixiv follow 命令，对用户执行关注与取消关注。
 package follow
 
 import (
@@ -28,7 +28,7 @@ type commandRunner struct {
 	runner pixivcmd.Runner
 }
 
-// New builds the actual `pixiv follow` group command.
+// New 构造 `pixiv follow` 命令；关注与取消关注都要求已认证账号。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}

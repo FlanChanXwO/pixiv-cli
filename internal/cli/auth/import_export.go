@@ -1,6 +1,3 @@
-// Auth import/export plumbing: secret output, UID parsing, and token input.
-// Account command construction lives in account.go.
-
 package auth
 
 import (
@@ -17,9 +14,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// authExportStdoutError 只暴露稳定的输出失败类别，不把 token 或路径带进错误文本。
 type authExportStdoutError struct{ cause error }
 
+// Error 只返回稳定的输出失败类别，不包含 token 或路径。
 func (e authExportStdoutError) Error() string { return "write stdout failed" }
+
+// Unwrap 保留原始写入错误，便于判断 EPIPE 等底层原因。
 func (e authExportStdoutError) Unwrap() error { return e.cause }
 
 // writeAuthExportStdout 把 auth export 输出写到指定 writer，且任何写入错误都
@@ -46,7 +47,7 @@ func parseAuthExportUID(raw string) (int64, error) {
 
 func (a controller) newAccountImportCommand() *cobra.Command {
 	opts := accountImportOptions{}
-	// stdin is classified once in Args; RunE reads the result from this command's own state.
+	// stdin 只在 Args 里分类一次；RunE 从本命令自己的输入状态读取结果，不会二次消费输入流。
 	var input authImportInput
 	cmd := &cobra.Command{
 		Use:     "import [REFRESH_TOKEN]",

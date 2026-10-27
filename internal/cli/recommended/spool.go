@@ -1,6 +1,3 @@
-// Temporary multi-section spool for `pixiv recommended --type all`.
-// Command execution lives in all.go.
-
 package recommended
 
 import (
@@ -113,6 +110,7 @@ func (s *spool) users(items []pixiv.UserPreview) error {
 	return nil
 }
 
+// Commit 写完多分区文档并复制到 out。
 func (s *spool) Commit(out io.Writer) error {
 	if s.jsonOut {
 		if _, err := io.WriteString(s.file, "\n  ]\n}\n"); err != nil {
@@ -126,6 +124,7 @@ func (s *spool) Commit(out io.Writer) error {
 	return err
 }
 
+// Close 关闭并删除临时文档。
 func (s *spool) Close() {
 	name := s.file.Name()
 	_ = s.file.Close()

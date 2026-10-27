@@ -1,6 +1,3 @@
-// Auth command adapter over the pixiv account service, plus the output shapes
-// and versioned export-bundle codec shared with account.go.
-
 package auth
 
 import (
@@ -20,7 +17,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// accountOut is the JSON shape shared by every auth account result.
+// accountOut 是所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
 type accountOut struct {
 	UserID                 int64      `json:"user_id,omitempty"`
 	Username               string     `json:"username,omitempty"`
@@ -39,8 +36,8 @@ type accountListOut struct {
 	Accounts      []accountOut `json:"accounts"`
 }
 
-// accountImportOut carries only user_id/username/status; it never includes a
-// token or the default marker.
+// accountImportOut 只包含 user_id、username 和 status；导入结果不会回显 token，
+// 也不带默认账号标记。
 type accountImportOut struct {
 	UserID   int64  `json:"user_id"`
 	Username string `json:"username"`
@@ -59,7 +56,7 @@ type accountPoolStatusOut struct {
 	Accounts            []accountOut `json:"accounts"`
 }
 
-// AccountService 是 auth command 对本地账号领域服务的薄适配器。
+// AccountService 把账号领域服务接到 auth 命令上。
 // 账号领域服务不读取 CLI 配置；代理和运行时开关只在这里转换为 SDK options。
 type AccountService struct {
 	Pixiv       accountPort
@@ -227,8 +224,8 @@ func (s AccountService) listWithContext(ctx context.Context) (accountListOut, er
 	if err != nil {
 		return accountListOut{}, err
 	}
-	// Preserve the published JSON contract: an empty store serializes as
-	// "accounts": null, matching the account list output before the DTO merge.
+	// 保持已发布的 JSON 契约：空账号库序列化为 "accounts": null，与合并 DTO 之前的
+	// 账号列表输出一致。
 	var result accountListOut
 	for _, account := range accounts {
 		result.Accounts = append(result.Accounts, accountFromPixiv(account))

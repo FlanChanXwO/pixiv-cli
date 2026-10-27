@@ -1,4 +1,4 @@
-// Package mypixiv owns the authenticated `pixiv mypixiv` command group.
+// Package mypixiv 提供 pixiv mypixiv 命令组，浏览当前账号的 MyPixiv 用户与作品。
 package mypixiv
 
 import (
@@ -30,7 +30,7 @@ type commandRunner struct {
 	run pixivcmd.Runner
 }
 
-// New builds the actual `pixiv mypixiv` command group.
+// New 构造 `pixiv mypixiv` 命令组；用户与作品两个子命令共享同一次账号读取。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}

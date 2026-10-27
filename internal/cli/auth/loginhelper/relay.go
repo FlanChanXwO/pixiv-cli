@@ -1,5 +1,3 @@
-// Remote callback result session and relay endpoint construction.
-
 package loginhelper
 
 import (

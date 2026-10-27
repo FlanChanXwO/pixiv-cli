@@ -1,4 +1,7 @@
-// Package config 注册 config 命令。
+// Package config 提供 pixiv config 命令：显示配置路径、读取、设置和取消设置。
+//
+// 包的组成：[New] 组装命令树。
+// 设置存储与值解析归 [github.com/FlanChanXwO/pixiv-cli/internal/config/settings]。
 package config
 
 import (

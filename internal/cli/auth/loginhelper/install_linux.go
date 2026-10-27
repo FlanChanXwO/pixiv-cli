@@ -1,8 +1,5 @@
 //go:build linux
 
-// Desktop Linux pixiv:// handler installation through XDG desktop files and
-// mimeapps state, including exact user-level state restoration.
-
 package loginhelper
 
 import (
@@ -21,8 +18,7 @@ import (
 const linuxURLHandlerDesktopFile = "pixiv-cli-url-handler.desktop"
 const linuxPixivURLScheme = "x-scheme-handler/pixiv"
 
-// urlHandlerInstaller holds the Linux system boundaries used by both the
-// per-login handler and the persistent association.
+// urlHandlerInstaller 持有 Linux 系统边界，单次登录 handler 和持久关联共用它。
 type urlHandlerInstaller struct {
 	executable          func() (string, error)
 	runXDGMime          func(context.Context, ...string) error
@@ -245,8 +241,7 @@ func linuxDesktopExecArgument(argument string) string {
 	return `"` + replacer.Replace(argument) + `"`
 }
 
-// linuxFileSnapshot records one user-level file for exact restoration after the
-// transient login handler is removed.
+// linuxFileSnapshot 记录一个用户级文件，供移除临时登录 handler 后原样恢复。
 type linuxFileSnapshot struct {
 	Path    string      `json:"path"`
 	Exists  bool        `json:"exists"`

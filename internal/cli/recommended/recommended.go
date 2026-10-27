@@ -1,4 +1,6 @@
-// Package recommended owns personalized Pixiv recommendation output.
+// Package recommended 提供 pixiv recommended 命令，输出个性化推荐的作品或小说。
+//
+// 包的组成：[New] 组装命令；多段输出先在 spool.go 暂存，全部成功后再提交。
 package recommended
 
 import (
@@ -26,7 +28,7 @@ type options struct {
 	contentType string
 }
 
-// recommendationKindAll is the aggregate selector, not an entity type.
+// recommendationKindAll 是“全部类型”的聚合选择器，不作为实体类型传给 SDK。
 const recommendationKindAll = "all"
 
 type commandRunner struct {
@@ -34,7 +36,7 @@ type commandRunner struct {
 	runner pixivcmd.Runner
 }
 
-// New builds the actual `pixiv recommended` command.
+// New 构造 `pixiv recommended` 命令；--type all 需要多段输出，只在全部成功后才提交。
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
 	opts := options{contentType: string(pixiv.SearchContentTypeAll)}

@@ -1,8 +1,5 @@
 //go:build darwin
 
-// macOS pixiv:// helper installation, LaunchServices registration, and
-// delegation to the previously registered bundle.
-
 package loginhelper
 
 import (
@@ -25,9 +22,8 @@ const pixivURLHandlerBundleID = "com.flanchan.pixiv-cli.url-handler"
 // pixivURLHandlerSourceVersion 变更时强制重编译已安装的 helper，确保修复能覆盖旧 bundle。
 const pixivURLHandlerSourceVersion = "7"
 
-// urlHandlerInstaller owns the macOS LaunchServices and helper-compilation
-// boundaries. Production code uses newURLHandlerInstaller; tests construct it with
-// recording implementations.
+// urlHandlerInstaller 持有 macOS 的 LaunchServices 与 helper 编译边界。生产代码经
+// newURLHandlerInstaller 构造；测试可换成记录型实现。
 type urlHandlerInstaller struct {
 	executable   func() (string, error)
 	homeDir      func() (string, error)
