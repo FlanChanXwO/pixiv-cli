@@ -22,7 +22,7 @@ const (
 	tagSecret  = "secret"  // 是否必须在公开输出中隐藏且禁止进入初始示例
 )
 
-// settingSpecFromTags 是标签声明派生出的内部元数据。SettingSpec 是它的公开视图。
+// settingSpecFromTags 保存标签声明派生出的内部元数据；[SettingSpec] 是它的公开视图。
 type settingSpecFromTags struct {
 	spec       SettingSpec
 	env        []string

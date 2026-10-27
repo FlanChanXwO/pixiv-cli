@@ -1,6 +1,6 @@
 package pixivapi
 
-// App API 路径。
+// PathOAuthToken 等常量是 App API 路径。
 const (
 	PathOAuthToken           = "/auth/token"
 	PathLogin                = "/web/v1/login"
@@ -58,7 +58,7 @@ const (
 	PathNovelCommentDelete = "/v1/novel/comment/delete"
 )
 
-// query/form 参数名。
+// ParamIllustID 等常量是 App API 的 query/form 参数名。
 const (
 	ParamIllustID         = "illust_id"
 	ParamIllustSeriesID   = "illust_series_id"

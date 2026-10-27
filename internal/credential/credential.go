@@ -25,12 +25,16 @@ func (s Secret) Copy() []byte { return bytes.Clone(s.value) }
 // Value 仅供显式导出或认证请求读取凭据。
 func (s Secret) Value() string { return string(s.value) }
 
+// Empty 报告凭据内容是否为空；nil 与空切片都返回 true。
 func (s Secret) Empty() bool { return len(s.value) == 0 }
 
+// String 始终返回脱敏占位符，因此 %v 与 %s 不会打印凭据内容。
 func (s Secret) String() string { return redacted }
 
+// GoString 始终返回脱敏占位符，因此 %#v 不会打印凭据内容。
 func (s Secret) GoString() string { return redacted }
 
+// Format 拦截所有格式化动词并输出脱敏占位符；%q 会带上引号以保持合法输出。
 func (s Secret) Format(state fmt.State, verb rune) {
 	if verb == 'q' {
 		_, _ = io.WriteString(state, `"`+redacted+`"`)
@@ -39,4 +43,5 @@ func (s Secret) Format(state fmt.State, verb rune) {
 	_, _ = io.WriteString(state, redacted)
 }
 
+// LogValue 让 slog 只记录脱敏占位符，不输出凭据内容。
 func (s Secret) LogValue() slog.Value { return slog.StringValue(redacted) }

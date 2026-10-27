@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// options 是只读 MyPixiv 命令的共同选项。MyPixiv 的好友关系写操作不在此命令组
+// options 保存只读 MyPixiv 命令的共同选项。MyPixiv 的好友关系写操作不在此命令组
 // 中，避免把读取工作流与关系变更混在一起。
 type options struct {
 	command.Options

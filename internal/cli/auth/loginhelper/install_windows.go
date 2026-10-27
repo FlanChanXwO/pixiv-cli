@@ -16,7 +16,7 @@ import (
 
 const defaultWindowsURLHandlerRegistryKey = `HKCU\Software\Classes\pixiv`
 
-// previousWindowsURLHandlerProgID 是保存接管前 registry tree 的私有 ProgID。
+// previousWindowsURLHandlerProgID 指定保存接管前 registry tree 的私有 ProgID。
 const previousWindowsURLHandlerProgID = `pixiv-cli.previous-pixiv`
 const previousWindowsURLHandlerRegistryKey = `HKCU\Software\Classes\` + previousWindowsURLHandlerProgID
 

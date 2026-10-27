@@ -29,7 +29,7 @@ func (p *provider) profileKeys(legacyKeys [][]byte) ([][]byte, error) {
 	return [][]byte{localStateKey}, nil
 }
 
-// decryptEncrypted 是所有 Chromium provider 共用的解密入口。平台文件只负责
+// decryptEncrypted 统一处理所有 Chromium provider 的解密。平台文件只负责
 // 取得受 OS 保护的候选 key 或解包旧版平台 blob；格式判断、GCM/CBC 处理和
 // 错误分类集中在这里，避免不同平台出现不同的安全边界。
 func (p *provider) decryptEncrypted(ctx context.Context, blob []byte) ([]byte, error) {

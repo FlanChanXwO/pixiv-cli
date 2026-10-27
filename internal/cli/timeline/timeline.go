@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// options 是关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
+// options 保存关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
 // 这样不会把插画、漫画和小说的独立 App 分页流错误合并。
 type options struct {
 	command.Options

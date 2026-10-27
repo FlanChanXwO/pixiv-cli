@@ -34,6 +34,8 @@ type LoginCompleteRequest struct {
 	PreserveDefault bool
 }
 
+// Start 开始一次浏览器登录并返回授权 URL；返回的 session 由 Complete 消费，失败时
+// 不保留任何状态。
 func (s LoginService) Start(request LoginRequest) (LoginStart, error) {
 	session, err := pixiv.BeginLogin(request.Options)
 	if err != nil {
@@ -48,6 +50,9 @@ func (s LoginStart) AcceptsCallbackURL(rawURL string) bool {
 	return s.session != nil && s.session.AcceptsCallbackURL(rawURL)
 }
 
+// Complete 用回调 URL 或授权码兑换凭据并保存账号，随后释放该登录 session 的 HTTP
+// 传输。PreserveDefault 下保存已成功但读取摘要失败时，错误与已持久化的身份一起返回；
+// 其他失败不返回账号。
 func (s LoginService) Complete(ctx context.Context, start LoginStart, request LoginCompleteRequest) (AccountSummary, error) {
 	if start.session == nil {
 		return AccountSummary{}, errors.New("login session is not initialized")

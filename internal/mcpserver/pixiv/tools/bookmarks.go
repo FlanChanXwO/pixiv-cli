@@ -338,7 +338,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 	})
 }
 
-// bookmarkTagsAllIn 是 bookmark_tags_all 的封闭输入，分页字段与共享列表一致。
+// bookmarkTagsAllIn 描述 bookmark_tags_all 的封闭输入，分页字段与共享列表一致。
 type bookmarkTagsAllIn struct {
 	UserID   int64  `json:"user_id,omitempty"`
 	Restrict string `json:"restrict,omitempty"`

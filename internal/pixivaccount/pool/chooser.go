@@ -9,7 +9,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 )
 
-// choose 是无 IO 的 round-robin/random chooser。Database 会在提交前再次验证
+// choose 在无 IO 的前提下执行 round-robin 或随机选择。Database 会在提交前再次验证
 // 返回 UID 属于候选快照。
 func choose(snapshot pixivaccount.PoolSnapshot, strategy settings.AccountPoolStrategy) (int64, error) {
 	if len(snapshot.Candidates) == 0 {

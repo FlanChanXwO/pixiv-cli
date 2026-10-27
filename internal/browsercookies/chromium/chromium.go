@@ -25,7 +25,7 @@ import (
 
 const cookiesFile = "Cookies"
 
-// selectCookiesSQL 是唯一允许执行的查询：按受约束的 host/name 精确匹配，
+// selectCookiesSQL 指定唯一允许执行的查询：按受约束的 host/name 精确匹配，
 // 取 host_key、目标 cookie 的明文 value 与加密值（hex）；host_key 用于验证
 // 现代 Chromium 数据库在加密明文前加入的域摘要。
 const selectCookiesSQL = `SELECT host_key, value, hex(encrypted_value) FROM cookies WHERE (host_key = @h1 OR host_key = @h2) AND name = @n;`

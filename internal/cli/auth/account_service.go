@@ -17,7 +17,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// accountOut 是所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
+// accountOut 定义所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
 type accountOut struct {
 	UserID                 int64      `json:"user_id,omitempty"`
 	Username               string     `json:"username,omitempty"`
@@ -63,7 +63,7 @@ type AccountService struct {
 	LoadRuntime func() (settings.RuntimeConfig, error)
 }
 
-// accountPort 是 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
+// accountPort 定义 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
 type accountPort interface {
 	ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
 	ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error)

@@ -77,7 +77,7 @@ func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTar
 	return report, nil
 }
 
-// sourcePlan 是来源分类的结果：已展开的作品 ID 和仍需下载的直链/资源引用。
+// sourcePlan 保存来源分类的结果：已展开的作品 ID 和仍需下载的直链/资源引用。
 type sourcePlan struct {
 	artworkIDs   []int64
 	resourceRefs []sdk.ResourceRef

@@ -13,7 +13,7 @@ import (
 	"log/slog"
 )
 
-// 日志属性键。SDK 传输层、执行边界和 JSON 输出共用这些字段名。
+// AttrMethod 等常量是日志属性键，SDK 传输层、执行边界和 JSON 输出共用这些字段名。
 const (
 	AttrMethod       = "method"
 	AttrHost         = "host"
@@ -33,7 +33,7 @@ const (
 
 type contextKey struct{}
 
-// callInfo 是一次 CLI 命令或 MCP tool 调用的关联信息，由执行边界写入 ctx。
+// callInfo 保存一次 CLI 命令或 MCP tool 调用的关联信息，由执行边界写入 ctx。
 type callInfo struct {
 	operation string
 	callID    string

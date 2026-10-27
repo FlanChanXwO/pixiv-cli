@@ -12,7 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// artworkSearchClient 是 bookmark 过滤所需的最小 public SDK capability。
+// artworkSearchClient 定义 bookmark 过滤所需的最小 public SDK capability。
 type artworkSearchClient interface {
 	SearchArtworks(context.Context, pixiv.SearchArtworksRequest) (sdk.Page[pixiv.Artwork], error)
 	CheckpointSearchArtworks(pixiv.SearchArtworksRequest, int) (sdk.Cursor, error)

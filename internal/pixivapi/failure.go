@@ -129,6 +129,7 @@ func isTLSTransportError(err error) bool {
 	return errors.As(err, &alertError)
 }
 
+// Error 按 FailureKind 输出固定的英文文本，不含 URL、header、body 或上游消息。
 func (e Failure) Error() string {
 	switch e.Kind {
 	case FailureHTTPStatus:

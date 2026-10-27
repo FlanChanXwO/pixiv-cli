@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// relayServerOptions 是 remote Pixiv login relay 的一次性 server 配置。
+// relayServerOptions 保存 remote Pixiv login relay 的一次性 server 配置。
 type relayServerOptions struct {
 	PublicURL   string
 	ListenAddr  string

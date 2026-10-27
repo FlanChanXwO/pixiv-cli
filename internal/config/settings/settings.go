@@ -41,6 +41,7 @@ type ConfigMutationResult struct {
 	HasOverride bool
 }
 
+// Path 返回注入端口给出的 config.toml 路径；Store 不检查该文件是否存在。
 func (s Store) Path() (string, error) {
 	files, err := s.fileStore()
 	if err != nil {
@@ -76,6 +77,7 @@ func (s Store) EnsureDefaultConfigFile() error {
 	return files.EnsurePrivateFile(path, body)
 }
 
+// Get 每次从当前文件与环境读取 key 的有效值；未知 key 的错误会列出可用别名。
 func (s Store) Get(key Key) (SettingValue, error) {
 	files, err := s.fileStore()
 	if err != nil {
@@ -96,6 +98,8 @@ func (s Store) Get(key Key) (SettingValue, error) {
 	return value, nil
 }
 
+// Set 校验并写入一个配置键，返回结果里是写入后仍生效的环境变量覆盖；敏感键不会回显
+// EnvOverride。
 func (s Store) Set(key Key, raw string) (ConfigMutationResult, error) {
 	files, err := s.fileStore()
 	if err != nil {
@@ -123,6 +127,8 @@ func (s Store) Set(key Key, raw string) (ConfigMutationResult, error) {
 	return ConfigMutationResult{Alias: key, EnvOverride: envRaw, HasOverride: hasOverride}, nil
 }
 
+// Unset 从 config.toml 删除一个配置键，返回删除后仍生效的环境变量覆盖；敏感键不会回显
+// EnvOverride。
 func (s Store) Unset(key Key) (ConfigMutationResult, error) {
 	files, err := s.fileStore()
 	if err != nil {

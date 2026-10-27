@@ -117,6 +117,8 @@ func (s Snapshot) effectiveSpec(spec SettingSpec) (SettingValue, error) {
 	return SettingValue{Source: "unset"}, nil
 }
 
+// Runtime 按字段声明顺序绑定快照，随后校验账号池、服务级网络与 FlareSolverr 组；
+// 任一领域校验失败时返回对应错误，成功时返回完整配置的副本。
 func (s Snapshot) Runtime() (RuntimeConfig, error) {
 	var cfg RuntimeConfig
 	target := reflect.ValueOf(&cfg).Elem()

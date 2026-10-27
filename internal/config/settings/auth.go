@@ -36,18 +36,26 @@ func (s Store) SetPixivDefaultUserID(userID int64) error {
 	return s.writeDefaultUserID(defaultAccountSpec("Pixiv"), userID)
 }
 
+// ClearPixivDefaultUserID 从 config.toml 删除 Pixiv 默认 UID；键不存在时仍重写文件，
+// 并在 section 变空后移除该表。
 func (s Store) ClearPixivDefaultUserID() error {
 	return s.clearDefaultUserID(defaultAccountSpec("Pixiv"))
 }
 
+// ReadFanboxDefaultUserID 读取 config.toml 中的 FANBOX 默认 UID；键缺失时 ok 为 false
+// 且不报错，值不是正整数时报错。
 func (s Store) ReadFanboxDefaultUserID() (userID int64, ok bool, err error) {
 	return s.readDefaultUserID(defaultAccountSpec("Fanbox"))
 }
 
+// SetFanboxDefaultUserID 把 FANBOX 默认 UID 写入 config.toml；非正值返回错误，已有
+// 其他配置项保持不变。
 func (s Store) SetFanboxDefaultUserID(userID int64) error {
 	return s.writeDefaultUserID(defaultAccountSpec("Fanbox"), userID)
 }
 
+// ClearFanboxDefaultUserID 从 config.toml 删除 FANBOX 默认 UID；键不存在时仍重写文件，
+// 并在 section 变空后移除该表。
 func (s Store) ClearFanboxDefaultUserID() error {
 	return s.clearDefaultUserID(defaultAccountSpec("Fanbox"))
 }

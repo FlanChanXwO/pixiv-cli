@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	// chromiumPrefixLength 是真实 encrypted_value 的外层版本标记长度。
+	// chromiumPrefixLength 保存真实 encrypted_value 的外层版本标记长度。
 	chromiumPrefixLength = 3
 	chromiumNonceLength  = 12
 )

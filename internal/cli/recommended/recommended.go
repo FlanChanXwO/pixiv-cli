@@ -28,7 +28,7 @@ type options struct {
 	contentType string
 }
 
-// recommendationKindAll 是“全部类型”的聚合选择器，不作为实体类型传给 SDK。
+// recommendationKindAll 标记“全部类型”的聚合选择，不会作为实体类型传给 SDK。
 const recommendationKindAll = "all"
 
 type commandRunner struct {

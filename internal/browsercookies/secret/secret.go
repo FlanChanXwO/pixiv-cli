@@ -10,7 +10,8 @@ package secret
 
 import "errors"
 
-// 平台秘密后端的稳定错误分类；消息是静态文本，不包含密码、命令输出或路径。
+// ErrNotAvailableOnBuild 等 sentinel 是平台秘密后端的稳定错误分类；消息是静态文本，
+// 不包含密码、命令输出或路径。
 var (
 	ErrNotAvailableOnBuild = errors.New("browsercookies/secret: not available on this build")
 	ErrItemNotFound        = errors.New("browsercookies/secret: keychain item not found")

@@ -5,7 +5,7 @@ import "errors"
 // ErrorCode 枚举跨 CLI/MCP 边界保持稳定的错误分类。
 type ErrorCode string
 
-// 以下 Code 是跨 CLI/MCP 边界保持稳定的错误分类；新增值时同步调用方映射。
+// CodeUnknown 等 Code 是跨 CLI/MCP 边界保持稳定的错误分类；新增值时同步调用方映射。
 const (
 	CodeUnknown                   ErrorCode = "unknown"
 	CodeInvalidRequest            ErrorCode = "invalid_request"
@@ -39,10 +39,13 @@ func NewError(code ErrorCode, message string, cause error) *Error {
 	return &Error{code: code, message: message, cause: cause}
 }
 
+// Error 只返回预先审查过的安全消息，cause 不会出现在文本中。
 func (e *Error) Error() string { return e.message }
 
+// Unwrap 暴露原始 cause 供 errors.Is/As 判断，同时不把它拼进错误文本。
 func (e *Error) Unwrap() error { return e.cause }
 
+// Code 返回跨 CLI/MCP 边界保持稳定的错误分类，供 [CodeOf] 读取。
 func (e *Error) Code() ErrorCode { return e.code }
 
 // CodeOf 返回领域错误的稳定分类；其他错误归为 unknown。

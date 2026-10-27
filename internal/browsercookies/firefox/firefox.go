@@ -27,7 +27,7 @@ const (
 	profilesIni = "profiles.ini"
 	cookiesDB   = "cookies.sqlite"
 
-	// selectCookiesSQL 是唯一允许执行的查询：按受约束的 host/name 精确匹配。
+	// selectCookiesSQL 指定唯一允许执行的查询：按受约束的 host/name 精确匹配。
 	selectCookiesSQL = `SELECT value FROM moz_cookies WHERE (host = @h1 OR host = @h2) AND name = @n;`
 )
 

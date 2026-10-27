@@ -15,7 +15,7 @@ type CallbackHandlingResult struct {
 	// LocalRelayURL 会把本次 Pixiv callback 放进 fragment，可能包含授权码；
 	// 只有 bridge 的基础地址可以记录，完整值按敏感数据处理。
 	LocalRelayURL string
-	// RemoteCallback 是远程 relay 返回的一次性结果会话；与 LocalRelayURL 至多一个非零。
+	// RemoteCallback 携带远程 relay 返回的一次性结果会话；与 LocalRelayURL 至多一个非零。
 	RemoteCallback *RemoteCallbackSession
 	// RemoteLoginStart 只在收到 pixiv://remote-login 链接时填写，交由桌面端继续远程登录。
 	RemoteLoginStart *RemoteLoginStart
@@ -39,8 +39,8 @@ func newCallbackHandler() callbackHandler {
 	}
 }
 
-// HandleCallback 是持久系统协议关联调用的唯一入口。正在进行的本地 login 始终
-// 优先；只有没有本地 endpoint 时才尝试由 remote-login 显式建立的一次性 handoff。
+// HandleCallback 处理系统协议关联的全部回调。正在进行的本地 login 始终优先；
+// 只有没有本地 endpoint 时才尝试由 remote-login 显式建立的一次性 handoff。
 // 非白名单 URL 定向交回先前 handler，不会成为任意 pixiv:// URL 的转发器。
 func HandleCallback(ctx context.Context, rawURL string) (CallbackHandlingResult, error) {
 	return newCallbackHandler().handle(ctx, rawURL)

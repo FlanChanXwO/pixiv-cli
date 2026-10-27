@@ -10,7 +10,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// spool 是 `recommended all` 独有的多分区临时文档。单一实体列表使用共享 listing
+// spool 保存 `recommended all` 独有的多分区临时文档。单一实体列表使用共享 listing
 // 的单键数组 spool，因此这里只保留跨分区的顺序与分隔语义。
 type spool struct {
 	file                             *os.File

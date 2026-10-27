@@ -49,7 +49,7 @@ type relayLoginCallbackRequest struct {
 	Proof       string `json:"proof"`
 }
 
-// relayLoginFinalResponse 是 callback 长连接结束时返回给本机 handler 的最小结果。
+// relayLoginFinalResponse 携带 callback 长连接结束时返回给本机 handler 的最小结果。
 // 浏览器只会看到独立的固定成功/失败页，永远不接触 token、code 或服务端诊断。
 type relayLoginFinalResponse struct {
 	Success bool `json:"success"`

@@ -52,7 +52,7 @@ type reverseSearchImage struct {
 	FileName    string `json:"file_name,omitempty"`
 }
 
-// reverseSearchOutput 是完整的 MCP wire envelope，structured content 里不出现原始 source、
+// reverseSearchOutput 定义完整的 MCP wire envelope，structured content 里不出现原始 source、
 // 临时路径、请求头、cookie 或 API key。
 type reverseSearchOutput struct {
 	Input          reversesearch.Input             `json:"input"`

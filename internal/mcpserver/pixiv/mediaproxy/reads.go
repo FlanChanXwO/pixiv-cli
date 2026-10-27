@@ -257,7 +257,7 @@ func (s *Service) ConcurrentReads() int { return readConcurrency }
 // HasReadSessions 报告 Configure 是否安装了带缓存的读取路径。
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
 
-// cachedResource 是进程内的私有缓存格式，显式保留定位信息。它没有嵌入
+// cachedResource 定义进程内的私有缓存格式，显式保留定位信息。它没有嵌入
 // sdk.Resource，以免继承其安全 MarshalJSON 后丢掉 URL。
 type cachedResource struct {
 	Ref                 *sdk.ResourceRef  `json:"ref,omitempty"`
