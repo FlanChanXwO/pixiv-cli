@@ -25,6 +25,7 @@ import (
 // Options 是 detail 自己声明的 flags。它只保存 Cobra 解析结果，不创建资源。
 type Options struct {
 	command.Options
+	input  *inputcmd.State
 	ndjson bool
 
 	typ     string
@@ -50,7 +51,7 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	}
 	env.BindCommonFlags(cmd, &options.Options)
 	cmd.Flags().BoolVar(&options.ndjson, "ndjson", false, "print one canonical record per line")
-	env.BindTextOrRecord(cmd, 1, 1, 0)
+	options.input = env.BindTextOrRecord(cmd, 1, 1, 0)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
 	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
 	command.Bind(cmd, command.PixivData())
@@ -61,7 +62,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
 		return errors.New("--json and --ndjson cannot be used together")
 	}
-	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
+	if opts.input.Mode() == inputcmd.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
 	a.markNDJSON(cmd, opts.ndjson)
@@ -117,7 +118,7 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		defer spool.close()
 		worker.env.Out = spool
 	}
-	reader := inputcmd.Reader(cmd, a.env.In)
+	reader := opts.input.Reader(a.env.In)
 	err = inputcmd.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, input record.Record) error {
 		entity, err := entityForRecord(input.Type(), cmd.Flags().Changed("type"), opts.typ)
 		if err != nil {
@@ -193,7 +194,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromArtwork(result)
 			if err != nil {
 				return err
@@ -212,7 +213,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			if err != nil {
 				return err
 			}
-			if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+			if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 				value, err := record.RecordFromNovelContent(result)
 				if err != nil {
 					return err
@@ -230,7 +231,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromNovel(result)
 			if err != nil {
 				return err
@@ -248,7 +249,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromUserDetail(result)
 			if err != nil {
 				return err

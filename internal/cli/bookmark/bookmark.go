@@ -34,6 +34,7 @@ var novelRecordTypes = map[string]struct{}{
 
 type listOptions struct {
 	command.Options
+	input    *inputcmd.State
 	ndjson   bool
 	limit    int
 	page     int
@@ -42,8 +43,15 @@ type listOptions struct {
 	tag      string
 }
 
+type detailOptions struct {
+	command.Options
+	input *inputcmd.State
+	typ   string
+}
+
 type mutationOptions struct {
 	command.Options
+	input    *inputcmd.State
 	typ      string
 	restrict string
 	tags     []string
@@ -115,7 +123,7 @@ func (a commandRunner) newList() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
@@ -133,20 +141,19 @@ func (a commandRunner) newTags() *cobra.Command {
 	a.bindListFlags(cmd, &opts)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
 func (a commandRunner) newDetail() *cobra.Command {
-	options := command.Options{}
-	typ := "artwork"
+	opts := detailOptions{typ: "artwork"}
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
 		Short: "Show the current user's bookmark detail",
 		Args: func(cmd *cobra.Command, args []string) error {
 			usage := "pixiv bookmark detail [options] ARTWORK_ID_OR_NOVEL_ID_OR_URL"
-			if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
+			if opts.input.Mode() == inputcmd.RecordMode {
 				if len(args) != 0 {
 					return fmt.Errorf("usage: %s", usage)
 				}
@@ -155,7 +162,7 @@ func (a commandRunner) newDetail() *cobra.Command {
 			return a.env.ExactArgs(1, usage)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			input, err := a.bookmarkDetailInput(cmd, args, typ)
+			input, err := a.bookmarkDetailInput(cmd, args, opts)
 			if err != nil {
 				return err
 			}
@@ -163,11 +170,11 @@ func (a commandRunner) newDetail() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			request, err := pixivcmd.BuildRequest(cmd, options)
+			request, err := pixivcmd.BuildRequest(cmd, opts.Options)
 			if err != nil {
 				return err
 			}
-			jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, options))
+			jsonOut, err := a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
 			if err != nil {
 				return err
 			}
@@ -204,17 +211,17 @@ func (a commandRunner) newDetail() *cobra.Command {
 			return err
 		},
 	}
-	a.env.BindCommonFlags(cmd, &options)
-	cmd.Flags().StringVarP(&typ, "type", "t", typ, "entity type: artwork or novel")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	a.env.BindCommonFlags(cmd, &opts.Options)
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
-func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, typ string) (resolver.Input, error) {
-	input := resolver.Input{Type: typ}
-	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
+func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, opts detailOptions) (resolver.Input, error) {
+	input := resolver.Input{Type: opts.typ}
+	if opts.input.Mode() == inputcmd.RecordMode {
+		body, err := io.ReadAll(opts.input.Reader(a.env.In))
 		if err != nil {
 			return resolver.Input{}, fmt.Errorf("read bookmark detail record: %w", err)
 		}
@@ -299,7 +306,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 				if typ == "novel" {
 					recordTypes = novelRecordTypes
 				}
-				return a.env.ConsumeActionRecords(cmd, "bookmark_add", opts.onError, recordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_add", opts.onError, recordTypes, invoke)
 			}
 			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
@@ -313,7 +320,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
@@ -345,7 +352,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 				if typ == "novel" {
 					recordTypes = novelRecordTypes
 				}
-				return a.env.ConsumeActionRecords(cmd, "bookmark_remove", opts.onError, recordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_remove", opts.onError, recordTypes, invoke)
 			}
 			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
@@ -357,7 +364,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
@@ -405,10 +412,10 @@ func bookmarkTagsContract() resolver.Contract {
 	return bookmarkContract("bookmark tags")
 }
 
-func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, typ string, contract resolver.Contract) (int64, error) {
+func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, state *inputcmd.State, typ string, contract resolver.Contract) (int64, error) {
 	input := resolver.Input{Type: typ}
-	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
-		body, err := io.ReadAll(inputcmd.Reader(cmd, a.env.In))
+	if state.Mode() == inputcmd.RecordMode {
+		body, err := io.ReadAll(state.Reader(a.env.In))
 		if err != nil {
 			return 0, fmt.Errorf("read bookmark target record: %w", err)
 		}

@@ -107,7 +107,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	defer a.mcpBrokenPipeSignal.restore()
 	// 阶段 2：装配命令树并绑定流/参数。
 	cmd := a.newRootCommand()
-	defer input.Clear(cmd)
 	cmd.SetIn(in)
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)

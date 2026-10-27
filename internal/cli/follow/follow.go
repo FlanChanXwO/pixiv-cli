@@ -18,6 +18,7 @@ var userRecordTypes = map[string]struct{}{"user": {}}
 
 type options struct {
 	command.Options
+	input    *input.State
 	restrict string
 	onError  string
 }
@@ -55,7 +56,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 				})
 			})
 			if len(args) == 0 {
-				return a.env.ConsumeActionRecords(cmd, "follow_add", opts.onError, userRecordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, opts.input, "follow_add", opts.onError, userRecordTypes, invoke)
 			}
 			id, err := resolveFollowUserID(cmd.Context(), args[0], "follow add")
 			if err != nil {
@@ -67,7 +68,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
@@ -88,7 +89,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 				})
 			})
 			if len(args) == 0 {
-				return a.env.ConsumeActionRecords(cmd, "follow_remove", opts.onError, userRecordTypes, invoke)
+				return a.env.ConsumeActionRecords(cmd, opts.input, "follow_remove", opts.onError, userRecordTypes, invoke)
 			}
 			id, err := resolveFollowUserID(cmd.Context(), args[0], "follow remove")
 			if err != nil {
@@ -99,7 +100,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
-	a.env.BindTextOrRecord(cmd, 0, 1, 0)
+	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }

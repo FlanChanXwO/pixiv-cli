@@ -34,6 +34,7 @@ type proxyOptions struct {
 
 type downloadOptions struct {
 	commandOptions
+	input            *input.State
 	downloadPath     string
 	outputPath       string
 	filenameTemplate string
@@ -84,7 +85,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 			return a.runDownload(cmd, args, opts)
 		},
 	}
-	input.Bind(cmd, input.InputSpec{
+	opts.input = input.Bind(cmd, input.InputSpec{
 		Codec:        input.TextOrRecord,
 		MinArgs:      1,
 		MaxArgs:      -1,
@@ -170,7 +171,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 		})
 	}
 	if len(args) == 0 {
-		return input.ConsumeActionRecords(cmd.Context(), input.Reader(cmd, a.env.In), a.env.Err, "download", opts.onError, visualRecordTypes, downloadOne, a.usageError)
+		return input.ConsumeActionRecords(cmd.Context(), opts.input.Reader(a.env.In), a.env.Err, "download", opts.onError, visualRecordTypes, downloadOne, a.usageError)
 	}
 	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
