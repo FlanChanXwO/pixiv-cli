@@ -747,7 +747,8 @@ type Decoder struct {
 	frame decoder
 }
 
-// Decode 解码一个 JPEG，随后清空解析状态并释放输入与 scan 存储。
+// Decode 解码一个 JPEG，随后清空解析状态、释放 scan 存储并丢弃对 r 的内部引用；
+// r 由调用方关闭。
 func (d *Decoder) Decode(r io.Reader) (image.Image, error) {
 	img, err := d.frame.decode(r)
 	d.frame = decoder{reuseYCbCr: d.frame.reuseYCbCr}
