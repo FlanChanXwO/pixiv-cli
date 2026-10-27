@@ -1,9 +1,9 @@
+# Release 完成后把已验证的 pixiv-cli 产品 skill 发布到 ClawHub，支持按原 release run 恢复。
 name: Publish ClawHub skill
 
 on:
-  # The release workflow writes an immutable tag artifact only after its release
-  # and Homebrew gates succeed. GitHub's release token cannot trigger a second
-  # release event, so workflow_run is the trusted asynchronous handoff.
+  # Release 在发布与 Homebrew 门禁都通过后才写出不可变 tag artifact。GitHub 的 release
+  # token 不能再次触发 release 事件，因此用 workflow_run 作为受信异步交接。
   workflow_run:
     workflows:
       - Release

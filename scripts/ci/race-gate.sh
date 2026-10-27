@@ -1,4 +1,5 @@
 #!/bin/sh
+# 在各平台执行 go test -race；windows/arm64 只接受 Go 官方的“不支持”诊断。
 set -eu
 
 target="$(go env GOOS)/$(go env GOARCH)"

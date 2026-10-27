@@ -1,3 +1,4 @@
+# 处理 /test 评论：用受信解析器确定命令，在目标平台执行并回写结果与 reaction。
 name: PR Verification
 
 on:

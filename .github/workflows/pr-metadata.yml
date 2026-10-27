@@ -1,3 +1,4 @@
+# 受信 PR 元数据门禁：校验模板与 commands 声明，并派发 Platform/Container smoke worker。
 name: Pull request metadata
 
 on:

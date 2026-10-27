@@ -1,4 +1,5 @@
 #!/bin/sh
+# 官方 Unix 安装器：从已验证的发布源下载 pixiv，校验 checksum 后安装并初始化 pixiv:// handler。
 set -eu
 
 repository='FlanChanXwO/pixiv-cli'

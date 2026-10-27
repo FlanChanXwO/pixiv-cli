@@ -1,3 +1,4 @@
+# 每天关闭元数据持续七天无效且正文未变的 PR。
 name: Close stale invalid PRs
 
 on:

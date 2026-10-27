@@ -1,10 +1,10 @@
+# Release 完成后把产品 skill 发布到 SkillHub，仅在 skill 内容变化时执行。
 name: Publish SkillHub skill
 
 on:
-  # Release is created with github.token, which intentionally cannot trigger a
-  # second `release` workflow. workflow_run is the safe handoff after all
-  # release and Homebrew gates finish. Its head branch is main for a recovered
-  # release, so the exact tag comes from Release's verified handoff artifact.
+  # Release 由 github.token 创建，它刻意不能再次触发 release workflow，因此所有发布
+  # 与 Homebrew 门禁结束后用 workflow_run 交接。恢复发布时它的 head branch 是 main，
+  # 确切的 tag 只能取自 Release 的已验证 handoff artifact。
   workflow_run:
     workflows:
       - Release
@@ -139,8 +139,8 @@ jobs:
                 ;;
             esac
           fi
-      # The vendor installer runs before this workflow makes SKILLHUB_TOKEN available.
-      # Its CLI is only used after the immutable tag and local metadata have passed.
+      # 第三方安装脚本在本 workflow 提供 SKILLHUB_TOKEN 之前运行；只有不可变 tag 与
+      # 本地 metadata 都校验通过后才会调用它的 CLI。
       - name: Install the official SkillHub CLI without credentials
         if: steps.skill_change.outputs.publish == 'true'
         shell: bash
