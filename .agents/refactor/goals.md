@@ -2685,10 +2685,10 @@
 
 【本 goal】
 工作项：C2（规格 C 组）。长期规则已由 G46 写进编码手册（docs/*/maintainers/coding-standards.md），本 goal 不再把规则写进 skill。
-- 核对编码手册、architecture.md 与 skill 已覆盖规格中仍然有效的长期规则；发现遗漏时补进编码手册（中英文同步），不写回 skill。
+- 核对编码手册、architecture.md、AGENTS.md 与 skill 已覆盖规格中仍然有效的长期规则；发现遗漏时按归属补进权威文件：编码规则补进编码手册，结构规则补进 architecture.md（两者中英文同步），硬约束补进 AGENTS.md；不写回 skill。
 - 中英文 docs/*/sdk.md 改为描述新的 API；更新 architecture.md、development.md 中与重构结果相关的路径（D7 的协议包位置、6.9 的日志归属），G46 已写的不重复。
 - 以 G41 产出的 changelog 草稿为基础、按 G43 的规则，汇总已合并各 goal 的 PR 描述中的 changelog 条目，写进本 PR 描述作为 release notes 草稿；不创建 changelog/vX.Y.Z/。
-- 确认仓库中没有指向 .agents/refactor/ 的链接或引用，然后删除 .agents/refactor/ 整个目录。
+- 确认 .agents/refactor/ 以外的文件中没有指向它的链接或引用，然后删除 .agents/refactor/ 整个目录；删除后再对整个仓库扫描一次。
 
 【验收】
 - 文档中的链接和引用路径都有效；中英文内容一致。
