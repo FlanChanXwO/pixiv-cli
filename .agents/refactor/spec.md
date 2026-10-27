@@ -42,7 +42,7 @@
 | D5 | 包按职责划分，不按端点或 tool 划分；每个实体只有一种公开类型 |
 | D6 | 可选参数用 spec 结构体或方法表达，不再新增 `WithX` 一类函数变体 |
 | D7 | 上游协议实现（传输、协议约定、资源下载、OAuth）按产品放在模块级 `internal/pixivapi`、`internal/fanboxapi`。模块级 `internal/` 对模块外同样不可见；真实环境写入测试需要绕过 SDK、直接使用原始客户端做独立回读与清理，`pixivaccount` 的测试也引用协议常量，放在模块级可以让这些调用方都直接 import |
-| D8 | 拆成 45 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
+| D8 | 拆成 46 个 goal，按依赖分四个阶段，阶段内的线路并行；每个 goal 一个命名 worktree、一个 PR，验收通过后合并进 main（见 7.0） |
 | D9 | 声明按使用范围放置。包内多个文件共用的实体和常量，集中放在声明文件里；只服务一个行为的声明，和使用它的函数放在同一个文件（细则见 3.1）。名字说明职责，不用 `Deps`、`Data`、`Manager` 一类空泛名，不建依赖袋（细则见 3.1.2） |
 | D10 | 具有业务含义的标识符使用具名常量；有取值集合的标识符使用具名类型（细则见 3.2） |
 | D11 | 每个横切关注点只有一个归属层和一种传入方式；业务对象可以持有基础设施，但只能以“一个已封装好的依赖”形式持有，不自己实现横切逻辑（细则见 3.3） |
@@ -1849,7 +1849,7 @@ if err != nil {
 
 ### 7.0 并行执行与 goal
 
-A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 45 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
+A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应一个命名的 worktree、一个分支、一个 PR，验收通过后合并进 main。共 46 个 goal，分四个阶段：阶段 0、3 内部按依赖执行，阶段 1、2 内的线路可以并行。各 goal 的完整语句见同目录的 `goals.md`。
 
 ```text
 阶段 0（串行）  G01 → G02 → G03 → G04 → G05
@@ -1863,7 +1863,7 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
                 L8 叶子包   G18
                 L9 脚本/CI  G19 → G20 → G21      ← 不依赖阶段 0
 阶段 2          G23–G27 与 G22（日志）按下表依赖并行 → G28（扫尾）
-阶段 3          G35–G38（测试精简）并行 → G44（测试重写）→ G39、G40、G42（逐包审查与修正）并行，G41 在 G39、G40 之后 → G45（遗留问题修正）与 G29、G33 并行 → G30–G32（注释整理）并行 → G34（收尾）
+阶段 3          G35–G38（测试精简）并行 → G44（测试重写）→ G39、G40、G42（逐包审查与修正）并行，G41 在 G39、G40 之后 → G45（遗留问题修正）与 G29、G33 并行 → G30–G32（注释整理）并行 → G46（编码手册与路由地图）→ G34（收尾）
                 G43（面向用户的 changelog）现在就可以开始；G41、G42、G34 都依赖它
 ```
 
@@ -1915,7 +1915,8 @@ A1、B2 等是工作项的名称。执行单位是 **goal**：一个 goal 对应
 | G44 | `refactor-g44-tests-rewrite` | 测试重写（3.4.4）：删除全部测试，按清单与上限重写；更新 `pixiv-cli-test` 与测试布局文档 | G35–G38 | 全仓库的测试、`pixiv-cli-test`、`development.md` 的测试章节 |
 | G43 | `refactor-g43-changelog` | 面向用户的 changelog：新规则、`scripts/release` 的 notes 校验、重写全部历史版本 | — | `changelog/`、`scripts/release` 的 notes 部分、`pixiv-cli-release-notes` |
 | G45 | `refactor-g45-leftovers` | 遗留问题修正：NDJSON 退出码、`input` 包的全局状态、重复的收藏过滤、mediaproxy 固定参数、D10 字面量 | G39–G44 | `internal/cli/`、`internal/mcpserver/`、`internal/searchfilter` |
-| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39–G43、G45 | 文档、skill |
+| G46 | `refactor-g46-handbook` | C4 编码手册、skill 引导与 AGENTS.md 路由地图 | G29–G33、G45 | `docs/*/maintainers/`、`docs/index*.md`、`.agents/skills/`、`AGENTS.md`、`CONTRIBUTING*.md` |
+| G34 | `refactor-g34-finish` | C2；删除 `.agents/refactor/` | G29–G33、G39–G43、G45、G46 | 文档 |
 
 每个 goal 顺带对自己触及的目录做 T2、T3、T6，并对触及的测试套用 3.4。
 
@@ -2047,8 +2048,9 @@ S1 由 G19 执行；S2 由 G20 执行，2026-10-23 扩大为 scripts 与 CI 的�
 | PR | 内容 | 对应示例 |
 |---|---|---|
 | C1 | slog 日志：用 `internal/logging` 取代 `diagnostics`，涉及 11 个文件中的 27 处 `diagnostics.Emit`/`Event` 和 2 处 scope 安装（`cli/execution.go`、`composition.go`）；删除 Event/Sink/Scope 与 CLI 渲染器；SDK 两个 `Options` 增加 `Logger`；请求与内部决策的记录放进 `pixivapi`、`fanboxapi` 的发送与重试处，删除 `diagnosticRoundTripper` 和 `fanboxapi` 的 `diagnostics.Emit`；公开方法入口登记 `sdk_operation`；CLI 与 MCP 执行边界接入。沿用现有配置键 `log_level`（`logging.level`，`PIXIV_LOG_LEVEL`）和 `log_format`（`logging.format`，`PIXIV_LOG_FORMAT`）；`LogLevel` 在现有 `info`、`debug` 之外新增 `warn`、`error`；stderr 诊断输出的格式变为 6.9 的文本/JSON 格式，属于对外可见的变化，写入 changelog。按 AGENTS.md 执行 Red/Green | 6.5、6.9 |
-| C2 | 删除 `.agents/refactor/`；`docs/{en,zh}/sdk.md` 改为描述新 API（不写迁移对照）；汇总 G01–G33 PR 描述中的 changelog 条目，作为下个版本 release notes 的草稿写进本阶段 PR 描述（`changelog/vX.Y.Z/` 只在单独授权的发布准备中创建）；通用工程规则（命名与放置、不做内部兼容、测试删除标准、按改动范围验证、注释规则）已在 PR #159 写入 `pixiv-cli-develop`、`pixiv-cli-test`、`pixiv-cli-code-commenting`、`pixiv-cli-review`；C2 只补充与本次重构结果相关的内容：新目录对应的放置路径、D7 的协议包位置、日志归属（6.9），并把第 6 节的示例整理到 `references/go-examples.md` | — |
-| C3 | 按 3.5、3.5.1 整理注释：每个包一处标准库风格的包文档，删除其他文件的头注释，补齐导出符号的文档注释，统一注释语言（规则写在 `pixiv-cli-code-commenting`） | 3.5 |
+| C2 | 删除 `.agents/refactor/`；`docs/{en,zh}/sdk.md` 改为描述新 API（不写迁移对照）；汇总 G01–G33 PR 描述中的 changelog 条目，作为下个版本 release notes 的草稿写进本阶段 PR 描述（`changelog/vX.Y.Z/` 只在单独授权的发布准备中创建）；更新 `architecture.md`、`development.md` 中与重构结果相关的路径：D7 的协议包位置、日志归属（6.9）。长期规则由 C4 写进编码手册，C2 只核对有无遗漏，遗漏的补进手册 | — |
+| C3 | 按 3.5、3.5.1 整理注释：每个包一处标准库风格的包文档，删除其他文件的头注释，补齐导出符号的文档注释，统一注释语言（规则写在 `pixiv-cli-code-commenting`，C4 后以编码手册为准） | 3.5 |
+| C4 | 编码手册：新建 `docs/{en,zh-CN}/maintainers/coding-standards.md`，作为编码规则的唯一出处，收录 3.1、3.1.1、3.1.2、3.1.3、3.2、3.4.2（含 P-d 扩充）、3.4.4、3.5、3.5.1 的长期规则和第 6 节中仍然适用的示例；3.3 与 AGENTS.md 中的结构规则写进 `architecture.md`。`pixiv-cli-develop`、`pixiv-cli-code-commenting`、`pixiv-cli-review`、`pixiv-cli-test` 改为引导，规则正文只留在手册。AGENTS.md 改为路由地图：路由表增加“完成前检查”列，只保留硬约束（密钥、真实账号授权、依赖审批、PR 不等于合并或发布授权、App-only、输出通道、独立 worktree），其余挪到手册、`architecture.md`、`development.md`、skill 或 CONTRIBUTING | 3.1–3.5、6 |
 
 **C1 的日志约束：**
 - CLI 的数据 stdout 和 MCP stdio 的 stdout 中不得出现日志。
