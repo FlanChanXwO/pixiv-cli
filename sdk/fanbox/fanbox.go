@@ -1,6 +1,3 @@
-// FANBOX SDK 入口：客户端构造、连接选项，以及会话校验。
-// 业务操作分布在 creator.go、post.go，响应结构与映射在各自领域文件；分页和游标在 pagination.go。
-
 package fanbox
 
 import (
@@ -16,9 +13,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// SessionCredentials carries the FANBOX session cookie value. It never accepts
-// a full Cookie header; only the FANBOXSESSID value is used. Every formatting
-// path is redacted.
+// SessionCredentials holds exactly the FANBOXSESSID cookie value, not a full
+// Cookie header. Every formatting path is redacted.
 type SessionCredentials struct {
 	FANBOXSESSID string `json:"-"`
 }
@@ -37,7 +33,9 @@ func (SessionCredentials) Format(state fmt.State, _ rune) {
 // CurrentUserRequest reads the current authenticated user's identity.
 type CurrentUserRequest struct{}
 
-// Options are connection-level settings for constructing a Client.
+// Options configures how a Client connects. Leaving HTTPClient nil makes the
+// SDK create a browser-aligned session it closes through
+// Client.CloseIdleConnections.
 type Options struct {
 	// HTTPClient is used for FANBOX API and media requests. It belongs to the
 	// caller and is never closed by the SDK. When nil, the SDK creates a
@@ -59,30 +57,31 @@ type Options struct {
 	Logger *slog.Logger
 }
 
-// FlareSolverrOptions configures the direct solver service and its independent
-// browser upstream proxy. The service URL is normalized to its root and the
-// solver is never given the FANBOX session or a business request URL.
+// FlareSolverrOptions configures the challenge solver and its separate upstream
+// browser proxy. The service URL is reduced to its root, and the solver never
+// receives the FANBOX session or a business request URL.
 type FlareSolverrOptions struct {
 	URL      string
 	ProxyURL string
 }
 
-// Client is a FANBOX client bound to one FANBOXSESSID session. It does not
-// read browsers, local account stores, or Pixiv credentials, and never falls
-// back between credentials or products.
+// Client sends requests under one FANBOXSESSID session. It never reads browsers,
+// local account stores, or Pixiv credentials, and a failure never falls back to
+// another credential or product.
 type Client struct {
 	// app owns the session, the transport, and the in-session caches for
 	// resource locators and the verified account identity.
 	app *fanboxapi.Client
 }
 
-// Open constructs a Client for the given session credentials. It performs no
-// network I/O; ValidateSession verifies the session.
+// Open creates a Client without network I/O; call ValidateSession to verify the
+// session against upstream.
 func Open(credentials SessionCredentials) (*Client, error) {
 	return OpenWith(credentials, Options{})
 }
 
-// OpenWith is Open with explicit connection-level Options.
+// OpenWith applies the connection settings in options instead of the defaults
+// Open uses; nil fields fall back to those defaults.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
 	app, err := fanboxapi.New(credentials.FANBOXSESSID, fanboxapi.Options{
 		HTTPClient:   options.HTTPClient,

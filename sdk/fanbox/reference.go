@@ -13,7 +13,8 @@ import (
 // ReferenceKind identifies the FANBOX resource a resolved URL points to.
 type ReferenceKind string
 
-// ReferenceKind values define the supported references.
+// ReferenceKindCreator, ReferenceKindCreatorPosts, ReferenceKindPost, and
+// ReferenceKindTag name the FANBOX pages ResolveURL can return.
 const (
 	ReferenceKindCreator      ReferenceKind = "creator"
 	ReferenceKindCreatorPosts ReferenceKind = "creator_posts"
@@ -65,7 +66,7 @@ func (c *Client) ResolveURL(ctx context.Context, request ResolveURLRequest) (Ref
 func parseFanboxPath(parsed *url.URL) (Reference, error) {
 	parts := splitPath(parsed.Path)
 	if len(parts) >= 1 && parts[0] == "creators" {
-		// 旧式 www.fanbox.cc/creators/{id} 重定向。
+		// Legacy redirect form: www.fanbox.cc/creators/{id}.
 		if len(parts) == 2 && parts[1] != "" {
 			return Reference{Kind: ReferenceKindCreator, CreatorID: parts[1]}, nil
 		}

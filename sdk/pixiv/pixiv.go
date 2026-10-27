@@ -1,5 +1,3 @@
-// Public Pixiv construction and verified identity; transport state belongs to pixivapi.
-
 package pixiv
 
 import (
@@ -75,7 +73,9 @@ func Open(ctx context.Context, refreshToken string) (*Client, Credentials, error
 	return OpenWith(ctx, refreshToken, Options{})
 }
 
-// OpenWith is Open with explicit connection-level Options.
+// OpenWith lets the caller inject an HTTP client, pacing, a resource host
+// policy, and a logger before the first request; nil fields fall back to the
+// defaults Open uses.
 func OpenWith(ctx context.Context, refreshToken string, options Options) (*Client, Credentials, error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
@@ -119,7 +119,8 @@ func New(accessToken string) (*Client, error) {
 	return NewWith(accessToken, Options{})
 }
 
-// NewWith is New with explicit connection-level Options.
+// NewWith applies the connection settings in options instead of the defaults
+// New uses; nil fields fall back to those defaults.
 func NewWith(accessToken string, options Options) (*Client, error) {
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {

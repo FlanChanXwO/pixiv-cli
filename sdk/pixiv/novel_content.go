@@ -5,7 +5,8 @@ import "github.com/FlanChanXwO/pixiv-cli/sdk"
 // NovelBlockKind is the structured kind of a novel content block.
 type NovelBlockKind string
 
-// NovelBlockKind values define the supported NovelBlockKind filesystem.
+// NovelBlockParagraph, NovelBlockHeader, NovelBlockImage, and NovelBlockFile
+// name the content block shapes the SDK decodes.
 const (
 	NovelBlockParagraph NovelBlockKind = "paragraph"
 	NovelBlockHeader    NovelBlockKind = "header"
@@ -19,7 +20,8 @@ const (
 // NovelMarkKind is the structured kind of an inline mark within a block.
 type NovelMarkKind string
 
-// NovelMarkKind values define the supported NovelMarkKind filesystem.
+// NovelMarkStrong and the other NovelMarkKind values name the inline
+// formatting the SDK decodes.
 const (
 	NovelMarkStrong   NovelMarkKind = "strong"
 	NovelMarkEmphasis NovelMarkKind = "emphasis"

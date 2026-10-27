@@ -1,6 +1,3 @@
-// FANBOX 文章操作：单篇详情、home/supporting 信息流，以及创作者文章列表。
-// 请求类型、响应结构与映射在本文件；分页和游标在 pagination.go。
-
 package fanbox
 
 import (
@@ -74,7 +71,7 @@ type fileWire struct {
 }
 
 // CreatorPostsRequest lists one creator's posts. Repeat the original CreatorID
-// when continuing with Cursor.
+// when continuing with a cursor, or the cursor is rejected.
 type CreatorPostsRequest struct {
 	CreatorID string
 	Cursor    sdk.Cursor
@@ -136,7 +133,7 @@ func (c *Client) postInfo(ctx context.Context, postID string) (postWire, error) 
 	return response.Body.Post, nil
 }
 
-// mapPost converts one post response into the public model.
+// mapPost maps one validated post response to the public model.
 func (c *Client) mapPost(source postWire) (Post, error) {
 	if strings.TrimSpace(source.ID) == "" {
 		return Post{}, errors.New("FANBOX post has no id")

@@ -5,25 +5,24 @@ import (
 	"encoding/json"
 )
 
-// resourceRefFormatVersion is the encoding version of the resource reference
-// envelope. Decoding rejects unknown format versions so future additive
-// changes are explicit.
+// resourceRefFormatVersion versions the reference envelope. Decoding rejects
+// unknown versions so additive envelope changes stay explicit.
 const resourceRefFormatVersion = 1
 
-// resourceRefEnvelope is the versioned JSON form of a resource reference. The
-// payload is product-owned, opaque identity state that the product SDK
-// revalidates when a resource is opened. The envelope must never contain the
-// resolved resource URL, signed URLs, tokens, or cookies.
+// resourceRefEnvelope is what a reference encodes: a product namespace and
+// product-owned opaque identity state that the product SDK revalidates when the
+// resource is opened. It must never contain the resolved resource URL, signed
+// URLs, tokens, or cookies.
 type resourceRefEnvelope struct {
 	Version int    `json:"v"`
 	Product string `json:"p"`
 	Payload []byte `json:"d"`
 }
 
-// ResourceRef is an opaque, product-scoped identity for a first-party media
-// resource. It does not encode or promise to persist Resource.URL: callers use
-// it as a stable cache key and hand it back to OpenResource or SaveResource so
-// the product SDK can revalidate and safely read the resource.
+// ResourceRef identifies one first-party media resource within a product
+// namespace. It is a stable cache key that callers hand back to OpenResource or
+// SaveResource so the product SDK can revalidate and safely read the resource.
+// Unlike Resource.URL, it survives beyond a single signed locator.
 //
 // The Text codec uses the route-safe unpadded base64url alphabet and is suitable
 // for URL path segments. The JSON codec is the same text form as a JSON string.
@@ -51,10 +50,10 @@ func NewResourceRef(product string, payload []byte) (ResourceRef, error) {
 	return ResourceRef{text: base64.RawURLEncoding.EncodeToString(raw)}, nil
 }
 
-// IsZero reports whether the reference is the zero value.
+// IsZero reports whether the reference is unset.
 func (r ResourceRef) IsZero() bool { return r.text == "" }
 
-// String returns the route-safe text encoding of the reference.
+// String returns the route-safe text encoding, suitable for URL path segments.
 func (r ResourceRef) String() string { return r.text }
 
 // MarshalText returns the route-safe unpadded base64url text encoding of the

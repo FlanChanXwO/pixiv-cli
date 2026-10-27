@@ -1,6 +1,3 @@
-// Pixiv resource identity, locator resolution, and validated streaming.
-// Atomic saving and progress are shared through sdk.WriteResource.
-
 package pixiv
 
 import (
@@ -46,10 +43,12 @@ func (c *Client) newResource(kind string, id int64, page int, variant, rawURL st
 	}, nil
 }
 
-// ArtworkVariantResource 返回同一页的另一个质量变体的 ResourceRef。
-// 它解码既有 ref 的稳定身份并替换 variant，使 SaveResource 走与 original
-// 相同的 revalidation / re-resolution 路径。variant 为空或 "original" 时
-// 原样返回 original.Ref。只支持 artwork kind；其他 kind 报错。
+// ArtworkVariantResource returns a ResourceRef for another quality variant of the
+// same page. It decodes the stable identity from original.Ref and replaces the
+// variant, so SaveResource revalidates and resolves it exactly as it does
+// original. An empty variant or "original" returns original.Ref unchanged
+// without inspecting the reference. Any other variant requires an artwork
+// reference; other kinds return InvalidArgument.
 func ArtworkVariantResource(original sdk.Resource, variant string) (sdk.ResourceRef, error) {
 	if variant == "" || variant == "original" {
 		return original.Ref, nil
@@ -144,9 +143,10 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 	return sdk.SavedResource{Path: options.Path, Size: size, ContentType: response.ContentType()}, nil
 }
 
-// SaveResourceURL 将经过资源策略校验的 Pixiv CDN URL 保存到 Path。它复用
-// 传输层的 Referer、重定向校验和禁用 cookie 行为，并通过原子目标
-// 写入，避免失败传输留下最终文件。
+// SaveResourceURL saves a policy-checked Pixiv CDN URL to Path. It reuses the
+// transport's Referer, redirect validation, and cookie suppression, and writes
+// atomically so a failed transfer leaves no partial file: Path keeps its previous
+// contents, or stays absent if it did not exist.
 func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	ctx = logging.WithOperation(ctx, "SaveResourceURL")
 	const operation = "SaveResourceURL"
@@ -328,10 +328,11 @@ func artworkImageURLsResourceURL(urls imageURLsWire, variant string) (string, er
 	return "", err
 }
 
-// deriveImageVariantURL 在 upstream 没有直接提供请求质量时，按 Pixiv 的公开
-// img-master / 缩略图路径约定从 original locator 推导对应 URL。variant 取
-// regular / small / thumb / mini（与下载器公开的 DownloadQuality 一致）；
-// 这些 locator 不携带签名参数，cache key 由稳定身份决定。
+// deriveImageVariantURL derives the requested quality from an original locator
+// using Pixiv's documented img-master and thumbnail path conventions when
+// upstream provides no direct URL. variant is regular, small, thumb, or mini,
+// matching the downloader's DownloadQuality. These locators carry no signature
+// parameters, so the cache key comes from the stable identity.
 func deriveImageVariantURL(originalURL, variant string) (string, bool) {
 	original := strings.TrimSpace(originalURL)
 	if original == "" {
@@ -365,8 +366,9 @@ func deriveImageVariantURL(originalURL, variant string) (string, bool) {
 	return clone.String(), true
 }
 
-// variantPathComponents 返回某质量的 img-master 前缀、裁剪段与文件名后缀。
-// 前缀以 / 开头；crop 形如 "c/1200x1200/" 或为空。
+// variantPathComponents returns the img-master prefix, crop segment, and filename
+// suffix for one quality. The prefix starts with /; crop is empty or resembles
+// "c/1200x1200/".
 func variantPathComponents(variant string) (prefix, crop, suffix string, ok bool) {
 	switch variant {
 	case "regular":

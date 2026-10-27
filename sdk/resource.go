@@ -9,21 +9,21 @@ import (
 	"time"
 )
 
-// ResourceMethod is the HTTP method accepted by OpenResource.
+// ResourceMethod names an OpenResource verb. The zero value means GET.
 type ResourceMethod string
 
-// ResourceMethod values are the HTTP methods OpenResource accepts.
+// ResourceMethodGet and ResourceMethodHead are the two accepted verbs.
 const (
 	ResourceMethodGet  ResourceMethod = "GET"
 	ResourceMethodHead ResourceMethod = "HEAD"
 )
 
-// Resource is a first-party media item exposed by product models. URL is a
-// currently-usable upstream locator that a caller may stream directly or proxy
-// without buffering to disk; Ref is the stable opaque identity to hand back to
-// OpenResource or SaveResource. The two are not interchangeable and neither can
-// be derived from the other. The JSON form exposes only Ref and
-// RequiresCredentials; runtime locators never cross an output boundary.
+// Resource describes a first-party media item returned by product models. URL
+// is a currently-usable upstream locator that a caller may stream directly or
+// proxy without buffering to disk; Ref is the stable opaque identity to hand
+// back to OpenResource or SaveResource. The two serve different purposes and
+// neither is derived from the other. The JSON form exposes only Ref and
+// RequiresCredentials, so runtime locators never cross an output boundary.
 //
 // URL must be validated (scheme, host, userinfo, allowed resource path) before
 // it enters a public model. RequestHeaders contains only non-secret headers a
@@ -72,9 +72,9 @@ func (r *Resource) Copy() Resource {
 	return out
 }
 
-// OpenResourceRequest selects how a product client opens a resource by its
-// opaque reference. The zero Method is treated as GET. Header fields reject
-// control characters; SDKs never accept arbitrary header maps.
+// OpenResourceRequest describes one OpenResource call. The zero Method means
+// GET. The header fields are validated with Validate, so SDKs never accept
+// arbitrary header maps.
 type OpenResourceRequest struct {
 	Ref             ResourceRef
 	Method          ResourceMethod
@@ -117,9 +117,9 @@ func hasControlChars(s string) bool {
 	return false
 }
 
-// resourceHeaderAllowlist is the set of upstream response headers the resource
-// contract exposes to callers. Location, Set-Cookie, authentication headers,
-// and internal URLs are never forwarded.
+// resourceHeaderAllowlist lists the upstream response headers the resource
+// contract exposes. Location, Set-Cookie, authentication headers, and internal
+// URLs are never forwarded.
 var resourceHeaderAllowlist = []string{
 	"Content-Type",
 	"Content-Length",
@@ -130,11 +130,10 @@ var resourceHeaderAllowlist = []string{
 	"Cache-Control",
 }
 
-// ResourceResponse is the result of opening a resource. StatusCode is the
-// upstream status, Body is the streamed response body owned by the caller (who
-// must close it), and Header returns only the allowlisted representation
-// headers. For HEAD, 204, and 304 responses the Body is a non-nil empty stream
-// that remains safe to close.
+// ResourceResponse reports the result of opening a resource. The caller owns
+// Body and must close it; it is a non-nil empty stream for HEAD, 204, and 304
+// responses. Header and the typed getters expose only allowlisted representation
+// headers.
 type ResourceResponse struct {
 	// Filename is an upstream-suggested attachment name, including its extension
 	// when provided. Empty means unavailable. It is metadata, not a trusted path;
@@ -169,11 +168,12 @@ func (r *ResourceResponse) Header() http.Header {
 	return out
 }
 
-// ContentType returns the allowlisted Content-Type header value.
+// ContentType returns the upstream media type, or empty when not provided.
 func (r *ResourceResponse) ContentType() string { return r.header.Get("Content-Type") }
 
-// ContentLength returns the allowlisted Content-Length header value as an
-// integer, or zero when absent or malformed.
+// ContentLength parses the allowlisted Content-Length header, or returns zero
+// when it is absent or malformed. It describes the upstream representation, so a
+// HEAD or 304 response can report a non-zero length with an empty Body.
 func (r *ResourceResponse) ContentLength() int64 {
 	v := r.header.Get("Content-Length")
 	if v == "" {
@@ -186,17 +186,18 @@ func (r *ResourceResponse) ContentLength() int64 {
 	return n
 }
 
-// ContentRange returns the allowlisted Content-Range header value.
+// ContentRange returns the upstream byte-range header, or empty when absent.
 func (r *ResourceResponse) ContentRange() string { return r.header.Get("Content-Range") }
 
-// AcceptRanges returns the allowlisted Accept-Ranges header value.
+// AcceptRanges returns the upstream range support header, or empty when absent.
 func (r *ResourceResponse) AcceptRanges() string { return r.header.Get("Accept-Ranges") }
 
-// ETag returns the allowlisted ETag header value.
+// ETag returns the upstream entity tag, or empty when absent.
 func (r *ResourceResponse) ETag() string { return r.header.Get("ETag") }
 
-// LastModified returns the allowlisted Last-Modified header value.
+// LastModified returns the upstream modification time in HTTP date form, or
+// empty when absent.
 func (r *ResourceResponse) LastModified() string { return r.header.Get("Last-Modified") }
 
-// CacheControl returns the allowlisted Cache-Control header value.
+// CacheControl returns the upstream caching directive, or empty when absent.
 func (r *ResourceResponse) CacheControl() string { return r.header.Get("Cache-Control") }

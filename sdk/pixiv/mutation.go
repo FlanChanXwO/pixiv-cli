@@ -1,6 +1,3 @@
-// mutation 领域：收藏、关注和评论的写操作。
-// 读操作见 bookmark.go、comment.go、user.go；请求类型在本文件。
-
 package pixiv
 
 import (
@@ -29,7 +26,8 @@ func (w commentMutationWire) commentID() *int64 {
 	return nil
 }
 
-// postComment 发送 create/reply/stamp 共用的 form，并要求响应给出 comment ID。
+// postComment posts the form that create, reply, and stamp share and requires the
+// response to report a comment ID.
 func (c *Client) postComment(ctx context.Context, operation, path string, form url.Values) (CommentMutationResult, error) {
 	var raw commentMutationWire
 	if err := c.app.PostFormJSON(ctx, path, form, &raw); err != nil {
@@ -161,7 +159,8 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 	if request.ArtworkID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	// App API 的 sticker-only wire 形态要求 comment 为空；stamp_id 单独标识贴纸。
+	// The App API sticker-only wire form requires an empty comment; stamp_id
+	// identifies the sticker on its own.
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
@@ -179,7 +178,8 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 	if request.NovelID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	// App API 的 sticker-only wire 形态要求 comment 为空；stamp_id 单独标识贴纸。
+	// The App API sticker-only wire form requires an empty comment; stamp_id
+	// identifies the sticker on its own.
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
@@ -272,7 +272,8 @@ func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBoo
 	return nil
 }
 
-// FollowUser follows one user.
+// FollowUser adds the authenticated account to one user's followers. An empty
+// Restrict defaults to public.
 func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) error {
 	ctx = logging.WithOperation(ctx, "FollowUser")
 	if request.UserID <= 0 {

@@ -1,6 +1,3 @@
-// FANBOX 资源协议：把已验证的媒体定位封装成 sdk.Resource，并按引用重新解析。
-// 会话与 locator 缓存在 internal/fanboxapi；原子写入与进度共用 sdk.WriteResource。
-
 package fanbox
 
 import (
@@ -14,13 +11,12 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// resourceRefPayload is the opaque identity payload embedded in a FANBOX
-// ResourceRef. It carries only stable identity (kind, owning creator or post,
-// and attachment id) so locator rotation never changes the cache key and a
-// stored ref can be reopened across sessions. A resolved URL is never encoded
-// here: OpenResource resolves a fresh, validated locator from trusted
-// metadata. PostID is empty for creator-scoped kinds (icon/cover); AssetID is
-// empty for creator-scoped kinds and is the attachment id for post assets.
+// resourceRefPayload is the identity a FANBOX ResourceRef encodes: kind, owning
+// creator or post, and attachment ID. Stable fields keep the cache key valid when
+// a locator rotates and let a stored ref reopen in another session. A resolved
+// URL is never encoded; OpenResource derives a fresh, validated locator from
+// this metadata. PostID is empty for creator-scoped kinds (icon and cover), and
+// AssetID is empty there but holds the attachment ID for post assets.
 type resourceRefPayload struct {
 	Kind    string `json:"k"`
 	Creator string `json:"c,omitempty"`
@@ -35,11 +31,11 @@ func (c *Client) validateResourceURL(rawURL string) error {
 	return nil
 }
 
-// newResource builds a validated sdk.Resource from an upstream media URL and
-// the stable identity that owns it. The URL is exposed as the currently-usable
-// locator (Resource.URL) and cached in-session keyed by the opaque ref; the ref
-// envelope encodes only stable identity. RequiresCredentials reflects whether
-// the locator lives on the credentialed downloads host.
+// newResource validates an upstream media URL against the stable identity that
+// owns it. The URL becomes the currently usable Resource.URL and is cached
+// in-session under the opaque ref, which encodes only stable identity.
+// RequiresCredentials reports whether the locator is on the credentialed
+// downloads host.
 func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename string) (sdk.Resource, error) {
 	if err := c.validateResourceURL(rawURL); err != nil {
 		return sdk.Resource{}, err
@@ -62,10 +58,10 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 }
 
 // OpenResource opens a resource by its opaque reference. The caller owns and
-// must close response.Body. Resource requests carry the session cookie only on
-// the credentialed downloads host; redirects are revalidated against the media
-// host allowlist. The ref's stable identity is re-resolved to a fresh locator
-// so a stored ref never reopens a stale embedded URL.
+// must close response.Body. The session cookie goes only to the credentialed
+// downloads host, redirects are revalidated against the media host allowlist, and
+// the ref's identity is resolved to a fresh locator so a stored ref never
+// reopens a stale embedded URL.
 func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceRequest) (*sdk.ResourceResponse, error) {
 	ctx = logging.WithOperation(ctx, "OpenResource")
 	if err := request.Validate(); err != nil {
@@ -90,9 +86,9 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	return result, nil
 }
 
-// SaveResource writes a single resource by its opaque reference to Path through
-// an atomic destination. It does not expand posts, creators, archives, or
-// sidecars; use the downloader for those.
+// SaveResource writes one resource, addressed by its opaque reference, to Path
+// through an atomic destination. It does not expand posts, creators, archives, or
+// sidecars; the downloader handles those.
 func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	ctx = logging.WithOperation(ctx, "SaveResource")
 	if strings.TrimSpace(options.Path) == "" {
@@ -222,7 +218,8 @@ func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (f
 	return fanboxapi.Locator{}, errors.New("post attachment is unavailable")
 }
 
-// attachmentFilename retains upstream naming, without guessing a name from a locator.
+// attachmentFilename keeps the upstream name instead of guessing one from a
+// locator.
 func attachmentFilename(name, extension string) string {
 	if name == "" || extension == "" || strings.HasSuffix(strings.ToLower(name), "."+strings.ToLower(extension)) {
 		return name

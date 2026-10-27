@@ -1,6 +1,3 @@
-// 跨领域共用的 Pixiv 响应结构、字段映射与值转换。
-// user、tag、image_urls 等被多个领域使用的声明在这里；单领域响应在其领域文件。
-
 package pixiv
 
 import (
@@ -38,8 +35,9 @@ func firstImageURL(value imageURLsWire) string {
 	return cmp.Or(value.Original, value.Large, value.Medium, value.SquareMedium)
 }
 
-// mapUser 是所有 Pixiv 响应的唯一 user 映射。
-// 图片定位失败随外层模型返回，避免把上游异常当作缺省头像。
+// mapUser is the single user mapping for every Pixiv response. A profile image
+// that fails resource validation returns the error with the enclosing model, so
+// an upstream anomaly never becomes a default avatar.
 func (c *Client) mapUser(value userWire) (User, error) {
 	result := User{
 		ID:         value.ID,
