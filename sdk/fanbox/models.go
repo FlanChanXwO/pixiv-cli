@@ -41,7 +41,7 @@ type CreatorSummary struct {
 }
 
 // Creator is a creator profile; optional fields stay zero when upstream omits
-// them. PlanFee is in yen per month as reported upstream.
+// them. PlanFee carries the upstream plan fee value unchanged.
 type Creator struct {
 	CreatorSummary
 	HasAdultContent   bool          `json:"has_adult_content"`
