@@ -22,7 +22,7 @@ import (
 func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-		"restrict": schemas.EnumString("Compatibility visibility field.", "public", "private"),
+		"restrict": schemas.EnumString("Compatibility visibility field.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)),
 	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.blockedUsersHandler(ctx, input)
 	})
@@ -70,7 +70,7 @@ func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mc
 // registerMypixiv 注册 pixiv_mypixiv。
 func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_mypixiv", Description: "Browse MyPixiv artworks, novels or users for the authenticated account.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", "artwork", "novel", "user")}, "kind"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel, kindUser)}, "kind"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.mypixivHandler(ctx, input)
 	})
@@ -91,19 +91,19 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.Kind != "novel" && in.NovelFilter != nil {
+	if in.Kind != kindNovel && in.NovelFilter != nil {
 		return outputs.Error(errors.New("novel_filter requires kind=novel"))
 	}
-	if in.Kind == "novel" && in.IllustFilter != nil {
+	if in.Kind == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.Kind != "user" && in.UserFilter != nil {
+	if in.Kind != kindUser && in.UserFilter != nil {
 		return outputs.Error(errors.New("user_filter requires kind=user"))
 	}
-	if in.Kind == "user" && (in.IllustFilter != nil || in.NovelFilter != nil) {
+	if in.Kind == kindUser && (in.IllustFilter != nil || in.NovelFilter != nil) {
 		return outputs.Error(errors.New("user records only accept user_filter"))
 	}
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -125,7 +125,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 		return outputs.Result(out), out, nil
 	}
-	if in.Kind == "user" {
+	if in.Kind == kindUser {
 		ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -193,7 +193,7 @@ func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) 
 // registerUserRelations 注册 pixiv_user_relations。
 func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_relations", Description: "Browse followers, following or related users; restrict applies only to followers/following.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", "public", "private"), "user_filter": filters.UserFilterSchema()}, "relation"),
+		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "user_filter": filters.UserFilterSchema()}, "relation"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userRelationsHandler(ctx, input)
 	})

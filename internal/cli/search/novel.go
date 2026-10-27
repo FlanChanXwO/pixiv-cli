@@ -69,7 +69,7 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 	if err != nil {
 		return err
 	}
-	if opts.period == "half-year" || opts.period == "year" {
+	if opts.period == periodHalfYear || opts.period == periodYear {
 		return errors.New("novel period must be one of day, week, month")
 	}
 	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)

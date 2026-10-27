@@ -109,7 +109,7 @@ func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
 					Properties: map[string]*jsonschema.Schema{
 						"name":         {Type: "string"},
 						"count":        {Type: "integer"},
-						"content_type": {Type: "string", Enum: []any{"artwork", "novel"}},
+						"content_type": {Type: "string", Enum: []any{string(pixiv.ReferenceKindArtwork), string(pixiv.ReferenceKindNovel)}},
 					},
 					Required:             []string{"name", "count", "content_type"},
 					AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
@@ -212,10 +212,10 @@ func RecommendedOutputSchema() *jsonschema.Schema {
 			"pagination": {
 				Type: "object",
 				Properties: map[string]*jsonschema.Schema{
-					"illust": OpenObjectSchema(),
-					"manga":  OpenObjectSchema(),
-					"novel":  OpenObjectSchema(),
-					"user":   OpenObjectSchema(),
+					string(pixiv.SearchContentTypeIllust): OpenObjectSchema(),
+					string(pixiv.SearchContentTypeManga):  OpenObjectSchema(),
+					string(pixiv.ReferenceKindNovel):      OpenObjectSchema(),
+					string(pixiv.ReferenceKindUser):       OpenObjectSchema(),
 				},
 				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 			},

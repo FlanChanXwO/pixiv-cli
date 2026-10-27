@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -169,9 +170,9 @@ func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err 
 	}
 	switch ref.Type {
 	case reversesearch.PixivRefUser:
-		return "user", nil
+		return string(resolver.ResultKindUser), nil
 	case reversesearch.PixivRefArtwork:
-		return "artwork", nil
+		return string(resolver.ResultKindArtwork), nil
 	default:
 		return "", errors.New("reverse search returned an invalid Pixiv identity")
 	}

@@ -203,9 +203,9 @@ func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOp
 	}
 	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
 		switch opts.typ {
-		case "artwork":
+		case string(resolver.ResultKindArtwork):
 			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: target.ID})
-		case "novel":
+		case string(resolver.ResultKindNovel):
 			return client.DeleteNovelComment(ctx, pixiv.DeleteNovelCommentRequest{CommentID: target.ID})
 		default:
 			return errors.New("type must be one of artwork, novel")
@@ -358,7 +358,7 @@ func validateCommentType(cmd *cobra.Command, typ string) error {
 	if !cmd.Flags().Changed("type") {
 		return errors.New("--type is required for comment")
 	}
-	if typ != "artwork" && typ != "novel" {
+	if typ != string(resolver.ResultKindArtwork) && typ != string(resolver.ResultKindNovel) {
 		return errors.New("type must be one of artwork, novel")
 	}
 	return nil
@@ -375,8 +375,8 @@ func commentWorkContract(operation string) resolver.Contract {
 	return resolver.Contract{
 		Operation: operation,
 		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindComment, BareReferenceKind: pixiv.ReferenceKindArtwork},
-			{Name: "novel", ResultKind: resolver.ResultKindComment, BareReferenceKind: pixiv.ReferenceKindNovel},
+			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindComment, BareReferenceKind: pixiv.ReferenceKindArtwork},
+			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindComment, BareReferenceKind: pixiv.ReferenceKindNovel},
 		},
 	}
 }
@@ -385,8 +385,8 @@ func commentDeleteContract() resolver.Contract {
 	return resolver.Contract{
 		Operation: "comment delete",
 		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindComment, BareTargetKind: resolver.TargetKindComment},
-			{Name: "novel", ResultKind: resolver.ResultKindComment, BareTargetKind: resolver.TargetKindComment},
+			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindComment, BareTargetKind: resolver.TargetKindComment},
+			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindComment, BareTargetKind: resolver.TargetKindComment},
 		},
 	}
 }

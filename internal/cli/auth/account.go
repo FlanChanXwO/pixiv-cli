@@ -15,6 +15,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// premiumStatusUnknown is printed when the refresh result has no premium evidence.
+const premiumStatusUnknown = "unknown"
+
 type accountImportOptions struct {
 	command.ProxyOptions
 	jsonOut bool
@@ -533,7 +536,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 		}{Accounts: results})
 	}
 	for _, account := range results {
-		premium := "unknown"
+		premium := premiumStatusUnknown
 		if account.PremiumStatus != nil {
 			premium = command.TextBool(*account.PremiumStatus)
 		}

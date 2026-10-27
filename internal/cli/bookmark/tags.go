@@ -13,6 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -23,7 +24,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 	if opts.typ == "all" {
 		return a.runAllTags(cmd, args, opts)
 	}
-	if opts.typ != "artwork" && opts.typ != "novel" {
+	if opts.typ != string(resolver.ResultKindArtwork) && opts.typ != string(resolver.ResultKindNovel) {
 		return errors.New("bookmark tags type must be one of artwork, novel, all")
 	}
 	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
@@ -62,7 +63,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 				}
 			}
 			var result sdk.Page[pixiv.BookmarkTag]
-			if opts.typ == "novel" {
+			if opts.typ == string(resolver.ResultKindNovel) {
 				result, err = client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			} else {
 				result, err = client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -193,7 +194,7 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: "artwork", tag: item})
+				items = append(items, bookmarkTagItem{kind: string(resolver.ResultKindArtwork), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -215,7 +216,7 @@ func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: "novel", tag: item})
+				items = append(items, bookmarkTagItem{kind: string(resolver.ResultKindNovel), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -30,7 +31,7 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan co
 		key     string
 		heading string
 		filter  searchfilter.Filter
-	}{{key: "illusts", heading: "recommended illustrations", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: "manga", heading: "recommended manga", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
+	}{{key: string(pixivcmd.JSONKeyIllusts), heading: "recommended illustrations", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: string(pixivcmd.JSONKeyManga), heading: "recommended manga", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
 		if err := spool.section(section.key); err != nil {
 			return false, err
 		}

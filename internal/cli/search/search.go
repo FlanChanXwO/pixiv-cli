@@ -11,6 +11,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -68,8 +69,8 @@ func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPor
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
-		typ:         "artwork",
-		contentType: "all",
+		typ:         string(resolver.ResultKindArtwork),
+		contentType: string(pixiv.SearchContentTypeAll),
 		resolution:  string(pixiv.SearchResolutionAll),
 		aspectRatio: string(pixiv.SearchAspectRatioAll),
 		aiMode:      string(pixiv.SearchAIModeAll),
@@ -203,7 +204,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 	if err := validateEntityFlags(cmd, entity); err != nil {
 		return err
 	}
-	if entity == "novel" {
+	if entity == string(resolver.ResultKindNovel) {
 		return a.runNovelSearch(cmd, args, novelOptions{
 			Options:  opts.Options,
 			ndjson:   opts.ndjson,
@@ -214,7 +215,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 			period:   opts.period,
 		})
 	}
-	if entity == "user" {
+	if entity == string(resolver.ResultKindUser) {
 		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
 			Options: opts.Options,
 			NDJSON:  opts.ndjson,
@@ -414,7 +415,7 @@ func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 
 func resolveEntityType(value string) (string, error) {
 	switch value {
-	case "artwork", "novel", "user":
+	case string(resolver.ResultKindArtwork), string(resolver.ResultKindNovel), string(resolver.ResultKindUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -422,7 +423,7 @@ func resolveEntityType(value string) (string, error) {
 }
 
 func validateEntityFlags(cmd *cobra.Command, entity string) error {
-	if entity == "artwork" {
+	if entity == string(resolver.ResultKindArtwork) {
 		return nil
 	}
 	for _, name := range []string{"content-type", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy"} {
@@ -430,7 +431,7 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 			return fmt.Errorf("--%s is only supported when --type artwork", name)
 		}
 	}
-	if entity == "novel" {
+	if entity == string(resolver.ResultKindNovel) {
 		for _, name := range []string{"start-date", "end-date", "rating"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s is not supported when --type novel", name)
@@ -459,27 +460,30 @@ func validateTrendingTagsFlags(cmd *cobra.Command) error {
 }
 
 func resolveAIMode(value string) (pixiv.SearchAIMode, error) {
-	switch value {
-	case "all", "exclude", "only":
-		return pixiv.SearchAIMode(value), nil
+	mode := pixiv.SearchAIMode(value)
+	switch mode {
+	case pixiv.SearchAIModeAll, pixiv.SearchAIModeExclude, pixiv.SearchAIModeOnly:
+		return mode, nil
 	default:
 		return "", errors.New("ai-mode must be one of all, exclude, only")
 	}
 }
 
 func resolveAspectRatio(value string) (pixiv.SearchAspectRatio, error) {
-	switch value {
-	case "all", "landscape", "portrait", "square":
-		return pixiv.SearchAspectRatio(value), nil
+	ratio := pixiv.SearchAspectRatio(value)
+	switch ratio {
+	case pixiv.SearchAspectRatioAll, pixiv.SearchAspectRatioLandscape, pixiv.SearchAspectRatioPortrait, pixiv.SearchAspectRatioSquare:
+		return ratio, nil
 	default:
 		return "", errors.New("aspect-ratio must be one of all, landscape, portrait, square")
 	}
 }
 
 func resolveResolution(value string) (pixiv.SearchResolution, error) {
-	switch value {
-	case "all", "high", "medium", "low":
-		return pixiv.SearchResolution(value), nil
+	resolution := pixiv.SearchResolution(value)
+	switch resolution {
+	case pixiv.SearchResolutionAll, pixiv.SearchResolutionHigh, pixiv.SearchResolutionMedium, pixiv.SearchResolutionLow:
+		return resolution, nil
 	default:
 		return "", errors.New("resolution must be one of all, high, medium, low")
 	}
@@ -515,20 +519,30 @@ func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy,
 	return strategy, nil
 }
 
+// Published --period selectors. Half-year and year expand to a date range, so
+// they have no pixiv.DurationFilter value.
+const (
+	periodDay      = "day"
+	periodWeek     = "week"
+	periodMonth    = "month"
+	periodHalfYear = "half-year"
+	periodYear     = "year"
+)
+
 func resolvePeriod(value string) (pixiv.DurationFilter, error) {
 	switch value {
 	case "":
 		return "", nil
-	case "day":
-		return pixiv.DurationFilter("within_last_day"), nil
-	case "week":
-		return pixiv.DurationFilter("within_last_week"), nil
-	case "month":
-		return pixiv.DurationFilter("within_last_month"), nil
-	case "half-year":
-		return pixiv.DurationFilter("within_half_year"), nil
-	case "year":
-		return pixiv.DurationFilter("within_year"), nil
+	case periodDay:
+		return pixiv.DurationLastDay, nil
+	case periodWeek:
+		return pixiv.DurationLastWeek, nil
+	case periodMonth:
+		return pixiv.DurationLastMonth, nil
+	case periodHalfYear:
+		return "within_half_year", nil
+	case periodYear:
+		return "within_year", nil
 	default:
 		return "", errors.New("period must be one of day, week, month, half-year, year")
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -95,9 +96,9 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 			for _, item := range items {
 				var err error
 				switch item.kind {
-				case "artwork":
+				case string(resolver.ResultKindArtwork):
 					err = pixivcmd.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
-				case "novel":
+				case string(resolver.ResultKindNovel):
 					err = pixivcmd.PrintNovels(&staged, []pixiv.Novel{item.novel})
 				}
 				if err != nil {
@@ -124,7 +125,7 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: "artwork", artwork: item})
+				items = append(items, bookmarkListItem{kind: string(resolver.ResultKindArtwork), artwork: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -146,7 +147,7 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: "novel", novel: item})
+				items = append(items, bookmarkListItem{kind: string(resolver.ResultKindNovel), novel: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -163,9 +164,9 @@ func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStre
 
 func (item bookmarkListItem) record() (record.Record, error) {
 	switch item.kind {
-	case "artwork":
+	case string(resolver.ResultKindArtwork):
 		return record.RecordFromArtwork(item.artwork)
-	case "novel":
+	case string(resolver.ResultKindNovel):
 		return record.RecordFromNovel(item.novel)
 	default:
 		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)

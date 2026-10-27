@@ -8,6 +8,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -84,14 +85,14 @@ func (a commandRunner) newLatestCommand() *cobra.Command {
 
 func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
-	if entity == "illust" {
-		entity = "artwork"
+	if entity == string(resolver.SubtypeIllust) {
+		entity = string(resolver.ResultKindArtwork)
 	}
-	if entity != "artwork" && entity != "novel" {
+	if entity != string(resolver.ResultKindArtwork) && entity != string(resolver.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
 	var artworkFilter searchfilter.Filter
-	if entity == "artwork" {
+	if entity == string(resolver.ResultKindArtwork) {
 		contentType, err := searchfilter.NormalizeContentType(opts.artworkType)
 		if err != nil {
 			return err
@@ -104,7 +105,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	if err != nil {
 		return err
 	}
-	if entity == "artwork" {
+	if entity == string(resolver.ResultKindArtwork) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			if err != nil {
@@ -128,27 +129,27 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 
 func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
-	if entity == "illust" || entity == "manga" {
+	if entity == string(resolver.SubtypeIllust) || entity == string(resolver.SubtypeManga) {
 		if cmd.Flags().Changed("content-type") {
 			return errors.New("legacy artwork --type cannot be combined with --content-type")
 		}
 		opts.artworkType = entity
-		entity = "artwork"
+		entity = string(resolver.ResultKindArtwork)
 	}
-	if entity != "artwork" && entity != "novel" {
+	if entity != string(resolver.ResultKindArtwork) && entity != string(resolver.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if entity == "novel" && cmd.Flags().Changed("content-type") {
+	if entity == string(resolver.ResultKindNovel) && cmd.Flags().Changed("content-type") {
 		return errors.New("--content-type is only supported when --type artwork")
 	}
-	if entity == "artwork" && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
+	if entity == string(resolver.ResultKindArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
 		return errors.New("content-type must be one of: illust, manga")
 	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
 	if err != nil {
 		return err
 	}
-	if entity == "novel" {
+	if entity == string(resolver.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
 			if err != nil {

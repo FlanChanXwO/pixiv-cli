@@ -396,15 +396,15 @@ func validateRecordNamespace(recordType string, refKind pixiv.ReferenceKind, con
 			return invalid(contract, "record type conflicts with user URL")
 		}
 	case pixiv.ReferenceKindUserBookmarks:
-		if recordType != "user_bookmarks" && result != ResultKindArtwork {
+		if recordType != string(pixiv.ReferenceKindUserBookmarks) && result != ResultKindArtwork {
 			return invalid(contract, "record type conflicts with user bookmarks URL")
 		}
 	case pixiv.ReferenceKindArtworkSeries:
-		if recordType != "series" && result != ResultKindArtwork {
+		if recordType != string(ResultKindSeries) && result != ResultKindArtwork {
 			return invalid(contract, "record type conflicts with artwork series URL")
 		}
 	case pixiv.ReferenceKindNovelSeries:
-		if recordType != "series" && result != ResultKindNovel {
+		if recordType != string(ResultKindSeries) && result != ResultKindNovel {
 			return invalid(contract, "record type conflicts with novel series URL")
 		}
 	default:
@@ -430,21 +430,21 @@ func mergeRecordSubtype(selection *TypeSpec, recordType string, contract Contrac
 
 func recordTypeMeaning(value string) (ResultKind, Subtype, bool) {
 	switch value {
-	case "artwork":
+	case string(ResultKindArtwork):
 		return ResultKindArtwork, "", true
-	case "illust":
+	case string(SubtypeIllust):
 		return ResultKindArtwork, SubtypeIllust, true
-	case "manga":
+	case string(SubtypeManga):
 		return ResultKindArtwork, SubtypeManga, true
-	case "ugoira":
+	case string(SubtypeUgoira):
 		return ResultKindArtwork, SubtypeUgoira, true
-	case "novel":
+	case string(ResultKindNovel):
 		return ResultKindNovel, "", true
-	case "user":
+	case string(ResultKindUser):
 		return ResultKindUser, "", true
-	case "series":
+	case string(ResultKindSeries):
 		return "", "", true
-	case "user_bookmarks":
+	case string(pixiv.ReferenceKindUserBookmarks):
 		return "", "", true
 	default:
 		return "", "", false

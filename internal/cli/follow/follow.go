@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var userRecordTypes = map[string]struct{}{"user": {}}
+var userRecordTypes = map[string]struct{}{string(resolver.ResultKindUser): {}}
 
 type options struct {
 	command.Options
@@ -67,7 +67,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
-	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -99,7 +99,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -124,9 +124,9 @@ func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options
 func resolveFollowUserID(ctx context.Context, value, operation string) (int64, error) {
 	target, err := resolver.Resolve(ctx, resolver.Input{Value: value}, resolver.Contract{
 		Operation:   operation,
-		DefaultType: "user",
+		DefaultType: string(resolver.ResultKindUser),
 		Types: []resolver.TypeSpec{{
-			Name:              "user",
+			Name:              string(resolver.ResultKindUser),
 			ResultKind:        resolver.ResultKindUser,
 			BareReferenceKind: pixiv.ReferenceKindUser,
 		}},

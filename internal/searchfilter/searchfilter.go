@@ -3,8 +3,10 @@ package searchfilter
 
 import (
 	"crypto/sha256"
+
 	"encoding/hex"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"strings"
 )
 
@@ -25,11 +27,11 @@ type ContentType string
 
 // ContentType 的 canonical 值。
 const (
-	ContentTypeAll             ContentType = "all"
+	ContentTypeAll             ContentType = ContentType(pixiv.SearchContentTypeAll)
 	ContentTypeIllustAndUgoira ContentType = "illust-and-ugoira"
-	ContentTypeIllust          ContentType = "illust"
-	ContentTypeManga           ContentType = "manga"
-	ContentTypeUgoira          ContentType = "ugoira"
+	ContentTypeIllust          ContentType = ContentType(pixiv.SearchContentTypeIllust)
+	ContentTypeManga           ContentType = ContentType(pixiv.SearchContentTypeManga)
+	ContentTypeUgoira          ContentType = ContentType(pixiv.SearchContentTypeUgoira)
 )
 
 // Filter 保存已规范化的本地筛选条件。零值等价于没有筛选。
@@ -137,7 +139,7 @@ func matchesContentType(contentType ContentType, kind string) bool {
 	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	// Artwork.Kind keeps the upstream spelling; compare it with the public illust value.
-	if kind == "" || kind == "illustration" {
+	if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
 		kind = string(ContentTypeIllust)
 	}
 	switch contentType {

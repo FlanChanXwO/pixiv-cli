@@ -19,17 +19,17 @@ import (
 )
 
 var visualRecordTypes = map[string]struct{}{
-	"artwork": {},
-	"illust":  {},
-	"manga":   {},
-	"ugoira":  {},
+	string(resolver.ResultKindArtwork): {},
+	string(resolver.SubtypeIllust):     {},
+	string(resolver.SubtypeManga):      {},
+	string(resolver.SubtypeUgoira):     {},
 }
 
 // novelRecordTypes 与 frozen cli-migration-matrix 一致：bookmark add/remove 在
 // --type novel 下只消费 novel namespace 的 record， artwork record 视为跨
 // namespace 拒绝。
 var novelRecordTypes = map[string]struct{}{
-	"novel": {},
+	string(resolver.ResultKindNovel): {},
 }
 
 type listOptions struct {
@@ -110,7 +110,7 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 }
 
 func (a commandRunner) newList() *cobra.Command {
-	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
+	opts := listOptions{typ: string(resolver.ResultKindArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "list [USER_ID_OR_URL]",
 		Short: "List artwork or novel bookmarks",
@@ -129,7 +129,7 @@ func (a commandRunner) newList() *cobra.Command {
 }
 
 func (a commandRunner) newTags() *cobra.Command {
-	opts := listOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
+	opts := listOptions{typ: string(resolver.ResultKindArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "tags [USER_ID_OR_URL]",
 		Short: "List artwork or novel bookmark tags",
@@ -147,7 +147,7 @@ func (a commandRunner) newTags() *cobra.Command {
 }
 
 func (a commandRunner) newDetail() *cobra.Command {
-	opts := detailOptions{typ: "artwork"}
+	opts := detailOptions{typ: string(resolver.ResultKindArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
 		Short: "Show the current user's bookmark detail",
@@ -182,10 +182,10 @@ func (a commandRunner) newDetail() *cobra.Command {
 				switch target.ResultKind {
 				case resolver.ResultKindArtwork:
 					value, err := client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: target.ID})
-					return bookmarkDetailResult{kind: "artwork", artwork: value}, err
+					return bookmarkDetailResult{kind: string(resolver.ResultKindArtwork), artwork: value}, err
 				case resolver.ResultKindNovel:
 					value, err := client.NovelBookmark(ctx, pixiv.NovelBookmarkRequest{NovelID: target.ID})
-					return bookmarkDetailResult{kind: "novel", novel: value}, err
+					return bookmarkDetailResult{kind: string(resolver.ResultKindNovel), novel: value}, err
 				default:
 					return bookmarkDetailResult{}, errors.New("bookmark detail type must be artwork or novel")
 				}
@@ -194,7 +194,7 @@ func (a commandRunner) newDetail() *cobra.Command {
 				return err
 			}
 			if jsonOut {
-				if result.kind == "novel" {
+				if result.kind == string(resolver.ResultKindNovel) {
 					return a.env.PrintJSON(result.novel)
 				}
 				return a.env.PrintJSON(result.artwork)
@@ -246,7 +246,7 @@ type bookmarkDetailResult struct {
 }
 
 func (r bookmarkDetailResult) restrictAndTags() (pixiv.Restrict, []string) {
-	if r.kind == "novel" {
+	if r.kind == string(resolver.ResultKindNovel) {
 		return r.novel.Restrict, r.novel.Tags
 	}
 	return r.artwork.Restrict, r.artwork.Tags
@@ -255,10 +255,10 @@ func (r bookmarkDetailResult) restrictAndTags() (pixiv.Restrict, []string) {
 func bookmarkDetailContract() resolver.Contract {
 	return resolver.Contract{
 		Operation:   "bookmark detail",
-		DefaultType: "artwork",
+		DefaultType: string(resolver.ResultKindArtwork),
 		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtwork},
-			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovel},
+			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtwork},
+			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovel},
 		},
 		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
 			pixiv.ReferenceKindArtwork: resolver.URLTypeMustMatchResult,
@@ -272,7 +272,7 @@ func bookmarkDetailContract() resolver.Contract {
 // 不接受 all 或其他 namespace。错误措辞与 resolver 的 TypeSpec 校验保持一致。
 func bookmarkMutationType(typ string) (string, error) {
 	switch typ {
-	case "artwork", "novel":
+	case string(resolver.ResultKindArtwork), string(resolver.ResultKindNovel):
 		return typ, nil
 	default:
 		return "", fmt.Errorf("type %q is not supported by this command", typ)
@@ -280,7 +280,7 @@ func bookmarkMutationType(typ string) (string, error) {
 }
 
 func (a commandRunner) newAdd() *cobra.Command {
-	opts := mutationOptions{typ: "artwork", restrict: string(pixiv.RestrictPublic)}
+	opts := mutationOptions{typ: string(resolver.ResultKindArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
 		Short: "Bookmark an artwork or novel",
@@ -295,7 +295,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
 				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
-					if typ == "novel" {
+					if typ == string(resolver.ResultKindNovel) {
 						return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
 					}
 					return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: id, Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
@@ -303,7 +303,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			})
 			if len(args) == 0 {
 				recordTypes := visualRecordTypes
-				if typ == "novel" {
+				if typ == string(resolver.ResultKindNovel) {
 					recordTypes = novelRecordTypes
 				}
 				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_add", opts.onError, recordTypes, invoke)
@@ -319,14 +319,14 @@ func (a commandRunner) newAdd() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
-	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", inputcmd.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
 }
 
 func (a commandRunner) newRemove() *cobra.Command {
-	opts := mutationOptions{typ: "artwork"}
+	opts := mutationOptions{typ: string(resolver.ResultKindArtwork)}
 	cmd := &cobra.Command{
 		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
 		Short: "Remove an artwork or novel bookmark",
@@ -341,7 +341,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
 				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
-					if typ == "novel" {
+					if typ == string(resolver.ResultKindNovel) {
 						return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: id})
 					}
 					return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: id})
@@ -349,7 +349,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			})
 			if len(args) == 0 {
 				recordTypes := visualRecordTypes
-				if typ == "novel" {
+				if typ == string(resolver.ResultKindNovel) {
 					recordTypes = novelRecordTypes
 				}
 				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_remove", opts.onError, recordTypes, invoke)
@@ -363,7 +363,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
-	cmd.Flags().StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", inputcmd.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -377,9 +377,9 @@ func (a commandRunner) bindListFlags(cmd *cobra.Command, opts *listOptions) {
 
 func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptions) error {
 	switch opts.typ {
-	case "artwork":
+	case string(resolver.ResultKindArtwork):
 		return a.runArtworkList(cmd, args, opts)
-	case "novel":
+	case string(resolver.ResultKindNovel):
 		return a.runNovelList(cmd, args, opts)
 	case "all":
 		return a.runAllList(cmd, args, opts)
@@ -391,10 +391,10 @@ func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptio
 func bookmarkContract(operation string) resolver.Contract {
 	return resolver.Contract{
 		Operation:   operation,
-		DefaultType: "artwork",
+		DefaultType: string(resolver.ResultKindArtwork),
 		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindUser},
-			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindUser},
+			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindUser},
+			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindUser},
 			{Name: "all", All: true, BareReferenceKind: pixiv.ReferenceKindUser},
 		},
 		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{

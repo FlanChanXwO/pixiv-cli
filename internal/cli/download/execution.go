@@ -10,6 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -45,10 +46,10 @@ type downloadOptions struct {
 }
 
 var visualRecordTypes = map[string]struct{}{
-	"artwork": {},
-	"illust":  {},
-	"manga":   {},
-	"ugoira":  {},
+	string(resolver.ResultKindArtwork): {},
+	string(resolver.SubtypeIllust):     {},
+	string(resolver.SubtypeManga):      {},
+	string(resolver.SubtypeUgoira):     {},
 }
 
 func (a controller) usageError(err error) error { return a.env.UsageError(err) }
@@ -99,7 +100,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
 	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
 	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "ugoira output mode: gif, apng")
-	flags.StringVar(&opts.onError, "on-error", "skip", "record failure strategy: skip or fail-fast")
+	flags.StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	command.Bind(cmd, command.DownloadCommand())
 	return cmd
 }

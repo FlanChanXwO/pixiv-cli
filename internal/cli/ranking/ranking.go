@@ -8,6 +8,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -31,7 +32,7 @@ type commandRunner struct {
 // New builds the actual `pixiv ranking` command.
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
-	options := options{typ: "artwork", mode: string(pixiv.RankingModeDay)}
+	options := options{typ: string(resolver.ResultKindArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show artwork or novel ranking",
@@ -53,10 +54,10 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 }
 
 func (a commandRunner) run(cmd *cobra.Command, opts options) error {
-	if opts.typ != "artwork" && opts.typ != "novel" {
+	if opts.typ != string(resolver.ResultKindArtwork) && opts.typ != string(resolver.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if opts.typ == "novel" && cmd.Flags().Changed("date") {
+	if opts.typ == string(resolver.ResultKindNovel) && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
 	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
@@ -79,7 +80,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	format := pixivcmd.FormatOf(jsonOut, ndjson)
-	if opts.typ == "novel" {
+	if opts.typ == string(resolver.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
 			if err != nil {

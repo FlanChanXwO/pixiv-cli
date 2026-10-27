@@ -39,7 +39,7 @@ func IllustFilterSchema() map[string]any {
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"id":        map[string]any{"type": "integer", "minimum": 1},
-			"type":      map[string]any{"type": "string", "enum": []string{"illust", "manga", "ugoira"}},
+			"type":      map[string]any{"type": "string", "enum": []string{string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(pixiv.SearchContentTypeUgoira)}},
 			"tags":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"min_views": map[string]any{"type": "integer", "minimum": 0},
 			"min_pages": map[string]any{"type": "integer", "minimum": 0},
@@ -135,7 +135,7 @@ func validateIllustFilter(filter *IllustFilter) error {
 	if filter.ID != nil && *filter.ID <= 0 {
 		return errors.New("illust_filter.id must be positive")
 	}
-	if filter.Type != "" && filter.Type != "illust" && filter.Type != "manga" && filter.Type != "ugoira" {
+	if filter.Type != "" && filter.Type != string(pixiv.SearchContentTypeIllust) && filter.Type != string(pixiv.SearchContentTypeManga) && filter.Type != string(pixiv.SearchContentTypeUgoira) {
 		return errors.New("illust_filter.type must be one of: illust, manga, ugoira")
 	}
 	if filter.MinViews != nil && *filter.MinViews < 0 {
@@ -195,7 +195,7 @@ func match(item any, filters value) (string, bool) {
 		}
 		kind := string(value.Kind)
 		if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
-			kind = "illust"
+			kind = string(pixiv.SearchContentTypeIllust)
 		}
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
 	case pixiv.Novel:
@@ -227,7 +227,7 @@ func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 			kind = string(pixiv.ArtworkKindIllustration)
 		}
 		if kind == string(pixiv.ArtworkKindIllustration) {
-			kind = "illust"
+			kind = string(pixiv.SearchContentTypeIllust)
 		}
 		if kind != filter.Type {
 			return false

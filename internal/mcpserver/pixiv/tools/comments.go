@@ -33,14 +33,14 @@ type commentCreateIn struct {
 
 func commentCreateCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":    schemas.EnumString("Target content type.", "artwork", "novel"),
+		"kind":    schemas.EnumString("Target content type.", kindArtwork, kindNovel),
 		"id":      schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment": map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
 	}
 }
 
 func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{
 			Action:  "create_novel_comment",
 			NovelID: in.ID,
@@ -84,7 +84,7 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 // registerCommentDelete 注册 pixiv_comment_delete。
 func (t pixivTools) registerCommentDelete(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_delete", Description: "Delete an artwork or novel comment by comment ID.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", "artwork", "novel"), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"kind", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"kind", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.commentDeleteHandler(ctx, input)
 	})
 }
@@ -96,7 +96,7 @@ type commentDeleteIn struct {
 }
 
 func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{
 			Action:    "delete_novel_comment",
 			CommentID: in.CommentID,
@@ -139,7 +139,7 @@ type commentReplyIn struct {
 
 func commentReplyCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":              schemas.EnumString("Target content type.", "artwork", "novel"),
+		"kind":              schemas.EnumString("Target content type.", kindArtwork, kindNovel),
 		"id":                schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment":           map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
 		"parent_comment_id": schemas.PositiveInteger("Positive parent comment ID."),
@@ -147,7 +147,7 @@ func commentReplyCommentProperties() map[string]any {
 }
 
 func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{
 			Action:  "reply_novel_comment",
 			NovelID: in.ID,
@@ -208,7 +208,7 @@ type commentStampIn struct {
 
 func commentStampCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":     schemas.EnumString("Target content type.", "artwork", "novel"),
+		"kind":     schemas.EnumString("Target content type.", kindArtwork, kindNovel),
 		"id":       schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment":  map[string]any{"type": "string", "description": "Optional comment body; empty is the sticker-only wire form."},
 		"stamp_id": schemas.PositiveInteger("Positive Pixiv stamp ID."),
@@ -216,7 +216,7 @@ func commentStampCommentProperties() map[string]any {
 }
 
 func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{
 			Action:  "stamp_novel_comment",
 			NovelID: in.ID,
@@ -288,7 +288,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
-		if in.Kind == "novel" {
+		if in.Kind == kindNovel {
 			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: in.ID, Cursor: cursor})
 		} else {
 			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: in.ID, Cursor: cursor})
@@ -315,7 +315,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 
 func commentsInputSchema() map[string]any {
 	schema := schemas.CommentInputSchema()
-	schema["properties"].(map[string]any)["kind"] = schemas.EnumString("Target content type.", "artwork", "novel")
+	schema["properties"].(map[string]any)["kind"] = schemas.EnumString("Target content type.", kindArtwork, kindNovel)
 	schema["required"] = []string{"kind", "id"}
 	return schema
 }

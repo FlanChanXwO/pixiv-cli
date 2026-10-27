@@ -27,7 +27,7 @@ func LoginResult(status accounts.LoginStatus, err error) (*mcp.CallToolResult, L
 
 // LoginQuery does not read account storage: even a failed selection write must remain queryable.
 func LoginQuery(status accounts.LoginStatus) (*mcp.CallToolResult, AccountStatus, error) {
-	out := AccountStatus{Status: accounts.Status{SelectionState: "unknown", CredentialState: "unknown", Accounts: []accounts.Account{}}, Login: &status}
+	out := AccountStatus{Status: accounts.Status{SelectionState: accounts.SelectionUnknown, CredentialState: accounts.CredentialUnknown, Accounts: []accounts.Account{}}, Login: &status}
 	return &mcp.CallToolResult{IsError: status.Status == "failed", Content: []mcp.Content{&mcp.TextContent{Text: status.Status}}}, out, nil
 }
 

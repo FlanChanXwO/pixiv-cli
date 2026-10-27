@@ -42,7 +42,7 @@ func AccountResult(status accounts.Status, err error) (*mcp.CallToolResult, Acco
 }
 
 func accountFailure(code string) (*mcp.CallToolResult, AccountStatus, error) {
-	out := AccountStatus{Status: accounts.Status{SelectionState: "unknown", CredentialState: "unknown", Accounts: []accounts.Account{}}, Error: code}
+	out := AccountStatus{Status: accounts.Status{SelectionState: accounts.SelectionUnknown, CredentialState: accounts.CredentialUnknown, Accounts: []accounts.Account{}}, Error: code}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: code}}}, out, nil
 }
 
