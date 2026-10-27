@@ -741,14 +741,13 @@ func (d *decoder) convertToRGB() (image.Image, error) {
 	return img, nil
 }
 
-// Decoder reuses parsing workspace and YCbCr storage between frames. Its zero value is ready to use.
-// Images returned by Decode are valid only until the next call on this Decoder.
-// A Decoder must not be used concurrently.
+// Decoder 在帧之间复用解析工作区与 YCbCr 存储；零值即可使用。
+// Decode 返回的图片只在下一次调用 Decode 前有效，Decoder 不能并发使用。
 type Decoder struct {
 	frame decoder
 }
 
-// Decode reads a JPEG, then clears parsing state and releases input/scan storage.
+// Decode 解码一个 JPEG，随后清空解析状态并释放输入与 scan 存储。
 func (d *Decoder) Decode(r io.Reader) (image.Image, error) {
 	img, err := d.frame.decode(r)
 	d.frame = decoder{reuseYCbCr: d.frame.reuseYCbCr}
