@@ -58,13 +58,11 @@ func (s *jsonArraySpool) close() error {
 	return removeErr
 }
 
-func markNDJSON(cmd *cobra.Command, enabled bool) {
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	if enabled {
-		cmd.Annotations[command.OutputNDJSONAnnotationKey] = "true"
-	} else {
-		cmd.Annotations[command.OutputNDJSONAnnotationKey] = "false"
+// markNDJSON records detail's resolved output mode and installs the
+// broken-pipe policy only when a record stream will be written.
+func (a commandRunner) markNDJSON(cmd *cobra.Command, enabled bool) {
+	command.SetOutputNDJSON(cmd, enabled)
+	if enabled && a.env.EnablePipelineSignal != nil {
+		a.env.EnablePipelineSignal()
 	}
 }

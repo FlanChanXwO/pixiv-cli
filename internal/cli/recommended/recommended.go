@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -26,6 +26,9 @@ type options struct {
 	contentType string
 }
 
+// recommendationKindAll is the aggregate selector, not an entity type.
+const recommendationKindAll = "all"
+
 type commandRunner struct {
 	env    command.Env
 	runner pixivcmd.Runner
@@ -34,7 +37,7 @@ type commandRunner struct {
 // New builds the actual `pixiv recommended` command.
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
-	opts := options{contentType: "all"}
+	opts := options{contentType: string(pixiv.SearchContentTypeAll)}
 	cmd := &cobra.Command{
 		Use:   "recommended [KIND]",
 		Short: "Show personalized recommendations",
@@ -70,22 +73,22 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	if kind == "" {
 		return "", errors.New("recommended requires KIND or --type")
 	}
-	if cmd.Flags().Changed("type") && kind != "artwork" && kind != "novel" && kind != "user" && kind != "all" {
+	if cmd.Flags().Changed("type") && kind != string(resolver.ResultKindArtwork) && kind != string(resolver.ResultKindNovel) && kind != string(resolver.ResultKindUser) && kind != recommendationKindAll {
 		return "", usage(errors.New("type must be one of artwork, novel, user, all"))
 	}
 	if cmd.Flags().Changed("content-type") {
-		if kind != "artwork" {
+		if kind != string(resolver.ResultKindArtwork) {
 			return "", usage(errors.New("--content-type is only supported when --type artwork"))
 		}
-		if opts.contentType != "all" && opts.contentType != "illust" && opts.contentType != "manga" {
+		if opts.contentType != string(pixiv.SearchContentTypeAll) && opts.contentType != string(pixiv.SearchContentTypeIllust) && opts.contentType != string(pixiv.SearchContentTypeManga) {
 			return "", usage(errors.New("content-type must be one of all, illust, manga"))
 		}
 	}
-	if kind == "artwork" {
-		if opts.contentType == "manga" {
-			return "manga", nil
+	if kind == string(resolver.ResultKindArtwork) {
+		if opts.contentType == string(pixiv.SearchContentTypeManga) {
+			return string(pixiv.SearchContentTypeManga), nil
 		}
-		return "illust", nil
+		return string(pixiv.SearchContentTypeIllust), nil
 	}
 	return kind, nil
 }
@@ -114,7 +117,7 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	if kind == "all" {
+	if kind == recommendationKindAll {
 		if ndjson {
 			return a.runner.Execute(request)(cmd.Context(), func(ctx context.Context, client *pixiv.Client) (bool, error) {
 				return a.runAllNDJSON(ctx, client, plan)
@@ -125,7 +128,7 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 		})
 	}
 	artworkFilter := searchfilter.Filter{}
-	if kind == "illust" || kind == "manga" {
+	if kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) {
 		artworkFilter, err = resolveArtworkFilter(kind, opts.contentType)
 		if err != nil {
 			return err
@@ -135,14 +138,14 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 }
 
 func validKind(kind string) bool {
-	return kind == "all" || kind == "illust" || kind == "manga" || kind == "novel" || kind == "user"
+	return kind == recommendationKindAll || kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) || kind == string(resolver.ResultKindNovel) || kind == string(resolver.ResultKindUser)
 }
 
 func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
-	if kind == "illust" || kind == "manga" {
-		jsonKey := "illusts"
-		if kind == "manga" {
-			jsonKey = "manga"
+	if kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) {
+		jsonKey := string(pixivcmd.JSONKeyIllusts)
+		if kind == string(pixiv.SearchContentTypeManga) {
+			jsonKey = string(pixivcmd.JSONKeyManga)
 		}
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
@@ -157,7 +160,7 @@ func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, pla
 			return filterRecommendedArtworks(items, artworkFilter)
 		}, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
 	}
-	if kind == "novel" {
+	if kind == string(resolver.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 			if err != nil {
@@ -178,7 +181,7 @@ func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, pla
 }
 
 func resolveArtworkFilter(kind, contentType string) (searchfilter.Filter, error) {
-	if kind == "manga" {
+	if kind == string(pixiv.SearchContentTypeManga) {
 		contentType = string(searchfilter.ContentTypeManga)
 	}
 	return searchfilter.NormalizeFilter("", contentType)

@@ -15,6 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -25,6 +26,7 @@ import (
 // Options 是 detail 自己声明的 flags。它只保存 Cobra 解析结果，不创建资源。
 type Options struct {
 	command.Options
+	input  *inputcmd.State
 	ndjson bool
 
 	typ     string
@@ -39,7 +41,7 @@ type commandRunner struct {
 // New builds the actual `pixiv detail` command.
 func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
-	options := Options{typ: "artwork"}
+	options := Options{typ: string(resolver.ResultKindArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
 		Short: "Show one artwork, novel, or user",
@@ -50,7 +52,7 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	}
 	env.BindCommonFlags(cmd, &options.Options)
 	cmd.Flags().BoolVar(&options.ndjson, "ndjson", false, "print one canonical record per line")
-	env.BindTextOrRecord(cmd, 1, 1, 0)
+	options.input = env.BindTextOrRecord(cmd, 1, 1, 0)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
 	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
 	command.Bind(cmd, command.PixivData())
@@ -61,10 +63,10 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
 		return errors.New("--json and --ndjson cannot be used together")
 	}
-	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
+	if opts.input.Mode() == inputcmd.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
-	markNDJSON(cmd, opts.ndjson)
+	a.markNDJSON(cmd, opts.ndjson)
 	if len(args) != 1 {
 		return errors.New("detail requires one ID or URL")
 	}
@@ -83,7 +85,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 }
 
 func validateContentEntity(content bool, entity string) error {
-	if content && entity != "novel" {
+	if content && entity != string(resolver.ResultKindNovel) {
 		return errors.New("--content is only supported when --type novel")
 	}
 	if content {
@@ -103,7 +105,7 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 	if !cmd.Flags().Changed("json") && !cmd.Flags().Changed("ndjson") && !jsonOut {
 		ndjson = !a.env.OutputIsTTY()
 	}
-	markNDJSON(cmd, ndjson)
+	a.markNDJSON(cmd, ndjson)
 	worker := a
 	humanOutput := !ndjson && !jsonOut
 	var humanBuffer bytes.Buffer
@@ -117,7 +119,7 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		defer spool.close()
 		worker.env.Out = spool
 	}
-	reader := inputcmd.Reader(cmd, a.env.In)
+	reader := opts.input.Reader(a.env.In)
 	err = inputcmd.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, input record.Record) error {
 		entity, err := entityForRecord(input.Type(), cmd.Flags().Changed("type"), opts.typ)
 		if err != nil {
@@ -186,14 +188,14 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		return err
 	}
 	switch entity {
-	case "artwork":
+	case string(resolver.ResultKindArtwork):
 		result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
 			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 		})
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromArtwork(result)
 			if err != nil {
 				return err
@@ -204,7 +206,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			return a.env.PrintJSON(result)
 		}
 		return printArtwork(a.env.Out, result)
-	case "novel":
+	case string(resolver.ResultKindNovel):
 		if opts.content {
 			result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
 				return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
@@ -212,7 +214,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			if err != nil {
 				return err
 			}
-			if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+			if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 				value, err := record.RecordFromNovelContent(result)
 				if err != nil {
 					return err
@@ -230,7 +232,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromNovel(result)
 			if err != nil {
 				return err
@@ -241,14 +243,14 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			return a.env.PrintJSON(result)
 		}
 		return printNovel(a.env.Out, result)
-	case "user":
+	case string(resolver.ResultKindUser):
 		result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 			return client.User(ctx, pixiv.UserRequest{UserID: id})
 		})
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && inputcmd.ModeOf(cmd) == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
 			value, err := record.RecordFromUserDetail(result)
 			if err != nil {
 				return err
@@ -283,7 +285,7 @@ func entityForRecord(typ string, explicit bool, requested string) (string, error
 	if err != nil {
 		return "", err
 	}
-	if wanted != inferred && !(wanted == "artwork" && inferred == "artwork") {
+	if wanted != inferred {
 		return "", fmt.Errorf("record type %q is incompatible with --type %q", typ, requested)
 	}
 	return wanted, nil
@@ -291,12 +293,12 @@ func entityForRecord(typ string, explicit bool, requested string) (string, error
 
 func resolveRecordEntity(typ string) (string, error) {
 	switch typ {
-	case "artwork", "illust", "manga", "ugoira":
-		return "artwork", nil
-	case "novel":
-		return "novel", nil
-	case "user":
-		return "user", nil
+	case string(resolver.ResultKindArtwork), string(resolver.SubtypeIllust), string(resolver.SubtypeManga), string(resolver.SubtypeUgoira):
+		return string(resolver.ResultKindArtwork), nil
+	case string(resolver.ResultKindNovel):
+		return string(resolver.ResultKindNovel), nil
+	case string(resolver.ResultKindUser):
+		return string(resolver.ResultKindUser), nil
 	default:
 		return "", fmt.Errorf("unsupported record type %q", typ)
 	}
@@ -304,9 +306,9 @@ func resolveRecordEntity(typ string) (string, error) {
 
 func resolveEntity(value string) (string, error) {
 	switch value {
-	case "artwork", "illust", "manga", "ugoira":
-		return "artwork", nil
-	case "novel", "user":
+	case string(resolver.ResultKindArtwork), string(resolver.SubtypeIllust), string(resolver.SubtypeManga), string(resolver.SubtypeUgoira):
+		return string(resolver.ResultKindArtwork), nil
+	case string(resolver.ResultKindNovel), string(resolver.ResultKindUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -323,9 +325,9 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
 	want := map[string]pixiv.ReferenceKind{
-		"artwork": pixiv.ReferenceKindArtwork,
-		"novel":   pixiv.ReferenceKindNovel,
-		"user":    pixiv.ReferenceKindUser,
+		string(resolver.ResultKindArtwork): pixiv.ReferenceKindArtwork,
+		string(resolver.ResultKindNovel):   pixiv.ReferenceKindNovel,
+		string(resolver.ResultKindUser):    pixiv.ReferenceKindUser,
 	}
 	if ref.Kind != want[entity] {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))

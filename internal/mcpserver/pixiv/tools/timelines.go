@@ -20,7 +20,7 @@ import (
 // registerTimelineFollowing 注册 pixiv_timeline_following。
 func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_following", Description: "Browse artworks or novels from followed users.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", "public", "private"), "kind": schemas.EnumString("Required content type.", "artwork", "novel")}, "kind"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel)}, "kind"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineFollowingHandler(ctx, input)
 	})
@@ -44,13 +44,13 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 	if in.Restrict == "" {
 		in.Restrict = string(pixiv.RestrictPublic)
 	}
-	if in.Kind != "novel" && in.NovelFilter != nil {
+	if in.Kind != kindNovel && in.NovelFilter != nil {
 		return outputs.Error(errors.New("novel_filter requires kind=novel"))
 	}
-	if in.Kind == "novel" && in.IllustFilter != nil {
+	if in.Kind == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -98,7 +98,7 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 // registerTimelineLatest 注册 pixiv_timeline_latest。
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", "illust", "manga", "novel")}, "content_type"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(contentNovel))}, "content_type"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineLatestHandler(ctx, input)
 	})
@@ -118,13 +118,13 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.ContentType != "novel" && in.NovelFilter != nil {
+	if in.ContentType != contentNovel && in.NovelFilter != nil {
 		return outputs.Error(errors.New("novel_filter requires content_type=novel"))
 	}
-	if in.ContentType == "novel" && in.IllustFilter != nil {
+	if in.ContentType == contentNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.ContentType == "novel" {
+	if in.ContentType == contentNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)

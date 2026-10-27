@@ -11,6 +11,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -68,8 +69,8 @@ func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPor
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
-		typ:         "artwork",
-		contentType: "all",
+		typ:         string(resolver.ResultKindArtwork),
+		contentType: string(pixiv.SearchContentTypeAll),
 		resolution:  string(pixiv.SearchResolutionAll),
 		aspectRatio: string(pixiv.SearchAspectRatioAll),
 		aiMode:      string(pixiv.SearchAIModeAll),
@@ -106,7 +107,7 @@ func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPor
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count; strategy controls filtering completeness")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count; strategy controls filtering completeness")
-	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(bookmarkFilterStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
+	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(searchfilter.BookmarkStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
 	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
@@ -203,7 +204,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 	if err := validateEntityFlags(cmd, entity); err != nil {
 		return err
 	}
-	if entity == "novel" {
+	if entity == string(resolver.ResultKindNovel) {
 		return a.runNovelSearch(cmd, args, novelOptions{
 			Options:  opts.Options,
 			ndjson:   opts.ndjson,
@@ -214,7 +215,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 			period:   opts.period,
 		})
 	}
-	if entity == "user" {
+	if entity == string(resolver.ResultKindUser) {
 		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
 			Options: opts.Options,
 			NDJSON:  opts.ndjson,
@@ -286,20 +287,20 @@ type artworkSearchOut struct {
 }
 
 type bookmarkFilterJSON struct {
-	Min          *int                       `json:"min,omitempty"`
-	Max          *int                       `json:"max,omitempty"`
-	Membership   bookmarkMembership         `json:"membership"`
-	Strategy     bookmarkFilterStrategy     `json:"strategy"`
-	Completeness bookmarkFilterCompleteness `json:"completeness"`
+	Min          *int                              `json:"min,omitempty"`
+	Max          *int                              `json:"max,omitempty"`
+	Membership   searchfilter.BookmarkMembership   `json:"membership"`
+	Strategy     searchfilter.BookmarkStrategy     `json:"strategy"`
+	Completeness searchfilter.BookmarkCompleteness `json:"completeness"`
 }
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy searchfilter.BookmarkStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
-		Membership: bookmarkMembershipUnknown,
+		Membership: searchfilter.BookmarkMembershipUnknown,
 		Strategy:   strategy,
 		Include:    include,
 	})
@@ -321,7 +322,7 @@ func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.R
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -414,7 +415,7 @@ func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 
 func resolveEntityType(value string) (string, error) {
 	switch value {
-	case "artwork", "novel", "user":
+	case string(resolver.ResultKindArtwork), string(resolver.ResultKindNovel), string(resolver.ResultKindUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -422,7 +423,7 @@ func resolveEntityType(value string) (string, error) {
 }
 
 func validateEntityFlags(cmd *cobra.Command, entity string) error {
-	if entity == "artwork" {
+	if entity == string(resolver.ResultKindArtwork) {
 		return nil
 	}
 	for _, name := range []string{"content-type", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy"} {
@@ -430,7 +431,7 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 			return fmt.Errorf("--%s is only supported when --type artwork", name)
 		}
 	}
-	if entity == "novel" {
+	if entity == string(resolver.ResultKindNovel) {
 		for _, name := range []string{"start-date", "end-date", "rating"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s is not supported when --type novel", name)
@@ -459,27 +460,30 @@ func validateTrendingTagsFlags(cmd *cobra.Command) error {
 }
 
 func resolveAIMode(value string) (pixiv.SearchAIMode, error) {
-	switch value {
-	case "all", "exclude", "only":
-		return pixiv.SearchAIMode(value), nil
+	mode := pixiv.SearchAIMode(value)
+	switch mode {
+	case pixiv.SearchAIModeAll, pixiv.SearchAIModeExclude, pixiv.SearchAIModeOnly:
+		return mode, nil
 	default:
 		return "", errors.New("ai-mode must be one of all, exclude, only")
 	}
 }
 
 func resolveAspectRatio(value string) (pixiv.SearchAspectRatio, error) {
-	switch value {
-	case "all", "landscape", "portrait", "square":
-		return pixiv.SearchAspectRatio(value), nil
+	ratio := pixiv.SearchAspectRatio(value)
+	switch ratio {
+	case pixiv.SearchAspectRatioAll, pixiv.SearchAspectRatioLandscape, pixiv.SearchAspectRatioPortrait, pixiv.SearchAspectRatioSquare:
+		return ratio, nil
 	default:
 		return "", errors.New("aspect-ratio must be one of all, landscape, portrait, square")
 	}
 }
 
 func resolveResolution(value string) (pixiv.SearchResolution, error) {
-	switch value {
-	case "all", "high", "medium", "low":
-		return pixiv.SearchResolution(value), nil
+	resolution := pixiv.SearchResolution(value)
+	switch resolution {
+	case pixiv.SearchResolutionAll, pixiv.SearchResolutionHigh, pixiv.SearchResolutionMedium, pixiv.SearchResolutionLow:
+		return resolution, nil
 	default:
 		return "", errors.New("resolution must be one of all, high, medium, low")
 	}
@@ -507,30 +511,42 @@ func resolveBookmarkRange(cmd *cobra.Command, opts options) (*int, *int, error) 
 	return bookmarkMin, bookmarkMax, nil
 }
 
-func resolveBookmarkFilterStrategy(value string) (bookmarkFilterStrategy, error) {
-	strategy := bookmarkFilterStrategy(value)
-	switch strategy {
-	case bookmarkFilterStrategyAuto, bookmarkFilterStrategyLocal, bookmarkFilterStrategyBestEffort, bookmarkFilterStrategyServer:
-		return strategy, nil
+// resolveBookmarkFilterStrategy validates the flag vocabulary only. The
+// shared resolver rejects server strategies later, when it knows whether a
+// range is being filtered and what membership evidence exists.
+func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy, error) {
+	switch searchfilter.BookmarkStrategy(value) {
+	case searchfilter.BookmarkStrategyAuto, searchfilter.BookmarkStrategyLocal, searchfilter.BookmarkStrategyBestEffort, searchfilter.BookmarkStrategyServer:
+		return searchfilter.BookmarkStrategy(value), nil
 	default:
 		return "", errors.New("bookmark-strategy must be one of auto, local, best_effort, server")
 	}
 }
 
+// Published --period selectors. Half-year and year expand to a date range, so
+// they have no pixiv.DurationFilter value.
+const (
+	periodDay      = "day"
+	periodWeek     = "week"
+	periodMonth    = "month"
+	periodHalfYear = "half-year"
+	periodYear     = "year"
+)
+
 func resolvePeriod(value string) (pixiv.DurationFilter, error) {
 	switch value {
 	case "":
 		return "", nil
-	case "day":
-		return pixiv.DurationFilter("within_last_day"), nil
-	case "week":
-		return pixiv.DurationFilter("within_last_week"), nil
-	case "month":
-		return pixiv.DurationFilter("within_last_month"), nil
-	case "half-year":
-		return pixiv.DurationFilter("within_half_year"), nil
-	case "year":
-		return pixiv.DurationFilter("within_year"), nil
+	case periodDay:
+		return pixiv.DurationLastDay, nil
+	case periodWeek:
+		return pixiv.DurationLastWeek, nil
+	case periodMonth:
+		return pixiv.DurationLastMonth, nil
+	case periodHalfYear:
+		return "within_half_year", nil
+	case periodYear:
+		return "within_year", nil
 	default:
 		return "", errors.New("period must be one of day, week, month, half-year, year")
 	}

@@ -26,6 +26,23 @@ type LocalSnapshot struct {
 	DefaultUserID int64
 }
 
+// Published local-selection states.
+const (
+	SelectionUnknown       = "unknown"
+	SelectionRequired      = "selection_required"
+	SelectionNoLocal       = "no_local_account"
+	SelectionNotFound      = "account_not_found"
+	SelectionSelected      = "selected"
+	SelectionNoCredentials = "credentials_missing"
+)
+
+// Published credential states.
+const (
+	CredentialUnknown           = "unknown"
+	CredentialMissing           = "missing"
+	CredentialPresentUnverified = "present_unverified"
+)
+
 // Status reports local selection, not the real-time validity of an upstream session.
 type Status struct {
 	SelectedUserID  int64     `json:"selected_user_id"`
@@ -73,24 +90,24 @@ func statusFor(local []Account, selected int64) Status {
 	if local == nil {
 		local = []Account{}
 	}
-	result := Status{SelectedUserID: selected, SelectionState: "selection_required", CredentialState: "unknown", Accounts: local}
+	result := Status{SelectedUserID: selected, SelectionState: SelectionRequired, CredentialState: CredentialUnknown, Accounts: local}
 	if selected == 0 {
 		if len(local) == 0 {
-			result.SelectionState = "no_local_account"
+			result.SelectionState = SelectionNoLocal
 		}
 		return result
 	}
-	result.SelectionState = "account_not_found"
-	result.CredentialState = "missing"
+	result.SelectionState = SelectionNotFound
+	result.CredentialState = CredentialMissing
 	for _, account := range local {
 		if account.UserID != selected {
 			continue
 		}
 		if account.HasCredentials {
-			result.SelectionState = "selected"
-			result.CredentialState = "present_unverified"
+			result.SelectionState = SelectionSelected
+			result.CredentialState = CredentialPresentUnverified
 		} else {
-			result.SelectionState = "credentials_missing"
+			result.SelectionState = SelectionNoCredentials
 		}
 		break
 	}
@@ -127,7 +144,7 @@ func (m Selection) Resolve(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if status.SelectionState != "selected" {
+	if status.SelectionState != SelectionSelected {
 		return 0, errors.New(status.SelectionState)
 	}
 	return status.SelectedUserID, nil

@@ -21,7 +21,7 @@ import (
 // registerBookmarkAdd 注册 pixiv_bookmark_add。
 func (t pixivTools) registerBookmarkAdd(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_add", Description: "Add an artwork or novel bookmark.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", "artwork", "novel"), "id": schemas.PositiveInteger("Positive artwork or novel ID."), "restrict": map[string]any{"type": "string", "description": "public or private; omitted or empty uses SDK default."}, "tags": map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "string"}}}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "id": schemas.PositiveInteger("Positive artwork or novel ID."), "restrict": map[string]any{"type": "string", "description": "public or private; omitted or empty uses SDK default."}, "tags": map[string]any{"type": []string{"array", "null"}, "items": map[string]any{"type": "string"}}}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.bookmarkAddHandler(ctx, input)
 	})
 }
@@ -35,7 +35,7 @@ type bookmarkAddIn struct {
 }
 
 func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{Action: "add_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Bookmarked novel %d.", in.ID)}
 		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
@@ -85,7 +85,7 @@ func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 		Description: "Browse artwork bookmarks followed by novel bookmarks with one logical budget.",
 		InputSchema: schemas.List(map[string]any{
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
+			"restrict": schemas.EnumString("Bookmark visibility.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)),
 			"tag":      map[string]any{"type": "string", "description": "Optional bookmark tag."},
 		}),
 		OutputSchema: schemas.RecordsOutputSchema(),
@@ -236,7 +236,7 @@ func bookmarkCheckpoint(cursor bookmarkCursor, position int) (bookmarkCursor, er
 // registerBookmarkRemove 注册 pixiv_bookmark_remove。
 func (t pixivTools) registerBookmarkRemove(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_bookmark_remove", Description: "Remove an artwork or novel bookmark.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", "artwork", "novel"), "id": schemas.PositiveInteger("Positive artwork or novel ID.")}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "id": schemas.PositiveInteger("Positive artwork or novel ID.")}, []string{"kind", "id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.bookmarkRemoveHandler(ctx, input)
 	})
 }
@@ -248,7 +248,7 @@ type bookmarkRemoveIn struct {
 }
 
 func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemoveIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		out := outputs.Mutation{Action: "remove_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Removed bookmark from novel %d.", in.ID)}
 		return outputs.RunMutation(&out, func() error {
 			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
@@ -280,7 +280,7 @@ type bookmarkTagsIn struct {
 }
 
 func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) (*mcp.CallToolResult, outputs.BookmarkTags, error) {
-	if in.Kind != "" && in.Kind != "artwork" && in.Kind != "novel" {
+	if in.Kind != "" && in.Kind != kindArtwork && in.Kind != kindNovel {
 		return outputs.BookmarkTagsError(errors.New("kind must be artwork or novel"))
 	}
 	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
@@ -292,7 +292,7 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 		return outputs.BookmarkTagsError(err)
 	}
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
-		if in.Kind == "novel" {
+		if in.Kind == kindNovel {
 			result, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
@@ -319,7 +319,7 @@ func bookmarkTagsInputSchema() map[string]any {
 	return map[string]any{
 		"type": "object", "additionalProperties": false,
 		"properties": map[string]any{
-			"kind":     schemas.EnumString("Content kind; defaults to artwork.", "artwork", "novel"),
+			"kind":     schemas.EnumString("Content kind; defaults to artwork.", kindArtwork, kindNovel),
 			"user_id":  map[string]any{"type": "integer", "description": "optional user ID; defaults to authenticated user"},
 			"restrict": map[string]any{"type": "string", "description": "public or private"},
 			"page":     map[string]any{"type": []string{"null", "integer"}, "description": "1-based logical page; requires a positive limit"},
@@ -336,7 +336,7 @@ func (t pixivTools) registerBookmarkTagsAll(server *mcp.Server) {
 		Description: "List artwork bookmark tags followed by novel bookmark tags without merging names.",
 		InputSchema: schemas.List(map[string]any{
 			"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-			"restrict": schemas.EnumString("Bookmark visibility.", "public", "private"),
+			"restrict": schemas.EnumString("Bookmark visibility.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)),
 		}),
 		OutputSchema: schemas.BookmarkTagsAllOutputSchema(),
 	}, func(ctx context.Context, request *mcp.CallToolRequest, input bookmarkTagsAllIn) (*mcp.CallToolResult, outputs.BookmarkTagsAll, error) {
@@ -379,7 +379,7 @@ func artworkTagStream(client *pixiv.Client, userID int64, restrict string) pagin
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
 			}
-			items, next, err := tagBatch(page, cursor.consumed, "artwork")
+			items, next, err := tagBatch(page, cursor.consumed, kindArtwork)
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
 			}
@@ -398,7 +398,7 @@ func novelTagStream(client *pixiv.Client, userID int64, restrict string) paginat
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
 			}
-			items, next, err := tagBatch(page, cursor.consumed, "novel")
+			items, next, err := tagBatch(page, cursor.consumed, kindNovel)
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
 			}

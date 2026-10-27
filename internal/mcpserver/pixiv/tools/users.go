@@ -23,7 +23,7 @@ import (
 func (t pixivTools) registerUserArtworks(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-		"type":          schemas.EnumString("Artwork type.", "illust", "manga", "ugoira"),
+		"type":          schemas.EnumString("Artwork type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(pixiv.SearchContentTypeUgoira)),
 		"illust_filter": filters.IllustFilterSchema(),
 	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userArtworksHandler(ctx, input)
@@ -91,10 +91,10 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.Kind == "novel" && in.IllustFilter != nil {
+	if in.Kind == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter requires kind=artwork"))
 	}
-	if in.Kind == "novel" {
+	if in.Kind == kindNovel {
 		userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
 		if err != nil {
 			return outputs.Error(err)
@@ -149,7 +149,7 @@ func userBookmarksInputSchema() *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["kind"].Enum = []any{"artwork", "novel"}
+	schema.Properties["kind"].Enum = []any{kindArtwork, kindNovel}
 	return schema
 }
 

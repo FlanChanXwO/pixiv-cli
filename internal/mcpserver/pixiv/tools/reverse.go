@@ -86,7 +86,7 @@ func reverseSearchInputSchema() map[string]any {
 			},
 			"provider": map[string]any{
 				"type":        "string",
-				"enum":        []string{"saucenao", "ascii2d-color", "ascii2d-bovw", "all"},
+				"enum":        []string{string(reversesearch.ProviderSauceNAO), string(reversesearch.ProviderASCII2DColor), string(reversesearch.ProviderASCII2DBOVW), string(reversesearch.ProviderAll)},
 				"description": "Optional provider override; omit to use the server startup configuration.",
 			},
 		},
@@ -291,9 +291,9 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 		var recordType string
 		switch result.Pixiv.Type {
 		case reversesearch.PixivRefArtwork:
-			recordType = "artwork"
+			recordType = kindArtwork
 		case reversesearch.PixivRefUser:
-			recordType = "user"
+			recordType = kindUser
 		default:
 			return nil, errors.New("invalid reverse search identity")
 		}

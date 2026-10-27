@@ -134,7 +134,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInp
 					return errors.New("bundle import cannot be combined with --proxy or --no-proxy")
 				}
 				*input = authImportInput{bundle: body}
-				inputcmd.MarkSkipAutomaticUpdate(ctxCmd)
+				command.SetOffline(ctxCmd)
 				command.Bind(ctxCmd, command.AuthBundleImport())
 			} else {
 				token, err := readRefreshTokenInput(bytes.NewReader(body))

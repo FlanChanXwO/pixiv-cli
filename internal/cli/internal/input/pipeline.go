@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"sync"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -58,26 +57,54 @@ type InputSpec struct {
 // codec without inspecting Use strings or inferring arity from help text.
 const AnnotationKey = "pixiv-cli.input-spec"
 
+// State holds one command instance's resolved input. The command constructor
+// owns it; nothing is keyed by *cobra.Command or shared between executions.
+type State struct {
+	resolved *resolvedInput
+}
+
 type resolvedInput struct {
 	args   []string
 	reader io.Reader
 	mode   Mode
 }
 
-// Cobra exposes the command Context as the business-operation context. The
-// resolver therefore keeps its short-lived command state out of that context,
-// so resolving input cannot change the context identity observed by SDK and
-// download clients.
-var resolvedInputs sync.Map  // map[*cobra.Command]resolvedInput
-var offlineCommands sync.Map // map[*cobra.Command]struct{}
-
-// Bind attaches an InputSpec to cmd. It wraps the existing positional
-// validator and RunE so business code observes the resolved positional slice,
-// while record consumers can retrieve the replayable reader from Reader.
-func Bind(cmd *cobra.Command, spec InputSpec) {
-	if cmd == nil {
-		return
+// Args returns the positional arguments after stdin resolution. It falls back
+// to the caller's slice when Args has not run, for example when a test invokes
+// RunE directly.
+func (s *State) Args(fallback []string) []string {
+	if s == nil || s.resolved == nil {
+		return fallback
 	}
+	return s.resolved.args
+}
+
+// Reader returns the replayable reader selected by the codec. Commands that do
+// not read stdin keep the configured reader.
+func (s *State) Reader(fallback io.Reader) io.Reader {
+	if s == nil || s.resolved == nil || s.resolved.reader == nil {
+		return fallback
+	}
+	return s.resolved.reader
+}
+
+// Mode reports how the TextOrRecord stream was classified.
+func (s *State) Mode() Mode {
+	if s == nil || s.resolved == nil {
+		return TextMode
+	}
+	return s.resolved.mode
+}
+
+// Bind attaches an InputSpec to cmd and returns the state resolved for this
+// command instance. It wraps the existing positional validator and RunE so
+// business code observes the resolved positional slice, while record consumers
+// can retrieve the replayable reader from State.Reader.
+func Bind(cmd *cobra.Command, spec InputSpec) *State {
+	if cmd == nil {
+		return nil
+	}
+	state := &State{}
 	if cmd.Annotations == nil {
 		cmd.Annotations = make(map[string]string)
 	}
@@ -86,7 +113,7 @@ func Bind(cmd *cobra.Command, spec InputSpec) {
 		// NoInput is a declaration for architecture checks and command-tree
 		// inventory only. Protocol owners such as MCP keep their original Args
 		// and RunE so the generic resolver never touches their input stream.
-		return
+		return state
 	}
 
 	validate := cmd.Args
@@ -99,14 +126,15 @@ func Bind(cmd *cobra.Command, spec InputSpec) {
 		if err != nil {
 			return inputError(spec, err)
 		}
-		setResolvedInput(command, resolved)
+		state.resolved = &resolved
 		return validate(command, resolved.args)
 	}
 	if run != nil {
 		cmd.RunE = func(command *cobra.Command, args []string) error {
-			return run(command, ResolvedArgs(command, args))
+			return run(command, state.Args(args))
 		}
 	}
+	return state
 }
 
 func annotationValue(spec InputSpec) string {
@@ -221,42 +249,6 @@ func modeForCodec(codec Codec) Mode {
 	return TextMode
 }
 
-func setResolvedInput(command *cobra.Command, input resolvedInput) {
-	resolvedInputs.Store(stateCommand(command), input)
-}
-
-// ResolvedArgs returns the args produced by the command's InputSpec. It is
-// useful to command owners that call a helper outside the wrapped RunE.
-func ResolvedArgs(command *cobra.Command, fallback []string) []string {
-	if command != nil {
-		if input, ok := resolvedInputs.Load(stateCommand(command)); ok {
-			return input.(resolvedInput).args
-		}
-	}
-	return fallback
-}
-
-// Reader returns the replayable reader selected by the command's input codec.
-// TextOrRecord record mode uses it to preserve streaming NDJSON behavior.
-func Reader(command *cobra.Command, fallback io.Reader) io.Reader {
-	if command != nil {
-		if input, ok := resolvedInputs.Load(stateCommand(command)); ok && input.(resolvedInput).reader != nil {
-			return input.(resolvedInput).reader
-		}
-	}
-	return fallback
-}
-
-// ModeOf reports the classification performed for the current command.
-func ModeOf(command *cobra.Command) Mode {
-	if command != nil {
-		if input, ok := resolvedInputs.Load(stateCommand(command)); ok {
-			return input.(resolvedInput).mode
-		}
-	}
-	return TextMode
-}
-
 // IsTTY recognizes only an actual terminal file. In-memory and pipe readers
 // are intentionally treated as non-TTY so embedded callers get pipe semantics.
 func IsTTY(reader io.Reader) bool {
@@ -307,42 +299,4 @@ func StripOneTrailingLineEnding(body []byte) []byte {
 		return body[:len(body)-1]
 	}
 	return body
-}
-
-// MarkSkipAutomaticUpdate marks a command execution as offline. It is used by
-// the auth owner after bundle classification and is consumed by the update
-// command owner; token imports retain the normal update behavior.
-func MarkSkipAutomaticUpdate(command *cobra.Command) {
-	if command == nil {
-		return
-	}
-	offlineCommands.Store(stateCommand(command), struct{}{})
-}
-
-// SkipAutomaticUpdate reports whether this command was classified as an
-// offline operation.
-func SkipAutomaticUpdate(command *cobra.Command) bool {
-	if command == nil {
-		return false
-	}
-	_, ok := offlineCommands.Load(stateCommand(command))
-	return ok
-}
-
-// Clear releases resolver state after a Cobra tree finishes one execution.
-// Callers that execute embedded command trees should invoke it in a defer.
-func Clear(command *cobra.Command) {
-	if command == nil {
-		return
-	}
-	key := stateCommand(command)
-	resolvedInputs.Delete(key)
-	offlineCommands.Delete(key)
-}
-
-func stateCommand(command *cobra.Command) *cobra.Command {
-	if root := command.Root(); root != nil {
-		return root
-	}
-	return command
 }

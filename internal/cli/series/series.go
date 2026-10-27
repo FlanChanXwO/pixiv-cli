@@ -104,7 +104,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 
 func validateSeriesType(value string) error {
 	switch value {
-	case "artwork", "novel":
+	case string(resolver.ResultKindArtwork), string(resolver.ResultKindNovel):
 		return nil
 	default:
 		return errors.New("type must be one of artwork, novel")
@@ -115,8 +115,8 @@ func seriesContract() resolver.Contract {
 	return resolver.Contract{
 		Operation: "series",
 		Types: []resolver.TypeSpec{
-			{Name: "artwork", ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
-			{Name: "novel", ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
+			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
+			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
 		},
 		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
 			pixiv.ReferenceKindArtworkSeries: resolver.URLTypeMustMatchResult,

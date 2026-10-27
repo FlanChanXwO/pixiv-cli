@@ -9,6 +9,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -126,17 +127,17 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 
 func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options) error {
 	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
-	if opts.contentType == "artwork" {
-		opts.contentType = "illust"
+	if opts.contentType == string(resolver.ResultKindArtwork) {
+		opts.contentType = string(resolver.SubtypeIllust)
 	}
 	var userID int64
 	if len(args) == 0 {
-		if opts.contentType != "illust" && opts.contentType != "novel" {
+		if opts.contentType != string(resolver.SubtypeIllust) && opts.contentType != string(resolver.ResultKindNovel) {
 			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
 				sdk.WithDetail("type without USER_ID must be one of: artwork, novel"))
 		}
 	} else {
-		if opts.contentType != "illust" && opts.contentType != "manga" && opts.contentType != "novel" {
+		if opts.contentType != string(resolver.SubtypeIllust) && opts.contentType != string(resolver.SubtypeManga) && opts.contentType != string(resolver.ResultKindNovel) {
 			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
 				sdk.WithDetail("type with USER_ID must be one of: artwork, manga, novel"))
 		}
@@ -168,7 +169,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if len(args) == 0 {
-		if opts.contentType == "illust" {
+		if opts.contentType == string(resolver.SubtypeIllust) {
 			fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
 				if err != nil {
@@ -187,7 +188,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 		return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "MyPixiv novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
 	}
-	if opts.contentType == "novel" {
+	if opts.contentType == string(resolver.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
 			if err != nil {

@@ -123,7 +123,7 @@ func (a commandRunner) newDetailCommand() *cobra.Command {
 }
 
 func (a commandRunner) newArtworksCommand() *cobra.Command {
-	opts := listOptions{illustType: "illust"}
+	opts := listOptions{illustType: string(resolver.SubtypeIllust)}
 	cmd := &cobra.Command{
 		Use:   "artworks [USER_ID]",
 		Short: "List a user's artworks",
@@ -284,9 +284,9 @@ func requestedUserID(args []string) (int64, error) {
 func resolveUserID(ctx context.Context, value, operation string) (int64, error) {
 	target, err := resolver.Resolve(ctx, resolver.Input{Value: value}, resolver.Contract{
 		Operation:   operation,
-		DefaultType: "user",
+		DefaultType: string(resolver.ResultKindUser),
 		Types: []resolver.TypeSpec{{
-			Name:              "user",
+			Name:              string(resolver.ResultKindUser),
 			ResultKind:        resolver.ResultKindUser,
 			BareReferenceKind: pixiv.ReferenceKindUser,
 		}},

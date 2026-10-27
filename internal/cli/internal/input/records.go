@@ -113,11 +113,17 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 	return nil
 }
 
+// RecordFailureStrategy values accepted by --on-error.
+const (
+	RecordFailureSkip     = "skip"
+	RecordFailureFailFast = "fail-fast"
+)
+
 func RecordFailureStrategy(value string) (bool, error) {
 	switch value {
-	case "skip":
+	case RecordFailureSkip:
 		return false, nil
-	case "fail-fast":
+	case RecordFailureFailFast:
 		return true, nil
 	default:
 		return false, errors.New("on-error must be one of: skip, fail-fast")

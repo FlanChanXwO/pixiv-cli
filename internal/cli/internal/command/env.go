@@ -28,6 +28,9 @@ type Env struct {
 	// ResolveJSON returns the effective JSON setting; a nil override reads it
 	// from runtime configuration.
 	ResolveJSON func(*bool) (bool, error)
+	// EnablePipelineSignal installs the execution boundary's broken-pipe policy
+	// before the first NDJSON write. It must be idempotent.
+	EnablePipelineSignal func()
 }
 
 // ProxyOptions holds one command's --proxy/--no-proxy values.
@@ -127,8 +130,8 @@ func (e Env) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 	flags.BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-func (e Env) BindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) {
-	input.Bind(cmd, input.InputSpec{
+func (e Env) BindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *input.State {
+	return input.Bind(cmd, input.InputSpec{
 		Codec:        input.TextValue,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
@@ -138,8 +141,8 @@ func (e Env) BindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition in
 	})
 }
 
-func (e Env) BindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPosition int, enabled func(*cobra.Command, []string) bool) {
-	input.Bind(cmd, input.InputSpec{
+func (e Env) BindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPosition int, enabled func(*cobra.Command, []string) bool) *input.State {
+	return input.Bind(cmd, input.InputSpec{
 		Codec:        input.TextValue,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
@@ -150,8 +153,8 @@ func (e Env) BindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPositio
 	})
 }
 
-func (e Env) BindTextOrRecord(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) {
-	input.Bind(cmd, input.InputSpec{
+func (e Env) BindTextOrRecord(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *input.State {
+	return input.Bind(cmd, input.InputSpec{
 		Codec:        input.TextOrRecord,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
@@ -161,8 +164,8 @@ func (e Env) BindTextOrRecord(cmd *cobra.Command, minArgs, maxArgs, fillPosition
 	})
 }
 
-func (e Env) BindNoInput(cmd *cobra.Command) {
-	input.Bind(cmd, input.InputSpec{
+func (e Env) BindNoInput(cmd *cobra.Command) *input.State {
+	return input.Bind(cmd, input.InputSpec{
 		Codec:      input.NoInput,
 		MinArgs:    0,
 		MaxArgs:    0,
@@ -177,20 +180,28 @@ func (e Env) ActionInputArgs(usage string) cobra.PositionalArgs {
 }
 
 // ConsumeActionRecords keeps canonical record parsing and line diagnostics in
-// input. The caller owns the allowed entity types and invoked mutation.
-func (e Env) ConsumeActionRecords(cmd *cobra.Command, operation, onError string, allowedTypes map[string]struct{}, invoke func(context.Context, int64) error) error {
-	return input.ConsumeActionRecords(cmd.Context(), input.Reader(cmd, e.In), e.Err, operation, onError, allowedTypes, invoke, e.UsageError)
+// input. The caller owns the allowed entity types, the resolved input state and
+// the invoked mutation.
+func (e Env) ConsumeActionRecords(cmd *cobra.Command, state *input.State, operation, onError string, allowedTypes map[string]struct{}, invoke func(context.Context, int64) error) error {
+	return input.ConsumeActionRecords(cmd.Context(), state.Reader(e.In), e.Err, operation, onError, allowedTypes, invoke, e.UsageError)
 }
 
 // AutoNDJSON keeps each list command's existing automatic record-stream rule:
 // an explicit --json or resolved JSON mode wins, otherwise piped stdout streams
-// records unless --ndjson was already requested.
+// records unless --ndjson was already requested. It records the effective
+// decision on the command so the execution boundary classifies early pipe
+// closure without a command-path list.
 func (e Env) AutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
-	if ndjson || jsonOut || cmd.Flags().Changed("json") {
-		return ndjson
+	effective := ndjson
+	if !ndjson && !jsonOut && !cmd.Flags().Changed("json") {
+		file, ok := e.Out.(interface{ Fd() uintptr })
+		effective = ok && !term.IsTerminal(int(file.Fd()))
 	}
-	file, ok := e.Out.(interface{ Fd() uintptr })
-	return ok && !term.IsTerminal(int(file.Fd()))
+	SetOutputNDJSON(cmd, effective)
+	if effective && e.EnablePipelineSignal != nil {
+		e.EnablePipelineSignal()
+	}
+	return effective
 }
 
 // OutputIsTTY reports whether stdout is a terminal.
