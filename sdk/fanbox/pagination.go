@@ -1,5 +1,3 @@
-// FANBOX 分页读取与游标绑定：共用首尾页请求以及会话、参数作用域校验。
-
 package fanbox
 
 import (
@@ -13,21 +11,22 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-// cursorBindingVersion is the FANBOX cursor binding version.
+// cursorBindingVersion versions the cursor binding; raise it only when
+// continuation semantics change so old cursors fail instead of being
+// misread.
 const cursorBindingVersion = 1
 
 // continuationEnvelope is the opaque cursor payload. It stores the upstream
-// pagination URL (which carries no token, cookie, or signature) so the adapter
-// can fetch the next page.
+// pagination URL, which carries no token, cookie, or signature, so the next page
+// can be fetched without re-deriving it.
 type continuationEnvelope struct {
 	NextURL string `json:"u"`
 }
 
-// identityScopedOps are FANBOX operations whose pagination state is tied to the
-// authenticated FANBOX account: Home, Supporting, and the supporting/following
-// creator lists all return pages scoped to the current session's user. Their
-// cursors bind the verified non-secret FANBOX user id so a cursor minted under
-// one account cannot be replayed against another account's feed.
+// identityScopedOps lists operations whose pages belong to the authenticated
+// account: Home, Supporting, and the supporting/following creator lists. Their
+// cursors bind the verified FANBOX user ID, so a cursor from one account is
+// rejected by another account's feed.
 var identityScopedOps = map[string]bool{
 	"Home":         true,
 	"Supporting":   true,
