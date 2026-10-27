@@ -1,5 +1,3 @@
-// FANBOX 列表命令的 flag、输出模式与分页执行；逻辑分页与 JSON 暂存复用 command。
-
 package fanboxcmd
 
 import (
@@ -13,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Options 是 FANBOX 列表命令共享的输出与逻辑分页参数。FANBOX 客户端不消费 pixiv
+// Options 保存 FANBOX 列表命令共用的输出与逻辑分页参数。FANBOX 客户端不消费 pixiv
 // 代理配置，因此这里不绑定 --proxy/--no-proxy，避免接受却被静默忽略的 flag。
 type Options struct {
 	JSON   bool
@@ -22,7 +20,7 @@ type Options struct {
 	Page   int
 }
 
-// BindListFlags adds output and logical pagination flags to a list command.
+// BindListFlags 给列表命令注册输出格式和逻辑分页 flag。
 func BindListFlags(cmd *cobra.Command, opts *Options) {
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.JSON, "json", false, "print JSON")
@@ -32,21 +30,19 @@ func BindListFlags(cmd *cobra.Command, opts *Options) {
 	flags.IntVar(&opts.Page, "page", 0, "1-based logical page (requires --limit > 0)")
 }
 
-// BindSingleFlags only exposes --json/--ndjson for single-entity commands so
-// they never accept --limit/--page values that would be silently ignored.
+// BindSingleFlags 只给单实体命令注册 --json/--ndjson，避免接受会被静默忽略的 --limit/--page。
 func BindSingleFlags(cmd *cobra.Command, opts *Options) {
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.JSON, "json", false, "print JSON")
 	flags.BoolVar(&opts.NDJSON, "ndjson", false, "print one item as JSON per line")
 }
 
-// ParsePlan validates a command's logical pagination settings.
+// ParsePlan 校验列表命令的 --limit/--page 并生成分页计划。
 func ParsePlan(cmd *cobra.Command, opts Options) (command.Plan, error) {
 	return command.ParsePlan(cmd, opts.Limit, opts.Page)
 }
 
-// JSONOut resolves the document output mode and rejects the --ndjson/--json
-// combination through the command's usage-error wrapper.
+// JSONOut 解析文档输出模式；同时给 --ndjson 和 --json 时按 usage 错误拒绝。
 func JSONOut(cmd *cobra.Command, opts Options, usageError func(error) error) (bool, error) {
 	if opts.NDJSON && cmd.Flags().Changed("json") {
 		return false, usageError(errors.New("--ndjson cannot be used with --json"))

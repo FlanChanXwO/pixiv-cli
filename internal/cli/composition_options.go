@@ -1,5 +1,3 @@
-// 配置快照到公开 SDK 选项的唯一翻译层，以及 CLI 运行时配置的读取入口。
-
 package cli
 
 import (

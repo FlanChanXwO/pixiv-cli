@@ -16,8 +16,10 @@ import (
 // 非零退出状态，同时不再附加普通的 "error:" 文本破坏逐行诊断。
 type PipelineDiagnosticError struct{}
 
+// Error 返回固定文本；逐行诊断已经写入 stderr。
 func (*PipelineDiagnosticError) Error() string { return "pipeline records failed" }
 
+// recordDiagnostic 是一条写入 stderr 的逐行失败诊断；ID 与 Type 在能解析时带上。
 type recordDiagnostic struct {
 	Kind      string `json:"kind"`
 	Operation string `json:"operation"`
@@ -35,9 +37,13 @@ type recordActionError struct {
 	err  error
 }
 
+// Error 返回动作的原始错误文本。
 func (e *recordActionError) Error() string { return e.err.Error() }
+
+// Unwrap 返回动作的原始错误，调用方仍可用 errors.Is/As 判断上游失败。
 func (e *recordActionError) Unwrap() error { return e.err }
 
+// NewRecordActionError 给一条记录动作失败附上稳定 code；err 为 nil 时返回 nil。
 func NewRecordActionError(code string, err error) error {
 	return &recordActionError{code: code, err: err}
 }
@@ -46,9 +52,14 @@ func NewRecordActionError(code string, err error) error {
 // 这类错误必须原样返回，不能误报成一条输入记录的动作失败。
 type fatalRecordPipelineError struct{ err error }
 
+// Error 返回记录流中无法恢复的原始错误文本。
 func (e *fatalRecordPipelineError) Error() string { return e.err.Error() }
+
+// Unwrap 返回无法按单条诊断恢复的原始错误。
 func (e *fatalRecordPipelineError) Unwrap() error { return e.err }
 
+// FatalRecordPipeline 标记无法继续读取记录流的失败，例如 stdout/stderr I/O 错误。
+// 这类错误由调用方原样返回，不会被写成一条记录动作失败。
 func FatalRecordPipeline(err error) error { return &fatalRecordPipelineError{err: err} }
 
 // consumeNDJSONRecords 逐行解析 NDJSON 并顺序处理记录。它不使用 Scanner，避免
@@ -113,12 +124,13 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 	return nil
 }
 
-// RecordFailureStrategy values accepted by --on-error.
+// --on-error 接受的取值。
 const (
 	RecordFailureSkip     = "skip"
 	RecordFailureFailFast = "fail-fast"
 )
 
+// RecordFailureStrategy 把 --on-error 取值转换成是否遇错即停；非法取值返回错误。
 func RecordFailureStrategy(value string) (bool, error) {
 	switch value {
 	case RecordFailureSkip:
@@ -160,6 +172,7 @@ func diagnosticRecordIdentity(line []byte) (string, string) {
 	return id, typ
 }
 
+// RequiredRecordID 取出记录的正整数 ID；缺失、非数字或非正数都返回错误。
 func RequiredRecordID(value record.Record) (int64, error) {
 	id, err := PositiveInt64(value.ID(), "record id")
 	if err != nil {

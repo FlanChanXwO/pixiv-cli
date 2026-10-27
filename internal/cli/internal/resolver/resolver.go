@@ -1,6 +1,7 @@
-// Package resolver owns the command-scoped semantic resolution of Pixiv
-// targets. It does not open a client or perform network I/O except through an
-// explicitly supplied bare-ID probe.
+// Package resolver 按命令声明的契约，把文本值或结构化记录解析成 Pixiv 目标。
+//
+// 包的组成：[Resolve] 应用一份 [Contract] 并返回 [Target]。
+// 只有契约显式提供 [BareIDPolicy] 时才会为裸 ID 发起探测请求，其余情况不做网络 I/O。
 package resolver
 
 import (
@@ -15,119 +16,131 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// TargetKind identifies the input namespace selected by a command contract.
-// URL-specific identities such as user_bookmarks and artwork_series remain in
-// Target.ReferenceKind rather than being collapsed into a new global kind.
+// TargetKind 是命令契约选定的输入命名空间。user_bookmarks、artwork_series 这类 URL
+// 专属身份留在 Target.ReferenceKind，不合并成新的全局类型。
 type TargetKind string
 
 const (
+	// TargetKindArtwork 表示输入按作品 ID 或作品 URL 解析。
 	TargetKindArtwork TargetKind = "artwork"
-	TargetKindNovel   TargetKind = "novel"
-	TargetKindUser    TargetKind = "user"
-	TargetKindSeries  TargetKind = "series"
+	// TargetKindNovel 表示输入按小说 ID 或小说 URL 解析。
+	TargetKindNovel TargetKind = "novel"
+	// TargetKindUser 表示输入按用户 ID 或用户 URL 解析。
+	TargetKindUser TargetKind = "user"
+	// TargetKindSeries 表示输入按系列 ID 或系列 URL 解析。
+	TargetKindSeries TargetKind = "series"
+	// TargetKindComment 表示输入按评论 ID 解析；评论没有可引用的 Pixiv 页面。
 	TargetKindComment TargetKind = "comment"
 )
 
-// ResultKind identifies the content returned or mutated by a command.
+// ResultKind 是命令返回或修改的内容类别，与输入命名空间分开。
 type ResultKind string
 
 const (
+	// ResultKindArtwork 表示操作对象是作品。
 	ResultKindArtwork ResultKind = "artwork"
-	ResultKindNovel   ResultKind = "novel"
-	ResultKindUser    ResultKind = "user"
-	ResultKindSeries  ResultKind = "series"
+	// ResultKindNovel 表示操作对象是小说。
+	ResultKindNovel ResultKind = "novel"
+	// ResultKindUser 表示操作对象是用户。
+	ResultKindUser ResultKind = "user"
+	// ResultKindSeries 表示操作对象是系列。
+	ResultKindSeries ResultKind = "series"
+	// ResultKindComment 表示操作对象是评论。
 	ResultKindComment ResultKind = "comment"
-	ResultKindTag     ResultKind = "tag"
+	// ResultKindTag 表示操作对象是标签。
+	ResultKindTag ResultKind = "tag"
 )
 
-// Subtype is an endpoint-specific content subtype. It is deliberately
-// separate from both the input target namespace and the result kind.
+// Subtype 是端点自己的内容子类型，和输入命名空间、结果类别都分开。
 type Subtype string
 
 const (
+	// SubtypeIllust 表示静态插画。
 	SubtypeIllust Subtype = "illust"
-	SubtypeManga  Subtype = "manga"
+	// SubtypeManga 表示漫画。
+	SubtypeManga Subtype = "manga"
+	// SubtypeUgoira 表示动图作品。
 	SubtypeUgoira Subtype = "ugoira"
 )
 
-// Source records which local input path produced a resolved target.
+// Source 记录解析结果的本地输入来源，便于诊断时区分 ID、URL 和探测。
 type Source string
 
 const (
-	SourceID          Source = "id"
-	SourceURL         Source = "url"
-	SourceRecord      Source = "record"
+	// SourceID 表示输入是一个 ID 文本。
+	SourceID Source = "id"
+	// SourceURL 表示输入是 Pixiv URL。
+	SourceURL Source = "url"
+	// SourceRecord 表示输入是结构化记录。
+	SourceRecord Source = "record"
+	// SourceBareIDProbe 表示裸 ID 经契约允许的命名空间探测确定类型。
 	SourceBareIDProbe Source = "bare_id_probe"
 )
 
-// URLTypeRelation controls whether a parsed URL's declared namespace must
-// agree with the command's selected result type.
+// URLTypeRelation 控制 URL 声明的命名空间是否必须与命令选定的结果类型一致。
 type URLTypeRelation string
 
 const (
-	// URLTypeMustMatchResult is used by detail, series, and work mutations.
+	// URLTypeMustMatchResult 要求 URL 类型与结果类型一致；detail、series 和作品相关写操作使用它。
 	URLTypeMustMatchResult URLTypeRelation = "must_match_result"
-	// URLTypeIndependent allows an owner URL to select a different result kind,
-	// such as a user URL with bookmark --type novel.
+	// URLTypeIndependent 允许属主 URL 与结果类型不同，例如用户 URL 配合 bookmark --type novel。
 	URLTypeIndependent URLTypeRelation = "independent"
 )
 
-// Input is the value accepted by a command resolver. Exactly one of Value and
-// Record must be supplied. Type is the command's already-parsed type selector;
-// an empty Type uses Contract.DefaultType or URL inference.
+// Input 是命令解析器接受的输入。Value 和 Record 必须恰好提供一个；Type 是命令已解析的
+// 类型选择器，为空时使用 Contract.DefaultType 或从 URL 推断。
 type Input struct {
 	Value  string
 	Record *record.Record
 	Type   string
 }
 
-// TypeSpec describes one type value that a particular command contract
-// accepts. BareReferenceKind is the namespace used when the same type is
-// supplied with a numeric ID. Bookmark list, for example, maps artwork and
-// novel result selectors to a user bare-ID namespace.
+// TypeSpec 描述命令契约接受的一个类型取值。BareReferenceKind 是同一类型以数字 ID
+// 提供时使用的命名空间；例如收藏列表把作品、小说结果选择器映射到用户裸 ID 命名空间。
 type TypeSpec struct {
 	Name              string
 	ResultKind        ResultKind
 	Subtype           Subtype
 	BareReferenceKind pixiv.ReferenceKind
-	// BareTargetKind represents an input identity that has no supported Pixiv
-	// page reference, such as a comment ID. When set, it must agree with the
-	// target kind derived from BareReferenceKind, if one is also provided.
+	// BareTargetKind 承载没有可引用 Pixiv 页面的输入身份，例如评论 ID。设置时若同时
+	// 提供 BareReferenceKind，两者推导出的目标类型必须一致。
 	BareTargetKind TargetKind
-	All            bool
+	// All 表示该类型是“全部”聚合选择器，不是具体子类型。
+	All bool
 }
 
-// BareIDPolicy enables a controlled probe only for a contract that explicitly
-// freezes its candidate namespaces. A probe must report whether each candidate
-// was found, absent, forbidden, or unavailable; the resolver never guesses a
-// type from an unclassified error.
+// BareIDPolicy 只为显式固定候选命名空间的契约启用受控探测。探测必须报告每个候选是
+// 找到、不存在、禁止访问还是暂时不可用；解析器不会从未分类的错误猜测类型。
 type BareIDPolicy struct {
 	Candidates []string
 	Probe      func(context.Context, int64, TypeSpec) ProbeOutcome
 }
 
-// ProbeStatus is the outcome class returned by a controlled bare-ID probe.
+// ProbeStatus 是裸 ID 探测返回的结果类别。
 type ProbeStatus string
 
 const (
-	ProbeFound         ProbeStatus = "found"
-	ProbeNotFound      ProbeStatus = "not_found"
-	ProbeForbidden     ProbeStatus = "forbidden"
-	ProbeNetworkError  ProbeStatus = "network_error"
+	// ProbeFound 表示候选命名空间中找到了该 ID。
+	ProbeFound ProbeStatus = "found"
+	// ProbeNotFound 表示候选命名空间中明确不存在该 ID。
+	ProbeNotFound ProbeStatus = "not_found"
+	// ProbeForbidden 表示账号无权访问该候选命名空间。
+	ProbeForbidden ProbeStatus = "forbidden"
+	// ProbeNetworkError 表示探测请求因网络失败而无法得出结论。
+	ProbeNetworkError ProbeStatus = "network_error"
+	// ProbeIndeterminate 表示探测结果无法明确分类，解析器据此停止尝试其他候选。
 	ProbeIndeterminate ProbeStatus = "indeterminate"
 )
 
-// ProbeOutcome is returned by BareIDPolicy.Probe. Err should be a classified
-// SDK error for forbidden or network outcomes; the status remains authoritative
-// and prevents the resolver from silently trying another namespace.
+// ProbeOutcome 由 BareIDPolicy.Probe 返回。禁止访问或网络失败时 Err 应是分类过的
+// SDK 错误；Status 始终优先，解析器不会因此静默改试另一个命名空间。
 type ProbeOutcome struct {
 	Status ProbeStatus
 	Err    error
 }
 
-// Contract contains the command-specific input and conflict rules. It is a
-// policy value rather than a universal entity union: every command declares
-// only the type values, URL kinds, and optional probe candidates it supports.
+// Contract 保存单条命令的输入与冲突规则。每份契约只声明自己支持的类型取值、URL 类型和
+// 可选探测候选，因此这里不是全仓库通用的实体联合。
 type Contract struct {
 	Operation   string
 	DefaultType string
@@ -136,10 +149,9 @@ type Contract struct {
 	BareID      *BareIDPolicy
 }
 
-// Target is the resolved identity consumed by a command owner. TargetKind is
-// the input namespace, ResultKind is the selected operation content, and
-// ReferenceKind preserves URL-specific distinctions such as user bookmarks or
-// artwork series. All is a selector and is never represented as a Subtype.
+// Target 保存 command owner 使用的解析结果。TargetKind 是输入命名空间，ResultKind 是选定的
+// 操作内容，ReferenceKind 保留用户收藏、作品系列这类 URL 专属区别；All 是选择器，
+// 不会出现在 Subtype 里。
 type Target struct {
 	ID            int64
 	TargetKind    TargetKind
@@ -151,9 +163,8 @@ type Target struct {
 	Source        Source
 }
 
-// Resolve applies one command contract to either a text value or a structured
-// canonical record. It performs no network I/O unless the contract supplies a
-// controlled bare-ID probe for an otherwise untyped numeric value.
+// Resolve 把一份命令契约应用到文本值或标准记录。契约不提供裸 ID 探测时不做网络 I/O；
+// 只有未带类型的数字输入才可能在契约允许时触发一次探测。
 func Resolve(ctx context.Context, input Input, contract Contract) (Target, error) {
 	if input.Record != nil && strings.TrimSpace(input.Value) != "" {
 		return Target{}, invalid(contract, "exactly one input value is allowed")

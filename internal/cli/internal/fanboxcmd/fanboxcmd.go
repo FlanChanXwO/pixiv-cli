@@ -1,6 +1,8 @@
-// Package fanboxcmd owns the wiring shared by FANBOX subcommands: proxy parsing
-// and the client lease boundary. It holds no aggregate dependency type.
-
+// Package fanboxcmd 提供 FANBOX 子命令共用的 flag、客户端租约和分页执行。
+//
+// 包的组成：[UseClient] 把客户端租约限制在一次命令回调内，[Run] 与 [Traverse] 执行列表读取。
+// [Options] 携带列表 flag；逻辑分页与 JSON 暂存复用
+// [github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command]。
 package fanboxcmd
 
 import (
@@ -14,15 +16,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ProxyOverride reads the FANBOX group's persistent --proxy/--no-proxy flags.
+// ProxyOverride 读取 FANBOX 组的持久 --proxy/--no-proxy；两者都给时报错。
 func ProxyOverride(cmd *cobra.Command) (*string, error) {
 	proxy, _ := cmd.Flags().GetString("proxy")
 	noProxy, _ := cmd.Flags().GetBool("no-proxy")
 	return command.ProxyOverride(cmd, command.ProxyOptions{Proxy: proxy, NoProxy: noProxy})
 }
 
-// Open opens one FANBOX client lease for the current command. The session is
-// resolved lazily so building the command tree opens no account store.
+// Open 为当前命令打开一个 FANBOX 客户端租约；session 延迟解析，构造命令树时不打开账号库。
 func Open(ctx context.Context, open func() (*session.Fanbox, error), cmd *cobra.Command) (*lifecycle.Lease[*fanbox.Client], error) {
 	proxyOverride, err := ProxyOverride(cmd)
 	if err != nil {
@@ -35,8 +36,7 @@ func Open(ctx context.Context, open func() (*session.Fanbox, error), cmd *cobra.
 	return service.Open(ctx, session.OpenRequest{ProxyOverride: proxyOverride})
 }
 
-// UseClient keeps the lease boundary local to one command callback and
-// preserves both callback and close errors.
+// UseClient 让租约只覆盖一次命令回调；回调和关闭的错误都会保留并合并返回。
 func UseClient(cmd *cobra.Command, open func() (*session.Fanbox, error), use func(*fanbox.Client) error) error {
 	lease, err := Open(cmd.Context(), open, cmd)
 	if err != nil {

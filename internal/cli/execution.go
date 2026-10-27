@@ -1,10 +1,5 @@
 package cli
 
-// 本文件负责一次 CLI 执行的入口与生命周期：参数入口（Run/RunContext*）、
-// 退出码、命令判定（usage/flag 类别）、资源关闭、启动钩子与诊断启停。
-//
-// 它不构造业务依赖——那属于 composition.go；也不定义命令树——那属于 root.go。
-
 import (
 	"context"
 	"errors"
@@ -78,17 +73,16 @@ func (s *brokenPipeSignalState) restore() {
 	}
 }
 
-// Run 是一次 CLI 执行的完整生命周期，返回进程退出码。阶段划分如下：
+// Run 执行一条 CLI 命令并返回进程退出码，阶段顺序固定：
 //
-//  1. 构造本次执行的 app：只绑定输入/输出流与资源登记表，**不**打开任何资源；
-//  2. 装配命令树并绑定流与参数（assembling 依赖发生在各命令的 deps 调用点）；
-//  3. 执行命令：资源只有在命令真正请求时才会创建，因此 help/version/config path
-//     这类入口不会提前打开数据库或构造网络 client；
-//  4. 关闭资源：无论成功与否都按登记顺序逆序关闭，并把关闭错误并入退出原因；
-//  5. 结束诊断并决定退出码，其中 NDJSON 输出命令使用成功语义、其余按失败退出。
+// 1. 只用输入输出流和资源登记表构造 app，不打开资源；
+// 2. 装配命令树并绑定流与参数；
+// 3. 执行命令，资源在命令真正请求时才创建，help、version 不会提前打开数据库或网络 client；
+// 4. 无论成功与否都按登记逆序关闭资源，关闭错误并入退出原因；
+// 5. 结束诊断并映射退出码。
 //
-// 普通 NDJSON 输出与 MCP stdio 各自持有平台的 SIGPIPE 控制器：前者的 EPIPE 是下游
-// 正常停止，后者则是 JSON-RPC transport 错误。
+// 普通 NDJSON 输出与 MCP stdio 各自持有平台的 SIGPIPE 控制器：前者的 EPIPE 表示下游
+// 正常停止，后者属于 JSON-RPC transport 错误。
 func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
 	if len(args) == 0 {
 		args = []string{"pixiv"}
@@ -157,12 +151,14 @@ func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 	return 1
 }
 
-// startupError 保持解析成功后的启动副作用失败契约：它是命令启动失败，
-// 不是用户参数错误，因此使用普通 process-level exit code 1 且不伪装成 usage。
+// startupError 标记命令启动阶段的副作用失败。它不使用 usage 退出码，也不打印
+// "error:" 前缀，调用方据此区分启动失败与参数错误。
 type startupError struct{ err error }
 
+// Error 返回启动副作用的原始错误文本。
 func (e *startupError) Error() string { return e.err.Error() }
 
+// Unwrap 暴露启动失败的原始错误。
 func (e *startupError) Unwrap() error { return e.err }
 
 func normalizeFlagError(err error) error {
@@ -180,9 +176,8 @@ func normalizeFlagError(err error) error {
 	return err
 }
 
-// commandWritesNDJSON reports the explicit --ndjson request recorded by the
-// command's own flag. Automatic NDJSON is recorded by the command owner through
-// command.SetOutputNDJSON.
+// commandWritesNDJSON 只认命令自己 --ndjson flag 的显式取值；自动 NDJSON 由 command owner
+// 通过 command.SetOutputNDJSON 记录。
 func commandWritesNDJSON(cmd *cobra.Command) bool {
 	flag := cmd.Flags().Lookup("ndjson")
 	return flag != nil && flag.Changed && flag.Value.String() == "true"
@@ -192,8 +187,10 @@ func commandWritesNDJSON(cmd *cobra.Command) bool {
 // 网络和本地 I/O 错误不得包裹为此类型，以保持 shell 可区分的退出码语义。
 type usageError struct{ err error }
 
+// Error 返回参数校验的原始错误文本。
 func (e *usageError) Error() string { return e.err.Error() }
 
+// Unwrap 暴露参数校验的原始错误。
 func (e *usageError) Unwrap() error { return e.err }
 
 func newUsageError(err error) error {
@@ -247,9 +244,8 @@ func isQuietConfigCommand(cmd *cobra.Command) bool {
 	return cmd.CommandPath() == "pixiv config" || strings.HasPrefix(cmd.CommandPath(), "pixiv config ")
 }
 
-// enablePipelineSignal installs the NDJSON-only broken-pipe policy. Command
-// owners call it when they commit to a record stream, so non-NDJSON commands
-// keep the platform's default SIGPIPE behaviour.
+// enablePipelineSignal 安装 NDJSON 专用的 SIGPIPE 策略。command owner 只在确定输出记录流时
+// 调用，其他命令保留平台的默认 SIGPIPE 行为，否则普通输出被关闭管道截断会被误判为成功。
 func (a app) enablePipelineSignal() {
 	if a.pipelineSignal.stop != nil {
 		return

@@ -1,12 +1,10 @@
-// Package cli 是 CLI 组合根：它把命令树、执行生命周期与生产依赖装配
-// 组装成一个可运行的 pixiv 命令（以及 MCP stdio/HTTP runtime）。
+// Package cli 把命令树、执行生命周期和生产依赖装配成 pixiv 命令，也启动 MCP 的 stdio 与 HTTP runtime。
 //
-// 本文件持有命令树本身：app、命令树构建、常用 positional-args 与
-// prompt/flag 绑定等所有 command owner 共享的接线。
-//
-// 其余两个同包文件按职责拆分，便于在所属文件内理解一条完整流程：
-//   - execution.go：执行入口、退出码、资源关闭、启动与结束处理；
-//   - composition.go：Pixiv/FANBOX/MCP 的生产依赖装配。
+// 包的组成：[Run] 是唯一的执行入口，负责退出码与资源关闭。
+// 命令树在 root.go 组装，生产依赖在 composition.go 打开。
+// 配置到 SDK 选项的翻译在 composition_options.go，MCP runtime 在 composition_mcp.go，
+// 反向搜图在 composition_search.go。
+// 打开的数据库与 SDK 资源登记到本次执行的 closeState，由 [Run] 按逆序关闭。
 package cli
 
 import (
@@ -62,8 +60,8 @@ func (a app) newRootCommand() *cobra.Command {
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			requirement := command.For(cmd)
-			// An explicit --ndjson is known before the command runs; automatic
-			// NDJSON is installed by the command owner through AutoNDJSON.
+			// 显式 --ndjson 在执行前就可知；自动 NDJSON 由 command owner 经 AutoNDJSON 决定，
+			// 因此这里只处理前者。
 			if commandWritesNDJSON(cmd) {
 				a.enablePipelineSignal()
 			}
