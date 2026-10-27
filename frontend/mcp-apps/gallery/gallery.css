@@ -1,3 +1,4 @@
+/* MCP gallery 的样式：作品卡片、详情灯箱、控件与响应式布局。 */
 :root {
   color-scheme: light dark;
   font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
@@ -462,7 +463,7 @@ img {
   background: var(--bg-secondary);
 }
 
-/* vh would grow with the host-resized iframe; vw follows the stable host width. */
+/* 宿主会按内容调整 iframe 高度，vh 会随之增长；vw 跟随稳定的宿主宽度。 */
 /* 留边处垫同图的模糊放大版，而不是纯色条。 */
 .detail-media .media-frame img {
   background: transparent;
@@ -876,7 +877,7 @@ select:focus {
   }
 }
 
-/* Phones route vertical swipes to the chat, so an inner vertical scroller is unreachable; scroll results sideways. */
+/* 手机上垂直滑动交给聊天窗口，内部纵向滚动无法触达，因此结果横向滚动。 */
 @media (max-width: 599px) {
   #cards {
     padding: 16px;
