@@ -159,9 +159,7 @@ func (a app) runMCPHTTP(ctx context.Context, runtime settings.RuntimeConfig, sdk
 // configureMCPMedia 挂媒体阶段观测；日志只带固定阶段名和计数。
 func configureMCPMedia(lifecycleCtx context.Context, media *mediaproxy.Service, runtime settings.RuntimeConfig, readSession func(context.Context, pixivcmd.Request) (mediaproxy.Session, error), request mcp.Request) error {
 	return media.Configure(mediaproxy.Config{
-		Capacity:    runtime.MCPGalleryCacheCapacityMiB * (1 << 20),
-		TTL:         mediaproxy.DefaultCacheTTL,
-		Concurrency: mediaproxy.DefaultConcurrency,
+		Capacity: runtime.MCPGalleryCacheCapacityMiB * (1 << 20),
 		ObserveAnimation: func(requestCtx context.Context, event mediaproxy.AnimationObservation) {
 			logAnimation(lifecycleCtx, requestCtx, event)
 		},

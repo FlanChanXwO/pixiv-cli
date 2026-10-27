@@ -35,18 +35,16 @@ type AnimationObservation struct {
 	CancellationSource string
 }
 
-// DefaultCacheTTL and DefaultConcurrency are the fixed production cache lifetime and
-// per-kind upstream read limit; only Capacity remains user-configurable.
+// cacheTTL and readConcurrency are fixed production values; only Capacity is
+// user-configurable.
 const (
-	DefaultCacheTTL    = 15 * time.Minute
-	DefaultConcurrency = 4
+	cacheTTL        = 15 * time.Minute
+	readConcurrency = 4
 )
 
 // Config is loaded once at server startup; observers receive fixed stage names only.
 type Config struct {
 	Capacity         int64
-	TTL              time.Duration
-	Concurrency      int
 	Observe          func(context.Context, string, time.Duration)
 	ObserveAnimation func(context.Context, AnimationObservation)
 }
@@ -66,10 +64,10 @@ type readState struct {
 
 // Configure installs read sessions and the shared metadata/image budget before serving.
 func (s *Service) Configure(config Config, open func(context.Context, int64) (Session, error)) error {
-	if config.Capacity < 0 || config.TTL <= 0 || config.Concurrency <= 0 || open == nil {
+	if config.Capacity < 0 || open == nil {
 		return errors.New("invalid gallery read configuration")
 	}
-	s.reads = &readState{config: config, cache: newContentCache(config.Capacity), open: open, metadataSlots: make(chan struct{}, config.Concurrency), imageSlots: make(chan struct{}, config.Concurrency), flights: map[string]*metadataFlight{}}
+	s.reads = &readState{config: config, cache: newContentCache(config.Capacity), open: open, metadataSlots: make(chan struct{}, readConcurrency), imageSlots: make(chan struct{}, readConcurrency), flights: map[string]*metadataFlight{}}
 	return nil
 }
 func (s *Service) observe(ctx context.Context, stage string, start time.Time) {
@@ -133,7 +131,7 @@ func (s *Service) trackCacheSession(account int64, session Session) {
 func (s *Service) expiry(c claims, session Session) time.Time {
 	expiry := c.Expires
 	if s.reads != nil {
-		if ttl := time.Now().Add(s.reads.config.TTL); ttl.Before(expiry) {
+		if ttl := time.Now().Add(cacheTTL); ttl.Before(expiry) {
 			expiry = ttl
 		}
 	}
@@ -255,13 +253,8 @@ func (s *Service) Artwork(ctx context.Context, account, artwork int64) (pixiv.Ar
 	return s.metadata(ctx, c, session)
 }
 
-// ConcurrentReads reports the configured Gallery query worker count.
-func (s *Service) ConcurrentReads() int {
-	if s == nil || s.reads == nil {
-		return DefaultConcurrency
-	}
-	return s.reads.config.Concurrency
-}
+// ConcurrentReads reports the fixed Gallery query worker count.
+func (s *Service) ConcurrentReads() int { return readConcurrency }
 
 // HasReadSessions reports whether Configure installed the cached read path.
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
