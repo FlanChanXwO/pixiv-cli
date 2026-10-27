@@ -46,8 +46,9 @@ func (c *Client) newResource(kind string, id int64, page int, variant, rawURL st
 // ArtworkVariantResource returns a ResourceRef for another quality variant of the
 // same page. It decodes the stable identity from original.Ref and replaces the
 // variant, so SaveResource revalidates and resolves it exactly as it does
-// original. An empty variant or "original" returns original.Ref unchanged. Only
-// artwork references are accepted; other kinds return InvalidArgument.
+// original. An empty variant or "original" returns original.Ref unchanged
+// without inspecting the reference. Any other variant requires an artwork
+// reference; other kinds return InvalidArgument.
 func ArtworkVariantResource(original sdk.Resource, variant string) (sdk.ResourceRef, error) {
 	if variant == "" || variant == "original" {
 		return original.Ref, nil
@@ -144,7 +145,8 @@ func (c *Client) SaveResource(ctx context.Context, ref sdk.ResourceRef, options 
 
 // SaveResourceURL saves a policy-checked Pixiv CDN URL to Path. It reuses the
 // transport's Referer, redirect validation, and cookie suppression, and writes
-// atomically so a failed transfer leaves no file at Path.
+// atomically so a failed transfer leaves no partial file: Path keeps its previous
+// contents, or stays absent if it did not exist.
 func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk.SaveOptions) (sdk.SavedResource, error) {
 	ctx = logging.WithOperation(ctx, "SaveResourceURL")
 	const operation = "SaveResourceURL"

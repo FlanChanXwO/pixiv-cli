@@ -171,8 +171,9 @@ func (r *ResourceResponse) Header() http.Header {
 // ContentType returns the upstream media type, or empty when not provided.
 func (r *ResourceResponse) ContentType() string { return r.header.Get("Content-Type") }
 
-// ContentLength returns the upstream body size in bytes, or zero when absent or
-// malformed.
+// ContentLength parses the allowlisted Content-Length header, or returns zero
+// when it is absent or malformed. It describes the upstream representation, so a
+// HEAD or 304 response can report a non-zero length with an empty Body.
 func (r *ResourceResponse) ContentLength() int64 {
 	v := r.header.Get("Content-Length")
 	if v == "" {

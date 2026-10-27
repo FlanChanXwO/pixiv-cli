@@ -419,9 +419,9 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 }
 
 // RecommendedArtworks lists recommended artworks. Upstream expresses the next
-// page as a multi-parameter next_url (an offset=0 special case plus bookmark
-// cursor and viewed index arrays); the cursor replays that parameter set as a
-// unit and never stores the raw next_url.
+// page as a multi-parameter next_url; the cursor keeps the offset (including the
+// offset=0 second page) and bookmark cursor parameters as a unit, drops the
+// viewed index arrays, and never stores the raw next_url.
 func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArtworksRequest) (sdk.Page[Artwork], error) {
 	ctx = logging.WithOperation(ctx, "RecommendedArtworks")
 	base := url.Values{}

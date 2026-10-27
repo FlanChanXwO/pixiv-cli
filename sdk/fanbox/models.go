@@ -114,8 +114,9 @@ type PostBlock struct {
 	Unknown *PostUnknownBlock `json:"unknown"`
 }
 
-// Asset is one first-party media item of a post, in upstream display order and
-// including images inside article blocks.
+// Asset is one first-party media item of a post, including images inside
+// article blocks. Assets lists every image before every file, so it does not
+// preserve the cross-type order of Blocks.
 type Asset struct {
 	ID        string        `json:"id"`
 	Kind      AssetKind     `json:"kind"`
@@ -125,8 +126,9 @@ type Asset struct {
 }
 
 // PostBody carries a post's caption text, its ordered Blocks, and every
-// first-party media item flattened into Assets in display order. Restricted
-// posts have a nil Body and only summary fields.
+// first-party media item flattened into Assets. Assets groups images before
+// files; Blocks is the source of cross-type display order. Restricted posts have
+// a nil Body and only summary fields.
 type PostBody struct {
 	Text   string      `json:"text"`
 	Blocks []PostBlock `json:"blocks"`
