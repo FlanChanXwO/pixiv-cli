@@ -203,8 +203,8 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 }
 
 // UserNovelBookmarkTags lists the bookmark tags of one user's bookmarked
-// novels. The candidate upstream endpoint currently has no continuation
-// contract, so a non-zero cursor is rejected instead of being guessed.
+// novels. The upstream endpoint offers no continuation, so a non-zero cursor
+// returns InvalidCursor.
 func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBookmarkTagsRequest) (sdk.Page[BookmarkTag], error) {
 	ctx = logging.WithOperation(ctx, "UserNovelBookmarkTags")
 	if request.UserID <= 0 {
@@ -236,9 +236,9 @@ func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBoo
 	return sdk.Page[BookmarkTag]{Items: items}, nil
 }
 
-// NovelBookmark reads the current user's bookmark detail for one novel.
-// The upstream route is a candidate and is kept endpoint-oriented; it does
-// not expose novel metadata or mutation outcome through this method.
+// NovelBookmark reads the current user's bookmark detail for one novel. It
+// returns the visibility and tags only; novel metadata and mutation outcomes
+// come from the other novel operations.
 func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest) (NovelBookmarkDetail, error) {
 	ctx = logging.WithOperation(ctx, "NovelBookmark")
 	if request.NovelID <= 0 {
@@ -282,9 +282,8 @@ type UserNovelBookmarksRequest struct {
 }
 
 // UserNovelBookmarkTagsRequest lists the bookmark tags of one user's
-// bookmarked novels. The candidate upstream endpoint currently has no
-// continuation contract; Cursor is retained so the public page shape can be
-// extended without replacing this request type when that contract is frozen.
+// bookmarked novels. Cursor must stay zero because the upstream endpoint
+// offers no continuation.
 type UserNovelBookmarkTagsRequest struct {
 	UserID   int64
 	Restrict Restrict

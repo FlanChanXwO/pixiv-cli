@@ -7,9 +7,8 @@
 // types and operations; [Reference] for parsed page URLs; and [sdk.Resource]
 // with [Client.OpenResource] and [Client.SaveResource] for first-party media.
 // Pagination cursors stay internal and surface only as [sdk.Cursor].
-// Shared wire shapes live in response.go and artwork_wire.go. Novel HTML parsing
-// lives in novel_parse.go, and the cookie-scoped login relay sits outside this
-// package.
+// Shared wire shapes live in response.go and artwork_wire.go; novel HTML
+// parsing lives in novel_parse.go.
 //
 // Authentication is App-only: content operations require a valid access token
 // and fail with Unauthorized when one is absent; there is no anonymous or
