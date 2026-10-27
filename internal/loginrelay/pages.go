@@ -1,7 +1,3 @@
-// Login page rendering for the CLI and the remote relay. Pages are pure views:
-// they read no account state, handle no form submission, and load templates from
-// the embedded frontend sources.
-
 package loginrelay
 
 import (

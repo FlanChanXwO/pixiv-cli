@@ -1,4 +1,11 @@
-// Package pagination 提供与产品、账号和输出无关的逻辑分页算法。
+// Package pagination 提供逻辑分页、遍历与有序聚合流。
+//
+// 本包只处理 execute 生命周期、分页计划和 opaque cursor，不负责账号选择、网络策略、
+// 过滤语义或具体产品的错误映射。
+//
+// 包的组成：[TraversePages] 与 [CollectPagesFrom] 按 [PagePlan] 遍历单个 cursor 链，
+// [CollectFilteredPagesFrom] 在分页前过滤，[CollectStreams] 合并多条 [Stream]；
+// [TraverseWith] 系列把以上能力接到可重放的 execute 边界上。
 package pagination
 
 import (
@@ -7,7 +14,7 @@ import (
 	"fmt"
 )
 
-// Cursor 是分页算法所需的最小 continuation 契约。实现必须让零值表示没有
+// Cursor 约束分页算法所需的最小 continuation 契约：实现必须让零值表示没有
 // continuation，并提供稳定的文本形式以检测循环；算法不会解码或重建 cursor。
 type Cursor interface {
 	IsZero() bool

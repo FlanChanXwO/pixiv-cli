@@ -1,4 +1,11 @@
-// Package pixivapi owns Pixiv App requests, media policy, and their shared HTTP runtime.
+// Package pixivapi 提供 Pixiv App API 的传输层、媒体 URL 策略与失败分类。
+//
+// 本包不承载内容语义：端点路由与响应映射由 sdk/pixiv 持有，OAuth token 交换在
+// 子包 oauth。
+//
+// 包的组成：[Client] 发送 App 请求并缓存已校验的资源 locator，由 [New] 构造；
+// [Config] 是构造参数，[Failure] 是脱敏失败，[RequiredList] 与 [RequiredObject]
+// 解码必需字段；api.go 与 profile.go 声明路由、参数和请求头。
 package pixivapi
 
 import (
@@ -18,7 +25,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
-// Client owns App requests, shared HTTP lifetime, and validated resource locators.
+// Client 发送 Pixiv App 请求，持有共享 HTTP 生命周期与已校验的资源 locator 缓存。
+//
+// resourceMu 保护 resourceURLs；只有本 client 创建的 HTTP 连接会被关闭。
 type Client struct {
 	http                 *http.Client
 	ownsHTTP             bool
@@ -31,10 +40,10 @@ type Client struct {
 	resourceURLs         map[string]string
 }
 
-// Config 是 App API 客户端的构造参数；零值使用默认 HTTP client 和无认证。
+// Config 提供 App API 客户端的构造参数；零值使用默认 HTTP client 和无认证。
 type Config struct {
 	HTTPClient *http.Client
-	// OwnHTTPClient marks a client created by NewHTTPClient rather than injected.
+	// OwnHTTPClient 表示 HTTPClient 由 NewHTTPClient 创建，关闭时只释放这种 client。
 	OwnHTTPClient  bool
 	ResourceHosts  []string
 	AccessToken    string
@@ -44,7 +53,7 @@ type Config struct {
 	Logger *slog.Logger
 }
 
-// New builds an App API client from cfg.
+// New 按 cfg 构造 App API client；零值使用默认 HTTP client 且不带认证。
 func New(cfg Config) *Client {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {

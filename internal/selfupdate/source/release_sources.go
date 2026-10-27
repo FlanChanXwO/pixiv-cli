@@ -18,7 +18,7 @@ var releaseSourceIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
 //go:embed release_sources.txt
 var embeddedReleaseSources []byte
 
-// ReleaseSource 是一个版本内置的 GitHub Releases 传输路径。它只改变请求目的地，
+// ReleaseSource 表示一个版本内置的 GitHub Releases 传输路径。它只改变请求目的地，
 // 不改变版本选择、资产名称、签名或 checksum 的信任边界。
 type ReleaseSource struct {
 	id    string

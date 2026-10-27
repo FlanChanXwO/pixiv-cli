@@ -1,6 +1,9 @@
-// Package downloader 把用户给出的 Pixiv 来源展开成作品，再把每件作品的图片或
-// 动图写入下载目录。来源解析、批量执行、单作品下载和资源命名分别在
-// sources.go、batch.go、artwork.go、resource.go。
+// Package downloader 把用户给出的 Pixiv 来源展开成作品，再把每件作品的图片或动图
+// 写入下载目录。
+//
+// 包的组成：[DownloadService] 解析来源并驱动批量下载，[ArtworkDownloader] 下载单件
+// 作品，[DownloadRequest] 描述页、质量与命名选项，[DownloadReport] 汇总产物、失败与
+// 提示。来源解析在 sources.go，批量执行在 batch.go，ugoira 编码在 ugoira.go。
 package downloader
 
 import (
@@ -17,7 +20,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// DownloadClient 是下载实现从 public SDK operation snapshot 使用的最小能力集。
+// DownloadClient 定义下载实现从 public SDK operation snapshot 使用的最小能力集。
 // ResourceRef 由共享 sdk core 的 ParseResourceRef 解析；下载器只消费 opaque ref。
 type DownloadClient interface {
 	Artwork(context.Context, pixiv.ArtworkRequest) (pixiv.Artwork, error)
@@ -36,7 +39,7 @@ type DownloadService struct {
 	NewBatchDownloader func(client DownloadClient, downloadPath, filenameTemplate string) (BatchDownloader, error)
 }
 
-// DownloadSources 是 CLI/MCP 的入口：作品 PID、作品 URL、受资源策略允许的直链
+// DownloadSources 接收 CLI/MCP 输入的作品 PID、作品 URL 与资源策略允许的直链
 // 都原样交给 public SDK 解析。用户主页 URL 是唯一的本地展开规则，因为它代表
 // 一组作品而非单个 SDK 下载来源。
 func (s DownloadService) DownloadSources(ctx context.Context, client DownloadTargetClient, sources []string, request DownloadRequest) (report DownloadReport, returnErr error) {

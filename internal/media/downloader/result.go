@@ -1,5 +1,3 @@
-// 下载结果：成功产物、逐项失败与非阻断提示。输出适配器只读取这些字段。
-
 package downloader
 
 // downloadedResourceType 标记没有 artwork 元数据的直接资源产物。
@@ -9,6 +7,7 @@ const downloadedResourceType = "resource"
 // CLI/MCP 把原始 locator 回显到 stdout、JSON 或 structured result。
 const redactedDownloadSource = "[redacted source]"
 
+// DownloadedArtwork 保存一篇作品成功写出的文件集合，Files 按页码顺序排列。
 type DownloadedArtwork struct {
 	IllustID int64
 	Title    string
@@ -17,12 +16,13 @@ type DownloadedArtwork struct {
 	Files    []DownloadedFile
 }
 
+// DownloadedFile 保存一个已发布文件的绝对路径与 1-based 页码。
 type DownloadedFile struct {
 	Path string
 	Page int
 }
 
-// DownloadFailure 是一次无状态批量下载中单个作品或作者列表读取的可展示失败。
+// DownloadFailure 保存一次无状态批量下载中单个作品或作者列表读取的可展示失败。
 // Message 仅承接 SDK/下载器的安全错误文本，不保存用户输入的原始 URL。
 type DownloadFailure struct {
 	URL      string
@@ -33,7 +33,7 @@ type DownloadFailure struct {
 	Cause error
 }
 
-// DownloadWarning 是成功下载结果中需要调用方关注、但不阻止产物发布的提示。
+// DownloadWarning 保存成功下载结果中需要调用方关注、但不阻止产物发布的提示。
 // Message 仅承接安全的本地分类文本；输出 adapter 可以据此展示 warning。
 type DownloadWarning struct {
 	IllustID int64

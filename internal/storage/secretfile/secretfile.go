@@ -1,3 +1,8 @@
+// Package secretfile 以私有权限创建、读取和原子替换本机状态文件。
+//
+// 包的组成：[ReadJSON] 与 [WriteJSON] 处理 JSON 状态，[WriteSecretFile] 面向含凭据的文件，
+// [WritePrivateFile] 提供通用的原子替换，[EnsurePrivateDir] 与 [EnsurePrivateFile]
+// 建立目录和首次文件。
 package secretfile
 
 import (

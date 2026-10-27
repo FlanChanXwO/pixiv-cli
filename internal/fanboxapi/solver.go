@@ -15,15 +15,12 @@ import (
 )
 
 var (
-	// ErrSolverUnavailable means the direct control request could not reach the
-	// configured FlareSolverr service. It is distinct from a solver response
-	// that explicitly reports failure.
+	// ErrSolverUnavailable 表示控制请求无法到达配置的 FlareSolverr 服务，区别于服务明确
+	// 报告求解失败。
 	ErrSolverUnavailable = errors.New("fanbox: FlareSolverr service unavailable")
-	// ErrSolverFailed means FlareSolverr responded but did not solve the
-	// anonymous homepage challenge.
+	// ErrSolverFailed 表示 FlareSolverr 有响应，但没有解开匿名首页 challenge。
 	ErrSolverFailed = errors.New("fanbox: FlareSolverr could not solve challenge")
-	// ErrMalformedSolverResponse means the response could not satisfy the
-	// clearance-only state contract.
+	// ErrMalformedSolverResponse 表示响应不满足只接受 clearance 的状态契约。
 	ErrMalformedSolverResponse = errors.New("fanbox: malformed FlareSolverr response")
 )
 
@@ -102,9 +99,8 @@ func (s *Client) waitForSolver(ctx context.Context) (solverState, error) {
 		if call != nil {
 			call.cancel()
 		}
-		// The solver request owns its cancellation independently of any one
-		// waiter, while context values (including an opt-in diagnostics scope)
-		// remain available for the shared operation.
+		// solver 请求的取消独立于任何单个 waiter，但继续携带原 ctx 的值（含可选的诊断
+		// scope），供共享操作使用。
 		callContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
 		call = &solverCall{ctx: callContext, cancel: cancel, done: make(chan struct{}), waiters: 1}
 		s.solverActive = call
@@ -131,8 +127,7 @@ func (s *Client) unregisterSolverWaiter(call *solverCall) {
 	}
 	call.waiters--
 	if call.waiters == 0 {
-		// There is no caller left to consume this solve. Cancel the direct
-		// request and let runSolver discard any completion that races with it.
+		// 已没有调用方等待这次求解：取消直接请求，runSolver 丢弃随后完成的竞态结果。
 		call.cancel()
 	}
 }
@@ -227,8 +222,7 @@ func validateSolverSolution(solution *solverSolution) (solverState, error) {
 	count := 0
 	for _, cookie := range solution.Cookies {
 		if cookie.Name != "cf_clearance" {
-			// Other solver cookies are deliberately discarded and are not
-			// validated or counted toward the clearance contract.
+			// 其他 solver cookie 一律丢弃，不校验，也不计入 clearance 契约。
 			continue
 		}
 		count++

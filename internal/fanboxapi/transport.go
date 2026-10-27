@@ -1,6 +1,3 @@
-// FANBOX native transport: browser-shaped RoundTripper, proxy dialing, and option normalization.
-// Client construction lives in fanboxapi.go; request policy lives in protocol.go.
-
 package fanboxapi
 
 import (

@@ -7,7 +7,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
-// FileStore 是 config/settings 所需的最小文件端口。生产实现由 composition
+// FileStore 定义 config/settings 所需的最小文件端口。生产实现由 composition
 // root 注入；配置 schema 不直接依赖具体文件系统实现。
 type FileStore interface {
 	Path() (string, error)

@@ -23,10 +23,10 @@ const (
 	manifestAssetName  = "checksums.json"
 )
 
-// ReleaseSigningKeyID 是生产 Release 签名使用的受信 Ed25519 公钥 ID。
+// ReleaseSigningKeyID 保存生产 Release 签名使用的受信 Ed25519 公钥 ID。
 const ReleaseSigningKeyID = "ed25519-2c27e77742d3c33a"
 
-// ReleaseSigningPublicKey 是生产 Release 签名使用的受信 Ed25519 公钥。
+// ReleaseSigningPublicKey 保存生产 Release 签名使用的受信 Ed25519 公钥。
 var ReleaseSigningPublicKey = [...]byte{
 	0xee, 0xb2, 0xe2, 0xef, 0xdd, 0x60, 0xb0, 0x61,
 	0x6c, 0x0f, 0x61, 0x2b, 0xef, 0x59, 0xe1, 0xe5,
@@ -111,7 +111,7 @@ func (i *releaseInstaller) Install(ctx context.Context, rel release.Release) (er
 	return i.replaceExecutable(ctx, targetPath, candidatePath, workDir)
 }
 
-// prepareRelease validates the release identity and downloads/verifies its assets.
+// prepareRelease 校验 release 身份，并下载、校验其资产。
 func (i *releaseInstaller) prepareRelease(ctx context.Context, rel release.Release) (selectedReleaseAssets, error) {
 	version, err := release.ParseSemanticVersion(rel.TagName)
 	if err != nil {
@@ -158,7 +158,7 @@ func (i *releaseInstaller) prepareRelease(ctx context.Context, rel release.Relea
 	return assets, nil
 }
 
-// stageRelease locates the live binary and creates its sibling temporary workspace.
+// stageRelease 定位运行中的二进制，并在其旁边建立临时工作区。
 func (i *releaseInstaller) stageRelease() (string, string, error) {
 	targetPath, err := i.executablePath()
 	if err != nil {
@@ -184,7 +184,7 @@ func (i *releaseInstaller) cleanupWorkDir(err *error, workDir string) {
 	}
 }
 
-// replaceExecutable stages the verified binary next to the target and atomically replaces it.
+// replaceExecutable 把已校验二进制暂存到目标旁边，再原子替换目标。
 func (i *releaseInstaller) replaceExecutable(ctx context.Context, targetPath, candidatePath, workDir string) (err error) {
 	if err := source.CheckContext(ctx, "stage verified update"); err != nil {
 		return err

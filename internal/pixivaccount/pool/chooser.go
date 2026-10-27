@@ -1,6 +1,3 @@
-// 账号池的无 IO 选择器：按 strategy 从候选快照中选一个 UID。
-// 重放与冻结在 pool.go，错误映射在 replay.go。
-
 package pool
 
 import (

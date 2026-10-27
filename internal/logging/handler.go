@@ -1,6 +1,3 @@
-// slog handler：按配置输出 text 或 JSON；text 带来源位置和 errors.Join 的顶层原因，
-// 两种格式都从 ctx 附上 operation 与 call_id。
-
 package logging
 
 import (
@@ -16,7 +13,9 @@ import (
 )
 
 const (
+	// FormatText 输出带来源位置与人读错误链的文本日志。
 	FormatText = "text"
+	// FormatJSON 输出单行 JSON 日志对象。
 	FormatJSON = "json"
 
 	modulePrefix = "github.com/FlanChanXwO/pixiv-cli/"

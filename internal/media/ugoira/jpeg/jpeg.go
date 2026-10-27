@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package jpeg decodes ugoira JPEG frames using the legacy IDCT.
-// Parsing is adapted from Go 1.26.3 image/jpeg; see LICENSE.
+// Package jpeg 用旧版 IDCT 解码 ugoira 的 JPEG 帧。
 //
-// JPEG is defined in ITU-T T.81: https://www.w3.org/Graphics/JPEG/itu-t81.pdf.
+// 解析逻辑改编自 Go 1.26.3 的 image/jpeg，许可证见 LICENSE；JPEG 格式见
+// ITU-T T.81: https://www.w3.org/Graphics/JPEG/itu-t81.pdf。
+//
+// 解码器保留标准库实现的结构与算法，以匹配既有帧输出。
 package jpeg
 
 import (

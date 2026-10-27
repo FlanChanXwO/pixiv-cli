@@ -1,5 +1,11 @@
-// Package logging 是 CLI、MCP、SDK 共用的 slog 层：ctx 中的调用信息、属性键常量
-// 和可配置的 text/JSON handler。调用边界通过 WithCall 写入 operation 和 call_id。
+// Package logging 提供 CLI、MCP、SDK 共用的 slog 层：ctx 中的调用信息、属性键常量和
+// 可配置的 text/JSON handler。
+//
+// [WithCall] 由执行边界写入 operation 与 call_id，之后同一 ctx 上的日志都会附带这些
+// 字段；[WithOperation] 只登记 SDK 操作名。
+//
+// 包的组成：[New] 创建带调用上下文与脱敏行为的 handler，[From] 从 ctx 取 logger，
+// [AttrMethod] 等常量是各方共用的字段名，[WithCall] 与 [WithOperation] 负责绑定。
 package logging
 
 import (

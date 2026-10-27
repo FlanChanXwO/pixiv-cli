@@ -1,6 +1,3 @@
-// 来源分类：作品/用户 URL、裸 PID、opaque resource ref 与受资源策略允许的直链。
-// 用户页 URL 在这里展开为具体作品，其余来源交给 SDK 解析。
-
 package downloader
 
 import (
@@ -17,7 +14,7 @@ import (
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// DirectResourceClient 是直链 source 使用的窄端口；作品元数据下载仍只依赖 DownloadClient。
+// DirectResourceClient 定义直链 source 使用的窄端口；作品元数据下载仍只依赖 DownloadClient。
 type DirectResourceClient interface {
 	SaveResourceURL(context.Context, string, sdk.SaveOptions) (sdk.SavedResource, error)
 }

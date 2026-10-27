@@ -1,7 +1,3 @@
-// 账号选择与连接选项由 account leaf 负责；session.Fanbox 负责把默认账号
-// client 组合成明确的资源生命周期，避免调用方直接管理 SDK client 的释放。
-// Pixiv 的账号池与 rotation 编排在 pixiv.go。
-
 package session
 
 import (
@@ -15,7 +11,7 @@ import (
 // nilClient 表示账号叶服务成功返回了 nil client。
 var nilClient = errors.New("fanbox account service returned a nil client")
 
-// AccountOpener 是 account leaf 为 Fanbox 提供的最窄打开端口。
+// AccountOpener 定义 account leaf 为 Fanbox 提供的最窄打开端口。
 //
 // account.Service 实现此接口，并负责默认账号选择以及通过其
 // LoadOptionsFunc 加载 public sdk/fanbox.Options。ProxyOverride 只作用于
@@ -31,7 +27,7 @@ type OpenRequest struct {
 	ProxyOverride *string
 }
 
-// Fanbox 是 FANBOX 业务编排层。
+// Fanbox 编排 FANBOX 账号 client 的生命周期。
 //
 // Fanbox 不持有全局 client；每次 Open 都创建一个独立 Lease，调用方可以
 // 明确决定生命周期。Use 用于无法把 Lease 继续向上传递的 callback 场景。

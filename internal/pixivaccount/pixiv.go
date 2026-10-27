@@ -1,7 +1,10 @@
-// Package pixivaccount 定义 Pixiv 本地账号领域和持久化端口。
+// Package pixivaccount 提供 Pixiv 本地账号领域、凭据轮换持久化与公开 SDK 会话。
 //
-// 账号凭据由本包保持 opaque：调用方只能取得 defensive copy，默认格式化也
-// 不会把 refresh token 写入日志、错误或测试输出。
+// 账号凭据由本包保持 opaque：调用方只能取得副本，格式化与日志不会输出 refresh token。
+//
+// 包的组成：[Service] 负责账号选择、登录与凭据轮换，[Account] 是保存的账号记录，
+// [Repository] 与 [DefaultStore] 是存储端口，[ReadSessions] 为 MCP 复用读取会话，
+// [Chooser] 与 [Scheduler] 提供账号池的选择策略与执行编排。
 package pixivaccount
 
 import (
@@ -11,8 +14,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
-// Account 是一个已保存的 Pixiv 账号记录。除 refresh token 外的字段是
-// account/session 与 storage 共同需要的非 secret 状态。
+// Account 描述本机保存的一个 Pixiv 账号记录；除 refresh token 外的字段是会话与存储共用
+// 的非 secret 状态。
 type Account struct {
 	UserID             int64
 	SortOrder          int64
@@ -29,18 +32,18 @@ type Account struct {
 	Credential credential.Secret `json:"-"`
 }
 
-// New 创建一个带 opaque refresh token 的账号值。输入凭据会立即复制。
+// New 会立即复制 refreshToken，调用方之后修改原切片不影响账号。
 func New(userID int64, username string, refreshToken []byte) Account {
 	return Account{UserID: userID, Username: username, Credential: credential.New(refreshToken)}
 }
 
-// RefreshTokenCopy 返回 refresh token 的 defensive copy。
+// RefreshTokenCopy 返回 refresh token 的独立副本。
 func (a Account) RefreshTokenCopy() []byte { return a.Credential.Copy() }
 
-// HasRefreshToken reports whether the account contains a non-empty credential.
+// HasRefreshToken 报告账号是否保存了非空凭据。
 func (a Account) HasRefreshToken() bool { return !a.Credential.Empty() }
 
-// PoolCandidate 是 DB 事务交给纯 chooser 的 non-secret 快照项。
+// PoolCandidate 描述 DB 事务交给纯 chooser 的 non-secret 快照项。
 type PoolCandidate struct {
 	UserID           int64
 	SortOrder        int64
@@ -50,7 +53,7 @@ type PoolCandidate struct {
 	Eligible         bool
 }
 
-// PoolSnapshot 是一次选择事务中观察到的候选集合和 marker。
+// PoolSnapshot 描述一次选择事务中观察到的候选集合和 marker。
 type PoolSnapshot struct {
 	Candidates          []PoolCandidate
 	MarkerUserID        *int64
@@ -61,7 +64,7 @@ type PoolSnapshot struct {
 // Chooser 只基于事务快照选择 UID；实现不得执行 IO 或修改持久状态。
 type Chooser func(PoolSnapshot) (int64, error)
 
-// PoolStatus 是一个时间点上的完整 non-secret 调度快照。
+// PoolStatus 表示一个时间点上的完整 non-secret 调度快照。
 type PoolStatus struct {
 	Accounts            []PoolCandidate
 	EarliestFrozenUntil *int64
@@ -70,6 +73,8 @@ type PoolStatus struct {
 // PoolSelectionKind 区分账号池没有候选的真实原因。
 type PoolSelectionKind string
 
+// PoolSelectionNoLocalAccount、PoolSelectionNoSchedulable、PoolSelectionAllFrozen 与
+// PoolSelectionExhausted 区分为何没有可用账号，供调用方映射稳定错误。
 const (
 	PoolSelectionNoLocalAccount PoolSelectionKind = "no_local_account"
 	PoolSelectionNoSchedulable  PoolSelectionKind = "no_schedulable_account"
@@ -77,7 +82,7 @@ const (
 	PoolSelectionExhausted      PoolSelectionKind = "exhausted"
 )
 
-// PoolSelectionError 是不含 credential 的选择结果。
+// PoolSelectionError 描述不含 credential 的选择结果。
 type PoolSelectionError struct {
 	Kind                PoolSelectionKind
 	EarliestFrozenUntil *int64
@@ -96,7 +101,7 @@ var ErrNotFound = errors.New("pixiv account not found")
 // ErrCredentialConflict 表示 rotation 使用了过期的 credential revision。
 var ErrCredentialConflict = errors.New("pixiv account credential revision conflict")
 
-// Repository 是 database 直接实现的 Pixiv account storage port。
+// Repository 定义 database 直接实现的 Pixiv account storage port。
 type Repository interface {
 	SavePixivCredential(context.Context, Account) error
 	SavePixivCredentials(context.Context, []Account) error
@@ -112,7 +117,7 @@ type Repository interface {
 	Freeze(context.Context, int64, int64) error
 }
 
-// DefaultStore 是当前账号选择配置的 storage port；它不保存 credential。
+// DefaultStore 定义当前账号选择配置的 storage port；它不保存 credential。
 type DefaultStore interface {
 	ReadPixivDefaultUserID() (int64, bool, error)
 	SetPixivDefaultUserID(int64) error

@@ -1,6 +1,3 @@
-// Release verification: signed checksums and archive hashes.
-// Installation flow lives in release_installer.go; extraction in archive.go.
-
 package installer
 
 import (

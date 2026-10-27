@@ -66,7 +66,7 @@ func decodeRecordObject(data []byte) (map[string]any, error) {
 	if err := decoder.Decode(&value); err != nil {
 		return nil, fmt.Errorf("invalid record JSON object: %w", err)
 	}
-	// A record is exactly one JSON value: reject a second value or trailing bytes.
+	// 一条记录必须恰好是一个 JSON 值：第二个值或尾随字节都拒绝。
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		if err == nil {
 			return nil, errors.New("invalid record JSON object: trailing content after object")

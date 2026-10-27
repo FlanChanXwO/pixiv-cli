@@ -11,6 +11,7 @@ const (
 	settingInteger  settingKind = "integer"
 )
 
+// SettingSpec 汇集一个配置键的声明元数据，由 struct 字段标签派生。
 type SettingSpec struct {
 	Alias    Key
 	TOMLPath string
@@ -28,6 +29,7 @@ type SettingSpec struct {
 	CLIManaged bool
 }
 
+// SettingValue 给出某个键的有效值及其来源；HasValue 为 false 时该键未设置。
 type SettingValue struct {
 	Value    any
 	Text     string
@@ -35,22 +37,24 @@ type SettingValue struct {
 	HasValue bool
 }
 
+// Snapshot 给出一次执行内的不可变配置视图，由 [Store.Current] 生成。
 type Snapshot struct {
 	file map[string]any
 	env  map[Key]string
 }
 
+// RuntimeConfig 表示文件、环境变量与默认值合并后的配置结构；字段标签声明路径、别名和默认值。
 type RuntimeConfig struct {
 	MCPGalleryAnimationTempCapacityMiB int64 `config:"mcp.gallery_animation_temp_capacity_mib" alias:"mcp_gallery_animation_temp_capacity_mib" default:"1024" cli:"true"`
 	MCPGalleryCacheCapacityMiB         int64 `config:"mcp.gallery_cache_capacity_mib" alias:"mcp_gallery_cache_capacity_mib" default:"256" cli:"true"`
 
-	// DownloadPath 是作品下载根目录；未配置时使用相对当前工作目录的路径。
+	// DownloadPath 保存作品下载根目录；未配置时使用相对当前工作目录的路径。
 	DownloadPath string `config:"download.path" alias:"download_path" env:"DOWNLOAD_PATH" default:"./downloads" cli:"true" example:"true"`
 
-	// FilenameTemplate 是下载文件名模板，进入首次生成的精简配置。
+	// FilenameTemplate 保存下载文件名模板，进入首次生成的精简配置。
 	FilenameTemplate string `config:"download.filename_template" alias:"filename_template" env:"FILENAME_TEMPLATE" default:"{author} - {title}_{id}" cli:"true" example:"true"`
 
-	// DirectoryTemplate 是可选下载子目录模板；没有默认值，因此不进入精简配置。
+	// DirectoryTemplate 保存可选的下载子目录模板；没有默认值，因此不进入精简配置。
 	DirectoryTemplate string `config:"download.directory_template" alias:"directory_template" env:"DIRECTORY_TEMPLATE" cli:"true"`
 
 	// HTTPSProxy 保留小写环境变量优先于大写环境变量的现有顺序，且没有默认值。
@@ -94,44 +98,38 @@ type RuntimeConfig struct {
 	AccountPool AccountPoolConfig `config:"account_pool"`
 }
 
-// OptionalString preserves the difference between an absent advanced TOML
-// key and an explicitly configured empty string. That distinction is required
-// for service-scoped proxy routing: an empty service value means direct access
-// instead of inheriting the global fallback.
+// OptionalString 区分「高级 TOML 键不存在」与「显式配置为空字符串」。服务级代理
+// 依赖这一点：服务值为空表示直连，会覆盖全局 fallback 代理。
 type OptionalString struct {
 	Present bool   `json:"present"`
 	Value   string `json:"value,omitempty"`
 }
 
-// ServiceNetworkConfig contains only service-local network settings. These
-// values are not aliases and are intentionally absent from the generated
-// baseline config until a user writes the advanced TOML table.
+// ServiceNetworkConfig 保存服务级网络设置；这些键没有别名，只有用户在高级 TOML 表
+// 中显式写入时才生效，不会出现在生成的初始配置里。
 type ServiceNetworkConfig struct {
 	ProxyURL  OptionalString `config:"proxy_url" json:"proxy_url"`
 	UserAgent OptionalString `config:"user_agent" json:"user_agent"`
 }
 
-// PixivNetworkConfig 是 Pixiv 服务级网络的**窄类型**：它只有 proxy_url。
-//
-// Pixiv 与 FANBOX/反搜的网络字段并不相同：Pixiv 不接受服务级 user_agent。之前用
-// 共享结构体 + `includeUserAgent` 程序分支来维持这个差异，容易在重构中被误删。
-// 用独立类型表达后，`pixiv.network.user_agent` 在类型层面就无法表达，也无法被绑定，
-// 因此不会在重构中意外变成新的用户可配置能力。
+// PixivNetworkConfig 只接受 proxy_url：Pixiv 没有服务级 user_agent，独立类型让
+// `pixiv.network.user_agent` 无法表达，也无法被绑定。
 type PixivNetworkConfig struct {
 	ProxyURL OptionalString `config:"proxy_url" json:"proxy_url"`
 }
 
-// FlareSolverrConfig describes the optional external challenge-recovery
-// service. It is nil when the whole table is absent, which keeps the default
-// runtime free of any solver dependency.
+// FlareSolverrConfig 保存可选的 Cloudflare challenge 恢复服务地址。整张表缺失时该字段
+// 为 nil，默认运行时不依赖 solver。
 type FlareSolverrConfig struct {
 	URL      string `config:"url" json:"url"`
 	ProxyURL string `config:"proxy_url" json:"proxy_url,omitempty"`
 }
 
-// LogLevel 是日志级别配置的取值。
+// LogLevel 枚举日志级别配置的取值。
 type LogLevel string
 
+// LogLevelInfo、LogLevelDebug、LogLevelWarn 与 LogLevelError 是 [RuntimeConfig.LogLevel]
+// 接受的全部值，也是命令行诊断输出的级别。
 const (
 	LogLevelInfo  LogLevel = "info"
 	LogLevelDebug LogLevel = "debug"
@@ -139,24 +137,27 @@ const (
 	LogLevelError LogLevel = "error"
 )
 
-// LogFormat 是诊断输出格式配置的取值。
+// LogFormat 枚举诊断输出格式配置的取值。
 type LogFormat string
 
+// LogFormatText 输出带来源位置的文本，LogFormatJSON 输出 JSON 对象。
 const (
 	LogFormatText LogFormat = "text"
 	LogFormatJSON LogFormat = "json"
 )
 
+// AccountPoolStrategy 选择账号池在多个可用账号之间的调度方式。
 type AccountPoolStrategy string
 
+// AccountPoolStrategyRoundRobin 按 sort_order 轮转，AccountPoolStrategyRandom 随机选取。
 const (
 	AccountPoolStrategyRoundRobin AccountPoolStrategy = "round_robin"
 	AccountPoolStrategyRandom     AccountPoolStrategy = "random"
 )
 
 // AccountPoolConfig 描述内容读取和作品下载是否启用数据库账号调度及其策略。
-// UID、冻结时间和 marker 不进入 config.toml。字段标签驱动声明；[account_pool]
-// 表仍直接读取，策略枚举由 accountPool() 的领域校验负责。
+//
+// UID、冻结时间和 marker 不进入 config.toml，策略枚举的有效性由领域读取负责。
 type AccountPoolConfig struct {
 	Enabled  bool                `config:"enabled" alias:"account_pool_enabled" default:"false" cli:"true"`
 	Strategy AccountPoolStrategy `config:"strategy" alias:"account_pool_strategy" default:"round_robin" cli:"true"`

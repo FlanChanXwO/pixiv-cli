@@ -1,5 +1,10 @@
 // Package reversesearch 提供反向搜图的领域契约、载荷生命周期与 provider 编排。
-// 协议适配器位于子包；CLI/MCP 只依赖本顶层包。
+//
+// 协议适配器位于子包；CLI/MCP 只依赖本顶层包，provider 的传输细节不越过该边界。
+//
+// 包的组成：[Service] 固化 source 并返回 [Response]，[Loader] 与 [Snapshot] 管理
+// 私有载荷，[Aggregator] 并发编排 provider，[Error] 携带稳定 [ErrorCode]；
+// [ProviderClient]、[ASCII2DClient] 是 provider 端口。
 package reversesearch
 
 import (
@@ -10,6 +15,8 @@ import (
 // Provider 标识一次查询选择的上游能力。
 type Provider string
 
+// ProviderSauceNAO、ProviderASCII2DColor、ProviderASCII2DBOVW 与 ProviderAll 是请求
+// 可选择的 provider；all 会并发查询前三者并按固定顺序返回摘要。
 const (
 	ProviderSauceNAO     Provider = "saucenao"
 	ProviderASCII2DColor Provider = "ascii2d-color"
@@ -17,28 +24,29 @@ const (
 	ProviderAll          Provider = "all"
 )
 
-// SourceKind 是已经载入本地快照的原始来源类别，不携带 source 本身。
+// SourceKind 枚举已经载入本地快照的原始来源类别，不携带 source 本身。
 type SourceKind string
 
+// SourceKindFile 与 SourceKindURL 区分快照来自本地文件还是 HTTP(S) URL。
 const (
 	SourceKindFile SourceKind = "file"
 	SourceKindURL  SourceKind = "url"
 )
 
-// Request 是一次反向搜图请求。凭据、HTTP client 和代理均为构造依赖。
+// Request 保存一次反向搜图请求。凭据、HTTP client 和代理均为构造依赖。
 type Request struct {
 	Source    string
 	Provider  Provider
 	PixivOnly bool
 }
 
-// Input 是可安全进入 JSON/MCP 输出的输入摘要。
+// Input 汇总可安全进入 JSON/MCP 输出的输入。
 type Input struct {
 	Kind   SourceKind `json:"kind"`
 	SHA256 string     `json:"sha256"`
 }
 
-// Response 是 service 层的稳定领域 envelope；它不依赖 CLI/MCP 的 Record 类型。
+// Response 携带 service 层的稳定领域 envelope；它不依赖 CLI/MCP 的 Record 类型。
 type Response struct {
 	Input          Input             `json:"input"`
 	Providers      []ProviderSummary `json:"providers"`
@@ -50,12 +58,14 @@ type Response struct {
 // ProviderStatus 描述 provider 是否产生了可用响应。
 type ProviderStatus string
 
+// ProviderStatusSuccess 表示 provider 产生了可用响应，ProviderStatusError 表示该 provider
+// 在 partial 结果中失败。
 const (
 	ProviderStatusSuccess ProviderStatus = "success"
 	ProviderStatusError   ProviderStatus = "error"
 )
 
-// ProviderSummary 是按请求固定顺序发布的 provider 执行摘要。
+// ProviderSummary 汇总按请求固定顺序发布的 provider 执行摘要。
 type ProviderSummary struct {
 	Name        Provider       `json:"name"`
 	Status      ProviderStatus `json:"status"`
@@ -63,22 +73,23 @@ type ProviderSummary struct {
 	Quota       *Quota         `json:"quota,omitempty"`
 }
 
-// ProviderError 是可安全跨 CLI/MCP 边界发布的 provider 错误。
+// ProviderError 携带可安全跨 CLI/MCP 边界发布的 provider 错误。
 type ProviderError struct {
 	Provider Provider  `json:"provider"`
 	Code     ErrorCode `json:"code"`
 	Message  string    `json:"message"`
 }
 
-// PixivRefType 是严格识别出的 Pixiv canonical identity 类型。
+// PixivRefType 枚举严格识别出的 Pixiv canonical identity 类型。
 type PixivRefType string
 
+// PixivRefArtwork 与 PixivRefUser 是能严格识别的 Pixiv 身份类型。
 const (
 	PixivRefArtwork PixivRefType = "artwork"
 	PixivRefUser    PixivRefType = "user"
 )
 
-// PixivRef 是不猜测 artwork subtype 的 canonical Pixiv identity。
+// PixivRef 保存严格识别出的 canonical Pixiv identity，不猜测 artwork subtype。
 type PixivRef struct {
 	Type PixivRefType `json:"type"`
 	ID   int64        `json:"id"`
@@ -96,7 +107,7 @@ type Evidence struct {
 	ExternalURLs []string `json:"external_urls,omitempty"`
 }
 
-// Result 是一个可选 canonical Pixiv identity 及其一个或多个 provider 证据。
+// Result 汇总一个可选 canonical Pixiv identity 及其一个或多个 provider 证据。
 type Result struct {
 	Pixiv    *PixivRef  `json:"pixiv,omitempty"`
 	Title    string     `json:"title,omitempty"`
@@ -104,7 +115,7 @@ type Result struct {
 	Evidence []Evidence `json:"evidence"`
 }
 
-// Quota 是 provider 可安全公开的剩余额度摘要，不包含凭据或账号标识。
+// Quota 表示 provider 可安全公开的剩余额度摘要，不包含凭据或账号标识。
 type Quota struct {
 	ShortRemaining int `json:"short_remaining"`
 	LongRemaining  int `json:"long_remaining"`
@@ -112,7 +123,7 @@ type Quota struct {
 	LongLimit      int `json:"long_limit"`
 }
 
-// Match 是单个 provider 的原始领域命中。Canonical Pixiv 去重与 evidence
+// Match 记录单个 provider 的原始领域命中。Canonical Pixiv 去重与 evidence
 // 聚合属于顶层 aggregator，而不是协议 adapter。
 type Match struct {
 	Rank         int      `json:"rank"`
@@ -126,33 +137,33 @@ type Match struct {
 	ExternalURLs []string `json:"external_urls,omitempty"`
 }
 
-// ProviderResponse 是一次 provider 查询的领域结果；其数据所有权交给 aggregator，
+// ProviderResponse 携带一次 provider 查询的领域结果；其数据所有权交给 aggregator，
 // 后者可按 rank 排序并将 evidence、quota 直接交给最终响应。
 type ProviderResponse struct {
 	Matches []Match `json:"matches"`
 	Quota   *Quota  `json:"quota,omitempty"`
 }
 
-// ProviderClient 是 aggregator 注入的 provider 端口。
+// ProviderClient 定义 aggregator 注入的 provider 端口。
 type ProviderClient interface {
 	Closer
 	Preflight(context.Context) error
 	Search(context.Context, *Snapshot) (ProviderResponse, error)
 }
 
-// ASCII2DClient 是 aggregator 注入的 ascii2d 上传端口。一次上传返回的
+// ASCII2DClient 定义 aggregator 注入的 ascii2d 上传端口。一次上传返回的
 // session 可供 color 与 bovw 并发查询，避免重复外传同一图片。
 type ASCII2DClient interface {
 	Closer
 	Upload(context.Context, *Snapshot) (ASCII2DSession, error)
 }
 
-// ASCII2DSession 是一次 ascii2d 上传产生的查询端口。
+// ASCII2DSession 定义一次 ascii2d 上传产生的查询端口。
 type ASCII2DSession interface {
 	Search(context.Context, Provider) (ProviderResponse, error)
 }
 
-// Searcher 是 CLI/MCP 依赖的反向搜图端口。
+// Searcher 定义 CLI/MCP 依赖的反向搜图端口。
 type Searcher interface {
 	Search(context.Context, Request) (Response, error)
 }
@@ -168,6 +179,7 @@ type Service struct {
 	payloads *Aggregator
 }
 
+// NewService 组合 source 载入与 provider 编排；两个依赖都由调用方负责关闭。
 func NewService(sources *Loader, payloads *Aggregator) *Service {
 	return &Service{sources: sources, payloads: payloads}
 }

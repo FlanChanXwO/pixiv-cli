@@ -1,10 +1,9 @@
-// Package version exposes metadata embedded by the Go linker at build time.
 package version
 
 // Version 由发布构建通过 -ldflags -X 覆盖；本地开发构建保留可识别的默认值。
 var Version = "dev"
 
-// Info 是 CLI 可安全展示的构建元数据。
+// Info 提供 CLI 可安全展示的构建元数据。
 type Info struct {
 	Version string `json:"version"`
 }

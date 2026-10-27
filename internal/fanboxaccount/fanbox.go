@@ -1,5 +1,3 @@
-// Package fanboxaccount 定义 FANBOX 本地账号领域和独立 storage port。
-// FANBOX 的账号选择、会话校验和存储端口独立于 Pixiv。
 package fanboxaccount
 
 import (
@@ -9,7 +7,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
-// Account 是一个已保存的 FANBOX 账号记录。session ID 是 opaque credential。
+// Account 描述一个已保存的 FANBOX 账号记录。session ID 是 opaque credential。
 type Account struct {
 	UserID             int64
 	SortOrder          int64
@@ -31,13 +29,13 @@ func New(userID int64, displayName, creatorID string, sessionID []byte) Account 
 // SessionIDCopy 返回 session 的 defensive copy。
 func (a Account) SessionIDCopy() []byte { return a.Credential.Copy() }
 
-// HasSession reports whether the account contains a non-empty session.
+// HasSession 报告账号是否保存了非空 session。
 func (a Account) HasSession() bool { return !a.Credential.Empty() }
 
 // ErrNotFound 表示按 ID 找不到账号。
 var ErrNotFound = errors.New("fanbox account not found")
 
-// Repository 是 database 直接实现的 FANBOX account storage port。
+// Repository 定义 database 直接实现的 FANBOX account storage port。
 type Repository interface {
 	SaveFanboxCredential(context.Context, Account) error
 	ListFanbox(context.Context) ([]Account, error)
@@ -45,7 +43,7 @@ type Repository interface {
 	RemoveFanbox(context.Context, int64) error
 }
 
-// DefaultStore 是 FANBOX 当前账号选择配置的 storage port。
+// DefaultStore 定义 FANBOX 当前账号选择配置的 storage port。
 type DefaultStore interface {
 	ReadFanboxDefaultUserID() (int64, bool, error)
 	SetFanboxDefaultUserID(int64) error

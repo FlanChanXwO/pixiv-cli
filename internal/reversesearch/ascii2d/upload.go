@@ -1,6 +1,3 @@
-// ascii2d image upload: CSRF-protected multipart request and redirect validation.
-// Session construction lives in ascii2d.go.
-
 package ascii2d
 
 import (

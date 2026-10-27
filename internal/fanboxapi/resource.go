@@ -1,6 +1,3 @@
-// FANBOX 媒体 URL 策略：允许的主机、是否需要会话 Cookie，以及资源 URL 校验。
-// 媒体请求发送在 protocol.go，定位缓存由 fanboxapi.go 的 Client 持有。
-
 package fanboxapi
 
 import (
@@ -9,19 +6,15 @@ import (
 	"strings"
 )
 
-// Referer is the non-secret referer required by FANBOX media requests.
+// Referer 保存 FANBOX 媒体请求需要的非 secret Referer。
 const Referer = WebBaseURL
 
-// DownloadsHost is the first-party FANBOX attachment host whose media URLs
-// require the FANBOXSESSID cookie. Resources on this host are credentialed and
-// callers must open them through OpenResource rather than treating the URL as
-// a public link; Pixiv CDN and other allowlisted media hosts are public.
+// DownloadsHost 标识需要 FANBOXSESSID Cookie 的一手 FANBOX 附件主机。该主机的资源带
+// 凭据，必须经 OpenResource 打开；Pixiv CDN 与其他允许的媒体主机是公开链接。
 const DownloadsHost = "downloads.fanbox.cc"
 
-// RequiresCredentials reports whether rawURL points at a credentialed FANBOX
-// attachment host. It parses rawURL defensively and returns false on any parse
-// error so callers treat unparseable locators as public (and let the host
-// allowlist reject them later) rather than falsely advertising credentials.
+// RequiresCredentials 报告 rawURL 是否指向需要凭据的 FANBOX 附件主机。解析失败时返回
+// false，让调用方把无法解析的 locator 当作公开链接，后续由主机 allowlist 拒绝。
 func RequiresCredentials(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -30,7 +23,7 @@ func RequiresCredentials(rawURL string) bool {
 	return strings.EqualFold(parsed.Hostname(), DownloadsHost)
 }
 
-// ValidateURL validates a FANBOX asset locator without opening it.
+// ValidateURL 只校验 FANBOX 资源 locator，不打开请求。
 func ValidateURL(rawURL string) error {
 	parsed, err := parseAllowedURL(rawURL, requestKindMedia)
 	if err != nil {

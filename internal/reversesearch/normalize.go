@@ -1,5 +1,3 @@
-// Result normalization merges provider-owned evidence by strict Pixiv identity.
-
 package reversesearch
 
 import (

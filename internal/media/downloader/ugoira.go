@@ -1,5 +1,3 @@
-// ugoira 下载：取元数据、选择归档、写出 zip 并编码为 GIF 或 APNG。
-
 package downloader
 
 import (

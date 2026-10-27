@@ -1,5 +1,3 @@
-// FANBOX API routes and query parameter names.
-
 package fanboxapi
 
 // FANBOX API 路径，相对 APIBaseURL。

@@ -16,7 +16,7 @@ type Stream[T any, C Cursor] struct {
 	Checkpoint func(C, int) (C, error)
 }
 
-// StreamState 是聚合流的可恢复位置。Current 指向下一次读取的流，Cursors
+// StreamState 表示聚合流的可恢复位置。Current 指向下一次读取的流，Cursors
 // 保存每个流各自的 continuation；已完成的流使用零 cursor。它只承载共享
 // 算法需要的结构，不负责产品 cursor 的编码或 binding。
 type StreamState[C Cursor] struct {

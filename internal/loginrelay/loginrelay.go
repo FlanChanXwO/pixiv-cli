@@ -1,4 +1,11 @@
-// Package loginrelay owns one-shot remote login and the shared callback protocol.
+// Package loginrelay 提供一次性远程登录的 HTTP 会话与回调协议，供 CLI 和桌面协议处理器共用。
+//
+// [Session] 只接受一次回调并发布结果，监听器与账号库由调用方负责；页面渲染由
+// pages.go 提供，回调 URL 规则由 protocol.go 提供。
+//
+// 包的组成：[New] 构造一次登录会话，[Session] 承载 handler 生命周期，
+// [RemoteLoginStartResponse] 与 [RelayResultURLHeader] 是协议值，
+// [WriteManual]、[WriteCallbackRelay]、[WriteFinalPage] 输出页面。
 package loginrelay
 
 import (
@@ -80,7 +87,7 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 	var resultWaiterMu sync.Mutex
 	resultWaiterAdded := false
 	var finalOnce sync.Once
-	// finalReady/finalPageWritten publish finalStatus before either handler reads it.
+	// finalReady/finalPageWritten 在任一 handler 读取前发布 finalStatus。
 	finalStatus := false
 	finalReady := make(chan struct{})
 	finalPageWritten := make(chan struct{})

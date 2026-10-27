@@ -1,4 +1,3 @@
-// Package searchfilter owns local content filters and their continuation binding.
 package searchfilter
 
 import (
@@ -10,7 +9,7 @@ import (
 	"strings"
 )
 
-// Rating 是产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。
+// Rating 给出产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。
 type Rating string
 
 // Rating 的 canonical 值。
@@ -22,7 +21,7 @@ const (
 	RatingMature Rating = "mature"
 )
 
-// ContentType 是 artwork 结果的本地 subtype/selector 语义。
+// ContentType 枚举 artwork 结果的本地 subtype/selector 语义。
 type ContentType string
 
 // ContentType 的 canonical 值。
@@ -138,7 +137,7 @@ func matchesContentType(contentType ContentType, kind string) bool {
 		return true
 	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
-	// Artwork.Kind keeps the upstream spelling; compare it with the public illust value.
+	// Artwork.Kind 保留 upstream 拼写，这里与公开的 illust 取值比较。
 	if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
 		kind = string(ContentTypeIllust)
 	}

@@ -1,7 +1,11 @@
 // Package pool 实现 Pixiv 账号池的选择、冻结与安全重放策略。
 //
-// 账号凭据和持久化事务由 account leaf 提供；本包只编排候选选择、
-// attempt 排除、冻结时间和可安全重放的错误。
+// 账号凭据和持久化事务由 account leaf 提供；本包只编排候选选择、attempt 排除、
+// 冻结时间和可安全重放的错误。
+//
+// 包的组成：[Scheduler] 驱动可重放的尝试序列，[PoolState] 是状态读取端口，
+// [Gate] 串行化会消耗同一 refresh token 的执行；chooser.go 与 replay.go 分别处理
+// 候选选择与错误映射。
 package pool
 
 import (
@@ -19,7 +23,7 @@ import (
 // ErrAccountPoolExhausted 表示自然候选集合已耗尽。
 var ErrAccountPoolExhausted = errors.New("account pool has no available account")
 
-// PoolState 是数据库实现的最窄 scheduler port。选择器只接收事务快照，
+// PoolState 定义数据库实现的最窄 scheduler port。选择器只接收事务快照，
 // scheduler 不持有 SQL 或 marker 状态。
 type PoolState interface {
 	SelectPixiv(context.Context, int64, []int64, pixivaccount.Chooser) (pixivaccount.Account, error)
