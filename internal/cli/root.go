@@ -62,7 +62,11 @@ func (a app) newRootCommand() *cobra.Command {
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			requirement := command.For(cmd)
-			a.enablePipelineSignal(cmd)
+			// An explicit --ndjson is known before the command runs; automatic
+			// NDJSON is installed by the command owner through AutoNDJSON.
+			if commandWritesNDJSON(cmd) {
+				a.enablePipelineSignal()
+			}
 			if !cmd.Flags().Changed("port") {
 				a.enableMCPBrokenPipeSignal(requirement)
 			}

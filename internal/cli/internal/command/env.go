@@ -28,6 +28,9 @@ type Env struct {
 	// ResolveJSON returns the effective JSON setting; a nil override reads it
 	// from runtime configuration.
 	ResolveJSON func(*bool) (bool, error)
+	// EnablePipelineSignal installs the execution boundary's broken-pipe policy
+	// before the first NDJSON write. It must be idempotent.
+	EnablePipelineSignal func()
 }
 
 // ProxyOptions holds one command's --proxy/--no-proxy values.
@@ -184,13 +187,20 @@ func (e Env) ConsumeActionRecords(cmd *cobra.Command, operation, onError string,
 
 // AutoNDJSON keeps each list command's existing automatic record-stream rule:
 // an explicit --json or resolved JSON mode wins, otherwise piped stdout streams
-// records unless --ndjson was already requested.
+// records unless --ndjson was already requested. It records the effective
+// decision on the command so the execution boundary classifies early pipe
+// closure without a command-path list.
 func (e Env) AutoNDJSON(cmd *cobra.Command, ndjson, jsonOut bool) bool {
-	if ndjson || jsonOut || cmd.Flags().Changed("json") {
-		return ndjson
+	effective := ndjson
+	if !ndjson && !jsonOut && !cmd.Flags().Changed("json") {
+		file, ok := e.Out.(interface{ Fd() uintptr })
+		effective = ok && !term.IsTerminal(int(file.Fd()))
 	}
-	file, ok := e.Out.(interface{ Fd() uintptr })
-	return ok && !term.IsTerminal(int(file.Fd()))
+	SetOutputNDJSON(cmd, effective)
+	if effective && e.EnablePipelineSignal != nil {
+		e.EnablePipelineSignal()
+	}
+	return effective
 }
 
 // OutputIsTTY reports whether stdout is a terminal.

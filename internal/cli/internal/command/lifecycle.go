@@ -11,6 +11,24 @@ const LifecycleAnnotationKey = "pixiv-cli.lifecycle"
 // 把下游关闭管道造成的 EPIPE 视为正常结束。
 const OutputNDJSONAnnotationKey = "pixiv-cli.output-ndjson"
 
+// SetOutputNDJSON records whether this execution writes canonical NDJSON to
+// stdout. The root reads it to treat a downstream closed pipe as success.
+func SetOutputNDJSON(cmd *cobra.Command, enabled bool) {
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string)
+	}
+	if enabled {
+		cmd.Annotations[OutputNDJSONAnnotationKey] = "true"
+		return
+	}
+	cmd.Annotations[OutputNDJSONAnnotationKey] = "false"
+}
+
+// OutputNDJSON reports the decision recorded by [SetOutputNDJSON].
+func OutputNDJSON(cmd *cobra.Command) bool {
+	return cmd.Annotations[OutputNDJSONAnnotationKey] == "true"
+}
+
 // Execution 描述 root 在命令执行前后负责的通用生命周期行为。业务资源由各
 // command owner 的窄依赖端口按需创建，不在这里声明或定位。
 type Execution struct {

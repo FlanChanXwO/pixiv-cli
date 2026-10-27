@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,7 +21,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 )
 
 // logState 保存本次执行的 logger；命令结束后写一条终止 ERROR。
@@ -132,7 +130,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	}
 	// 阶段 5：结束诊断并映射退出码（NDJSON 命令走成功语义）。
 	err = a.finishLogging(err)
-	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || commandAutoWritesNDJSON(target, out))
+	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || command.OutputNDJSON(target))
 }
 
 func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
@@ -183,29 +181,12 @@ func normalizeFlagError(err error) error {
 	return err
 }
 
+// commandWritesNDJSON reports the explicit --ndjson request recorded by the
+// command's own flag. Automatic NDJSON is recorded by the command owner through
+// command.SetOutputNDJSON.
 func commandWritesNDJSON(cmd *cobra.Command) bool {
 	flag := cmd.Flags().Lookup("ndjson")
 	return flag != nil && flag.Changed && flag.Value.String() == "true"
-}
-
-// commandAutoWritesNDJSON 与各视觉列表实际的 stdout 判定保持一致，让下游主动
-// 关闭管道时可按 Unix 习惯结束而不把 EPIPE 误报为命令失败。
-func commandAutoWritesNDJSON(cmd *cobra.Command, out io.Writer) bool {
-	if cmd.Flags().Changed("json") {
-		return false
-	}
-	if value, ok := cmd.Annotations[command.OutputNDJSONAnnotationKey]; ok {
-		return value == "true"
-	}
-	file, ok := out.(interface{ Fd() uintptr })
-	if !ok || term.IsTerminal(int(file.Fd())) {
-		return false
-	}
-	return slices.Contains([]string{
-		"pixiv search", "pixiv ranking", "pixiv recommended",
-		"pixiv timeline following", "pixiv timeline latest",
-		"pixiv mypixiv works", "pixiv user artworks", "pixiv user bookmarks",
-	}, cmd.CommandPath())
 }
 
 // usageError 标记由 CLI 参数、flag 或显式输入契约验证导致的错误；上游 SDK、
@@ -267,8 +248,11 @@ func isQuietConfigCommand(cmd *cobra.Command) bool {
 	return cmd.CommandPath() == "pixiv config" || strings.HasPrefix(cmd.CommandPath(), "pixiv config ")
 }
 
-func (a app) enablePipelineSignal(cmd *cobra.Command) {
-	if a.pipelineSignal.stop != nil || !commandWritesNDJSON(cmd) {
+// enablePipelineSignal installs the NDJSON-only broken-pipe policy. Command
+// owners call it when they commit to a record stream, so non-NDJSON commands
+// keep the platform's default SIGPIPE behaviour.
+func (a app) enablePipelineSignal() {
+	if a.pipelineSignal.stop != nil {
 		return
 	}
 	a.pipelineSignal.stop = a.pipelineSignal.enable()

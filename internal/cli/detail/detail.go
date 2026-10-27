@@ -64,7 +64,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 	if inputcmd.ModeOf(cmd) == inputcmd.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
-	markNDJSON(cmd, opts.ndjson)
+	a.markNDJSON(cmd, opts.ndjson)
 	if len(args) != 1 {
 		return errors.New("detail requires one ID or URL")
 	}
@@ -103,7 +103,7 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 	if !cmd.Flags().Changed("json") && !cmd.Flags().Changed("ndjson") && !jsonOut {
 		ndjson = !a.env.OutputIsTTY()
 	}
-	markNDJSON(cmd, ndjson)
+	a.markNDJSON(cmd, ndjson)
 	worker := a
 	humanOutput := !ndjson && !jsonOut
 	var humanBuffer bytes.Buffer

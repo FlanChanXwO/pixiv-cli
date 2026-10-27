@@ -195,7 +195,7 @@ func defaultDownloadService() downloader.DownloadService {
 
 // commandEnv is the one execution environment every command owner receives.
 func (a app) commandEnv() command.Env {
-	return command.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, ResolveJSON: func(override *bool) (bool, error) {
+	return command.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, EnablePipelineSignal: a.enablePipelineSignal, ResolveJSON: func(override *bool) (bool, error) {
 		if override != nil {
 			return *override, nil
 		}
