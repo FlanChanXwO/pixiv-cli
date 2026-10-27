@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
@@ -19,46 +20,14 @@ type artworkSearchClient interface {
 
 type artworkSearchOutcome struct {
 	Page   sdk.Page[pixiv.Artwork]
-	Filter *bookmarkFilterOutcome
-}
-
-type bookmarkMembership string
-
-const (
-	bookmarkMembershipPremium    bookmarkMembership = "premium"
-	bookmarkMembershipNonPremium bookmarkMembership = "non_premium"
-	bookmarkMembershipUnknown    bookmarkMembership = "unknown"
-)
-
-type bookmarkFilterStrategy string
-
-const (
-	bookmarkFilterStrategyAuto       bookmarkFilterStrategy = "auto"
-	bookmarkFilterStrategyServer     bookmarkFilterStrategy = "server"
-	bookmarkFilterStrategyLocal      bookmarkFilterStrategy = "local"
-	bookmarkFilterStrategyBestEffort bookmarkFilterStrategy = "best_effort"
-)
-
-type bookmarkFilterCompleteness string
-
-const (
-	bookmarkFilterCompletenessPartial           bookmarkFilterCompleteness = "partial"
-	bookmarkFilterCompletenessCompleteForSource bookmarkFilterCompleteness = "complete_for_source"
-)
-
-type bookmarkFilterOutcome struct {
-	Min          *int
-	Max          *int
-	Membership   bookmarkMembership
-	Strategy     bookmarkFilterStrategy
-	Completeness bookmarkFilterCompleteness
+	Filter *searchfilter.BookmarkOutcome
 }
 
 type artworkSearchRequest struct {
 	Query      pixiv.SearchArtworksRequest
 	Plan       pagination.PagePlan
-	Membership bookmarkMembership
-	Strategy   bookmarkFilterStrategy
+	Membership searchfilter.BookmarkMembership
+	Strategy   searchfilter.BookmarkStrategy
 	Include    func(pixiv.Artwork) (bool, error)
 }
 
@@ -66,18 +35,20 @@ type artworkSearchRequest struct {
 // auto 只在当前已验证策略下解析为 local；server 不做未经证实的降级。
 func searchArtworks[C artworkSearchClient](ctx context.Context, execute pagination.Execute[C], request artworkSearchRequest) (artworkSearchOutcome, error) {
 	var outcome artworkSearchOutcome
-	min, max, hasRange, err := validateArtworkBookmarkSearch(request)
-	if err != nil {
+	if err := validateArtworkPagePlan(request.Plan); err != nil {
 		return outcome, err
 	}
-	membership, err := normalizeBookmarkMembership(request.Membership)
+	membership, err := searchfilter.NormalizeBookmarkMembership(string(request.Membership))
 	if err != nil {
-		return outcome, err
+		return outcome, bookmarkSearchError(err)
 	}
-	strategy, err := resolveBookmarkStrategy(request.Strategy, membership, hasRange)
+	filter := searchfilter.BookmarkRange{Min: request.Query.BookmarkMin, Max: request.Query.BookmarkMax, Membership: membership}
+	strategy, err := searchfilter.ResolveBookmarkStrategy(string(request.Strategy), membership, filter.Active())
 	if err != nil {
-		return outcome, err
+		return outcome, bookmarkSearchError(err)
 	}
+	filter.Strategy = strategy
+	hasRange := filter.Active()
 	if execute == nil {
 		return outcome, sdk.NewError("pixiv", "SearchArtworks", sdk.LocalStateError,
 			sdk.WithDetail("sdk pooled operation is not configured"))
@@ -94,8 +65,8 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 		}
 
 		candidateQuery := request.Query
-		candidateQuery.CursorContext = combineCursorContexts(candidateQuery.CursorContext, searchfilter.BookmarkContext(min, max, string(strategy)))
-		if strategy == bookmarkFilterStrategyLocal {
+		candidateQuery.CursorContext = combineCursorContexts(candidateQuery.CursorContext, filter.CursorContext())
+		if filter.Local() {
 			// App API bounds 只是 candidate 条件；local 必须枚举正常候选流再本地复核。
 			candidateQuery.BookmarkMin = nil
 			candidateQuery.BookmarkMax = nil
@@ -117,7 +88,7 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 					return false, sdk.NewError("pixiv", "SearchArtworks", sdk.MalformedUpstreamResponse,
 						sdk.WithDetail("artwork bookmark count is negative"))
 				}
-				keep := (min == nil || item.TotalBookmarks >= *min) && (max == nil || item.TotalBookmarks <= *max)
+				keep := filter.Matches(item.TotalBookmarks)
 				if !keep || request.Include == nil {
 					return keep, nil
 				}
@@ -132,19 +103,10 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 		if err != nil {
 			return false, err
 		}
-		completeness := bookmarkFilterCompletenessCompleteForSource
-		if strategy == bookmarkFilterStrategyBestEffort || pageResult.HasMore || !next.IsZero() {
-			completeness = bookmarkFilterCompletenessPartial
-		}
+		filtered := filter.Outcome(pageResult.HasMore || !next.IsZero())
 		outcome = artworkSearchOutcome{
-			Page: sdk.Page[pixiv.Artwork]{Items: items, Next: next},
-			Filter: &bookmarkFilterOutcome{
-				Min:          cloneIntPointer(min),
-				Max:          cloneIntPointer(max),
-				Membership:   membership,
-				Strategy:     strategy,
-				Completeness: completeness,
-			},
+			Page:   sdk.Page[pixiv.Artwork]{Items: items, Next: next},
+			Filter: &filtered,
 		}
 		return false, nil
 	})
@@ -154,61 +116,25 @@ func searchArtworks[C artworkSearchClient](ctx context.Context, execute paginati
 	return outcome, nil
 }
 
-func validateArtworkBookmarkSearch(request artworkSearchRequest) (min, max *int, hasRange bool, err error) {
-	if request.Query.BookmarkMin != nil && *request.Query.BookmarkMin < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark minimum must be zero or positive"))
-	}
-	if request.Query.BookmarkMax != nil && *request.Query.BookmarkMax < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark maximum must be zero or positive"))
-	}
-	if request.Query.BookmarkMin != nil && request.Query.BookmarkMax != nil && *request.Query.BookmarkMin > *request.Query.BookmarkMax {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("bookmark minimum must not exceed maximum"))
-	}
-	if request.Plan.Skip < 0 || request.Plan.Limit < 0 {
-		return nil, nil, false, sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
+func validateArtworkPagePlan(plan pagination.PagePlan) error {
+	if plan.Skip < 0 || plan.Limit < 0 {
+		return sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
 			sdk.WithDetail("page skip and limit must be zero or positive"))
 	}
-	return request.Query.BookmarkMin, request.Query.BookmarkMax, request.Query.BookmarkMin != nil || request.Query.BookmarkMax != nil, nil
+	return nil
 }
 
-func normalizeBookmarkMembership(value bookmarkMembership) (bookmarkMembership, error) {
-	switch value {
-	case "", bookmarkMembershipUnknown:
-		return bookmarkMembershipUnknown, nil
-	case bookmarkMembershipPremium, bookmarkMembershipNonPremium:
-		return value, nil
-	default:
-		return "", sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("unknown bookmark membership"))
+// bookmarkSearchError maps shared bookmark validation to this command's public
+// SDK error class while keeping the established messages.
+func bookmarkSearchError(err error) error {
+	kind := sdk.InvalidArgument
+	switch {
+	case errors.Is(err, searchfilter.ErrBookmarkServer):
+		kind = sdk.UpstreamUnavailable
+	case errors.Is(err, searchfilter.ErrBookmarkNonPremium):
+		kind = sdk.Forbidden
 	}
-}
-
-func resolveBookmarkStrategy(requested bookmarkFilterStrategy, membership bookmarkMembership, hasRange bool) (bookmarkFilterStrategy, error) {
-	if requested == "" {
-		requested = bookmarkFilterStrategyAuto
-	}
-	switch requested {
-	case bookmarkFilterStrategyAuto:
-		if !hasRange {
-			return bookmarkFilterStrategyAuto, nil
-		}
-		return bookmarkFilterStrategyLocal, nil
-	case bookmarkFilterStrategyLocal, bookmarkFilterStrategyBestEffort:
-		return requested, nil
-	case bookmarkFilterStrategyServer:
-		if membership == bookmarkMembershipNonPremium {
-			return "", sdk.NewError("pixiv", "SearchArtworks", sdk.Forbidden,
-				sdk.WithDetail("server bookmark strategy is not available for non-premium membership"))
-		}
-		return "", sdk.NewError("pixiv", "SearchArtworks", sdk.UpstreamUnavailable,
-			sdk.WithDetail("server bookmark strategy requires verified premium membership and evidence"))
-	default:
-		return "", sdk.NewError("pixiv", "SearchArtworks", sdk.InvalidArgument,
-			sdk.WithDetail("unknown bookmark filter strategy"))
-	}
+	return sdk.NewError("pixiv", "SearchArtworks", kind, sdk.WithDetail(err.Error()))
 }
 
 func searchArtworkPages[C artworkSearchClient](ctx context.Context, client C, query pixiv.SearchArtworksRequest, plan pagination.PagePlan, include func(pixiv.Artwork) (bool, error)) (sdk.Page[pixiv.Artwork], error) {
@@ -255,12 +181,4 @@ func combineCursorContexts(values ...string) string {
 	}
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
-}
-
-func cloneIntPointer(value *int) *int {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
 }

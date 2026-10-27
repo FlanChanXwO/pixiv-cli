@@ -106,7 +106,7 @@ func New(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPor
 	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
 	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count; strategy controls filtering completeness")
 	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count; strategy controls filtering completeness")
-	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(bookmarkFilterStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
+	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(searchfilter.BookmarkStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
 	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
 	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
 	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
@@ -286,20 +286,20 @@ type artworkSearchOut struct {
 }
 
 type bookmarkFilterJSON struct {
-	Min          *int                       `json:"min,omitempty"`
-	Max          *int                       `json:"max,omitempty"`
-	Membership   bookmarkMembership         `json:"membership"`
-	Strategy     bookmarkFilterStrategy     `json:"strategy"`
-	Completeness bookmarkFilterCompleteness `json:"completeness"`
+	Min          *int                              `json:"min,omitempty"`
+	Max          *int                              `json:"max,omitempty"`
+	Membership   searchfilter.BookmarkMembership   `json:"membership"`
+	Strategy     searchfilter.BookmarkStrategy     `json:"strategy"`
+	Completeness searchfilter.BookmarkCompleteness `json:"completeness"`
 }
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy bookmarkFilterStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy searchfilter.BookmarkStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan.PagePlan(),
-		Membership: bookmarkMembershipUnknown,
+		Membership: searchfilter.BookmarkMembershipUnknown,
 		Strategy:   strategy,
 		Include:    include,
 	})
@@ -321,7 +321,7 @@ func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account pixivcmd.R
 	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *bookmarkFilterOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -507,14 +507,12 @@ func resolveBookmarkRange(cmd *cobra.Command, opts options) (*int, *int, error) 
 	return bookmarkMin, bookmarkMax, nil
 }
 
-func resolveBookmarkFilterStrategy(value string) (bookmarkFilterStrategy, error) {
-	strategy := bookmarkFilterStrategy(value)
-	switch strategy {
-	case bookmarkFilterStrategyAuto, bookmarkFilterStrategyLocal, bookmarkFilterStrategyBestEffort, bookmarkFilterStrategyServer:
-		return strategy, nil
-	default:
+func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy, error) {
+	strategy, err := searchfilter.ResolveBookmarkStrategy(value, searchfilter.BookmarkMembershipUnknown, false)
+	if err != nil {
 		return "", errors.New("bookmark-strategy must be one of auto, local, best_effort, server")
 	}
+	return strategy, nil
 }
 
 func resolvePeriod(value string) (pixiv.DurationFilter, error) {
