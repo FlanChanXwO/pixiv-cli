@@ -18,6 +18,7 @@ import (
 	"testing"
 )
 
+// TestPackageCreatesFixedTargetArchive 要求产物按固定文件名写出，且归档里只有约定的成员。
 func TestPackageCreatesFixedTargetArchive(t *testing.T) {
 	t.Parallel()
 
@@ -61,6 +62,7 @@ func TestPackageCreatesFixedTargetArchive(t *testing.T) {
 	}
 }
 
+// TestFinalizeBuildsSignedReleaseDirectory 要求 finalize 用给定的签名密钥写出 checksums 与签名。
 func TestFinalizeBuildsSignedReleaseDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -250,6 +252,8 @@ func findTestRepositoryRoot(t *testing.T) string {
 		directory = parent
 	}
 }
+
+// TestInjectReleaseSourcesRendersVersionedInstallerBlock 要求把版本化的 release source 列表注入 install.sh 的标记块内。
 func TestInjectReleaseSourcesRendersVersionedInstallerBlock(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "install.sh")
@@ -286,6 +290,7 @@ func TestInjectReleaseSourcesRendersVersionedInstallerBlock(t *testing.T) {
 	}
 }
 
+// TestInjectWindowsReleaseSourcesRendersIndexedCandidates 要求 install.cmd 的候选按 RELEASE_SOURCE_<n> 下标渲染。
 func TestInjectWindowsReleaseSourcesRendersIndexedCandidates(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "install.cmd")

@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestCheckedInTemplatesUseRootVersionContract 要求仓库里的 formula 模板与根版本契约使用同一组占位符。
 func TestCheckedInTemplatesUseRootVersionContract(t *testing.T) {
 	t.Parallel()
 
@@ -34,6 +35,7 @@ func TestCheckedInTemplatesUseRootVersionContract(t *testing.T) {
 	}
 }
 
+// TestRenderFormulaFillsStablePlaceholders 要求渲染结果用 checksums 填满稳定版本的 URL 与 digest 占位符。
 func TestRenderFormulaFillsStablePlaceholders(t *testing.T) {
 	t.Parallel()
 
@@ -73,6 +75,7 @@ func TestRenderFormulaFillsStablePlaceholders(t *testing.T) {
 	}
 }
 
+// TestValidateFormulaVersionRoutesStableAndBeta 要求稳定版与预发布版分别路由到对应 formula。
 func TestValidateFormulaVersionRoutesStableAndBeta(t *testing.T) {
 	t.Parallel()
 

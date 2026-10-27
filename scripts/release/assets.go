@@ -1,6 +1,3 @@
-// release assets 子命令：版本/渠道校验、打包与 finalize。
-// 子命令分发在 runAssets；与 notes/formula/recover 共用同目录的 identity.go。
-
 package main
 
 import (
@@ -67,8 +64,8 @@ func runChannel(arguments []string) error {
 	return err
 }
 
-// runAssetsValidate 让 workflow 能在拉取 source 后、开始六个平台构建前复用唯一的
-// SemVer 规则拒绝无效 tag，避免错误标签耗费 runner 或触及发布凭据。
+// runAssetsValidate 在六个平台构建前用同一套 SemVer 规则拒绝无效 tag，避免错误标签
+// 耗费 runner 或触及发布凭据。
 func runAssetsValidate(arguments []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -82,8 +79,8 @@ func runAssetsValidate(arguments []string) error {
 	return versionpkg.Validate(*version)
 }
 
-// runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。
-// SkillHub 和 ClawHub 都以该 metadata 的版本发布，因此必须与不可变 release tag 一致。
+// runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。SkillHub 和
+// ClawHub 都以该 metadata 的版本发布，所以它必须与不可变 release tag 一致。
 func runValidateSource(arguments []string) error {
 	flags := flag.NewFlagSet("validate-source", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
@@ -112,7 +109,8 @@ func runValidateSource(arguments []string) error {
 }
 
 // productSkillVersion 只读取 SKILL.md 的 YAML front matter 中唯一的 version 字段。
-// YAML decoder 兼容有效的字段顺序、注释和引号；正文不参与解析，避免示例或说明改变发布身份。
+// YAML decoder 兼容有效的字段顺序、注释和引号；正文不参与解析，示例或说明不会改变
+// 发布身份。
 func productSkillVersion(path string) (string, error) {
 	if err := requireRegularFile(path, "product skill"); err != nil {
 		return "", err
@@ -652,9 +650,8 @@ func requireSecureDirectory(path, label string) error {
 	return nil
 }
 
-// rejectSymlinkAncestors keeps an artifact write or secret read inside the caller's
-// declared directory tree. Existing paths are walked lexically, before any
-// operation that would otherwise follow a symlink.
+// rejectSymlinkAncestors 把产物写入和密钥读取限制在调用方声明的目录树内。已存在的路径
+// 在任何会跟随 symlink 的操作之前按词法逐级检查。
 func rejectSymlinkAncestors(path string) error {
 	absolute, err := filepath.Abs(path)
 	if err != nil {

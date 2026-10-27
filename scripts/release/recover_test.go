@@ -22,8 +22,7 @@ end
 `, formulaClass, version, version, version))
 }
 
-// Decide 是 Homebrew deploy 的单调状态机：相同版本必须幂等成功且不产生 commit，
-// 旧版本必须 fail closed，新版本才允许写入。
+// TestDecideSameVersionIdenticalIsIdempotent 要求相同版本不产生新的 commit。
 func TestDecideSameVersionIdenticalIsIdempotent(t *testing.T) {
 	t.Parallel()
 
@@ -40,6 +39,7 @@ func TestDecideSameVersionIdenticalIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestDecideRejectsOlderRequestedVersion 要求请求版本低于 tap 当前版本时 fail closed，含预发布对稳定版。
 func TestDecideRejectsOlderRequestedVersion(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +56,7 @@ func TestDecideRejectsOlderRequestedVersion(t *testing.T) {
 	}
 }
 
+// TestDecideFailsClosedOnUnparseableCurrentFormula 要求 formula 缺少 version 声明时拒绝写入，避免把不可信输入当成首次发布。
 func TestDecideFailsClosedOnUnparseableCurrentFormula(t *testing.T) {
 	t.Parallel()
 
@@ -67,6 +68,3 @@ func TestDecideFailsClosedOnUnparseableCurrentFormula(t *testing.T) {
 		t.Fatal("requested formula without a version must fail closed")
 	}
 }
-
-// Run 是 workflow 依赖的 CLI 边界：它必须把判定写入 GITHUB_OUTPUT，且当
-// tap 中不存在该 Formula 时接受空 current。缺失 current 文件按首次发布处理。

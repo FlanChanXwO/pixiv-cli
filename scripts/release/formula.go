@@ -1,5 +1,3 @@
-// 根据已验证 checksums.txt 渲染 URL 与 digest 受约束的 Homebrew formula；子命令分发在 runFormula。
-
 package main
 
 import (
@@ -32,8 +30,8 @@ func runFormula(arguments []string) error {
 	return runRender(arguments[1:])
 }
 
-// runRender 是供发布 workflow 调用的唯一公开入口：release 产物的 checksums.txt
-// 是 version、URL 与 SHA-256 唯一来源，模板本身不保存任何版本或 digest。
+// runRender 从 release 产物的 checksums.txt 取 version、URL 与 SHA-256；模板本身不保存
+// 任何版本或 digest。
 func runRender(arguments []string) error {
 	flags := flag.NewFlagSet("render", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)

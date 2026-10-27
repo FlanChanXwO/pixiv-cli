@@ -1,5 +1,11 @@
-// Command release owns the release-material tools: source and handoff verification,
-// checksums, asset packaging, changelog notes, Homebrew formula rendering and recovery.
+// release 命令产出和校验发布物料：源与 handoff 身份、checksums、归档打包、
+// changelog 说明、Homebrew formula 渲染和 tap 恢复。
+//
+// 包的组成：发布身份与正文渲染在 identity.go（[Target]、[FixedTargets]、[ArchiveName]、
+// [NotesFromChangelog]、[BilingualBody]），GitHub REST 传输在 github.go，历史 Release
+// 写入只出现在 notes.go，handoff 读写与校验在 handoff.go，信任检查在 trust.go。
+// 发布平台注册表只由 scripts/build/platforms.json 持有，本包不复制 runner、capability
+// 等可变 metadata。
 package main
 
 import (
@@ -69,7 +75,7 @@ func main() {
 	}
 }
 
-// prefixError keeps the merged subcommands' historical stderr prefixes.
+// prefixError 给合并进来的子命令保留原有的 stderr 前缀。
 func prefixError(label string, err error) error {
 	if err == nil {
 		return nil
