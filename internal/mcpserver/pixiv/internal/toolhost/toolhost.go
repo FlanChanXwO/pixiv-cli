@@ -3,8 +3,8 @@
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
-// [Read]、[Write] 与 [OpenClient] 是三种执行入口；分页适配在 paging.go，cursor
-// 封装在 cursor.go，具体工具在 tools 包。
+// [Read]、[Write] 与 [App.OpenClient] 是三种执行入口；分页适配在 paging.go，
+// cursor 封装在 cursor.go，具体工具在 tools 包。
 package toolhost
 
 import (
