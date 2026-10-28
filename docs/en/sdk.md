@@ -361,6 +361,9 @@ if err != nil {
     return err
 }
 defer resp.Body.Close()
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return fmt.Errorf("resource request returned status %d", resp.StatusCode)
+}
 _, err = io.Copy(dst, resp.Body)
 return err
 ```
@@ -380,6 +383,7 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 
 | API | Rules |
 | --- | --- |
+| `OpenResource` | Returns the upstream HTTP status and body; the caller checks `StatusCode` before consuming the body and closes `Body` |
 | `SaveResource` | Atomic destination; `SaveProgress.Total` = response `Content-Length` when supplied; explicit header allowlist; never sends the caller's Cookie jar |
 | `SaveResourceURL` | One HTTPS URL without userinfo and with a non-empty path on `i.pximg.net`, `s.pximg.net`, `i-f.pximg.net` (or hosts added to `ResourcePolicy.AllowedHosts`). Revalidates every redirect, sends the product `Referer`, never the Cookie jar, writes atomically. Returns `sdk.SavedResource` with only `Path`, `Size`, `ContentType` (no source URL or signed query). Does not expand pages or batches |
 | `ResourceResponse.Filename` | Upstream-suggested attachment name when available. FANBOX derives it from file name/extension metadata (no duplicated suffix), never from a signed URL or header. Not filesystem-normalized — callers validate before choosing a destination. Missing names stay empty |

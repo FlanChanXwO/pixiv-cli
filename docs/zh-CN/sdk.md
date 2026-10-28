@@ -361,6 +361,9 @@ if err != nil {
     return err
 }
 defer resp.Body.Close()
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return fmt.Errorf("resource request returned status %d", resp.StatusCode)
+}
 _, err = io.Copy(dst, resp.Body)
 return err
 ```
@@ -380,6 +383,7 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 
 | API | 规则 |
 | --- | --- |
+| `OpenResource` | 返回上游 HTTP 状态与正文；调用方在消费正文前检查 `StatusCode`，并关闭 `Body` |
 | `SaveResource` | 原子写入目标；上游提供时 `SaveProgress.Total` = 响应 `Content-Length`；显式 header allowlist；从不发送调用方的 Cookie jar |
 | `SaveResourceURL` | 一个无 userinfo、路径非空的 HTTPS URL，host 为 `i.pximg.net`、`s.pximg.net`、`i-f.pximg.net`（或加入 `ResourcePolicy.AllowedHosts` 的 host）。每次重定向都重新校验，发送产品 `Referer`，从不发送 Cookie jar，原子写入。返回只含 `Path`、`Size`、`ContentType` 的 `sdk.SavedResource`（不含来源 URL 或签名 query）。不展开分页或批量 |
 | `ResourceResponse.Filename` | 可用时为上游建议的附件名。FANBOX 由文件名/扩展名元数据推导（不重复后缀），从不根据签名 URL 或响应 header 猜测。不做文件系统规范化——调用方选择目标前须自行校验。缺失时为空 |
