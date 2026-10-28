@@ -87,7 +87,7 @@ jobs:
         run: go test ./scripts/citest -count=1
       - name: Test platform OAuth callback integration
         shell: bash
-        run: go test ./internal/cli/auth/loginhelper -count=1
+        run: go test $(go list ./internal/... | grep -E '/(loginhelper|urlscheme)$') -count=1
       - name: Test the Windows database path
         if: ${{ matrix.goos == 'windows' }}
         shell: bash
