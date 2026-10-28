@@ -147,6 +147,7 @@ An authorized HTTP connector acts on the **server's** files and network (e.g. re
 | [MCP tools](docs/en/mcp-tools.md) · [MCP Apps gallery](docs/en/mcp-gallery.md) | Tool schemas, output, HTTP authorization, Gallery UI |
 | [Go SDK](docs/en/sdk.md) | Embedding the same core in Go programs |
 | [Architecture](docs/en/maintainers/architecture.md) · [MCP server](docs/en/maintainers/architecture-mcp.md) | Package boundaries and runtime flow |
+| [Coding standards](docs/en/maintainers/coding-standards.md) | Go conventions for contributors |
 | [Development](docs/en/maintainers/development.md) · [CI](docs/en/maintainers/ci.md) · [Release](docs/en/maintainers/release.md) | Toolchain, tests, PR gates, releases |
 | [Changelog](changelog/README.md) | User-visible changes |
 

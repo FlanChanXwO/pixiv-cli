@@ -147,6 +147,7 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 | [MCP 工具](docs/zh-CN/mcp-tools.md) · [MCP Apps 画廊](docs/zh-CN/mcp-gallery.md) | 工具 schema、输出、HTTP 授权、Gallery UI |
 | [Go SDK](docs/zh-CN/sdk.md) | 在 Go 程序中嵌入同一核心 |
 | [架构](docs/zh-CN/maintainers/architecture.md) · [MCP server](docs/zh-CN/maintainers/architecture-mcp.md) | 包边界与运行时流程 |
+| [编码规范](docs/zh-CN/maintainers/coding-standards.md) | 贡献者 Go 编码约定 |
 | [开发](docs/zh-CN/maintainers/development.md) · [CI](docs/zh-CN/maintainers/ci.md) · [发布](docs/zh-CN/maintainers/release.md) | 工具链、测试、PR 门禁、发布 |
 | [更新日志](changelog/README.zh-CN.md) | 用户可见变更 |
 

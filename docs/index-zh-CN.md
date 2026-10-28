@@ -33,6 +33,7 @@ flowchart LR
 | 任务 | 位置 |
 | --- | --- |
 | 包边界与调用关系 | [架构](zh-CN/maintainers/architecture.md) |
+| Go 编码规范 | [编码规范](zh-CN/maintainers/coding-standards.md) |
 | MCP server、OAuth、媒体代理 | [MCP server 架构](zh-CN/maintainers/architecture-mcp.md) |
 | 环境、构建、测试 | [开发](zh-CN/maintainers/development.md) |
 | PR 检查 | [CI 门禁](zh-CN/maintainers/ci.md) |

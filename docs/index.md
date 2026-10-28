@@ -33,6 +33,7 @@ English defines the canonical public interface. Chinese may rephrase, but comman
 | Task | Where |
 | --- | --- |
 | Package boundaries and call edges | [Architecture](en/maintainers/architecture.md) |
+| Go coding rules | [Coding standards](en/maintainers/coding-standards.md) |
 | MCP server, OAuth, media proxy | [MCP server architecture](en/maintainers/architecture-mcp.md) |
 | Environment, build, tests | [Development](en/maintainers/development.md) |
 | PR checks | [CI gates](en/maintainers/ci.md) |

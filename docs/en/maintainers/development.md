@@ -112,19 +112,7 @@ Real login depends on Pixiv's OAuth web flow; offline tests use a local HTTP ser
 
 ## Tests
 
-Maintained code/behavior tests follow the [seven-contract checklist](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). Reuse the owning test, with one representative case and necessary failures. Keep investigations outside this list in ignored `tmp/test/_probe/` directories.
-
-| Contract | Owner |
-| --- | --- |
-| Account/Cookie privacy under `%v`, `%+v`, `%#v` and slog; logs omit query/token/Cookie/signed URLs; MCP output omits signed URLs and Cookie | Credential types, request logging, MCP output |
-| Revision conflicts, transaction rollback, v1.2.x database opening, private permissions, atomic replacement and file locking | `internal/storage/*` |
-| Rotated token is persisted before returning the client | `internal/pixivaccount` or `internal/session` |
-| Upstream response errors and cancellation propagation | `sdk/pixiv`, `sdk/fanbox` |
-| One full MCP `tools/list` golden; one CLI command's text/JSON/NDJSON; usage exit code; JSON-RPC-only stdio; bearer-required HTTP | `internal/mcpserver`, `internal/cli` |
-| Environment > file > default and explicit empty values | `internal/config/settings` |
-| Update verification failure preserves the installed binary | `internal/selfupdate` |
-
-**Caps:** at most 25 non-exempt test files repository-wide, 200 lines per file including imports/helpers/blank lines, 40 lines per test function and 8 cases per table. Count all platform/build-tagged files. `testdata` holds only old-version databases and a few goldens. Use real `httptest` servers and temporary stores; keep helper packages, fixture constructors, mock hierarchies and test-only production exports out of the suite.
+Permanent-test contracts, admission, caps, CI-selected inventory and removal criteria are owned by the [coding standards](coding-standards.md#test-submission-rules). Use the [test workflow](../../../.agents/skills/pixiv-cli-test/SKILL.md) for test-first work, check selection and evidence. This guide owns test layout and manual live-verification procedures.
 
 Run the affected package during editing. On the final shared-contract candidate, run:
 
@@ -139,18 +127,13 @@ Race checks need the C toolchain; source builds stay CGO-free. Preserve the work
 
 ### CI exemptions
 
-Workflow steps stay intact. Preserve the following tests and their required declarations/fixtures verbatim during a test rewrite; they are exempt from the caps and `testdata` restriction:
+See the [coding standards](coding-standards.md#test-submission-rules) for the exact CI-selected inventory and preservation rules.
 
-- Whole packages: `scripts/citest`, `scripts/release`, `internal/cli/auth/loginhelper`, `internal/media/ugoira/...`.
-- Named tests: `cmd/pixiv/TestPixivBinaryPackagedSmoke`, `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`, and `internal/cli/TestAuthURLCallback`, `TestAuthURLHandlerInstall`, `TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`.
-
-Recheck selectors against current workflows and actual definitions before merging; report selectors with no matching test. In a mixed file, retain the selected function/comments and required support, and apply the checklist to other tests. The generic `go test ./...` gate does not create further exemptions.
-
-`PIXIV_E2E_BINARY` and `PIXIV_E2E_EXPECTED_VERSION` remain the offline packaged-binary inputs used by `platform-smoke.yml` on six runners. Platform and Container evidence must identify the actual PR head. For suite rewrites, the PR lists each counted file, line count and checklist row, the preserved CI inventory and the total test-line change; deletion and replacement merge together.
+`PIXIV_E2E_BINARY` and `PIXIV_E2E_EXPECTED_VERSION` remain the offline packaged-binary inputs used by `platform-smoke.yml` on six runners. Platform and Container evidence must identify the actual PR head. For suite-rewrite evidence and handoff, follow the [test workflow](../../../.agents/skills/pixiv-cli-test/SKILL.md).
 
 ### Test file layout
 
-Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. New tests use the external package (`X_test`). Existing CI-selected files keep their original layout. The same-package exceptions are:
+Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. New tests use the external package (`X_test`). Existing CI-exempt files retain their required layout under the [handbook's test rules](coding-standards.md#test-submission-rules). The same-package exceptions are:
 
 | Directory | Reason |
 | --- | --- |
@@ -160,7 +143,7 @@ Use at most one `x_test.go` beside its production owner `x.go`; platform-specifi
 | `internal/storage/database` | The preserved Windows named CI test retains its original package declaration; other database tests use the external package. |
 | `scripts/release` | Preserved release CI tests exercise the command package and private release/artifact operations. |
 
-Register any new same-package exception here with the exact private symbol and reason, within the checklist and caps. Inspect selected files with `go list`; repeat under `GOOS=darwin`, `windows` and `linux` for platform differences:
+Register any new same-package exception here with the exact private symbol and reason. Inspect selected files with `go list`; repeat under `GOOS=darwin`, `windows` and `linux` for platform differences:
 
 ```fish
 go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
@@ -168,7 +151,7 @@ go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
 
 ### Manual live verification
 
-Real-environment verification uses normal CLI/SDK operations after explicit authorization. Keep the ordinary suite offline and keep live harnesses out of tracked tests.
+Real-environment verification uses normal CLI/SDK operations after explicit authorization. The [coding standards](coding-standards.md#test-submission-rules) define the boundary between permanent tests and manual observations.
 
 1. Agree the product, secondary account, targets, network requests and downloads. Browser-secret access, image uploads and mutations each need explicit scope. Record current Pixiv/FANBOX default selections so they can be restored. Account checks may rotate/persist tokens; account selection writes local state.
 2. Use existing authenticated CLI accounts or the approved private credential-input path for SDK-only calls. Keep tokens, Cookie values, signed URLs and raw bodies out of argv, source, environment dumps and shared evidence. Consult [authentication](../authentication.md) for login/import.
