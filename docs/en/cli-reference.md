@@ -7,6 +7,7 @@ The contract for `pixiv` commands, flags, configuration and MCP startup. Install
 ```mermaid
 flowchart LR
     P(("pixiv")) --> AUTH["auth<br/>login · import · export · list<br/>use · remove · check · refresh · pool"]
+    P --> WHO["whoami<br/>current local account"]
     P --> DATA["data<br/>search · detail · ranking · series · comment<br/>bookmark · user · timeline · mypixiv · recommended"]
     P --> ACT["actions<br/>download · bookmark add/remove · follow"]
     P --> FB["fanbox<br/>auth · creators · posts · tags<br/>home · supporting · post · download"]
@@ -29,6 +30,8 @@ pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
 pixiv auth refresh
+pixiv whoami
+pixiv whoami --json
 pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
@@ -153,6 +156,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms on a TTY by default. Removing the default selects the first remaining account. |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | Refreshes the token and validates the account; records `user_id` and username when available. |
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | Refreshes access + rotated refresh token for the selected/default account, then forces a profile read to update cached Premium status. `--all` refreshes every account. JSON always returns `accounts`. |
+| `whoami` | `pixiv whoami [--json]` | Shows the current local account without network access or token rotation: text `username (UID)`, `username (UID) · Premium` for a cached Premium account, or only `UID` when the username is unknown. `--json` returns one object with the same fields as an `auth list --json` account. Without a local account, stdout stays empty and the command exits 1 with `error: not logged in; run "pixiv auth login"`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline if missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective value. |
 | `config set` | `pixiv config set KEY [VALUE]` | Writes one known key (see [config aliases](#cli-managed-config-aliases)); `saucenao_api_key` is stdin-only. |

@@ -7,6 +7,7 @@
 ```mermaid
 flowchart LR
     P(("pixiv")) --> AUTH["auth<br/>login · import · export · list<br/>use · remove · check · refresh · pool"]
+    P --> WHO["whoami<br/>当前本地账号"]
     P --> DATA["数据<br/>search · detail · ranking · series · comment<br/>bookmark · user · timeline · mypixiv · recommended"]
     P --> ACT["动作<br/>download · bookmark add/remove · follow"]
     P --> FB["fanbox<br/>auth · creators · posts · tags<br/>home · supporting · post · download"]
@@ -29,6 +30,8 @@ pixiv auth list
 pixiv auth use 12345678
 pixiv auth check
 pixiv auth refresh
+pixiv whoami
+pixiv whoami --json
 pixiv config path
 pixiv config get download_path
 pixiv config set download_path ~/Downloads/pixiv
@@ -153,6 +156,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | 删除账号；TTY 上默认确认。删除默认账号后自动选中第一个剩余账号。 |
 | `auth check` | `pixiv auth check [UID] [--json] [--proxy URL\|--no-proxy]` | 刷新 token 并校验账号；成功时记录 `user_id`，可用时记录用户名。 |
 | `auth refresh` | `pixiv auth refresh [UID] [--all] [--json] [--proxy URL\|--no-proxy]` | 为选中/默认账号刷新 access 与轮换 refresh token，然后强制读取资料以更新缓存的 Premium 状态。`--all` 刷新全部账号。JSON 始终返回 `accounts`。 |
+| `whoami` | `pixiv whoami [--json]` | 显示当前本地账号，不联网，也不轮换 token：有用户名时输出 `用户名 (UID)`，缓存显示为会员时追加 ` · Premium`，用户名未知时只输出 UID。`--json` 返回单个对象，字段与 `auth list --json` 中的账号项相同。没有本地账号时 stdout 为空，退出码 1，stderr 输出 `error: not logged in; run "pixiv auth login"`。 |
 | `config path` | `pixiv config path` | 打印 `config.toml` 路径，缺失时创建基线文件。 |
 | `config get` | `pixiv config get KEY` | 打印一个生效值。 |
 | `config set` | `pixiv config set KEY [VALUE]` | 写入一个已知键（见[配置别名](#cli-可管理的-config-别名)）；`saucenao_api_key` 只从 stdin 读取。 |

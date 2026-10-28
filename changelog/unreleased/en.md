@@ -8,6 +8,7 @@
 
 ## Added
 
+- `pixiv whoami` shows the current local Pixiv account and its cached Premium status without network access; `--json` matches an `auth list --json` account.
 - MCP adds the `pixiv_show_artwork` tool, and the Gallery layout adapts to phones and embedded panels. ([#167](https://github.com/FlanChanXwO/pixiv-cli/pull/167))
 
 ## Changed
