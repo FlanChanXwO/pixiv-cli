@@ -279,7 +279,7 @@ type Budget struct {
 - 清理测试时保持 workflow 及其步骤不变。workflow 选中的测试连同支撑代码和 fixture 原样保留，不计入文件/函数/用例上限与 `testdata` 限制。宽泛的 `go test ./...` 选择器不会豁免整个仓库。同一文件同时包含选中测试和其他测试时，原样保留选中测试、注释及其必要声明；其他测试仍按本清单处理。重写测试前按 workflow 重新核对选择器；选择器匹配不到测试时报告缺口，不宣称通过。
 - 按原样保留 CI 选中的清单：整包 `scripts/citest`（platform-smoke、container-smoke 和 release 运行）、`scripts/release`（release workflow）、`internal/cli/auth/loginhelper`、`internal/media/ugoira/...`；点名测试 `cmd/pixiv/TestPixivBinaryPackagedSmoke` 与 `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`。清理测试前，按当前 workflow selector 复核测试名与包路径。
 - 删除重复断言、getter 与纯转发测试、测试辅助代码或测试框架本身的测试、已完成迁移的对比/特征测试，以及清单外测试。同步删除孤儿辅助函数、fixture 和只为测试存在的生产入口；保留 v1.2.x 数据库可打开的证据。真实环境测试改为手动，不保留长期测试文件。
-- 临时调查放在被忽略的 `tmp/test/_probe/`，普通 `go test ./...` 不会发现它。使用合成凭据。
+- 清单外调查放在被忽略的 `tmp/test/_probe/`；显式运行该包，并将探测输出留在该目录中，这样普通 `go test ./...` 不会发现它。使用合成凭据；不添加长期 live 测试文件或 opt-in live harness。
 - 行为变更先观察失败测试，再实现通过，最后保留回归。导入或工具链错误不算 Red。纯结构调整使用改动前后的特征测试。
 
 测试布局、CI 豁免与手动真实环境验证见[开发流程](development.md#测试)。
