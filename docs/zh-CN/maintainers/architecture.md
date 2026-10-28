@@ -85,7 +85,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 职责：Cobra 命令树/help/flag；文本/JSON 输出；`auth import` 输入适配（位置参数 = opaque token；无参数时 TTY 隐藏输入，非 TTY 按首个非空白字节区分 token 与严格 bundle；通过管道/重定向恢复，没有 `--file`）；`auth export` secret 输出适配（无 `--output`：原始 token + 换行，或 `--all` 的 bundle；有 `--output`：私有文件 + 不含 secret 的摘要）；`--page`/`--limit` 解析（逻辑计划在 `internal/pagination`）；`auth login` 的 loopback OAuth、浏览器与 TTY；`pixiv mcp` 分发；根 `--version` 与 `pixiv update`（已移除的 `version` 子命令在解析时返回 unknown command）；只写 stderr 的只读自动更新提示。
 
 - **关闭：** 调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
-- **Owner：** `internal/cli/streams.go` 只负责 `Streams`；共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。组合根通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
+- **Owner：** 共享命令支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。组合根通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
 - **命令包：** 根级 `internal/cli/{config,mcp,update}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,download,post}`。命令间共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。Pixiv 数据命令通过 `pixivcmd.Executor` 与 `Runner` 使用 `*pixiv.Client`；FANBOX 命令通过延迟会话工厂与 `fanboxcmd.UseClient` 使用 `*fanbox.Client`。公共输入输出由 `command.Env` 提供。
 - **共享 helper：** stdin codec 在 `internal/cli/internal/input`；record 投影在 `internal/record`；目标解析器在 `internal/cli/internal/resolver`（只消费命令契约、record 与离线的 `sdk/pixiv.ParseURL`；owner 显式注入裸 ID 探测；不持有 client、凭据或适配器）。这些子包不反向导入 `internal/cli` 根包。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import` 与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
@@ -93,7 +93,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 
 ### `internal/cli/auth/loginhelper`
 
-负责 URL scheme helper、持久化 handler 清单、一次性远程 hand-off 私有状态与远程回调 client。`internal/cli` 只通过它安装按需 handler，并保留 OAuth、loopback HTTP、浏览器、TTY 与 relay server 编排。
+负责 URL scheme helper、持久化 handler 清单、一次性远程 hand-off 私有状态与远程回调 client。`internal/cli/auth` 通过它安装按需 handler，并保留 OAuth、loopback HTTP、浏览器、TTY 与 relay server 编排。
 
 | 平台 | 机制 |
 | --- | --- |
@@ -121,7 +121,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 | 签名 URL 缓存、资源域名白名单 | `pixivapi` 资源传输层 | 同上 | 无字段 |
 | 资源释放（`Close`、`CloseIdleConnections`） | 创建者；`lifecycle` 包提供 `Lease` | 构造函数返回关闭函数或 `Lease` | 无额外字段 |
 | 数据库连接、文件锁、事务 | `internal/storage/database` | 方法内部 `withLock` | 业务只看到 repository 接口 |
-| 凭据轮换的持久化 | `session` | `session.Use` 回调 | SDK 调用方不处理凭据 |
+| 本地凭据轮换的持久化 | `internal/pixivaccount` | `session.Pixiv.Open` / `Use` 经账号端口调用 | CLI/MCP 回调在持久化成功后取得 client |
 | 配置 | 组合根读取一次 | 以具名字段的值传入构造函数 | 值字段，不持有 `settings.Store` |
 | stdout 输出（文本/JSON/NDJSON） | CLI 命令层 | 命令持有 writer | 业务返回数据 |
 
@@ -319,7 +319,7 @@ flowchart LR
 
 ### `internal/mcpserver`
 
-见 [MCP server 架构](architecture-mcp.md)。每个产品的 tools 只有一个 `tools` 包：`register.go` 保存唯一的 `Register` 与原有的端口门控注册顺序，各领域文件（`accounts.go`、`media.go`、`bookmarks.go` 等）保存该领域工具的名称、annotations、schema 与 `<tool>Handler` 方法。共享端口仍放在产品的 `internal/toolhost`。
+见 [MCP server 架构](architecture-mcp.md)。每个产品的 tools 只有一个 `tools` 包：`register.go` 保存唯一的 `Register` 与原有的端口门控注册顺序，各领域文件（`accounts.go`、`media.go`、`bookmarks.go` 等）保存该领域工具的名称、annotations、schema 与 `<tool>Handler` 方法。共享端口仍放在 `internal/mcpserver/{pixiv,fanbox}/internal/toolhost`。
 
 ### `internal/media/downloader`
 

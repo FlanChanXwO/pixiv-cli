@@ -196,7 +196,7 @@ package loginhelper
 
 ```sh
 #!/bin/sh
-# 为单个目标平台构建 pixiv 二进制，注入版本号，并对 Linux 产物运行 linuxabi 检查。
+# 为单个目标平台构建并可选打包 pixiv；发布身份与打包规则由 scripts/release 与 package.sh 持有。
 ```
 
 ### Comment language

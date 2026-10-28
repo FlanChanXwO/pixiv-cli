@@ -403,7 +403,7 @@ Models omit fields upstream did not provide instead of emitting `null` or empty 
 
 ## URL references
 
-`pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references offline; `Reference.CanonicalURL` returns the tracking-free form.
+URL parsing is offline: use `pixiv.ParseURL(pageURL)` for Pixiv or `client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: pageURL})` on a FANBOX client. Pixiv references expose `CanonicalURL()` for the tracking-free form; FANBOX references expose `Kind`, `CreatorID`, `PostID`, and `Tag`.
 
 ```go
 ref, err := pixiv.ParseURL(pageURL)

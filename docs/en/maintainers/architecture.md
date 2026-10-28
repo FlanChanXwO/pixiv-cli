@@ -85,7 +85,7 @@ CLI composition root. The `internal/cli` package keeps command-tree assembly and
 Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
 
 - **Closing:** callers stop producers and finish registration before close; the mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Close follows command completion; MCP stdio waits for in-flight handlers; close errors are joined.
-- **Owners:** `internal/cli/streams.go` owns only `Streams`; shared support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. The composition root wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
+- **Owners:** shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. The composition root wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
 - **Command packages:** root `internal/cli/{config,mcp,update}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,download,post}`. Shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Pixiv data commands use `*pixiv.Client` through `pixivcmd.Executor` and `Runner`; FANBOX commands use `*fanbox.Client` through a lazy session factory and `fanboxcmd.UseClient`. `command.Env` provides common input/output support.
 - **Shared helpers:** stdin codec `internal/cli/internal/input`; record projection `internal/record`; target resolver `internal/cli/internal/resolver` (consumes only the command contract, records and offline `sdk/pixiv.ParseURL`; owners inject any bare-ID probe; owns no clients, credentials or adapters). These never import the `internal/cli` root.
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
@@ -121,7 +121,7 @@ One owner per concern; no other layer implements it again.
 | Signed-URL cache, resource host allowlist | `pixivapi` resource transport | same | no field |
 | Resource release (`Close`, `CloseIdleConnections`) | creator; `lifecycle` provides `Lease` | returned close function or `Lease` | no extra field |
 | Database connection, file lock, transaction | `internal/storage/database` | `withLock` inside methods | repository interface only |
-| Credential rotation persistence | `session` | `session.Use` callback | SDK callers do not handle credentials |
+| Local credential rotation persistence | `internal/pixivaccount` | `session.Pixiv.Open` / `Use` through its account port | CLI/MCP callbacks receive a client after persistence |
 | Configuration | composition root, read once | named field value at construction | value field, no `settings.Store` |
 | stdout output (text, JSON, NDJSON) | CLI command layer | the command holds the writer | business code returns data |
 
@@ -319,7 +319,7 @@ The only external contract surface. The module path remains `github.com/FlanChan
 
 ### `internal/mcpserver`
 
-See [MCP server architecture](architecture-mcp.md). Each product's tools live in one `tools` package: `register.go` holds the single `Register` and the original port-gated registration order, and each domain file (`accounts.go`, `media.go`, `bookmarks.go`, …) keeps its tools' schemas, annotations and `<tool>Handler` methods on the product tool set. Shared ports stay in the product's `internal/toolhost`.
+See [MCP server architecture](architecture-mcp.md). Each product's tools live in one `tools` package: `register.go` holds the single `Register` and the original port-gated registration order, and each domain file (`accounts.go`, `media.go`, `bookmarks.go`, …) keeps its tools' schemas, annotations and `<tool>Handler` methods on the product tool set. Shared ports stay in `internal/mcpserver/{pixiv,fanbox}/internal/toolhost`.
 
 ### `internal/media/downloader`
 

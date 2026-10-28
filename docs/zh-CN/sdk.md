@@ -403,7 +403,7 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 
 ## URL 引用
 
-`pixiv.ParseURL` 与 `fanbox.ResolveURL` 离线把页面 URL 转为类型化引用；`Reference.CanonicalURL` 返回去除追踪参数的形式。
+URL 解析在离线完成：Pixiv 使用 `pixiv.ParseURL(pageURL)`，FANBOX client 使用 `client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: pageURL})`。Pixiv 引用提供 `CanonicalURL()`，返回去除追踪参数的形式；FANBOX 引用提供 `Kind`、`CreatorID`、`PostID` 与 `Tag`。
 
 ```go
 ref, err := pixiv.ParseURL(pageURL)
