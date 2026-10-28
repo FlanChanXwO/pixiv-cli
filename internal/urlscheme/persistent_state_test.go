@@ -1,4 +1,4 @@
-package loginhelper
+package urlscheme
 
 import (
 	"os"
