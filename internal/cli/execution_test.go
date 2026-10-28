@@ -57,3 +57,15 @@ func TestCommandFailureLogging(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthUIDFailureDoesNotEchoCredentials(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("PIXIV_LOG_FORMAT", "json")
+	var output, diagnostics bytes.Buffer
+	code := cli.Run(t.Context(), []string{"pixiv", "auth", "check"}, strings.NewReader("refresh-token-canary"), &output, &diagnostics)
+	require.NotZero(t, code)
+	require.Contains(t, diagnostics.String(), "invalid uid")
+	require.NotContains(t, diagnostics.String(), "refresh-token-canary")
+}

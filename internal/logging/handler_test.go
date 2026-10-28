@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -135,5 +137,25 @@ func TestTransportDetailsExcludeURLCredentials(t *testing.T) {
 	require.Contains(t, output.String(), `"errno":"ECONNREFUSED"`)
 	for _, private := range []string{"canary-user", "canary-password", "example.test", "/private", "secret"} {
 		require.NotContains(t, output.String(), private)
+	}
+}
+
+func TestAuthorizationExchangeUsesCallLogger(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, "debug", logging.FormatJSON)
+	require.NoError(t, err)
+	proxy, err := url.Parse("http://user-canary:password-canary@127.0.0.1:1")
+	require.NoError(t, err)
+	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	defer transport.CloseIdleConnections()
+	session, err := pixiv.BeginLogin(pixiv.LoginOptions{HTTPClient: &http.Client{Transport: transport}})
+	require.NoError(t, err)
+	ctx := logging.WithCall(t.Context(), logger, "pixiv auth login", "login")
+	_, err = session.Complete(ctx, "code-canary")
+	require.Error(t, err)
+	require.Contains(t, output.String(), "Request failed")
+	require.Contains(t, output.String(), `"sdk_operation":"Complete"`)
+	for _, secret := range []string{"user-canary", "password-canary", "code-canary"} {
+		require.NotContains(t, output.String(), secret)
 	}
 }

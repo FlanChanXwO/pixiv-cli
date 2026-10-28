@@ -185,7 +185,11 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 	defer func() {
 		if err != nil {
 			attrs := []slog.Attr{slog.String(logging.AttrSDKOperation, operation), slog.String(logging.AttrError, err.Error())}
-			c.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, details...)...)
+			logger := c.log
+			if logging.HasLogger(ctx) {
+				logger = logging.From(ctx)
+			}
+			logger.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, details...)...)
 		}
 	}()
 	values := make(url.Values, len(form))

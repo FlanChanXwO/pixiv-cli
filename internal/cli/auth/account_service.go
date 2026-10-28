@@ -420,7 +420,7 @@ func parseAuthUID(raw string) (int64, error) {
 	}
 	userID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || userID <= 0 {
-		return 0, fmt.Errorf("invalid uid %q", raw)
+		return 0, errors.New("invalid uid: expected a positive integer")
 	}
 	return userID, nil
 }
