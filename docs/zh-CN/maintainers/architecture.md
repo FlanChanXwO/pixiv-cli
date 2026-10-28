@@ -131,8 +131,8 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 
 | 位置 | 负责 |
 | --- | --- |
-| `internal/logging/` | `slog` handler、ctx 调用信息与共享属性键；内部恢复点经 `logging.From(ctx)` 取得 logger |
-| `internal/cli/execution.go` | 从配置创建 stderr logger、绑定命令路径，在执行终止时记录失败 |
+| `internal/logging/` | 文本 handler 输出 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]`，按终端决定是否着色，转义不可打印文本并缩进多行值；JSON handler 带 `source`；ctx 调用信息与共享属性键也在本包；内部恢复点经 `logging.From(ctx)` 取得 logger |
+| `internal/cli/execution.go` | 从配置创建 stderr logger、绑定命令路径；终止失败经 stderr 错误路径报告，不再重复记录日志 |
 | `internal/cli/composition_options.go`、`composition_mcp.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
 | `internal/mcpserver/toolrun/toolrun.go` | 共用的 `Scope` / `AddTool` 包装，绑定工具名与调用 ID；错误或 `isError` 结果记录一次受控的失败摘要 |
 | `internal/pixivapi/`（含 `oauth/`）、`internal/fanboxapi/` | 持有构造时传入的 logger，在实际请求与决策处记录结果 |
@@ -149,7 +149,7 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 | `internal/lifecycle` | 与协议无关的生命周期、Lease、Attempt | 负责账号选择、凭据或重放策略 |
 | `internal/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
-| `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
+| `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
 **账号池读取：** `pixivcmd.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。命令 owner 负责流式 NDJSON、分页与部分交付；`pagination` 和 `lifecycle` 负责共享遍历与重放机制。
 

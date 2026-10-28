@@ -18,9 +18,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// logState 保存本次执行的 logger；命令结束后写一条终止 ERROR。
+// logState 保存本次执行的 logger。
 type logState struct {
-	ctx    context.Context
 	logger *slog.Logger
 }
 
@@ -95,7 +94,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 		pipelineSignal:      &brokenPipeSignalState{enable: enablePipelineBrokenPipeSignal},
 		mcpBrokenPipeSignal: &brokenPipeSignalState{enable: enableMCPBrokenPipeSignal},
 		closeState:          &closeState{},
-		logs:                &logState{ctx: ctx, logger: logging.Discard()},
+		logs:                &logState{logger: logging.Discard()},
 	}
 	defer a.pipelineSignal.restore()
 	defer a.mcpBrokenPipeSignal.restore()
@@ -121,8 +120,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 			err = errors.Join(err, closeErr)
 		}
 	}
-	// 阶段 5：结束诊断并映射退出码（NDJSON 命令走成功语义）。
-	err = a.finishLogging(err)
+	// 阶段 5：映射退出码（NDJSON 命令走成功语义）。
 	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || command.OutputNDJSON(target))
 }
 
@@ -227,17 +225,9 @@ func (a app) startLogging(cmd *cobra.Command, requirement command.Execution) err
 		return err
 	}
 	ctx := logging.WithCall(cmd.Context(), logger, cmd.CommandPath(), "")
-	a.logs.ctx, a.logs.logger = ctx, logger
+	a.logs.logger = logger
 	cmd.SetContext(ctx)
 	return nil
-}
-
-func (a app) finishLogging(err error) error {
-	if err == nil {
-		return err
-	}
-	a.logs.logger.ErrorContext(a.logs.ctx, "Command failed", slog.Any(logging.AttrError, err))
-	return err
 }
 
 func isQuietConfigCommand(cmd *cobra.Command) bool {

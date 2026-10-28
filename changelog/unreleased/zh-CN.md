@@ -12,6 +12,7 @@
 
 ## 变更
 
+- CLI 写到 stderr 的日志改为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`，按终端着色，转义控制字符并缩进多行值；JSON 日志带 `source`。命令失败不再额外写一条重复的终止日志。
 - 收藏读取部分失败时，MCP 搜索筛选条件会保留，并报告部分结果，不再丢弃筛选条件或已成功读取的条目。（[#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165)）
 - 账号列表为空时编码为 JSON `null` 而不是 `[]`，保持现有 CLI JSON 契约。（[#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201)）
 

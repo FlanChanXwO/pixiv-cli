@@ -131,8 +131,8 @@ Infrastructure packages themselves — `pixivapi`, `fanboxapi`, `storage/*`, `me
 
 | Location | Owns |
 | --- | --- |
-| `internal/logging/` | slog handlers, context call information, and shared attribute keys; internal recovery points obtain the logger through `logging.From(ctx)` |
-| `internal/cli/execution.go` | creates the configured stderr logger, binds the command path, and logs terminal failure |
+| `internal/logging/` | text handler renders `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]` with terminal-aware colors, quoted unprintable text and indented multiline values; JSON handler adds `source`; context call information and shared attribute keys live here; internal recovery points obtain the logger through `logging.From(ctx)` |
+| `internal/cli/execution.go` | creates the configured stderr logger and binds the command path; terminal failures are reported through the stderr error path and are not logged a second time |
 | `internal/cli/composition_options.go`, `composition_mcp.go` | passes the same logger to both SDKs' `Options.Logger` and MCP ports |
 | `internal/mcpserver/toolrun/toolrun.go` | shared `Scope` / `AddTool` wrappers bind tool name and call ID; an error or `isError` result produces one controlled failure summary |
 | `internal/pixivapi/` (including `oauth/`), `internal/fanboxapi/` | holds the constructor-supplied logger and records outcomes at the actual request/decision point |
@@ -149,7 +149,7 @@ SDK business methods only register `sdk_operation` in context through `logging.W
 | `internal/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
 | `internal/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
 | `internal/pagination` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
-| `internal/logging` | `log/slog` handler plus context call information; CLI, MCP, transports, pool, download and FlareSolverr share attribute keys and emit only operation, method, host, path, status, duration, attempt, wait, reason and count; SDK accepts one `Options.Logger`; nil keeps the SDK silent | create log files or record bodies, Cookies, tokens, queries, signed URLs or arbitrary error cause dumps |
+| `internal/logging` | `log/slog` handler plus context call information; CLI, MCP, transports, pool, download and FlareSolverr share attribute keys and emit only operation, method, host, path, status, duration, attempt, wait, reason and count; text records put operation in the tag, JSON records keep it as a key and add `source`; SDK accepts one `Options.Logger`; nil keeps the SDK silent | create log files or record bodies, Cookies, tokens, queries, signed URLs or arbitrary error cause dumps |
 
 **Pooled reads:** `pixivcmd.Read[T]` reads within the `Runner`'s `Executor` callback and returns data only after the whole execution boundary succeeds; failure returns zero T. `Runner.Write` marks the attempt committed as soon as the mutation callback starts, even on error, preventing cross-account replay of an uncertain write. Command owners keep streaming NDJSON, pagination, and partial delivery; `pagination` and `lifecycle` own shared traversal and replay mechanisms.
 
