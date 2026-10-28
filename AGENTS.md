@@ -1,52 +1,42 @@
 # pixiv-cli Agent Contract
 
-This repository provides the `pixiv` CLI, one unified Pixiv/FANBOX MCP server (default stdio; HTTP via explicit `--port`), and the public Go packages `sdk`, `sdk/pixiv`, and `sdk/fanbox`.
+## Task routes
 
-## Start here
+Use the relevant checked-in maintenance skill for the workflow and its linked handbook or reference for the rules. If skill discovery is unavailable, open the linked `SKILL.md` directly.
 
-Read the relevant local skill below before its task. These are checked-in instructions, not dependencies on a contributor's personal configuration, CCS installation, or global skills. When the client cannot discover `.agents/skills`, open the linked `SKILL.md` directly. Read only the routes needed for the change.
+| Task | Read first | Before completion, check |
+| --- | --- | --- |
+| Implement, debug, refactor, or design Go code | [pixiv-cli-develop](.agents/skills/pixiv-cli-develop/SKILL.md), [coding standards](docs/en/maintainers/coding-standards.md), [architecture](docs/en/maintainers/architecture.md), [development](docs/en/maintainers/development.md) | Confirm the owning package and callers, apply the handbook to touched code, run the relevant tests/build/vet, and inspect the final diff. |
+| Decide test admission, write tests, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md), [test submission rules](docs/en/maintainers/coding-standards.md#test-submission-rules), [development](docs/en/maintainers/development.md#tests) | Match each maintained test to a contract; respect size caps and CI exemptions; report actual pass, fail, skip, and unrun checks. |
+| Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md), [package documentation and comments](docs/en/maintainers/coding-standards.md#package-documentation-and-comments) | Check comment language, package-doc placement, references, and any directive's actual consumer. |
+| Change package ownership or a shared mechanism | [architecture](docs/en/maintainers/architecture.md), [coding standards](docs/en/maintainers/coding-standards.md) | Verify the owner, allowed dependency direction, and all affected callers against the current package map. |
+| Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md), [MCP contract](docs/en/mcp-tools.md), [MCP architecture](docs/en/maintainers/architecture-mcp.md) | Check product-local ownership, schema and structured errors, authorization, and the stdio/HTTP output boundary. |
+| Change ugoira encoding, platform builds, or native smoke | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md), [development](docs/en/maintainers/development.md) | Verify the required target builds and native evidence; distinguish fixture results from platform execution. |
+| Change frontend pages or embedded assets | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md), [frontend architecture](docs/en/maintainers/architecture.md#frontend-source-and-embedded-pages) | Check the embedded source and exercise the affected page in its browser or MCP host. |
+| Edit documentation, skills, or agent routing | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md), [English documentation index](docs/index.md), [简体中文文档索引](docs/index-zh-CN.md), and the relevant maintainer reference | Verify source claims, paired locale content, local links/anchors, metadata routes, and `git diff --check`. |
+| Review code or assess a pull request | [pixiv-cli-review](.agents/skills/pixiv-cli-review/SKILL.md), [coding standards](docs/en/maintainers/coding-standards.md) | Tie each finding to changed lines and evidence; identify unresolved risks and required checks. |
+| Diagnose checks or operate an authorized workflow run | [pixiv-cli-ci](.agents/skills/pixiv-cli-ci/SKILL.md), the relevant workflow under `.github/workflows/` | Check the exact revision and report each required check's actual conclusion, including skips and failures. |
+| Prepare, update, or verify a pull request | [pixiv-cli-pr](.agents/skills/pixiv-cli-pr/SKILL.md), [contributing](CONTRIBUTING.md) | Validate PR metadata and inspect required checks and review threads on the current head. |
+| Prepare a release or recover a publisher | [pixiv-cli-release-notes](.agents/skills/pixiv-cli-release-notes/SKILL.md), [release development guide](docs/en/maintainers/release.md) | Verify the authorized version, release assets, and required release gates. |
+| Write a commit message | [pixiv-cli-commit-message](.agents/skills/pixiv-cli-commit-message/SKILL.md) | Base it on the staged diff and name only the change it contains. |
+| Use an installed `pixiv` binary | [product skill](skills/pixiv-cli/SKILL.md) | Follow the documented command and credential flow for the installed version. |
+| Follow contributor setup or project expectations | [contributing](CONTRIBUTING.md) | Check the documented local workflow and the contribution requirements for this change. |
 
-| Task | Local instructions |
-| --- | --- |
-| Implement, debug, refactor, or design Go changes | [pixiv-cli-develop](.agents/skills/pixiv-cli-develop/SKILL.md) |
-| Decide test admission, run Red/Green, or validate a change | [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) |
-| Write or review code comments, API docs, or numbered stages | [pixiv-cli-code-commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) |
-| Add or change an MCP tool | [pixiv-cli-mcp-tool](.agents/skills/pixiv-cli-mcp-tool/SKILL.md) |
-| Change ugoira encoding, platform builds, or native platform smoke | [pixiv-cli-native](.agents/skills/pixiv-cli-native/SKILL.md) |
-| Edit documentation or either kind of skill | [pixiv-cli-docs](.agents/skills/pixiv-cli-docs/SKILL.md) |
-| Review code or assess a PR | [pixiv-cli-review](.agents/skills/pixiv-cli-review/SKILL.md) |
-| Prepare, update, or verify a PR | [pixiv-cli-pr](.agents/skills/pixiv-cli-pr/SKILL.md) |
-| Diagnose checks or operate an authorized workflow run | [pixiv-cli-ci](.agents/skills/pixiv-cli-ci/SKILL.md) |
-| Prepare a release or recover a publisher | [pixiv-cli-release-notes](.agents/skills/pixiv-cli-release-notes/SKILL.md) |
-| Write a commit message from staged changes | [pixiv-cli-commit-message](.agents/skills/pixiv-cli-commit-message/SKILL.md) |
+## Hard constraints
 
-The separately distributed [product skill](skills/pixiv-cli/SKILL.md) teaches use of an installed binary; it is not a repository development workflow. Keep maintenance skill names prefixed with `pixiv-cli-` and the product name `pixiv-cli`.
-
-## Non-negotiable boundaries
-
-- Keep `cmd/pixiv` thin. `internal/cli/root.go` assembles the command tree and production dependencies; command owners live under `internal/cli/<command>` and shared CLI support under `internal/cli/internal`. Do not resurrect a global service locator or the removed bootstrap/resource graph.
-- CLI/MCP Pixiv and FANBOX operations use the public SDK and owner-local narrow ports, not protocol adapters. MCP tools belong to one package per product, `internal/mcpserver/{pixiv,fanbox}/tools`; `pixiv mcp` starts stdio by default or HTTP with explicit `--port`; `internal/mcpserver` owns transport/lifecycle and `internal/mcpserver/auth` owns OAuth and private state.
-- Reverse search is the explicit exception: only the CLI composition root may import `internal/reversesearch/assembly`; command and MCP owners may use the top-level `internal/reversesearch` contract, never its provider subpackages.
-- Keep shared mechanisms in their existing owners: record, pagination, traversal, lifecycle, configuration, file persistence, and downloader. Generic utilities must not acquire product protocol or account semantics. See [architecture](docs/en/maintainers/architecture.md) for detailed ownership.
-- Preserve the App-only boundary. Content requires an authenticated local account or an eligible database-managed pool account; errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their own explicit credential contracts.
-- Keep secrets out of logs, errors, fixtures, PRs, and artifacts. Only an explicitly requested bare `auth export [UID]`, `auth export --all`, or local `mcp auth init [--reset]` may emit its documented secret stdout; otherwise use the documented private-output/transfer path. The SQLite account store is secret-bearing; never inspect real credentials as a debugging shortcut.
-- Preserve clean CLI machine output; MCP stdio stdout is reserved for JSON-RPC; HTTP requires OAuth bearer authorization. MCP runtime failures retain structured output with `isError=true`. Report cancellation, transport, authentication, upstream, and persistence failures rather than success-shaped empty data.
-- Introduce limits, timeouts, retries, truncation, or fallbacks only for a verified requirement, platform constraint, established contract, or reproducible failure. Explain and test the trigger without silently discarding valid data.
-
-## Working agreement
-
-- Identify the requested behavior and acceptance evidence before editing. Keep small changes small; clarify consequential unknowns for larger work. Reuse the issue, PR, or conversation for decisions rather than creating process files automatically.
-- Inspect the branch and existing changes; preserve unrelated work and use an isolated worktree when none exists. Use only available tools, explicit working directories, and safely quoted inputs. Prefer available semantic navigation for symbols and callers; disclose when only targeted search/compiler checks are available.
-- For features and behavior fixes, observe a relevant failing test before implementation, then Green and regression. Retain tests only within the [seven-contract checklist](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change): at most 25 non-CI files, 200 lines per file, 40 lines per test function and 8 cases per table. Preserve workflow-selected CI tests verbatim as documented exemptions. Use real HTTP/filesystem boundaries; no helper packages, fixture constructors, mock hierarchies or test-only production exports. Keep out-of-checklist probes ignored under `tmp/test/`; live verification is manual and explicitly authorized. Pure restructuring uses before/after characterization; obtain an explicit exception if an applicable Red requirement cannot be met. Ordinary comment/document edits need relevant document and tooling checks; consumed directives or examples may require behavioral checks.
-- Frontend sources are embedded directly by `frontend`; clean `go test`, `go vet`, `go build`, and `go install` need no generation step. Inspect changed page behavior manually in the relevant browser/MCP host.
-- Use the Go version in `go.mod`, `gofmt`, and existing tests/vet/hooks. Follow the develop/test skills for language and ownership rules. Preserve native build requirements; a Linux fixture pass is not all-platform evidence.
-- Reuse standard-library, platform, and existing project capabilities. Obtain approval before adding dependencies or installing missing tools; explain necessity, alternatives, and material lockfile, license, security, or deployment effects.
-- Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser credential access, image uploads, and account writes require explicit scope and authorization; they are not routine offline verification.
-- Keep multi-step progress visible with the client's plan tool when available, otherwise a concise checklist. Restore actual state on continuation. Delegate only bounded work with clear ownership; integrated verification remains the main agent's responsibility.
-- Write `AGENTS.md`, maintenance/product skills, their references, and UI metadata in English. Source comments are English in `sdk/` and Simplified Chinese elsewhere, with one standard-library-style package documentation per package; follow the [commenting rules](.agents/skills/pixiv-cli-code-commenting/SKILL.md), not the language of this file. Program output stays English. Keep public English/Simplified Chinese documentation behaviorally aligned and use the user's requested conversation language.
-- Review meaningful changes before handoff. Report the actual diff, exact checks and outcomes, remaining risks, and PR/worktree location. A local review is not a GitHub approval, and a pending or skipped check is not a pass.
-- Creating a PR does not authorize merging it, moving tags, publishing, changing branch protection, or using production secrets. Release authorization is separate and version-specific.
+- Keep credentials and other secrets out of logs, errors, fixtures, pull requests, and artifacts; never inspect the SQLite account store as a debugging shortcut. Only an explicitly requested `pixiv auth export [UID]`, `pixiv auth export --all`, or local `pixiv mcp auth init [--reset]` may emit its documented secret to stdout; otherwise use the documented private-output or transfer path.
+- Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser-credential access, image uploads, and account writes require explicit scope and authorization.
+- Obtain approval before adding a dependency or installing a tool.
+- A pull request does not authorize merging, force-pushing, tagging, publishing, changing branch protection, or using production secrets. Release authorization is separate and version-specific.
+- Preserve the App-only boundary: content operations require an authenticated local account or an eligible database-managed pool account, and errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their explicit credential contracts.
+- Keep CLI machine output clean, reserve MCP stdio stdout for JSON-RPC, and require OAuth bearer authorization for HTTP. Preserve MCP runtime `isError=true` and report cancellation, transport, authentication, upstream, and persistence failures instead of returning success-shaped empty data.
+- Perform Git write operations in an independent worktree and preserve existing changes.
 
 ## Authoritative references
 
-[Development and test layout](docs/en/maintainers/development.md), [CLI contract](docs/en/cli-reference.md), [MCP contract](docs/en/mcp-tools.md), and [contributing](CONTRIBUTING.md) explain the checked-in behavior. Workflow YAML, `scripts/build/platforms.json`, and tool manifests own executable configuration. When prose and implementation disagree, verify the disputed behavior and update the affected contract; do not guess or rewrite unrelated history.
+- Coding rules: [English handbook](docs/en/maintainers/coding-standards.md) · [简体中文手册](docs/zh-CN/maintainers/coding-standards.md)
+- Ownership and dependency direction: [English architecture](docs/en/maintainers/architecture.md) · [简体中文架构](docs/zh-CN/maintainers/architecture.md) · [MCP architecture](docs/en/maintainers/architecture-mcp.md)
+- Toolchain, tests, native checks, and releases: [English development guide](docs/en/maintainers/development.md) · [简体中文开发流程](docs/zh-CN/maintainers/development.md)
+- Contributor expectations: [English](CONTRIBUTING.md) · [简体中文](CONTRIBUTING.zh-CN.md)
+- Public behavior: [CLI reference](docs/en/cli-reference.md) · [MCP tools](docs/en/mcp-tools.md)
+- Workflow YAML, `scripts/build/platforms.json`, and tool manifests define executable CI/build configuration.
