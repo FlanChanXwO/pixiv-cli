@@ -8,6 +8,7 @@
 
 ## 新增
 
+- 新增 `pixiv whoami`，无需联网即可显示当前本地 Pixiv 账号和缓存的会员状态；`--json` 输出与 `auth list --json` 的账号项一致。
 - MCP 新增 `pixiv_show_artwork` 工具，Gallery 布局会适配手机屏幕和嵌入式面板。（[#167](https://github.com/FlanChanXwO/pixiv-cli/pull/167)）
 
 ## 变更

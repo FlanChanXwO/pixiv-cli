@@ -27,7 +27,7 @@ Run `pixiv --version` and require a successful `pixiv VERSION` line. A missing o
 | MCP startup, tool selection, Gallery, or media delivery | [mcp.md](references/mcp.md) |
 | Authentication, proxy, output, or incomplete results | [troubleshooting.md](references/troubleshooting.md) |
 
-Do not enumerate accounts on every turn. Use `pixiv auth list --json` only when an account/authentication decision requires it; both `accounts: null` and `accounts: []` mean none. Stored credentials do not prove current validity. Run networked `auth check` only when needed; `auth refresh` rotates credentials and refreshes profile/Premium metadata, so requires an explicit maintenance request.
+Use `pixiv whoami` to show the current local account; it reads local state only. Do not enumerate accounts on every turn. Use `pixiv auth list --json` only when an account/authentication decision requires it; both `accounts: null` and `accounts: []` mean none. Stored credentials do not prove current validity. Run networked `auth check` only when needed; `auth refresh` rotates credentials and refreshes profile/Premium metadata, so requires an explicit maintenance request.
 
 ## Secrets and side effects
 

@@ -57,10 +57,8 @@ func shouldCheck(cmd *cobra.Command) bool {
 	if cmd.CommandPath() == "pixiv auth export" {
 		return false
 	}
-	if cmd.CommandPath() == "pixiv auth import" {
-		if command.IsOffline(cmd) {
-			return false
-		}
+	if command.IsOffline(cmd) {
+		return false
 	}
 	if helpFlag := cmd.Flags().Lookup("help"); helpFlag != nil && helpFlag.Changed {
 		return false

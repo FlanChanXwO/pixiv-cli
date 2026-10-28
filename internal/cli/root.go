@@ -29,6 +29,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/timeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -104,6 +105,7 @@ func (a app) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	env, exec := a.commandEnv(), a.commandExecutor()
 	cmd.AddCommand(a.newAuthCommand())
+	cmd.AddCommand(whoami.New(env, a.currentPixivUser))
 	cmd.AddCommand(config.New(env, settings.DefaultStore()))
 	cmd.AddCommand(a.pixivCommands(env, exec)...)
 	cmd.AddCommand(a.newDownloadCommand())

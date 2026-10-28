@@ -196,17 +196,8 @@ func (s *Service) CurrentUser(ctx context.Context) (*AccountSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &AccountSummary{
-		UserID:           account.UserID,
-		Username:         account.Username,
-		Default:          true,
-		Premium:          account.PremiumStatus,
-		Schedulable:      account.Schedulable,
-		PoolFrozenUntil:  account.PoolFrozenUntil,
-		PoolLastSelected: account.PoolLastSelected,
-		Eligible:         account.Schedulable && (account.PoolFrozenUntil == nil || *account.PoolFrozenUntil <= time.Now().UTC().Unix()),
-		PoolStatusKnown:  true,
-	}, nil
+	summary := accountSummary(account, true)
+	return &summary, nil
 }
 
 // CheckAccount 在线校验指定账号的 refresh token，并持久化 OAuth 返回的 rotation。
