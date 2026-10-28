@@ -15,6 +15,7 @@ import (
 
 // AttrMethod 等常量是日志属性键，SDK 传输层、执行边界和 JSON 输出共用这些字段名。
 const (
+	AttrOrigin       = "origin"
 	AttrMethod       = "method"
 	AttrHost         = "host"
 	AttrPath         = "path"

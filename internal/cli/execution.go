@@ -126,7 +126,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	// 阶段 5：记录失败并映射退出码（NDJSON 命令走成功语义）。
 	ndjsonOutput := commandWritesNDJSON(target) || command.OutputNDJSON(target)
 	if err != nil && !(ndjsonOutput && errors.Is(err, syscall.EPIPE)) && a.logs.ctx != nil {
-		a.logs.logger.LogAttrs(a.logs.ctx, a.logs.failureLevel, "Command failed", slog.Any(logging.AttrError, err))
+		attrs := append([]slog.Attr{slog.Any(logging.AttrError, err)}, logging.OriginAttr(err)...)
+		a.logs.logger.LogAttrs(a.logs.ctx, a.logs.failureLevel, "Command failed", attrs...)
 	}
 	return a.exitWithNDJSONScope(err, ndjsonOutput)
 }

@@ -39,6 +39,7 @@ func TestCommandFailureLogging(t *testing.T) {
 				} else {
 					require.Contains(t, text, "Command failed")
 					require.Contains(t, text, "call_id")
+					require.Regexp(t, `origin["=:]+[" ]*pixiv/pixiv.go:[0-9]+`, text)
 					if format == "json" {
 						require.Contains(t, text, `"level":"ERROR"`)
 					} else {
