@@ -97,6 +97,12 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 **Flag 与代理** —— Cobra/pflag 允许 flag 出现在位置参数前后。Pixiv 命令代理、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 的 `[fanbox.network]` / `[fanbox.flaresolverr]`，以及反向搜图的 `[reverse_search.network]` / `[reverse_search.flaresolverr]` 都按各自服务边界解析；反向搜图有独立的标准/SauceNAO、ascii2d 浏览器与 FlareSolverr JSON 控制网络面（FlareSolverr 只用于 challenge 恢复）。
 
+## 查找协议与日志实现
+
+- Pixiv 协议在 `internal/pixivapi/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanboxapi/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixivapiinternalfanboxapi)。
+- `internal/cli/execution.go` 创建 stderr logger；`internal/cli/composition_options.go` 与 `composition_mcp.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
+- 本地排查使用 `pixiv config set log_level debug`，需要结构化字段时再设置 `pixiv config set log_format json`；设置在下次执行生效。检查 stderr 中的 `operation`、`sdk_operation` 和 MCP `call_id`，数据输出保持在 stdout。
+
 ## 开发中的凭据
 
 完整流程见[认证](../authentication.md)。开发相关的补充事实：

@@ -8,15 +8,15 @@ flowchart LR
     CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX 工具"]
     CLI --> SDK["公开 SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
-    SDK --> FACADE["internal/pixivapi · internal/fanboxapi<br/>协议适配层"]
-    FACADE --> ADAPTER["endpoint / oauth / resource<br/>协议适配器"]
+    SDK --> API["internal/pixivapi · internal/fanboxapi<br/>传输、资源策略与凭据"]
+    SDK --> OAUTH["internal/pixivapi/oauth<br/>PKCE 与 token 交换"]
     CLI --> SHARED["internal<br/>跨子系统机制"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>配置与本地状态"]
     CLI -.->|"仅组合根"| RSA["reversesearch/assembly"]
 
     subgraph boundary["不可跨越的边界"]
-        RULE["CLI / MCP 从不直连协议适配器<br/>utils 不承载产品协议语义"]
+        RULE["CLI / MCP 从不直连协议适配器<br/>共享机制不承载产品协议语义"]
     end
 ```
 
@@ -86,7 +86,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 
 - **关闭：** 调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
 - **Owner：** `internal/cli/streams.go` 只负责 `Streams`；共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。组合根通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
-- **命令包：** 根级 `internal/cli/{config,mcp,update}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,download,post}`。命令间共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。数据命令经 owner-local 的 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 `*pixiv.Client` / `*fanbox.Client`，从不直连协议适配器。
+- **命令包：** 根级 `internal/cli/{config,mcp,update}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,download,post}`。命令间共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。Pixiv 数据命令通过 `pixivcmd.Executor` 与 `Runner` 使用 `*pixiv.Client`；FANBOX 命令通过延迟会话工厂与 `fanboxcmd.UseClient` 使用 `*fanbox.Client`。公共输入输出由 `command.Env` 提供。
 - **共享 helper：** stdin codec 在 `internal/cli/internal/input`；record 投影在 `internal/record`；目标解析器在 `internal/cli/internal/resolver`（只消费命令契约、record 与离线的 `sdk/pixiv.ParseURL`；owner 显式注入裸 ID 探测；不持有 client、凭据或适配器）。这些子包不反向导入 `internal/cli` 根包。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import` 与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
 - **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool 解析变更时，手动核对 `--help=false` 等重复覆盖形式仍遵守 secret 导出边界。
@@ -127,6 +127,18 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 
 本身就是基础设施的包不受“业务对象”这一限制：`pixivapi`、`fanboxapi`、`storage/*`、`media/downloader`、`mcpserver/pixiv/mediaproxy` 的职责就是并发、缓存、文件和网络。规则只要求它们对外暴露的接口窄、内部零件不外泄。
 
+### 日志入口
+
+| 位置 | 负责 |
+| --- | --- |
+| `internal/logging/` | `slog` handler、ctx 调用信息与共享属性键；内部恢复点经 `logging.From(ctx)` 取得 logger |
+| `internal/cli/execution.go` | 从配置创建 stderr logger、绑定命令路径，在执行终止时记录失败 |
+| `internal/cli/composition_options.go`、`composition_mcp.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
+| `internal/mcpserver/toolrun/toolrun.go` | 共用的 `Scope` / `AddTool` 包装，绑定工具名与调用 ID；错误或 `isError` 结果记录一次受控的失败摘要 |
+| `internal/pixivapi/`（含 `oauth/`）、`internal/fanboxapi/` | 持有构造时传入的 logger，在实际请求与决策处记录结果 |
+
+SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；业务 `Client` 不持有 logger。`operation` 表示 CLI 命令路径或 MCP 工具名，`call_id` 区分并发工具调用。CLI/MCP 日志只写 stderr，数据 stdout 与 JSON-RPC 通道保持纯净；公开 SDK 的 nil logger 保持静默。
+
 ### 共享机制
 
 | 包 | 负责 | 不得 |
@@ -139,7 +151,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
 | `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
-**账号池读取：** 普通 CLI 读取在具体函数类型上使用 `Pooled[R].Read[T]`——失败返回 T 零值且回调不提交；owner 保留自己的 Request 类型。`Write` 会把已调用的 SDK 请求标记为已提交（即使出错），防止跨账号重放结果未知的写入；缺少 pooled 端口是错误。流式 NDJSON、分页与部分交付仍由 owner 与 traversal/lifecycle 负责。
+**账号池读取：** `pixivcmd.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。命令 owner 负责流式 NDJSON、分页与部分交付；`pagination` 和 `lifecycle` 负责共享遍历与重放机制。
 
 ### 业务会话、账号与账号池
 
@@ -152,21 +164,21 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 
 **MCP 登录 relay**（`accounts.Login`） —— 单一当前登录：重复启动复用待处理工作，restart 取消并等待旧尝试，关闭时等待交换/持久化。完成时保留不含 secret 的 account-saved/selection-updated 标记（含部分失败）。组合根把它绑定到同一 SDK 登录会话，保存凭据但不改 CLI 默认，再单独写 MCP 选择。账号服务在多次 restart 间复用；每次完成的 SDK 登录释放其空闲 HTTP 连接（显式代理/直连时，组合根在每个退出路径关闭其 client 的空闲连接）。
 
-### `internal/pixivapi`、`appapi`、`oauth`、`resource`
+### `internal/pixivapi`、`internal/fanboxapi`
 
-仅由公开 SDK 组合的上游适配器；不承载账号/会话 Facade。
+上游协议实现位于模块级 `internal/`；CLI/MCP 的内容操作通过公开 SDK 使用它们。SDK 持有端点请求、响应校验与映射；协议包持有传输与资源策略。
 
-| 包 | 负责 |
+| 位置 | 负责 |
 | --- | --- |
-| `protocol` | 上游 base、profile header、端点目录、脱敏的适配器失败——不读配置、不发请求、不保存 body/URL/header/凭据 |
-| `appapi` | 携带凭据的 App 传输/认证/重试；只向端点族暴露 `GetJSON`/`GetRaw`/`PostForm`；幂等读取仅在首个带有效 `Retry-After` 的 429 时按 context 重试一次；没有业务方法、路由 facade 或原始 DTO/mapper |
-| `oauth` | PKCE、code 交换、刷新、token 状态 |
-| `resource` | 受策略约束的资源传输；重定向/header/body 边界 |
+| `internal/pixivapi/pixivapi.go`、`transport.go` | App 请求、认证头、状态处理、请求节流；幂等读取仅在首次 429 带有效 `Retry-After` 时重试一次，写入不重放 |
+| `internal/pixivapi/api.go`、`profile.go`、`failure.go`、`required.go` | 路径/参数/请求头常量、请求 profile、脱敏失败与必需字段解码 |
+| `internal/pixivapi/resource.go` | 签名 URL 缓存、媒体域名白名单、资源读取与重定向检查 |
+| `internal/pixivapi/oauth/` | PKCE、授权码交换、refresh token 轮换与 token 状态 |
+| `internal/fanboxapi/` | FANBOX 会话 Cookie、原生传输、身份缓存、Cloudflare 挑战与 solver、媒体地址缓存和 URL 策略 |
+| `sdk/pixiv/` | `artwork.go`、`artwork_search.go`、`novel.go`、`user.go`、`bookmark.go`、`comment.go`、`mutation.go` 中的端点行为；`cursor.go` 的游标绑定；`models.go` 的公开模型；`artwork_wire.go` 与 `response.go` 的响应结构 |
+| `sdk/fanbox/` | `creator.go`、`post.go` 中的路由、请求、响应校验与映射；`pagination.go` 的分页；`resource.go` 的公开资源操作 |
 
-- 匿名 Web/AJAX 路径已删除；App 错误直接返回规范化错误，不切换协议。
-- `sdk/pixiv` 按领域文件承载全部 App API 操作：`artwork.go`、`artwork_search.go`、`novel.go`、`user.go`、`bookmark.go`、`comment.go`、`mutation.go`，游标编解码在 `cursor.go`。每个文件同时持有该领域的请求类型、响应结构、mapper，以及每个端点一条 continuation Spec 与解析函数。`response.go` 只放多个领域共用的 user/tag/image_urls 结构与值转换，`models.go` 放公开实体与取值类型。Client 只持有一个 `*pixivapi.Client`，不再有各端点的子 client。MCP 交付常量留在 `internal/mcpserver`。
-- FANBOX：`internal/fanboxapi` 负责会话、Cookie、challenge、URL 策略与窄传输；`endpoint/{creator,post}/<leaf>` 与 `resource` 负责路由/fixture/转换；`sdk/fanbox` 直接组合它们，不依赖 Facade。
-- `RequiredList` / `RequiredObject` 只共享字段存在性解码；端点保留完整性检查与映射。`null` = Present true、Valid false；解码出的空对象不必完整。缺失字段不调用解码器（复用外层 DTO 时调用方须清空或重建）。被调用的解码器会重置旧状态，但失败时可能留下本次输入的部分数据——先处理错误并检查 Valid。历史对象解码一致性只覆盖已验证的生产 DTO 与输入。
+两个产品的 SDK `Client` 各持有一个协议 client。`RequiredList` / `RequiredObject` 共享字段存在性解码：`null` 为 Present true、Valid false；缺失字段不调用解码器。调用方处理解码错误、检查 Valid，并在复用外层响应结构前重置状态；领域层继续检查响应完整性。
 
 ### reverse-search service 例外
 
@@ -373,7 +385,7 @@ flowchart LR
 > [!WARNING]
 > 不可协商。任何新增的超时、截断、数量上限、重试上限、静默 fallback 或隐藏降级都必须有证据、注释、测试或文档，否则视为违规。
 
-- `appapi`、`oauth` 与资源传输使用调用方/SDK 注入的 HTTP client；默认 client 专属于当前 SDK client，没有固定的整请求超时；取消/截止时间经 context 传播；显式 client 保留调用方策略。
+- `internal/pixivapi`、其 `oauth` 子包与资源传输使用调用方/SDK 注入的 HTTP client；默认 client 专属于当前 SDK client，没有固定的整请求超时；取消/截止时间经 context 传播；显式 client 保留调用方策略。
 - `pixiv mcp` 默认 stdio；显式 `--port` 启用 HTTP 并要求 owner 状态已初始化；单独运行 `pixiv` 显示 help。用 `--port`、`--host`、`--base-url` 配置 HTTP，而不是已移除的地址设置（[启动](../cli-reference.md#mcp-http-server)）。
 - 没有持久化账号导入/导出的 MCP 工具；会话范围的 MCP auth 工具与 wire 契约不变。
 - 凭据以未加密 BLOB 存于 SQLite `pixiv-cli.db`；Unix DB/journal `0600`。拥有当前用户文件访问权限的人仍可读取；禁止自动备份。
