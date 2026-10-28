@@ -130,6 +130,8 @@ Validation stays at trust boundaries: user input, CLI and MCP arguments, upstrea
 
 No internal compatibility: a change that supersedes an entry point removes the old one in the same change. Public SDK breaking changes are listed in the changelog and get no `Deprecated` transition.
 
+Express optional parameters through request/spec structs or methods; do not add `WithX`-style entry variants.
+
 Limits, timeouts, retries, truncation, and fallbacks exist only for a verified requirement, a platform constraint, an established contract, or a reproducible failure. State the trigger, cover it with the smallest evidence, and report failures instead of discarding valid data silently. Document an unsupported capability as unsupported.
 
 ```go

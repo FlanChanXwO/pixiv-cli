@@ -203,6 +203,7 @@ flowchart LR
 
 ### `internal/storage/database`
 
+- Use GORM with `github.com/ncruces/go-sqlite3` and its `gormlite` driver; keep SQL-file migrations and the ledger. Do not use `AutoMigrate`, `gorm.Model`, soft deletion, or implicit timestamps. The SQL pool has one connection: close every `Rows` and scan every `QueryRow` before issuing another query. SQL logging stays disabled to protect credentials.
 - SQLite authority for local account state: schema, migration ledger and repository for `pixiv-cli.db`; identity/credentials keyed by `user_id`; Pixiv rotation and FANBOX session replacement use `credential_revision` compare-and-swap.
 - Forward-only migrations through schema v3; legacy v1 databases upgrade with v2/v3 changes; final columns already present in this tree's initial schema are recognized without replaying DDL. Legacy `auth.json` and `account_pool.accounts` are not in the startup migration path.
 - Private DB/journal permissions (Unix `0700`/`0600`). Auth export reads only the default, an exact UID or all accounts — no environment tokens, refresh, network or mutation.
@@ -304,7 +305,7 @@ Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{sou
 
 ### `sdk`, `sdk/pixiv`, `sdk/fanbox`
 
-The only external contract surface.
+The only external contract surface. The module path remains `github.com/FlanChanXwO/pixiv-cli`. Public SDK breaking changes ship in v1 minor releases and are listed in the changelog; updater, installation, and import paths stay unchanged.
 
 | Package | Exports |
 | --- | --- |

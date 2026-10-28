@@ -203,6 +203,7 @@ flowchart LR
 
 ### `internal/storage/database`
 
+- 使用 GORM、`github.com/ncruces/go-sqlite3` 及其 `gormlite` 驱动；继续使用 SQL 文件迁移与 ledger。禁止 `AutoMigrate`、`gorm.Model`、软删除和隐式时间戳。SQL 连接池只有一个连接：执行下一条查询前，关闭每个 `Rows`，对每个 `QueryRow` 执行 `Scan`。SQL 日志保持关闭，保护凭据。
 - 本地账号状态的 SQLite 权威：`pixiv-cli.db` 的 schema、迁移账本与 repository；身份/凭据按 `user_id`；Pixiv 轮换与 FANBOX 会话替换使用 `credential_revision` compare-and-swap。
 - 只前进的迁移到 schema v3；旧 v1 数据库通过 v2/v3 变更升级；本树初始 schema 中已有的最终列会被识别，不重放 DDL。旧 `auth.json` 与 `account_pool.accounts` 不在启动迁移路径中。
 - 私有 DB/journal 权限（Unix `0700`/`0600`）。auth export 只读取默认、指定 UID 或全部账号——不读环境 token、不刷新、不联网、不修改。
@@ -304,7 +305,7 @@ flowchart LR
 
 ### `sdk`、`sdk/pixiv`、`sdk/fanbox`
 
-唯一的对外契约面。
+唯一的对外契约面。模块路径保持 `github.com/FlanChanXwO/pixiv-cli`。公开 SDK 的破坏性变更在 v1 次版本中发布并列入 changelog；更新器、安装路径与 import 路径保持不变。
 
 | 包 | 导出 |
 | --- | --- |
