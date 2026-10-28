@@ -97,6 +97,12 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 **Flag 与代理** —— Cobra/pflag 允许 flag 出现在位置参数前后。Pixiv 命令代理、`[pixiv.network]`、环境变量与 `[network]`，FANBOX 的 `[fanbox.network]` / `[fanbox.flaresolverr]`，以及反向搜图的 `[reverse_search.network]` / `[reverse_search.flaresolverr]` 都按各自服务边界解析；反向搜图有独立的标准/SauceNAO、ascii2d 浏览器与 FlareSolverr JSON 控制网络面（FlareSolverr 只用于 challenge 恢复）。
 
+## 查找协议与日志实现
+
+- Pixiv 协议在 `internal/pixivapi/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanboxapi/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixivapiinternalfanboxapi)。
+- `internal/cli/execution.go` 创建 stderr logger；`internal/cli/composition_options.go` 与 `composition_mcp.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
+- 本地排查使用 `pixiv config set log_level debug`，需要结构化字段时再设置 `pixiv config set log_format json`；设置在下次执行生效。检查 stderr 中的 `operation`、`sdk_operation` 和 MCP `call_id`，数据输出保持在 stdout。
+
 ## 开发中的凭据
 
 完整流程见[认证](../authentication.md)。开发相关的补充事实：
@@ -187,7 +193,7 @@ env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
 
 ### 能力边界
 
-v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为缺陷。证据门禁表中的仅 SDK 迁移 seam 不是 release-ready。禁止仅 schema 的占位与 mock 空结果。新增或恢复入口属于功能变更：更新对应行与用户文档；审查者需手动重跑各项的负面 grep / 目录检查。
+“不支持”表记录 v1 中必须保持缺失的入口。“证据门禁”表列出已有实现；标记为 `public_ready` 前仍须完成列出的真实环境与发布检查。禁止仅 schema 的占位与 mock 空结果。新增或恢复入口属于功能变更：更新对应行与用户文档，并核对已注册的工具名和 SDK 导出，取代原来的逐工具目录检查。
 
 **不支持**
 
@@ -201,15 +207,15 @@ v1 的负面契约：下列任一项出现可发布的 CLI/MCP/SDK 入口即为�
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv`（CLI 之后） | SDK 暴露增量的类型化 `AddNovelBookmark`/`RemoveNovelBookmark`；MCP 暴露 `add_novel_bookmark`/`remove_novel_bookmark`；结果、校验与不重放改用已授权的手动验证；严格/实时、回读与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `COMMENT-WRITE` | `sdk/pixiv`（CLI/MCP 之后） | SDK 暴露命名空间专属的 `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` 及小说对应方法；MCP `comment_post`/`comment_add` 目录仍 = 0；响应 ID、回读、清理与严格实时证据不完整 | 完成严格/实时写入证据、同账号回读、清理与 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
-| `NOTIFICATION` | 无 owner | MCP `notification` 目录 = 0；SDK `Notification*` 导出 = 0 | 同上 |
-| `AUTOCOMPLETE` | 无 owner | MCP `autocomplete` 目录 = 0；SDK `Autocomplete*` 导出 = 0；未并入 `search` | 同上 |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/cli/bookmark` + `internal/mcpserver/pixiv/tools` | SDK 提供 `AddNovelBookmark`/`RemoveNovelBookmark`；CLI `bookmark add/remove --type novel` 与 MCP `pixiv_bookmark_add`/`pixiv_bookmark_remove` 调用这些方法。严格/实时、同账号回读、清理与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv` + `internal/cli/comment` + `internal/mcpserver/pixiv/tools` | SDK 提供作品与小说各自的 post/reply/delete/stamp 方法。CLI 已注册 `comment create/reply/delete/stamp`，MCP 已注册 `pixiv_comment_create`/`pixiv_comment_reply`/`pixiv_comment_delete`/`pixiv_comment_stamp`。响应 ID、回读、清理与严格实时证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
+| `NOTIFICATION` | 无 owner | 没有已注册的通知 MCP 工具或 `Notification*` SDK 导出 | 同上 |
+| `AUTOCOMPLETE` | 无 owner | 没有已注册的自动补全 MCP 工具或 `Autocomplete*` SDK 导出；未并入 `search` | 同上 |
 | `WEB-RESTRICTED-READ` | 无 owner | 没有 `webapi` 包；`web_fallback_enabled` 属未声明键，加载时忽略 | 不重新开放匿名 Web 路径；任何恢复 Web/AJAX 的提议须先修订 AGENTS 冻结契约并通过 ADR |
-| `USER-BLOCK-MUTE-REPORT` | 无 owner | MCP `mute`/`report` 目录 = 0；SDK `BlockUser`/`MuteUser`/`ReportUser` 导出 = 0 | 上游提供可验证的写入契约之后 |
-| `WATCHLIST-MARKER` | 无 owner | MCP `watchlist` 目录 = 0；SDK `Watchlist*` 导出 = 0 | 上游提供之后 |
-| `BOOKMARK-USERS` | 无 owner | 没有对应工具/SDK 导出；`bookmark_detail` 只覆盖当前用户详情 | 上游提供后可评估 |
-| `SPOTLIGHT-PIXIVISION` | 无 owner（不在范围内） | MCP `spotlight`/`pixivision` 目录 = 0；SDK `Spotlight*`/`Pixivision*` 导出 = 0 | 明确不在范围内；只在产品范围变化时重新评估 |
+| `USER-BLOCK-MUTE-REPORT` | 无 owner | 没有已注册的 mute/report MCP 工具，或 `BlockUser`/`MuteUser`/`ReportUser` SDK 写入操作 | 上游提供可验证的写入契约之后 |
+| `WATCHLIST-MARKER` | 无 owner | 没有已注册的 watchlist MCP 工具或 `Watchlist*` SDK 导出 | 上游提供之后 |
+| `BOOKMARK-USERS` | 无 owner | 没有对应工具/SDK 导出；`pixiv_bookmark_detail` 与 `pixiv_novel_bookmark_detail` 只覆盖当前账号的收藏状态 | 上游提供后可评估 |
+| `SPOTLIGHT-PIXIVISION` | 无 owner（不在范围内） | 没有已注册的 spotlight/pixivision MCP 工具，或 `Spotlight*`/`Pixivision*` SDK 导出 | 明确不在范围内；只在产品范围变化时重新评估 |
 
 ## Git 与本地产物
 

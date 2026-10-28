@@ -97,6 +97,12 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 **Flags and proxies** — Cobra/pflag accepts flags before or after positionals. Pixiv command proxy, `[pixiv.network]`, env and `[network]`, FANBOX `[fanbox.network]` / `[fanbox.flaresolverr]`, and reverse-search `[reverse_search.network]` / `[reverse_search.flaresolverr]` resolve per service boundary; reverse search has separate standard/SauceNAO, ascii2d browser and FlareSolverr JSON-control surfaces (FlareSolverr only for challenge recovery).
 
+## Finding protocol and logging code
+
+- Pixiv protocol code lives in `internal/pixivapi/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanboxapi/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixivapi-internalfanboxapi).
+- `internal/cli/execution.go` creates the stderr logger; `internal/cli/composition_options.go` and `composition_mcp.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
+- For local diagnosis, run `pixiv config set log_level debug`; add `pixiv config set log_format json` when structured fields help. Settings apply on the next invocation. Inspect `operation`, `sdk_operation`, and MCP `call_id` on stderr; data stays on stdout.
+
 ## Credentials in development
 
 Full flows: [Authentication](../authentication.md). Development-specific facts:
@@ -187,7 +193,7 @@ env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
 
 ### Capability scope
 
-Negative contract for v1: a shipped CLI/MCP/SDK entry point for any item below is a defect. An SDK-only migration seam in the evidence-gated table is not release-ready. Schema-only placeholders and mock empty results are forbidden. Adding or restoring an entry point is a functional change: update the row and the user docs; reviewers rerun the negative grep / directory checks manually.
+The Unsupported table records v1 entries that must stay absent. Evidence-gated entries have the implementations listed below; their outstanding live and release checks still apply before marking them `public_ready`. Schema-only placeholders and mock empty results are forbidden. Adding or restoring an entry point is a functional change: update the row and user docs, then check registered tool names and SDK exports rather than the former per-tool directories.
 
 **Unsupported**
 
@@ -201,15 +207,15 @@ Negative contract for v1: a shipped CLI/MCP/SDK entry point for any item below i
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking` (MCP later) | SDK and CLI expose the additive `NovelRanking` seam over the internal `/v1/novel/ranking` adapter; CLI selects it explicitly with `--type novel`; MCP has no `novel_ranking` tool, and live/public release evidence is still incomplete | Complete the live second-page, shared cursor, MCP and release compatibility gates; until then this remains evidence-gated and is not `public_ready` |
-| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/mcpserver/pixiv` (CLI later) | SDK exposes additive typed `AddNovelBookmark`/`RemoveNovelBookmark`; MCP exposes `add_novel_bookmark`/`remove_novel_bookmark`; outcome, validation and no-replay checks now use authorized manual verification; strict/live, read-back and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
-| `COMMENT-WRITE` | `sdk/pixiv` (CLI/MCP later) | SDK exposes namespace-specific `PostArtworkComment`/`ReplyArtworkComment`/`DeleteArtworkComment` and novel equivalents; MCP `comment_post`/`comment_add` directories remain = 0; response ID, read-back, cleanup, and strict live evidence are incomplete | After strict/live write evidence plus same-account read-back, cleanup, and compatibility gates; until then this remains evidence-gated and is not `public_ready` |
-| `NOTIFICATION` | No owner | MCP `notification` directory = 0; SDK `Notification*` exports = 0 | Same as above |
-| `AUTOCOMPLETE` | No owner | MCP `autocomplete` directory = 0; SDK `Autocomplete*` exports = 0; not merged into `search` | Same as above |
+| `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/cli/bookmark` + `internal/mcpserver/pixiv/tools` | SDK exposes `AddNovelBookmark`/`RemoveNovelBookmark`; CLI `bookmark add/remove --type novel` and MCP `pixiv_bookmark_add`/`pixiv_bookmark_remove` use those methods. Strict/live, same-account read-back, cleanup and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
+| `COMMENT-WRITE` | `sdk/pixiv` + `internal/cli/comment` + `internal/mcpserver/pixiv/tools` | SDK has namespace-specific post/reply/delete/stamp methods for artworks and novels. CLI `comment create/reply/delete/stamp` and MCP `pixiv_comment_create`/`pixiv_comment_reply`/`pixiv_comment_delete`/`pixiv_comment_stamp` are registered. Response-ID, read-back, cleanup and strict live evidence remain incomplete | After strict/live write evidence plus same-account read-back, cleanup, and compatibility gates; until then this remains evidence-gated and is not `public_ready` |
+| `NOTIFICATION` | No owner | No registered notification MCP tool or `Notification*` SDK export | Same as above |
+| `AUTOCOMPLETE` | No owner | No registered autocomplete MCP tool or `Autocomplete*` SDK export; not part of `search` | Same as above |
 | `WEB-RESTRICTED-READ` | No owner | No `webapi` package; `web_fallback_enabled` is undeclared and ignored | Do not reopen the anonymous Web path; any proposal to restore Web/AJAX must first amend the AGENTS frozen contract and pass an ADR |
-| `USER-BLOCK-MUTE-REPORT` | No owner | MCP `mute`/`report` directories = 0; SDK `BlockUser`/`MuteUser`/`ReportUser` exports = 0 | After the upstream provides a verifiable mutation contract |
-| `WATCHLIST-MARKER` | No owner | MCP `watchlist` directory = 0; SDK `Watchlist*` exports = 0 | After the upstream provides it |
-| `BOOKMARK-USERS` | No owner | No corresponding tool/SDK export; `bookmark_detail` only covers the current user detail | May be evaluated after the upstream provides it |
-| `SPOTLIGHT-PIXIVISION` | No owner (out of scope) | MCP `spotlight`/`pixivision` directories = 0; SDK `Spotlight*`/`Pixivision*` exports = 0 | Explicitly out of scope; re-evaluate only when the product scope changes |
+| `USER-BLOCK-MUTE-REPORT` | No owner | No registered mute/report MCP tool or `BlockUser`/`MuteUser`/`ReportUser` SDK mutation | After the upstream provides a verifiable mutation contract |
+| `WATCHLIST-MARKER` | No owner | No registered watchlist MCP tool or `Watchlist*` SDK export | After the upstream provides it |
+| `BOOKMARK-USERS` | No owner | No corresponding tool/SDK export; `pixiv_bookmark_detail` and `pixiv_novel_bookmark_detail` cover the current account's bookmark state | May be evaluated after the upstream provides it |
+| `SPOTLIGHT-PIXIVISION` | No owner (out of scope) | No registered spotlight/pixivision MCP tool or `Spotlight*`/`Pixivision*` SDK export | Explicitly out of scope; re-evaluate only when the product scope changes |
 
 ## Git and local artifacts
 

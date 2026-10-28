@@ -20,7 +20,7 @@ All exports carry English GoDoc; the package source is the canonical API summary
 
 ## Quickstart
 
-Pixiv: authenticate, search, fetch pages, save an image.
+Pixiv: search with an existing access token and save the first image. This example reads a caller-supplied token from `PIXIV_ACCESS_TOKEN`; OAuth rotation is covered under Authentication below.
 
 ```go
 package main
@@ -37,13 +37,12 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// 1. Authenticate via OAuth rotation. Persist the rotated refresh token
-	//    before issuing content requests; the client never refreshes itself.
-	client, creds, err := pixiv.Open(ctx, os.Getenv("PIXIV_REFRESH_TOKEN"))
+	// 1. Construct with an existing access token; this step is offline.
+	client, err := pixiv.New(os.Getenv("PIXIV_ACCESS_TOKEN"))
 	if err != nil {
 		panic(err)
 	}
-	_ = creds // persist creds.RefreshToken() to durable storage
+	defer client.CloseIdleConnections()
 
 	// 2. Search artworks and iterate the typed page cursor.
 	page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
@@ -82,6 +81,7 @@ client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: sess})
 if err != nil {
     panic(err)
 }
+defer client.CloseIdleConnections()
 page, err := client.Supporting(ctx, fanbox.SupportingRequest{})
 if err != nil {
     panic(err)
@@ -101,10 +101,15 @@ _ = post // post.Body blocks carry image/file assets with their Resource refs
 Pixiv is App-only: every content operation needs a valid access token. No anonymous or Web fallback.
 
 ```go
-client, creds, err := pixiv.Open(ctx, refreshToken) // OAuth rotation
-// persist creds.RefreshToken() before issuing content requests
-
-client, err := pixiv.New(accessToken) // static token, no network I/O
+client, creds, err := pixiv.Open(ctx, refreshToken)
+if err != nil {
+    return err
+}
+defer client.CloseIdleConnections()
+if err := saveRefreshToken(creds.RefreshToken()); err != nil {
+    return err
+}
+// Issue content requests with client only after persistence succeeds.
 ```
 
 ```mermaid
@@ -120,31 +125,41 @@ sequenceDiagram
     Note over App,SDK: token expires → operations return CredentialsExpired<br/>(client never refreshes itself)
 ```
 
+`saveRefreshToken` stands for the application's existing private persistence function. `Credentials` also exposes `UserID`, `Username`, `ExpiresAt`, and `AccessToken()`. The SDK returns the rotation result; the application owns account storage.
+
 - `Open` needs a positive account user ID in the OAuth response; otherwise it returns `MalformedUpstreamResponse` with no client or credentials.
+- `New(accessToken)` / `NewWith(accessToken, options)` use a static token without network I/O at construction. `OpenWith(ctx, refreshToken, options)` applies connection settings before the first OAuth request.
+- Both products release SDK-owned idle connections through `CloseIdleConnections`; a caller-supplied `HTTPClient` stays caller-owned.
 
 ### Programmatic browser login
 
 `BeginLogin` creates a self-contained one-shot PKCE session. It opens no browser and no listener: the caller opens `AuthorizationURL()` and hands the callback or bare code to `Complete`.
 
 ```go
-session, err := pixiv.BeginLogin(pixiv.LoginOptions{HTTPClient: httpClient})
-if err != nil { /* handle error */ }
+session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
+if err != nil {
+    return err
+}
+defer session.CloseIdleConnections()
+// Open session.AuthorizationURL(), then receive callbackURL.
 if !session.AcceptsCallbackURL(callbackURL) {
-    // Reject callbacks before consuming the one-shot session.
+    return fmt.Errorf("unexpected OAuth callback")
 }
 credentials, err := session.Complete(ctx, callbackURL)
+if err != nil {
+    return err
+}
+return saveRefreshToken(credentials.RefreshToken())
 ```
 
-- `AcceptsCallbackURL` is non-consuming and offline. Official HTTPS callbacks require the session `state`; `pixiv://account/login` may omit it, but a supplied value must match.
+- `AcceptsCallbackURL` is non-consuming and offline. The exact official HTTPS callback and `pixiv://account/login` may omit `state`; a supplied value must match the session. Other callback URLs require matching `state`.
 - `IsOfficialOAuthCallbackURL` / `IsOfficialOAuthStartURL` validate browser input by exact origin without contacting Pixiv.
 - The session never exposes verifier, state, code or callback URL through formatting.
 
 ### FANBOX
 
 ```go
-client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: session})
-
-client, err := fanbox.OpenWith(credentials, fanbox.Options{
+client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: session}, fanbox.Options{
     ProxyURL:  "https://proxy.example:8443", // native HTTP(S) CONNECT only
     UserAgent: "my-native-agent/1.0",          // native header only
     FlareSolverr: &fanbox.FlareSolverrOptions{
@@ -152,6 +167,10 @@ client, err := fanbox.OpenWith(credentials, fanbox.Options{
         ProxyURL: "socks5://solver-upstream.example:1080",
     },
 })
+if err != nil {
+    return err
+}
+defer client.CloseIdleConnections()
 ```
 
 > [!IMPORTANT]
@@ -161,18 +180,41 @@ client, err := fanbox.OpenWith(credentials, fanbox.Options{
 - FlareSolverr is disabled when nil and consulted only after a strict native Cloudflare challenge; its service URL and upstream proxy are independent of the native proxy.
 - The constructor performs no network I/O.
 
+## Connections and logging
+
+`pixiv.Options` configures `HTTPClient`, `AcceptLanguage`, `Pacing`, `ResourcePolicy`, and `Logger`; `fanbox.Options` configures `HTTPClient`, `ProxyURL`, `UserAgent`, `FlareSolverr`, and `Logger`. Both products accept the standard-library `*slog.Logger`; nil keeps the SDK silent.
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+    Level: slog.LevelDebug,
+}))
+client, err := pixiv.NewWith(accessToken, pixiv.Options{Logger: logger})
+if err != nil {
+    return err
+}
+defer client.CloseIdleConnections()
+```
+
+The transport/protocol layer records request outcomes and retry, pacing, or challenge-recovery decisions. `sdk_operation` identifies the SDK method. Logs omit queries, headers, bodies, tokens, Cookies, and signed URLs. The application chooses the log destination; CLI/MCP use stderr.
+
 ## Pagination
 
 List operations return `sdk.Page[T]` with an opaque `Cursor`:
 
 ```go
 request := pixiv.SearchArtworksRequest{Word: "miku"}
-page, err := client.SearchArtworks(ctx, request)
 for {
-    for _, artwork := range page.Items { /* ... */ }
-    if page.Next.IsZero() { break }   // stop when no cursor remains
+    page, err := client.SearchArtworks(ctx, request)
+    if err != nil {
+        return err
+    }
+    for _, artwork := range page.Items {
+        fmt.Println(artwork.ID, artwork.Title)
+    }
+    if page.Next.IsZero() {
+        break
+    }
     request.Cursor = page.Next
-    page, err = client.SearchArtworks(ctx, request)
 }
 ```
 
@@ -192,7 +234,7 @@ flowchart LR
 | --- | --- | --- |
 | Verified account | identity-scoped ops on a client from `Open`/`OpenWith` (incl. all `SearchArtworks`) | same account only |
 | Client instance | identity-scoped ops on a client from `New`/`NewWith` (no verified ID) | same Client only; another Client or process gets `InvalidCursor` |
-| Public | `SearchNovels`, `SearchUsers` (frozen source-compatibility policy) | any client, same query |
+| Public | `SearchNovels`, `SearchUsers` | any client, same query |
 
 > [!NOTE]
 > Reusing a cursor with a different query returns `InvalidCursor`.
@@ -225,7 +267,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `SearchArtworks` | word, target, sort, date bounds, type, AI mode, aspect ratio, resolution, tool, bookmark bounds, raw initial `Offset` | `Page[Artwork]` | `InvalidArgument` (unknown enum, bad dates, bad bookmark range) |
 | `SearchNovels` | word, target, sort, duration | `Page[Novel]` | `InvalidArgument` |
-| `SearchUsers` | word | `Page[User]` | `InvalidArgument` |
+| `SearchUsers` | word | `Page[UserPreview]` | `InvalidArgument` |
 | `ArtworkRanking` | mode (default `day`), optional `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
 | `RecommendedArtworks` | cursor | `Page[Artwork]` | `InvalidCursor` |
 | `FollowingArtworks` | `restrict` (`public`/`private`), cursor | `Page[Artwork]` | `InvalidArgument`, `InvalidCursor` |
@@ -235,7 +277,7 @@ flowchart TD
 | `FollowingNovels` | `restrict` (`public`/`private`), cursor | `Page[Novel]` | `InvalidArgument`, `InvalidCursor` |
 | `LatestNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
 | `Stamps` | no query or cursor fields | `[]Stamp` | `MalformedUpstreamResponse`, classified upstream/transport errors |
-| `Artwork` / `Novel` / `User` | positive typed ID | detail record | `NotFound`, `InvalidArgument` |
+| `Artwork` / `Novel` / `User` | positive typed ID | `Artwork` / `Novel` / `UserDetail` | `NotFound`, `InvalidArgument` |
 | `ArtworkSeries` / `NovelSeries` | positive series ID, cursor | series page (novel also returns metadata) | `InvalidCursor` |
 | `ArtworkComments` / `NovelComments` | positive ID, cursor | `CommentPage` | `NotFound` |
 | `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | positive artwork ID; reply also requires a positive parent comment ID | `CommentMutationResult` for post/reply; `error` for delete | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
@@ -244,10 +286,10 @@ flowchart TD
 | `StampNovelComment` | positive novel ID, optional comment (empty for sticker-only), positive stamp ID | `CommentMutationResult` | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
 | `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`, `Restrict`, `tag`, cursor | typed page | `InvalidArgument`, `InvalidCursor` |
 | `ArtworkBookmark` / `NovelBookmark` | positive artwork or novel ID | bookmark detail state | `InvalidArgument`, `MalformedUpstreamResponse`, classified upstream/transport errors |
-| `AddArtworkBookmark` / `RemoveArtworkBookmark` (legacy `AddBookmark` / `RemoveBookmark`) | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
+| `AddArtworkBookmark` / `RemoveArtworkBookmark` | positive artwork ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
 | `AddNovelBookmark` / `RemoveNovelBookmark` | positive novel ID; add accepts `Restrict` and tags | `error` | `InvalidArgument`, classified upstream/transport errors |
 
-`NovelContent` stays exported for source compatibility but is deprecated: it never calls the rejected `/v1/novel/content` endpoint or the excluded WebView path and returns `ContentUnavailable` without network I/O. No replacement body endpoint exists in v1.
+`NovelContent(ctx, NovelContentRequest{NovelID: id})` returns `InvalidArgument` for a non-positive ID and otherwise `ContentUnavailable`, without network I/O. Structured novel content is unsupported by the v1 App API.
 
 ### Key semantics
 
@@ -267,7 +309,7 @@ flowchart TD
 | Comment delete | Namespace-specific delete with the supplied positive `comment_id`; local shape validated, upstream result classified; ownership, namespace proof, read-back and cleanup are application responsibilities |
 | Stamp comments | Namespace-specific add endpoint with independent `stamp_id`; `comment` optional (empty = sticker-only wire); never encoded as a reply parent or text fallback; same direct-response, no-read-back rule |
 | Bookmark detail | `ArtworkBookmark` / `NovelBookmark` represent absence with empty `Restrict` and tags. `NovelBookmark` and `UserNovelBookmarkTags` follow candidate upstream contracts: novel bookmark tags have no continuation and reject a non-zero cursor until verified |
-| Bookmark mutations | `AddArtworkBookmark` / `RemoveArtworkBookmark` are explicit; legacy `AddBookmark` / `RemoveBookmark` keep signatures and error labels and delegate. `AddNovelBookmark` / `RemoveNovelBookmark` use novel endpoints. Add defaults empty `Restrict` → `public` and rejects others locally. Status-only success, no read-back, no replay |
+| Bookmark mutations | `AddArtworkBookmark` / `RemoveArtworkBookmark` use artwork endpoints. `AddNovelBookmark` / `RemoveNovelBookmark` use novel endpoints. Add defaults empty `Restrict` → `public` and rejects others locally. Status-only success, no read-back, no replay |
 | Bookmark bounds | `BookmarkMin` / `BookmarkMax`: optional, inclusive, non-negative App candidate bounds forwarded as `bookmark_num_min` / `bookmark_num_max`; no Premium preflight, no global completeness claim, no silent strategy fallback. Applications may recheck `Artwork.TotalBookmarks` and must report strategy and completeness separately |
 
 ## Errors
@@ -284,7 +326,7 @@ local_state_error, removed_setting
 `errors.Is` / `errors.As` work; `context.Canceled` / `DeadlineExceeded` are preserved. The chain never contains URLs, headers, tokens, cookies or config content.
 
 ```go
-if errors.Is(err, sdk.Unauthorized{}) {
+if errors.Is(err, &sdk.Error{Reason: sdk.Unauthorized}) {
     // re-authenticate
 } else if sdk.ReasonOf(err) == sdk.RateLimited {
     // back off using RetryAdvice
@@ -303,33 +345,45 @@ flowchart LR
     CDN["HTTPS Pixiv CDN URL"] --> SRU["SaveResourceURL"] --> V
 ```
 
+Stream the first image into the caller-provided `io.Writer` named `dst`:
+
 ```go
-// Stream directly without buffering to disk.
 page, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
 if err != nil {
-	// handle
-	return
+    return err
 }
 if len(page) == 0 {
-	// no image resource is available
-	return
+    return nil
 }
 image := page[0].Image.Resource
 resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
-if err != nil { /* handle */ }
+if err != nil {
+    return err
+}
 defer resp.Body.Close()
-// read from resp.Body using image.URL + image.RequestHeaders as needed
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return fmt.Errorf("resource request returned status %d", resp.StatusCode)
+}
+_, err = io.Copy(dst, resp.Body)
+return err
+```
 
+To save the same resource atomically:
+
+```go
 // Save through the SDK-validated path (revalidates URL/redirects, atomic write).
 saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{
     Path: "./out.png",
 })
-if err != nil { /* handle */ }
+if err != nil {
+    return err
+}
 fmt.Println(saved.Path, saved.Size, saved.ContentType)
 ```
 
 | API | Rules |
 | --- | --- |
+| `OpenResource` | Returns the upstream HTTP status and body; the caller checks `StatusCode` before consuming the body and closes `Body` |
 | `SaveResource` | Atomic destination; `SaveProgress.Total` = response `Content-Length` when supplied; explicit header allowlist; never sends the caller's Cookie jar |
 | `SaveResourceURL` | One HTTPS URL without userinfo and with a non-empty path on `i.pximg.net`, `s.pximg.net`, `i-f.pximg.net` (or hosts added to `ResourcePolicy.AllowedHosts`). Revalidates every redirect, sends the product `Referer`, never the Cookie jar, writes atomically. Returns `sdk.SavedResource` with only `Path`, `Size`, `ContentType` (no source URL or signed query). Does not expand pages or batches |
 | `ResourceResponse.Filename` | Upstream-suggested attachment name when available. FANBOX derives it from file name/extension metadata (no duplicated suffix), never from a signed URL or header. Not filesystem-normalized — callers validate before choosing a destination. Missing names stay empty |
@@ -348,7 +402,7 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 
 Each entity has one public model type. Models carry JSON tags and marshal directly; `sdk.Resource` may hold a usable `URL`, forwarding `RequestHeaders` and `ExpiresAt` for in-process streaming, but its JSON form exposes only the opaque `ref` and optional `requires_credentials`.
 
-- There are no `*DTO` types or `To*DTO` converters: encode `pixiv.Artwork`, `pixiv.Novel`, `pixiv.NovelContent`, `pixiv.UgoiraMetadata`, `fanbox.Post` and the other public models directly. `sdk.Page[T]` marshals its cursor as text and a last page as an empty string.
+- Encode `pixiv.Artwork`, `pixiv.Novel`, `pixiv.NovelContent`, `pixiv.UgoiraMetadata`, `fanbox.Post` and the other public models directly. `sdk.Page[T]` marshals its cursor as text and a last page as an empty string.
 - CLI and MCP encode these models, pipeline `Record` values and typed envelopes.
 - `Artwork` keeps upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, `RestrictionAttributes` on search/detail as pointers, plus optional `Series` (`ID`, `Title`). Non-nil keeps explicit `false`, `0` or empty array; nil = not provided. Detail may supply `TotalComments` (search never synthesizes it). Viewer state belongs to the reading account; no per-result enrichment.
 
@@ -358,12 +412,18 @@ Models omit fields upstream did not provide instead of emitting `null` or empty 
 
 ## URL references
 
-`pixiv.ParseURL` and `fanbox.ResolveURL` turn page URLs into typed references offline; `Reference.CanonicalURL` returns the tracking-free form.
+URL parsing is offline: use `pixiv.ParseURL(pageURL)` for Pixiv or `client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: pageURL})` on a FANBOX client. Pixiv references expose `CanonicalURL()` for the tracking-free form; FANBOX references expose `Kind`, `CreatorID`, `PostID`, and `Tag`.
 
 ```go
 ref, err := pixiv.ParseURL(pageURL)
-if err != nil { /* handle */ }
-canonical := ref.CanonicalURL()
+if err != nil {
+    return err
+}
+canonical, err := ref.CanonicalURL()
+if err != nil {
+    return err
+}
+fmt.Println(canonical)
 ```
 
 ## FANBOX

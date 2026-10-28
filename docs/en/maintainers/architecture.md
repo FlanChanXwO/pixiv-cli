@@ -8,15 +8,15 @@ flowchart LR
     CLI -->|"stdio / HTTP"| MCP["internal/mcpserver<br/>Pixiv / FANBOX tools"]
     CLI --> SDK["public SDK<br/>sdk/pixiv · sdk/fanbox"]
     MCP --> SDK
-    SDK --> FACADE["internal/pixivapi · internal/fanboxapi<br/>protocol adapters"]
-    FACADE --> ADAPTER["endpoint / oauth / resource<br/>protocol adapters"]
+    SDK --> API["internal/pixivapi · internal/fanboxapi<br/>transport, resource policy, credentials"]
+    SDK --> OAUTH["internal/pixivapi/oauth<br/>PKCE and token exchange"]
     CLI --> SHARED["internal<br/>cross-subsystem mechanisms"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>config and local state"]
     CLI -.->|"composition root only"| RSA["reversesearch/assembly"]
 
     subgraph boundary["non-crossable boundary"]
-        RULE["CLI / MCP never reach protocol adapters directly<br/>utils carry no product protocol semantics"]
+        RULE["CLI / MCP never reach protocol adapters directly<br/>shared mechanisms carry no product protocol semantics"]
     end
 ```
 
@@ -85,8 +85,8 @@ CLI composition root. The `internal/cli` package keeps command-tree assembly and
 Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
 
 - **Closing:** callers stop producers and finish registration before close; the mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Close follows command completion; MCP stdio waits for in-flight handlers; close errors are joined.
-- **Owners:** `internal/cli/streams.go` owns only `Streams`; shared support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. The composition root wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
-- **Command packages:** root `internal/cli/{config,mcp,update}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,download,post}`. Shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Data commands use `*pixiv.Client` / `*fanbox.Client` via the owner-local `Data` port (`Open`/`Pooled`/`JSONOut`, …), never protocol adapters.
+- **Owners:** shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. The composition root wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
+- **Command packages:** root `internal/cli/{config,mcp,update}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,download,post}`. Shared command support lives in `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`. Pixiv data commands use `*pixiv.Client` through `pixivcmd.Executor` and `Runner`; FANBOX commands use `*fanbox.Client` through a lazy session factory and `fanboxcmd.UseClient`. `command.Env` provides common input/output support.
 - **Shared helpers:** stdin codec `internal/cli/internal/input`; record projection `internal/record`; target resolver `internal/cli/internal/resolver` (consumes only the command contract, records and offline `sdk/pixiv.ParseURL`; owners inject any bare-ID probe; owns no clients, credentials or adapters). These never import the `internal/cli` root.
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
 - **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. When changing root bool parsing, manually verify repeated overrides such as `--help=false` preserve the secret-export boundary.
@@ -121,11 +121,23 @@ One owner per concern; no other layer implements it again.
 | Signed-URL cache, resource host allowlist | `pixivapi` resource transport | same | no field |
 | Resource release (`Close`, `CloseIdleConnections`) | creator; `lifecycle` provides `Lease` | returned close function or `Lease` | no extra field |
 | Database connection, file lock, transaction | `internal/storage/database` | `withLock` inside methods | repository interface only |
-| Credential rotation persistence | `session` | `session.Use` callback | SDK callers do not handle credentials |
+| Local credential rotation persistence | `internal/pixivaccount` | `session.Pixiv.Open` / `Use` through its account port | CLI/MCP callbacks receive a client after persistence |
 | Configuration | composition root, read once | named field value at construction | value field, no `settings.Store` |
 | stdout output (text, JSON, NDJSON) | CLI command layer | the command holds the writer | business code returns data |
 
 Infrastructure packages themselves — `pixivapi`, `fanboxapi`, `storage/*`, `media/downloader`, `mcpserver/pixiv/mediaproxy` — are not business objects. They own concurrency, caching, files, and network by design; the rule requires only a narrow interface and no leaked internals.
+
+### Logging entry points
+
+| Location | Owns |
+| --- | --- |
+| `internal/logging/` | slog handlers, context call information, and shared attribute keys; internal recovery points obtain the logger through `logging.From(ctx)` |
+| `internal/cli/execution.go` | creates the configured stderr logger, binds the command path, and logs terminal failure |
+| `internal/cli/composition_options.go`, `composition_mcp.go` | passes the same logger to both SDKs' `Options.Logger` and MCP ports |
+| `internal/mcpserver/toolrun/toolrun.go` | shared `Scope` / `AddTool` wrappers bind tool name and call ID; an error or `isError` result produces one controlled failure summary |
+| `internal/pixivapi/` (including `oauth/`), `internal/fanboxapi/` | holds the constructor-supplied logger and records outcomes at the actual request/decision point |
+
+SDK business methods only register `sdk_operation` in context through `logging.WithOperation`; business `Client` types hold no logger. `operation` names the CLI command path or MCP tool, and `call_id` distinguishes concurrent tool calls. CLI/MCP logs go to stderr, keeping data stdout and JSON-RPC clean; a nil public SDK logger stays silent.
 
 ### Shared mechanisms
 
@@ -139,7 +151,7 @@ Infrastructure packages themselves — `pixivapi`, `fanboxapi`, `storage/*`, `me
 | `internal/pagination` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
 | `internal/logging` | `log/slog` handler plus context call information; CLI, MCP, transports, pool, download and FlareSolverr share attribute keys and emit only operation, method, host, path, status, duration, attempt, wait, reason and count; SDK accepts one `Options.Logger`; nil keeps the SDK silent | create log files or record bodies, Cookies, tokens, queries, signed URLs or arbitrary error cause dumps |
 
-**Pooled reads:** ordinary CLI reads use `Pooled[R].Read[T]` on a concrete function type — failure returns zero T and callbacks don't commit; owners keep their Request types. `Write` marks an invoked SDK call committed even on error (no cross-account replay of an unknown write); a missing pooled port is an error. Streaming NDJSON, pagination and partial delivery stay with owners and traversal/lifecycle.
+**Pooled reads:** `pixivcmd.Read[T]` reads within the `Runner`'s `Executor` callback and returns data only after the whole execution boundary succeeds; failure returns zero T. `Runner.Write` marks the attempt committed as soon as the mutation callback starts, even on error, preventing cross-account replay of an uncertain write. Command owners keep streaming NDJSON, pagination, and partial delivery; `pagination` and `lifecycle` own shared traversal and replay mechanisms.
 
 ### Business sessions, accounts and pool
 
@@ -152,21 +164,21 @@ Infrastructure packages themselves — `pixivapi`, `fanboxapi`, `storage/*`, `me
 
 **MCP login relay** (`accounts.Login`) — single current login: repeated starts reuse pending work, restart cancels and joins, shutdown joins exchange/persistence. Completion keeps non-secret account-saved/selection-updated flags (incl. partial failure). The composition root binds it to the same SDK login session, saves credentials without touching the CLI default, then writes MCP selection. The account service is reused across restarts; each completed SDK login releases its idle HTTP connections (explicit proxy/direct: the root closes its client's idle connections on every exit).
 
-### `internal/pixivapi`, `appapi`, `oauth`, `resource`
+### `internal/pixivapi`, `internal/fanboxapi`
 
-Upstream adapters composed only by the public SDK; no account/session Facade.
+Upstream protocol implementations live under module-level `internal/`; CLI/MCP content operations reach them through the public SDK. The SDK owns endpoint requests, response validation, and mapping; protocol packages own transport and resource policy.
 
-| Package | Owns |
+| Location | Owns |
 | --- | --- |
-| `protocol` | upstream base, profile header, endpoint catalog, redacted adapter failure — reads no config, sends nothing, stores no body/URL/header/credentials |
-| `appapi` | credential-bearing App transport/auth/retry; exposes only `GetJSON`/`GetRaw`/`PostForm` to endpoint families; idempotent reads retry once on the first 429 with a valid `Retry-After`, per context; no business methods, route facades or raw DTO/mappers |
-| `oauth` | PKCE, code exchange, refresh, token state |
-| `resource` | policy-constrained resource transport; redirect/header/body boundaries |
+| `internal/pixivapi/pixivapi.go`, `transport.go` | App requests, auth headers, status handling, and pacing; idempotent reads retry once only on the first 429 with a valid `Retry-After`; mutations are not replayed |
+| `internal/pixivapi/api.go`, `profile.go`, `failure.go`, `required.go` | route/parameter/header constants, request profile, redacted failures, and required-field decoding |
+| `internal/pixivapi/resource.go` | signed-URL cache, media host allowlist, resource reads, and redirect validation |
+| `internal/pixivapi/oauth/` | PKCE, authorization-code exchange, refresh-token rotation, and token state |
+| `internal/fanboxapi/` | FANBOX session Cookie, native transport, identity cache, Cloudflare challenge/solver, media locator cache, and URL policy |
+| `sdk/pixiv/` | endpoint behavior in `artwork.go`, `artwork_search.go`, `novel.go`, `user.go`, `bookmark.go`, `comment.go`, and `mutation.go`; cursor binding in `cursor.go`; public models in `models.go`; response shapes in `artwork_wire.go` and `response.go` |
+| `sdk/fanbox/` | routes, requests, response validation, and mapping in `creator.go` and `post.go`; pagination in `pagination.go`; public resource operations in `resource.go` |
 
-- The anonymous Web/AJAX path is deleted; App errors return normalized errors with no protocol switching.
-- `sdk/pixiv` owns every App API operation in domain files: `artwork.go`, `artwork_search.go`, `novel.go`, `user.go`, `bookmark.go`, `comment.go`, `mutation.go`, plus `cursor.go` for cursor encoding. Each file holds its request types, response structs, mappers, and one continuation Spec/parser per endpoint. `response.go` holds only the user/tag/image_urls pieces and value conversions shared by several domains; `models.go` holds the public entities and value types. The Client holds one `*pixivapi.Client` and no endpoint sub-clients. MCP delivery constants stay in `internal/mcpserver`.
-- FANBOX: `internal/fanboxapi` owns session, cookie, challenge, URL policy and narrow transport; `endpoint/{creator,post}/<leaf>` and `resource` own route/fixture/conversion; `sdk/fanbox` composes them directly without the Facade.
-- `RequiredList` / `RequiredObject` share field-presence decoding only; endpoints keep completeness checks and mapping. `null` = Present true, Valid false; a decoded empty object need not be complete. Missing fields skip the decoder (callers must clear or recreate reused outer DTOs). An invoked decoder resets old state but may leave partial data on failure — handle the error and check Valid first. Historical parity covers only verified production DTOs and inputs.
+Each product SDK `Client` holds one protocol client. `RequiredList` / `RequiredObject` share field-presence decoding: `null` means Present true, Valid false; a missing field does not invoke the decoder. Callers handle decoding errors, check Valid, and reset reused outer response structs; domain code still checks response completeness.
 
 ### Reverse-search service exception
 
@@ -191,6 +203,7 @@ flowchart LR
 
 ### `internal/storage/database`
 
+- Use GORM with `github.com/ncruces/go-sqlite3` and its `gormlite` driver; keep SQL-file migrations and the ledger. Do not use `AutoMigrate`, `gorm.Model`, soft deletion, or implicit timestamps. The SQL pool has one connection: close every `Rows` and scan every `QueryRow` before issuing another query. SQL logging stays disabled to protect credentials.
 - SQLite authority for local account state: schema, migration ledger and repository for `pixiv-cli.db`; identity/credentials keyed by `user_id`; Pixiv rotation and FANBOX session replacement use `credential_revision` compare-and-swap.
 - Forward-only migrations through schema v3; legacy v1 databases upgrade with v2/v3 changes; final columns already present in this tree's initial schema are recognized without replaying DDL. Legacy `auth.json` and `account_pool.accounts` are not in the startup migration path.
 - Private DB/journal permissions (Unix `0700`/`0600`). Auth export reads only the default, an exact UID or all accounts — no environment tokens, refresh, network or mutation.
@@ -292,7 +305,7 @@ Thin root (coordinator + auto-check API), re-exporting `internal/selfupdate/{sou
 
 ### `sdk`, `sdk/pixiv`, `sdk/fanbox`
 
-The only external contract surface.
+The only external contract surface. The module path remains `github.com/FlanChanXwO/pixiv-cli`. Public SDK breaking changes ship in v1 minor releases and are listed in the changelog; updater, installation, and import paths stay unchanged.
 
 | Package | Exports |
 | --- | --- |
@@ -306,7 +319,7 @@ The only external contract surface.
 
 ### `internal/mcpserver`
 
-See [MCP server architecture](architecture-mcp.md). Each product's tools live in one `tools` package: `register.go` holds the single `Register` and the original port-gated registration order, and each domain file (`accounts.go`, `media.go`, `bookmarks.go`, …) keeps its tools' schemas, annotations and `<tool>Handler` methods on the product tool set. Shared ports stay in the product's `internal/toolhost`.
+See [MCP server architecture](architecture-mcp.md). Each product's tools live in one `tools` package: `register.go` holds the single `Register` and the original port-gated registration order, and each domain file (`accounts.go`, `media.go`, `bookmarks.go`, …) keeps its tools' schemas, annotations and `<tool>Handler` methods on the product tool set. Shared ports stay in `internal/mcpserver/{pixiv,fanbox}/internal/toolhost`.
 
 ### `internal/media/downloader`
 
@@ -373,7 +386,7 @@ Protocol-free helpers live with their callers: positive-integer parsing in `inte
 > [!WARNING]
 > Non-negotiable. Any new timeout, truncation, count limit, retry cap, silent fallback or hidden degradation needs evidence, a comment, a test or documentation — otherwise it is a violation.
 
-- `appapi`, `oauth` and resource transport use the caller/SDK HTTP client; the default client is per SDK client with no fixed whole-request timeout; cancellation/deadline flow through context; explicit clients keep the caller's policy.
+- `internal/pixivapi`, its `oauth` subpackage, and resource transport use the caller/SDK HTTP client; the default client is per SDK client with no fixed whole-request timeout; cancellation/deadline flow through context; explicit clients keep the caller's policy.
 - `pixiv mcp` defaults to stdio; explicit `--port` enables HTTP and needs initialized owner state; `pixiv` alone shows help. Configure HTTP with `--port`, `--host`, `--base-url`, not removed address settings ([startup](../cli-reference.md#mcp-http-server)).
 - No persistent account import/export MCP tool; session-scoped MCP auth tools and wire contracts unchanged.
 - Credentials sit unencrypted (BLOB) in SQLite `pixiv-cli.db`; Unix DB/journal `0600`. Anyone with the user's file access can read them; automatic backups are prohibited.
