@@ -71,18 +71,21 @@ flowchart TD
 
 ### `internal/cli`
 
-CLI 组合根，分为三个同包文件：
+CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开：
 
 | 文件 | 负责 |
 | --- | --- |
-| `root.go` | 命令树、全局 flag、共享装配、按需启动生命周期 |
-| `execution.go` | 执行入口、退出码、资源关闭（私有 `closeState`，按注册逆序幂等关闭）、启动/收尾 |
-| `composition.go` | Pixiv/FANBOX/MCP 的生产依赖组装 |
+| `root.go` | Cobra 命令树、全局 flag、按需启动 hook |
+| `execution.go` | 执行入口、退出码、资源关闭（私有 `closeState`，按注册逆序幂等关闭） |
+| `composition.go` | 命令构造函数，以及 Pixiv/FANBOX 账号、SDK、下载与更新依赖 |
+| `composition_options.go` | 把运行时配置转换为 SDK 与网络选项 |
+| `composition_mcp.go` | MCP ports、登录服务及 stdio/HTTP runtime 启动 |
+| `composition_search.go` | 反向搜索 ports；唯一导入 `internal/reversesearch/assembly` 的文件 |
 
 职责：Cobra 命令树/help/flag；文本/JSON 输出；`auth import` 输入适配（位置参数 = opaque token；无参数时 TTY 隐藏输入，非 TTY 按首个非空白字节区分 token 与严格 bundle；通过管道/重定向恢复，没有 `--file`）；`auth export` secret 输出适配（无 `--output`：原始 token + 换行，或 `--all` 的 bundle；有 `--output`：私有文件 + 不含 secret 的摘要）；`--page`/`--limit` 解析（逻辑计划在 `internal/pagination`）；`auth login` 的 loopback OAuth、浏览器与 TTY；`pixiv mcp` 分发；根 `--version` 与 `pixiv update`（已移除的 `version` 子命令在解析时返回 unknown command）；只写 stderr 的只读自动更新提示。
 
 - **关闭：** 调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
-- **Owner：** `internal/cli/streams.go` 只负责 `Streams`。命令 owner 通过显式工厂与窄端口构造配置快照、DB、Facade、生命周期、媒体/下载与更新依赖，并逆序关闭。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
+- **Owner：** `internal/cli/streams.go` 只负责 `Streams`；共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。组合根通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
 - **命令包：** 根级 `internal/cli/{config,mcp,update}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,download,post}`。命令间共享支撑位于 `internal/cli/internal/{command,input,pixivcmd,fanboxcmd,resolver}`。数据命令经 owner-local 的 `Data` 端口（`Open`/`Pooled`/`JSONOut` 等）使用 `*pixiv.Client` / `*fanbox.Client`，从不直连协议适配器。
 - **共享 helper：** stdin codec 在 `internal/cli/internal/input`；record 投影在 `internal/record`；目标解析器在 `internal/cli/internal/resolver`（只消费命令契约、record 与离线的 `sdk/pixiv.ParseURL`；owner 显式注入裸 ID 探测；不持有 client、凭据或适配器）。这些子包不反向导入 `internal/cli` 根包。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import` 与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
@@ -100,6 +103,29 @@ CLI 组合根，分为三个同包文件：
 | 无头 Linux | 不注册 handler；relay server 仍可用 |
 
 只有精确的 `pixiv://account/login` 与 `pixiv://account/remote-login` 进入本轮；活动 loopback 优先；远程回调只交给活动的一次性 hand-off；其他 URL 交给清单中持久化的 handler。桌面状态只保存当前 hand-off 的 relay origin、会话 ID 与 capability；server 不保存设备记录；SDK 不暴露这些状态。远程回调只接受同一 relay base 上的一次性结果 URL；`internal/cli` 打开不敏感的最终页面并等待交换。
+
+### 横切关注点
+
+每个关注点只有一个归属层，其他层不重复实现。
+
+1. 每个关注点只有一个归属层和一种传入方式。
+2. 业务对象可以持有基础设施，但只持有一个已经封装好的依赖（一个 transport、一个 repository），不持有构成它的零件（`http.Client`、`selfHTTP`、`sync.Mutex`、缓存 map）。
+3. 请求范围内的信息（取消、调用关联、日志）通过 `context.Context` 传递，不放进字段。
+4. 只为测试存在的注入点不出现在导出 API 中。同包测试可以设置未导出字段。
+
+| 关注点 | 归属层 | 传入方式 | 业务对象中的形态 |
+| --- | --- | --- | --- |
+| 日志、诊断事件 | `pixivapi`、`fanboxapi`（请求与内部决策）；执行边界（最终结果） | SDK：构造时经 `Options.Logger`；内部：`context.Context` | 无字段 |
+| 取消、超时、调用关联 | 执行边界 | `context.Context` | 方法参数 |
+| HTTP client、代理、重试、Retry-After、请求间隔 | `internal/pixivapi`、`internal/fanboxapi` | 构造时传入一次 | 一个 transport 字段 |
+| 签名 URL 缓存、资源域名白名单 | `pixivapi` 资源传输层 | 同上 | 无字段 |
+| 资源释放（`Close`、`CloseIdleConnections`） | 创建者；`lifecycle` 包提供 `Lease` | 构造函数返回关闭函数或 `Lease` | 无额外字段 |
+| 数据库连接、文件锁、事务 | `internal/storage/database` | 方法内部 `withLock` | 业务只看到 repository 接口 |
+| 凭据轮换的持久化 | `session` | `session.Use` 回调 | SDK 调用方不处理凭据 |
+| 配置 | 组合根读取一次 | 以具名字段的值传入构造函数 | 值字段，不持有 `settings.Store` |
+| stdout 输出（文本/JSON/NDJSON） | CLI 命令层 | 命令持有 writer | 业务返回数据 |
+
+本身就是基础设施的包不受“业务对象”这一限制：`pixivapi`、`fanboxapi`、`storage/*`、`media/downloader`、`mcpserver/pixiv/mediaproxy` 的职责就是并发、缓存、文件和网络。规则只要求它们对外暴露的接口窄、内部零件不外泄。
 
 ### 共享机制
 
@@ -146,9 +172,11 @@ CLI 组合根，分为三个同包文件：
 
 唯一跨越常规 SDK 边界的产品能力。
 
+只有 `internal/cli` 组合根中的 `composition_search.go` 导入 `internal/reversesearch/assembly`。CLI 命令 owner 与 MCP owner 可以使用顶层 `internal/reversesearch` 契约；它们不得导入 `assembly` 或 `saucenao`、`ascii2d` 等 provider 包。
+
 ```mermaid
 flowchart LR
-    COMP["internal/cli/composition.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
+    COMP["internal/cli/composition_search.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
     ASM --> SN["reversesearch/saucenao"]
     ASM --> A2["reversesearch/ascii2d"]
     CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>（契约 + Service）"]
@@ -197,7 +225,7 @@ flowchart LR
 - 私有 schema 缓存字段索引链与 Go 类型，从不缓存实例。标量绑定与 `Effective` 使用相同的来源选择；普通绑定不分配指针组。高级读取器按字段归属定位已编译路径，不新增别名，也不会在领域启用检查前分配 solver 组。账号池默认值来自声明；严格文件类型与策略校验仍是领域规则。
 - 默认账号选择有单独的私有声明范围：`int64` UID 叶子无别名、无默认值；正整数解析留在按需的 auth 读写方法中；从不进入普通绑定或 Snapshot 早期校验。
 - `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。`keys.go` 为每个别名声明具名 `Key` 常量，变更声明时同步保持一致。`LogLevel` 与 `LogFormat` 是带常量的具名类型。
-- **新增普通设置** = 字段 + 标签 + `Key` 常量、对应文档；仅在[清单契约](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)存在缺口时扩展现有优先级/空值测试。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
+- **新增普通设置** = 字段 + 标签 + `Key` 常量、对应文档；按[测试提交规则](coding-standards.md#测试提交规则)确认现有优先级/空值测试是否需要补缺口。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
 
 | 文件 | 职责 |
 | --- | --- |

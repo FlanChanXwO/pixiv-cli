@@ -112,19 +112,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## 测试
 
-长期维护的代码/行为测试遵循[七项契约清单](../../../.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change)。复用契约归属层的测试，每项保留一个代表性用例与必要失败用例；清单外的调查放在忽略的 `tmp/test/_probe/` 目录中。
-
-| 契约 | 归属 |
-| --- | --- |
-| 账号/Cookie 在 `%v`、`%+v`、`%#v` 与 slog 中脱敏；日志省略 query/token/Cookie/签名 URL；MCP 输出省略签名 URL 与 Cookie | 凭据类型、请求日志、MCP 输出 |
-| revision 冲突、事务回滚、v1.2.x 数据库可打开、私有权限、原子替换与文件锁 | `internal/storage/*` |
-| 返回 client 前持久化轮换后的 token | `internal/pixivaccount` 或 `internal/session` |
-| 上游响应异常时返回错误，取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
-| 一份完整 MCP `tools/list` golden；一个 CLI 命令的 text/JSON/NDJSON；用法退出码；纯 JSON-RPC stdio；HTTP bearer 鉴权 | `internal/mcpserver`、`internal/cli` |
-| 环境变量 > 文件 > 默认值及显式空值 | `internal/config/settings` |
-| 自更新校验失败时保留已有二进制 | `internal/selfupdate` |
-
-**上限：** 全仓库最多 25 个非豁免测试文件，每个文件最多 200 行（含导入、辅助函数与空行），每个测试函数最多 40 行，每张表最多 8 行用例。统计全部平台/build tag 文件。`testdata` 仅存放旧版本数据库样本与少量 golden。使用真实 `httptest` 服务与临时存储；测试辅助包、fixture 构造器、mock 层级和测试专用生产导出符号均不纳入套件。
+长期测试契约、准入、数量上限、CI 选中库存与删除规则以[编码规范](coding-standards.md#测试提交规则)为准。使用[pixiv-cli-test 流程](../../../.agents/skills/pixiv-cli-test/SKILL.md)处理 test-first、检查选择与证据。本页负责测试布局和手动真实环境验证流程。
 
 编辑期间运行受影响包；共享契约的最终候选执行：
 
@@ -139,18 +127,13 @@ race 检查需要 C 工具链，源码构建保持 CGO-free。保留 workflow �
 
 ### CI 豁免
 
-workflow 步骤保持完整。测试重写期间，以下测试及其必需声明/fixture 原样保留，豁免上述上限与 `testdata` 限制：
+CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.md#测试提交规则)。
 
-- 整包：`scripts/citest`、`scripts/release`、`internal/cli/auth/loginhelper`、`internal/media/ugoira/...`。
-- 点名测试：`cmd/pixiv/TestPixivBinaryPackagedSmoke`、`internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`，以及 `internal/cli/TestAuthURLCallback`、`TestAuthURLHandlerInstall`、`TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`。
-
-合并前对照当前 workflow 与实际定义重核 selector，记录没有匹配测试的 selector。混合文件保留被点名的函数、注释与必需辅助声明，其余测试按清单处理。通用的 `go test ./...` 门禁维持现有豁免范围。
-
-`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 继续作为 `platform-smoke.yml` 在六个 runner 上使用的离线打包二进制输入。Platform 与 Container 证据须指向实际 PR head。套件重写的 PR 列出每个计入上限的文件、行数与清单项、保留的 CI 测试名单及测试总行数变化；删除和重写一并合入。
+`PIXIV_E2E_BINARY` 与 `PIXIV_E2E_EXPECTED_VERSION` 继续作为 `platform-smoke.yml` 在六个 runner 上使用的离线打包二进制输入。Platform 与 Container 证据须指向实际 PR head。套件重写的证据与交付要求见[pixiv-cli-test 流程](../../../.agents/skills/pixiv-cli-test/SKILL.md)。
 
 ### 测试文件布局
 
-生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。新测试使用外部包（`X_test`），现有 CI 点名文件保留原布局。同包例外如下：
+生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。新测试使用外部包（`X_test`），CI 豁免文件按[手册测试规则](coding-standards.md#测试提交规则)保留所需布局。同包例外如下：
 
 | 目录 | 理由 |
 | --- | --- |
@@ -160,7 +143,7 @@ workflow 步骤保持完整。测试重写期间，以下测试及其必需声�
 | `internal/storage/database` | 保留的 Windows 点名 CI 测试沿用原 package 声明；其他数据库测试使用外部包。 |
 | `scripts/release` | 保留的 release CI 测试运行命令包及私有发布/产物操作。 |
 
-新增同包例外须在此记录具体私有符号与理由，并遵守清单和上限。用 `go list` 查看当前选中文件；分别设置 `GOOS=darwin`、`windows`、`linux` 核对平台差异：
+新增同包例外须在此记录具体私有符号与理由。用 `go list` 查看当前选中文件；分别设置 `GOOS=darwin`、`windows`、`linux` 核对平台差异：
 
 ```fish
 go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
@@ -168,7 +151,7 @@ go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep .
 
 ### 手动真实环境验证
 
-真实环境验证在明确授权后通过正常 CLI/SDK 操作完成。日常套件保持离线，长期测试保留上述契约清单。
+真实环境验证在明确授权后通过正常 CLI/SDK 操作完成。长期测试与手动观测的边界见[编码规范的测试提交规则](coding-standards.md#测试提交规则)。
 
 1. 约定产品、副账号、目标、联网请求与下载范围。浏览器秘密访问、图片上传及写入操作分别确认范围。记录 Pixiv/FANBOX 当前默认账号以便恢复；账号检查可能轮换并持久化 token，切换账号会写入本地状态。
 2. 使用已有 CLI 账号，或通过约定的私密凭据输入路径调用仅 SDK 提供的能力。token、Cookie 值、签名 URL 与原始响应体留在私密操作范围内，argv、源码、环境转储与共享证据只含安全信息。登录/导入流程见[认证](../authentication.md)。

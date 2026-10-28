@@ -5,7 +5,7 @@ description: Change or validate pixiv-cli ugoira encoding, pure-Go platform buil
 
 # Maintain Encoding and Platform Builds
 
-Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../../../docs/en/maintainers/development.md#ugoira-go-encoder). `scripts/build/platforms.json` owns runners and capabilities; `go.mod` owns the toolchain. `scripts/build/platform.sh` owns exact-target Go builds and canonical archives; `scripts/build/matrix.sh` validates the registry.
+Read `AGENTS.md`, the affected encoder/build owner, and [Ugoira Go encoder](../../../docs/en/maintainers/development.md#ugoira-go-encoder). `scripts/build/platforms.json` owns runners and capabilities; the [coding handbook](../../../docs/en/maintainers/coding-standards.md#style-baseline) owns the Go toolchain baseline. `scripts/build/platform.sh` owns exact-target Go builds and canonical archives; `scripts/build/matrix.sh` validates the registry.
 
 ## Change the responsible boundary
 

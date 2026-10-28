@@ -17,7 +17,7 @@ Define the tool name, input validation, output schema, optional fields, cursor/r
 
 ## Implement through tests
 
-1. Apply [the coverage-gap decision](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change): reuse or extend a registration/schema or real-handler test with synthetic SDK/HTTP fixtures, and add a new case only for a missing contract. Run it and observe the missing behavior before implementation; do not require one test per adapter function.
+1. Apply the [coding handbook's test submission rules](../../../docs/en/maintainers/coding-standards.md#test-submission-rules) at a registration/schema or real-handler boundary, using synthetic SDK/HTTP fixtures. Add coverage for a missing contract; use [the test workflow](../pixiv-cli-test/SKILL.md) for execution and regression evidence.
 2. Validate schema and local inputs before opening an SDK snapshot or issuing requests. Reuse typed enums and shared record/pagination contracts where they are the owner.
 3. Keep `context.Context`, cancellation, account selection, resource lifetime, and operation-specific permissions intact. FANBOX sessions and Pixiv pool selection remain separate.
 4. Emit the declared structured result; failures set `isError=true` without exposing credentials. HTTP authentication failures remain HTTP errors, not tool results. Legitimate empty results remain successful; partial outcomes must not be mislabeled complete.

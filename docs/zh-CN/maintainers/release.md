@@ -76,7 +76,7 @@ go test ./scripts/citest ./scripts/release -count=1
 
 - 只读：没有 `release` Environment、secret、tag checkout、Release 编辑、tap clone/commit/push，也有意不设 deploy 任务——唯一的发布路径无法被绕过。Linux 使用固定 digest 容器；macOS 使用原生命令。
 - 它用于正式发布前复现安装链，**不能替代**正式 tag 发布、签名 Release、tap 部署或发布后验收。quality gate 保留行为级的 formula 与产物检查，而不是第二份策略实现。
-- 正式发布仍需要 tag、签名 Release、tap formula 与安装验收；完整的同源同版本六目标证据（[Native runner evidence](development.md#native-runner-evidence)）；以及已配置的 `release` Environment、签名私钥与公开仓库——这些前提本身不代表 Release/tap 已存在或安装路径已验收。
+- 正式发布仍需要 tag、签名 Release、tap formula 与安装验收；[原生 runner 执行证据流程](../../../.agents/skills/pixiv-cli-native/SKILL.md#consume-matching-evidence)中要求的完整同源同版本六目标证据；以及已配置的 `release` Environment、签名私钥与公开仓库——这些前提本身不代表 Release/tap 已存在或安装路径已验收。
 
 </details>
 

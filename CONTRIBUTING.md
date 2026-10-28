@@ -16,14 +16,13 @@ flowchart LR
 
 ## Ground rules
 
-- Never include Pixiv tokens, cookies, downloaded works, local databases, caches, machine-specific config or private API responses in an issue, fixture, commit or CI log.
 - Keep changes focused; unrelated cleanup goes in a separate PR.
-- Don't hide real authentication, network, Pixiv API, filesystem or encoding failures behind empty success or silent fallback. No arbitrary timeouts, truncation, pagination caps, retry limits or hidden downgrades.
-- Real Pixiv/FANBOX SDK and reverse-search checks are opt-in: never use a user's account or upload an image without explicit authorization, and never put a real token on a command line stored in shell history.
+- Follow the [AGENTS.md hard constraints](AGENTS.md#hard-constraints) for secrets, account access, dependency/tool installation, Git operations, and PR or release authorization.
+- Use the [coding standards](docs/en/maintainers/coding-standards.md#boundary-validation-no-over-defensive-code) for trust-boundary validation, error behavior, and evidence-backed limits, retries, or fallbacks.
 
 ## Build and test
 
-Go version from `go.mod`, `CGO_ENABLED=0`, no Rust/native library/C linker. Race tests need `CGO_ENABLED=1` and a C toolchain. On Windows use Git Bash, MSYS2 or WSL.
+See the [development guide](docs/en/maintainers/development.md#environment-check) for platform and toolchain requirements and the [coding standards](docs/en/maintainers/coding-standards.md#style-baseline) for the Go baseline.
 
 ```bash
 CGO_ENABLED=0 go test ./...
@@ -35,23 +34,11 @@ Encoder verification, opt-in real API tests, release gates and platforms: [devel
 
 ## Architecture guardrails
 
-| Rule | Detail |
-| --- | --- |
-| Thin entry | `cmd/pixiv` → `internal/cli`; `internal/cli/root.go` owns registration, lifecycle and production wiring; commands live in `internal/cli/internal/command` |
-| SDK only | CLI/MCP call `sdk/pixiv` / `sdk/fanbox` through owner-local narrow ports, never `internal/{pixivapi,fanboxapi}` protocol adapters |
-| MCP layout | Aggregators in `internal/mcpserver/{pixiv,fanbox}`, tools in `tools/<tool>`; stdio stdout is JSON-RPC only |
-| Shared code | Cross-subsystem mechanisms in `internal/*`, protocol-free helpers in `internal/*`, config/paths in `internal/config/{settings,paths}`; one responsibility per file |
-
-Read the [architecture guide](docs/en/maintainers/architecture.md) and [AGENTS.md](AGENTS.md) before moving these boundaries.
+Read the [architecture guide](docs/en/maintainers/architecture.md) and [AGENTS.md](AGENTS.md) before changing package ownership or dependency direction. The architecture guide is the current map for CLI composition, SDK/MCP boundaries, shared mechanisms, and reverse-search ownership.
 
 ## Tests
 
-1. Inspect existing assertions; prefer existing checks. Keep new test code only for an uncovered, durable core contract; one-off probes stay in `tmp/test/`.
-2. Implement the smallest coherent change that passes.
-3. Refactor without changing verified public behavior.
-4. Run focused tests, then the relevant regression suite.
-
-Pure restructuring uses before/after characterization; comment-only edits use document/tool checks. Rules for admission, temporary evidence and Red exceptions: [test selection](.agents/skills/pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). A required regression or security check is never optional because it is short. Test through the public boundary when practical.
+The [coding standards](docs/en/maintainers/coding-standards.md#test-submission-rules) own permanent-test contracts, admission, caps, CI exemptions, and removal rules. Use the [test workflow](.agents/skills/pixiv-cli-test/SKILL.md) for test-first work, check selection, and evidence; the [development guide](docs/en/maintainers/development.md#tests) owns test layout and live-verification procedures.
 
 ## Agents
 
@@ -63,15 +50,14 @@ Update docs in the same PR when a command, flag, SDK API, MCP tool, config key, 
 
 - Keep `README.md` / `README.zh-CN.md` and every `docs/<locale>/` page behaviorally aligned; no untranslated placeholders.
 - Update SDK/MCP contracts or `docs/en/maintainers/` per their responsibility; check `skills/pixiv-cli/` when CLI commands, flags or safety semantics change.
-- Source comments are English in `sdk/` and Simplified Chinese elsewhere; each package has one package documentation and other files start without a header comment. Follow [code commenting](.agents/skills/pixiv-cli-code-commenting/SKILL.md) (no per-function quotas).
+- Follow the [coding standards](docs/en/maintainers/coding-standards.md#package-documentation-and-comments) for source-comment language and package documentation, with the [code-commenting workflow](.agents/skills/pixiv-cli-code-commenting/SKILL.md) for focused edits.
 - PR body: what changed, the verification you actually ran, the checklist. Maintainers write bilingual release notes from merged PRs at release time — see [release notes and publication](docs/en/maintainers/development.md#release-notes-and-publication).
 - Keep each stable rule in one authoritative document and link to it.
 
 ## Pull request checklist
 
 - [ ] The change is focused and its user-visible behavior is explained.
-- [ ] Behavior changes have observed Red/Green and relevant regression evidence, or an explicitly accepted blocker; document-only work has document/link/metadata checks.
-- [ ] Applicable local checks from [pixiv-cli-test](.agents/skills/pixiv-cli-test/SKILL.md) passed, including full/race/native checks when their scope applies; unrun checks are identified.
+- [ ] Follow the [test workflow](.agents/skills/pixiv-cli-test/SKILL.md) for applicable local, regression, and platform checks; identify required checks that remain unrun. Document-only work has document/link/metadata checks.
 - [ ] Required CI is evaluated on the current head and its actual path classifier, not a presumed Markdown exemption.
 - [ ] Existing pre-commit checks pass when installed and applicable; missing tooling is reported rather than installed silently.
 - [ ] `git diff --check` passes.

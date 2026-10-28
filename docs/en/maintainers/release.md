@@ -76,7 +76,7 @@ This local check proves only declared workflow dependencies and semantics — **
 
 - Read-only: no `release` Environment, secret, tag checkout, Release edits, tap clone/commit/push, and deliberately no deploy job — the single publishing path can't be bypassed. Linux uses the fixed-digest container; macOS the native command.
 - It reproduces the install chain before release and **does not replace** formal tag publishing, signed Releases, tap deployment or post-publish acceptance. The quality gate keeps behavior-level formula and artifact checks instead of a second policy implementation.
-- A formal release still requires a tag, signed Release, tap formula and install acceptance; complete same-source/version six-target execution evidence from the platform smoke workers; and a configured `release` Environment, signing key and public repository — preconditions that don't mean a Release/tap exists or the install path is accepted.
+- A formal release still requires a tag, signed Release, tap formula and install acceptance; complete same-source/version six-target execution evidence from the [native runner evidence workflow](../../../.agents/skills/pixiv-cli-native/SKILL.md#consume-matching-evidence); and a configured `release` Environment, signing key and public repository — preconditions that don't mean a Release/tap exists or the install path is accepted.
 
 </details>
 
