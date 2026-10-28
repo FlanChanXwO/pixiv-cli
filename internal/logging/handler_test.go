@@ -34,6 +34,17 @@ func TestTextHandlerFormatAndCallLabel(t *testing.T) {
 	require.NotContains(t, output.String(), "\x1b[")
 }
 
+func TestTextHandlerOmitsGroupedOperation(t *testing.T) {
+	var output bytes.Buffer
+	logger, err := logging.New(&output, "info", logging.FormatText)
+	require.NoError(t, err)
+	ctx := logging.WithCall(context.Background(), logger, "pixiv search", "")
+	logger.WithGroup("request").InfoContext(ctx, "request", slog.String("host", "pixiv.net"))
+	require.Regexp(t, `\[pixiv search\] \[INFO\]`, output.String())
+	require.NotContains(t, output.String(), "operation=")
+	require.Contains(t, output.String(), "request.host=pixiv.net")
+}
+
 func TestTextHandlerQuotesUnprintableTextAndValues(t *testing.T) {
 	unsetNoColor(t)
 	var output bytes.Buffer

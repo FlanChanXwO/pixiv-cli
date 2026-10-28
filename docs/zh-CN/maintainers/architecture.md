@@ -132,7 +132,7 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 | 位置 | 负责 |
 | --- | --- |
 | `internal/logging/` | 文本 handler 输出 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]`，按终端决定是否着色，转义不可打印文本并缩进多行值；JSON handler 带 `source`；ctx 调用信息与共享属性键也在本包；内部恢复点经 `logging.From(ctx)` 取得 logger |
-| `internal/cli/execution.go` | 从配置创建 stderr logger、绑定命令路径；终止失败只输出一行 `error: <message>`，不再重复记录日志 |
+| `internal/cli/execution.go` | 从配置创建 stderr logger、绑定命令路径；终止失败经 stderr 错误路径报告，不再重复记录日志 |
 | `internal/cli/composition_options.go`、`composition_mcp.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
 | `internal/mcpserver/toolrun/toolrun.go` | 共用的 `Scope` / `AddTool` 包装，绑定工具名与调用 ID；错误或 `isError` 结果记录一次受控的失败摘要 |
 | `internal/pixivapi/`（含 `oauth/`）、`internal/fanboxapi/` | 持有构造时传入的 logger，在实际请求与决策处记录结果 |

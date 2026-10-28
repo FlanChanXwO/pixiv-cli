@@ -132,7 +132,7 @@ Infrastructure packages themselves — `pixivapi`, `fanboxapi`, `storage/*`, `me
 | Location | Owns |
 | --- | --- |
 | `internal/logging/` | text handler renders `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]` with terminal-aware colors, quoted unprintable text and indented multiline values; JSON handler adds `source`; context call information and shared attribute keys live here; internal recovery points obtain the logger through `logging.From(ctx)` |
-| `internal/cli/execution.go` | creates the configured stderr logger and binds the command path; terminal failures are reported once as `error: <message>` and are not logged a second time |
+| `internal/cli/execution.go` | creates the configured stderr logger and binds the command path; terminal failures are reported through the stderr error path and are not logged a second time |
 | `internal/cli/composition_options.go`, `composition_mcp.go` | passes the same logger to both SDKs' `Options.Logger` and MCP ports |
 | `internal/mcpserver/toolrun/toolrun.go` | shared `Scope` / `AddTool` wrappers bind tool name and call ID; an error or `isError` result produces one controlled failure summary |
 | `internal/pixivapi/` (including `oauth/`), `internal/fanboxapi/` | holds the constructor-supplied logger and records outcomes at the actual request/decision point |

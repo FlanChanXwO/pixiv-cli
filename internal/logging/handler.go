@@ -191,6 +191,10 @@ func (h *textHandler) Handle(_ context.Context, record slog.Record) error {
 
 	attrs := append([]slog.Attr(nil), h.attrs...)
 	record.Attrs(func(attr slog.Attr) bool {
+		if attr.Key == AttrOperation {
+			attrs = append(attrs, attr)
+			return true
+		}
 		attrs = append(attrs, prefixAttr(h.groups, attr))
 		return true
 	})
