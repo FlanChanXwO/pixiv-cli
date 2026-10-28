@@ -136,7 +136,12 @@ sequenceDiagram
 `BeginLogin` creates a self-contained one-shot PKCE session. It opens no browser and no listener: the caller opens `AuthorizationURL()` and hands the callback or bare code to `Complete`.
 
 ```go
-// Create session with BeginLogin, open session.AuthorizationURL(), then receive callbackURL.
+session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
+if err != nil {
+    return err
+}
+defer session.CloseIdleConnections()
+// Open session.AuthorizationURL(), then receive callbackURL.
 if !session.AcceptsCallbackURL(callbackURL) {
     return fmt.Errorf("unexpected OAuth callback")
 }
@@ -147,7 +152,7 @@ if err != nil {
 return saveRefreshToken(credentials.RefreshToken())
 ```
 
-- `AcceptsCallbackURL` is non-consuming and offline. Official HTTPS callbacks require the session `state`; `pixiv://account/login` may omit it, but a supplied value must match.
+- `AcceptsCallbackURL` is non-consuming and offline. The exact official HTTPS callback and `pixiv://account/login` may omit `state`; a supplied value must match the session. Other callback URLs require matching `state`.
 - `IsOfficialOAuthCallbackURL` / `IsOfficialOAuthStartURL` validate browser input by exact origin without contacting Pixiv.
 - The session never exposes verifier, state, code or callback URL through formatting.
 

@@ -136,7 +136,12 @@ sequenceDiagram
 `BeginLogin` 创建自包含的一次性 PKCE 会话。它不打开浏览器，也不启动 listener：调用方打开 `AuthorizationURL()`，再把回调或裸 code 交给 `Complete`。
 
 ```go
-// session 由 BeginLogin 创建；先打开 session.AuthorizationURL()，再接收 callbackURL。
+session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
+if err != nil {
+    return err
+}
+defer session.CloseIdleConnections()
+// 先打开 session.AuthorizationURL()，再接收 callbackURL。
 if !session.AcceptsCallbackURL(callbackURL) {
     return fmt.Errorf("unexpected OAuth callback")
 }
@@ -147,7 +152,7 @@ if err != nil {
 return saveRefreshToken(credentials.RefreshToken())
 ```
 
-- `AcceptsCallbackURL` 不消耗会话，也不联网。官方 HTTPS 回调需要会话 `state`；`pixiv://account/login` 可省略 state，但提供的值必须匹配。
+- `AcceptsCallbackURL` 不消耗会话，也不联网。精确匹配的官方 HTTPS 回调与 `pixiv://account/login` 可省略 `state`；提供的值必须匹配会话。其他回调 URL 必须携带匹配的 `state`。
 - `IsOfficialOAuthCallbackURL` / `IsOfficialOAuthStartURL` 按精确 origin 校验浏览器输入，不联系 Pixiv。
 - 会话的格式化输出从不暴露 verifier、state、code 或回调 URL。
 
