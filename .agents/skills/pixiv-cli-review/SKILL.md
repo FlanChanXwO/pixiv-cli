@@ -1,31 +1,25 @@
 ---
 name: pixiv-cli-review
-description: Review pixiv-cli working changes, commits, or pull requests for requested behavior, Go design, SDK/CLI/MCP contracts, security, native boundaries, and verification gaps. Use for independent review or pre-delivery self-review; review-only unless edits are authorized.
+description: Review a pixiv-cli diff, commit, or pull request against its requested behavior, architecture, coding standards, security boundaries, and verification evidence. Use for independent review or pre-delivery self-review; review-only unless edits are authorized.
 ---
 
 # Review pixiv-cli
 
-## Fix the review boundary
+## Set the review boundary
 
-Inspect `git status --short`, `git diff --stat`, and the actual diff. For a PR/commit range, identify base and head SHAs and review that exact range; an empty working diff does not mean the PR has no changes. Read the originating requirement and relevant `AGENTS.md` routes. Do not guess the review range or treat another agent's summary as evidence.
+Inspect `git status --short`, the actual diff, and the intended base/head SHAs. For a PR or commit range, review that exact range; an empty working diff says nothing about a remote change. Read the originating requirement and root `AGENTS.md` routes. Do not infer scope from a summary.
 
-Require each changed path to serve the requested result or an affected durable contract. Flag incidental planning notes, local evidence, temporary probes, and unrelated cleanup for removal from the PR; use [PR scope checks](../pixiv-cli-pr/SKILL.md#verify-scope).
+Use [PR scope checks](../pixiv-cli-pr/SKILL.md#verify-scope) to keep unrelated files and local evidence out of the deliverable.
 
-## Review the change, not an imagined framework
+## Review against the contracts
 
-- **Behavior:** trace changed inputs to outputs and compare with acceptance criteria. Check CLI text/JSON/NDJSON, record identity, logical pagination, optional fields, typed errors, and command-specific defaults. Verify local search filters are not falsely passed upstream.
-- **Architecture/Go:** apply [the develop rules](../pixiv-cli-develop/SKILL.md). Check real ownership, interface necessity, context/goroutine lifetime, error classification, and that public SDK changes are intentional and listed for the changelog. Prefer deleting speculative machinery; length alone is not a finding.
-- **Structure and naming:** apply [naming and placement](../pixiv-cli-develop/SKILL.md#naming-and-placement). Flag vague names, dependency bags, forwarding function fields, test-only exported seams, retained internal compatibility paths, code placed where its container's name no longer describes it, and new files without a [header comment](../pixiv-cli-code-commenting/SKILL.md#file-header-comments).
-- **Security/state:** check secret redaction, SQL/query boundaries, credential revision transactions, atomic writes and commit outcomes, permissions, URL/redirect policy, and trusted-local versus remote input assumptions. Preserve explicitly supported private resource routes rather than applying a blanket network ban.
-- **MCP:** verify schema validation, SDK routing, separate Pixiv/FANBOX runtimes, protocol-clean stdio, authenticated HTTP, capability-specific registration and structured errors. Use [the MCP workflow](../pixiv-cli-mcp-tool/SKILL.md) for changes at that boundary.
-- **Native/release:** use [native](../pixiv-cli-native/SKILL.md) or [CI](../pixiv-cli-ci/SKILL.md) only when touched. Review source/artifact identity, platform evidence, permissions, and immutable handoffs, not exact YAML formatting or arbitrary job counts.
-- **Tests/docs:** apply the [seven-contract checklist and caps](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change). Require the owning checklist row and missing scenario before requesting permanent test code; use ignored probes for other investigations. Check CI-selected tests/support remain verbatim during rewrites, and apply the [removal criteria](../pixiv-cli-test/SKILL.md#remove-low-value-tests). Preserve actual Red/Green and relevant regression evidence; live verification is manual and requires explicit authorization.
-- **Readability:** apply [the commenting rules](../pixiv-cli-code-commenting/SKILL.md). Check whether an extraction reduces total mental effort rather than just line count; reject noisy per-line comments, unsupported guarantees, and mandatory stage numbering. Either source-comment language is acceptable. Preserve machine-consumed directives and affected locale/product contracts.
+Read the relevant [coding standards](../../../docs/en/maintainers/coding-standards.md), [architecture](../../../docs/en/maintainers/architecture.md), and [development](../../../docs/en/maintainers/development.md) sections before judging implementation details.
 
-Verify suspected findings at exact code locations and with the smallest safe test where useful. Do not add dependencies, execute real account operations, or make external writes just to investigate. For broad changes, separate independent questions without duplicate reviews; final integration review remains the main agent's responsibility.
+- Trace changed inputs through their owning layer to observable results and compare them with acceptance conditions.
+- Check the affected CLI, SDK, MCP, account, persistence, security, and platform boundaries against their established contracts. Use the focused [MCP](../pixiv-cli-mcp-tool/SKILL.md) or [native](../pixiv-cli-native/SKILL.md) workflow when relevant.
+- Apply the handbook's [naming](../../../docs/en/maintainers/coding-standards.md#naming-and-terminology), [declaration placement](../../../docs/en/maintainers/coding-standards.md#declaration-placement-and-file-names), [boundary validation](../../../docs/en/maintainers/coding-standards.md#boundary-validation-no-over-defensive-code), [program output](../../../docs/en/maintainers/coding-standards.md#program-output), [commenting](../../../docs/en/maintainers/coding-standards.md#package-documentation-and-comments), and [test submission](../../../docs/en/maintainers/coding-standards.md#test-submission-rules) guidance as applicable.
+- Verify suspected issues at exact changed locations and use the smallest safe check that can establish them. Distinguish observed failures from unverified risks; avoid real account operations or external writes during review.
 
 ## Report
 
-Lead with actionable findings: severity, `file:line`, triggering condition, impact, evidence, and a minimal correction. Separate demonstrated defects from questions and unverified risks. Do not request an abstraction or another test solely to satisfy a checklist.
-
-If no blocking issues are found, state the reviewed scope, checks run, and remaining limitations. Self-review is not approval by another maintainer. Do not modify code, merge, or dismiss remote reviews without authorization.
+Lead with actionable findings: severity, `file:line`, trigger, impact, evidence, and a minimal correction. If no findings remain, state the reviewed scope, checks run, and material limitations. Self-review is not approval by another maintainer. Do not modify code, merge, or dismiss remote reviews without authorization.

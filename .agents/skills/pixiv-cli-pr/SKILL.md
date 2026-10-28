@@ -11,7 +11,7 @@ Read `AGENTS.md`, the request/issue, branch status, and the diff against the int
 
 Before staging and again before publishing, inspect `git diff --name-status BASE...HEAD`, `git diff --cached --name-status`, and any unstaged/untracked files, substituting the verified base. Every included path must implement the requested result or maintain a directly affected contract. Stage explicit paths rather than the whole workspace. Leave working notes, generated evidence, exploratory scripts, draft proposals, and unrelated cleanup out of the commit; keep required durable documentation in its established owner. A planning document belongs only when the requested deliverable is that document, not merely because it helped implementation.
 
-Apply [test admission](../pixiv-cli-test/SKILL.md#decide-whether-test-code-must-change) to every test/fixture change. Temporary `tmp/test/` evidence stays local; describe actual verification in the PR instead of committing the probe. Review the final diff for accidental files even when ignore rules hide them from ordinary status.
+Apply the [coding handbook's test submission rules](../../../docs/en/maintainers/coding-standards.md#test-submission-rules) to every test/fixture change. Follow the [test workflow](../pixiv-cli-test/SKILL.md) for probe placement and report actual verification instead of committing investigation output. Review the final diff for accidental files even when ignore rules hide them from ordinary status.
 
 ## Write the body
 
