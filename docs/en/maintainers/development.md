@@ -101,7 +101,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 - Pixiv protocol code lives in `internal/pixivapi/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanboxapi/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixivapi-internalfanboxapi).
 - `internal/cli/execution.go` creates the stderr logger; `internal/cli/composition_options.go` and `composition_mcp.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
-- For local diagnosis, run `pixiv config set log_level debug`; add `pixiv config set log_format json` when structured fields help. Settings apply on the next invocation. Inspect `operation`, `sdk_operation`, and MCP `call_id` on stderr; data stays on stdout.
+- For local diagnosis, run `pixiv config set log_level debug`; add `pixiv config set log_format json` when structured fields help. Settings apply on the next invocation. Text logs show the operation in the second bracket and other context as `key=value`; JSON logs keep `operation`, and MCP calls add `call_id`; data stays on stdout.
 
 ## Credentials in development
 

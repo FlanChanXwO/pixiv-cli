@@ -12,6 +12,7 @@
 
 ## Changed
 
+- CLI logs on stderr use `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]: message key=value` with terminal-aware colors, quoted control characters and indented multiline values; JSON logs include `source`. Failed commands no longer duplicate the error in a terminating log record.
 - MCP search filters are preserved when a bookmark lookup partially fails, and the partial result is reported instead of dropping the filters or the successful items. ([#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165))
 - An empty account list is encoded as JSON `null` instead of `[]`, keeping the existing CLI JSON contract. ([#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201))
 
