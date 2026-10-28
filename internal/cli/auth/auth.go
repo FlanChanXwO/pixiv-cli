@@ -2,7 +2,7 @@
 //
 // 包的组成：[New] 组装命令树，[Support] 携带账号服务、登录服务与配置读取端口。
 // [AccountService] 适配账号领域访问。
-// 桌面回调与远程登录在子包 [github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper]。
+// 桌面回调与远程登录在 [github.com/FlanChanXwO/pixiv-cli/internal/urlscheme]。
 package auth
 
 import (

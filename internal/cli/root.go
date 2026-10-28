@@ -12,7 +12,6 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
@@ -32,6 +31,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	selfupdate "github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -73,8 +73,8 @@ func (a app) newRootCommand() *cobra.Command {
 				if err := selfupdate.CleanupPendingWindowsUpdate(); err != nil {
 					return &startupError{err: fmt.Errorf("clean pending update: %w", err)}
 				}
-				if loginhelper.AutomaticPersistentHandlerSupported() {
-					if err := loginhelper.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
+				if urlscheme.AutomaticPersistentHandlerSupported() {
+					if err := urlscheme.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
 						// 这项桌面集成不能阻断原命令，也不能把系统/本机路径写入 stderr。
 						fmt.Fprintln(a.errOut, "warning: persistent pixiv:// callback handler was not initialized")
 					}

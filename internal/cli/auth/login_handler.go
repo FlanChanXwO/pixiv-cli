@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
 
-const internalURLCallbackCommand = loginhelper.CallbackCommand
+const internalURLCallbackCommand = urlscheme.CallbackCommand
 const internalURLHandlerInstallCommand = "_install-handler"
 
 // newAccountURLCallbackCommand 仅供各桌面系统协议关联调用。它不属于公开 CLI
@@ -22,17 +22,17 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 		Hidden: true,
 		Args:   a.env.ExactArgs(1, "pixiv auth "+internalURLCallbackCommand+" URL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := loginhelper.HandleCallback(cmd.Context(), args[0])
+			result, err := urlscheme.HandleCallback(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 			if result.RemoteLoginStart != nil {
-				loginURL, err := loginhelper.StartRemoteLogin(cmd.Context(), *result.RemoteLoginStart)
+				loginURL, err := urlscheme.StartRemoteLogin(cmd.Context(), *result.RemoteLoginStart)
 				if err != nil {
 					return err
 				}
 				if err := browser.OpenURL(loginURL); err != nil {
-					if clearErr := loginhelper.ClearRemoteLoginHandoff(*result.RemoteLoginStart); clearErr != nil {
+					if clearErr := urlscheme.ClearRemoteLoginHandoff(*result.RemoteLoginStart); clearErr != nil {
 						return errors.New("could not clear remote Pixiv login handoff after browser launch failed")
 					}
 					return errors.New("could not open Pixiv authorization page")
@@ -74,7 +74,7 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 		Hidden: true,
 		Args:   a.env.ExactArgs(0, "pixiv auth "+internalURLHandlerInstallCommand),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := loginhelper.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
+			if err := urlscheme.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
 				fmt.Fprintf(a.env.Err, "warning: persistent pixiv:// callback handler was not initialized: %v\n", err)
 			}
 			return nil
