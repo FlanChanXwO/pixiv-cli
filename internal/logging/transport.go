@@ -40,16 +40,18 @@ func TransportAttrs(err error) []slog.Attr {
 	}
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
-		names := map[syscall.Errno]string{
-			syscall.ECONNREFUSED: "ECONNREFUSED", syscall.ECONNRESET: "ECONNRESET",
-			syscall.ETIMEDOUT: "ETIMEDOUT", syscall.EHOSTUNREACH: "EHOSTUNREACH",
-			syscall.ENETUNREACH: "ENETUNREACH", syscall.EPIPE: "EPIPE",
-			syscall.ECONNABORTED: "ECONNABORTED", syscall.EADDRNOTAVAIL: "EADDRNOTAVAIL",
-			syscall.EACCES: "EACCES", syscall.EPERM: "EPERM",
-		}
-		if name := names[errno]; name != "" {
+
+		if name := errnoNames[errno]; name != "" {
 			attrs = append(attrs, slog.String(AttrErrno, name))
 		}
 	}
 	return attrs
+}
+
+var errnoNames = map[syscall.Errno]string{
+	syscall.ECONNREFUSED: "ECONNREFUSED", syscall.ECONNRESET: "ECONNRESET",
+	syscall.ETIMEDOUT: "ETIMEDOUT", syscall.EHOSTUNREACH: "EHOSTUNREACH",
+	syscall.ENETUNREACH: "ENETUNREACH", syscall.EPIPE: "EPIPE",
+	syscall.ECONNABORTED: "ECONNABORTED", syscall.EADDRNOTAVAIL: "EADDRNOTAVAIL",
+	syscall.EACCES: "EACCES", syscall.EPERM: "EPERM",
 }
