@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // Reason classifies a failure in a form both product SDKs share and callers can
@@ -55,6 +57,9 @@ type RetryAdvice struct {
 	HasAfter bool
 }
 
+// origin keeps diagnostic metadata outside the public method set.
+type origin = logging.ErrorOrigin
+
 // Error carries a classified, redacted failure from the product SDKs and this
 // package's parsing helpers. It implements error, errors.Is, and errors.As, and
 // its Unwrap chain preserves context.Canceled and context.DeadlineExceeded when
@@ -64,6 +69,7 @@ type RetryAdvice struct {
 // tokens, cookies, proxy userinfo, browser paths, or configuration content.
 // The cause, when present, is always a redacted local classification.
 type Error struct {
+	origin
 	Product    string
 	Operation  string
 	Reason     Reason
@@ -110,7 +116,7 @@ func WithDetail(detail string) ErrorOption {
 // NewError constructs a classified error for product and operation. product
 // may be empty for errors produced by this shared package.
 func NewError(product, operation string, reason Reason, opts ...ErrorOption) *Error {
-	e := &Error{Product: product, Operation: operation, Reason: reason}
+	e := &Error{origin: logging.CaptureErrorOrigin(), Product: product, Operation: operation, Reason: reason}
 	for _, opt := range opts {
 		opt(e)
 	}

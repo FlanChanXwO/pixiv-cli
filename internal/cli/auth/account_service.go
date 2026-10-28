@@ -13,6 +13,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -124,7 +125,7 @@ const (
 	authExportBundleVersion    = 1
 )
 
-func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error) {
+func (s AccountService) sdkOptions(ctx context.Context, proxyOverride *string) (pixiv.Options, error) {
 	proxy := proxyOverride
 	if proxy == nil {
 		runtime, err := s.LoadRuntime()
@@ -143,7 +144,7 @@ func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error)
 	if err != nil {
 		return pixiv.Options{}, err
 	}
-	return pixiv.Options{HTTPClient: client}, nil
+	return pixiv.Options{HTTPClient: client, Logger: logging.From(ctx)}, nil
 }
 
 func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
@@ -167,7 +168,7 @@ func (s AccountService) importAccount(ctx context.Context, request accountImport
 	if err != nil {
 		return accountImportOut{}, err
 	}
-	options, err := s.sdkOptions(request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
 	if err != nil {
 		return accountImportOut{}, err
 	}
@@ -361,7 +362,7 @@ func (s AccountService) checkWithRequest(ctx context.Context, request accountChe
 		}
 		request.UserID = current.UserID
 	}
-	options, err := s.sdkOptions(request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
 	if err != nil {
 		return accountOut{}, err
 	}
@@ -381,7 +382,7 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 		}
 		request.UserID = current.UserID
 	}
-	options, err := s.sdkOptions(request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
 	if err != nil {
 		return accountOut{}, err
 	}
@@ -419,7 +420,7 @@ func parseAuthUID(raw string) (int64, error) {
 	}
 	userID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || userID <= 0 {
-		return 0, fmt.Errorf("invalid uid %q", raw)
+		return 0, errors.New("invalid uid: expected a positive integer")
 	}
 	return userID, nil
 }

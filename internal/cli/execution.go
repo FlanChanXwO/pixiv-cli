@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,9 @@ import (
 
 // logState 保存本次执行的 logger。
 type logState struct {
-	logger *slog.Logger
+	logger       *slog.Logger
+	ctx          context.Context
+	failureLevel slog.Level
 }
 
 // closeState 仅登记一次 CLI 执行的逆序关闭函数，不缓存服务或暴露依赖图。
@@ -120,8 +123,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 			err = errors.Join(err, closeErr)
 		}
 	}
-	// 阶段 5：映射退出码（NDJSON 命令走成功语义）。
-	return a.exitWithNDJSONScope(err, commandWritesNDJSON(target) || command.OutputNDJSON(target))
+	// 阶段 5：记录失败并映射退出码（NDJSON 命令走成功语义）。
+	ndjsonOutput := commandWritesNDJSON(target) || command.OutputNDJSON(target)
+	if err != nil && !(ndjsonOutput && errors.Is(err, syscall.EPIPE)) && a.logs.ctx != nil {
+		attrs := append([]slog.Attr{slog.Any(logging.AttrError, err)}, logging.OriginAttr(err)...)
+		a.logs.logger.LogAttrs(a.logs.ctx, a.logs.failureLevel, "Command failed", attrs...)
+	}
+	return a.exitWithNDJSONScope(err, ndjsonOutput)
 }
 
 func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
@@ -224,8 +232,13 @@ func (a app) startLogging(cmd *cobra.Command, requirement command.Execution) err
 	if err != nil {
 		return err
 	}
-	ctx := logging.WithCall(cmd.Context(), logger, cmd.CommandPath(), "")
+	ctx := logging.WithCall(cmd.Context(), logger, cmd.CommandPath(), rand.Text())
 	a.logs.logger = logger
+	a.logs.ctx = ctx
+	a.logs.failureLevel = slog.LevelDebug
+	if string(runtime.LogFormat) == logging.FormatJSON {
+		a.logs.failureLevel = slog.LevelError
+	}
 	cmd.SetContext(ctx)
 	return nil
 }

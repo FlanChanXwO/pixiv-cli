@@ -103,7 +103,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 	if refreshToken == "" {
 		return errors.New("refresh token is required")
 	}
-	result, err := c.exchange(ctx, map[string]string{
+	result, err := c.exchange(ctx, "Open", map[string]string{
 		"client_id": pixivapi.OAuthClientID, "client_secret": pixivapi.OAuthClientSecret,
 		"grant_type": "refresh_token", "include_policy": "true", "refresh_token": refreshToken,
 	})
@@ -161,7 +161,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 	if verifier == "" {
 		return AuthCodeToken{}, errors.New("code verifier cannot be empty")
 	}
-	result, err := c.exchange(ctx, map[string]string{
+	result, err := c.exchange(ctx, "Complete", map[string]string{
 		"client_id": pixivapi.OAuthClientID, "client_secret": pixivapi.OAuthClientSecret,
 		"grant_type": "authorization_code", "include_policy": "true",
 		"code": code, "code_verifier": verifier, "redirect_uri": pixivapi.OAuthRedirectURI,
@@ -180,13 +180,25 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 	return token, nil
 }
 
-func (c *Client) exchange(ctx context.Context, form map[string]string) (authResponse, error) {
+func (c *Client) exchange(ctx context.Context, operation string, form map[string]string) (result authResponse, err error) {
+	var details []slog.Attr
+	defer func() {
+		if err != nil {
+			attrs := []slog.Attr{slog.String(logging.AttrSDKOperation, operation), slog.String(logging.AttrError, err.Error())}
+			logger := c.log
+			if logging.HasLogger(ctx) {
+				logger = logging.From(ctx)
+			}
+			logger.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, details...)...)
+		}
+	}()
 	values := make(url.Values, len(form))
 	for key, value := range form {
 		values.Set(key, value)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pixivapi.OAuthBase+pixivapi.PathOAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
+		details = logging.TransportAttrs(err)
 		return authResponse{}, pixivapi.Transport(err)
 	}
 	for name, value := range pixivapi.OAuthHeaders() {
@@ -194,11 +206,13 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		details = logging.TransportAttrs(err)
 		return authResponse{}, pixivapi.Transport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		details = logging.TransportAttrs(err)
 		return authResponse{}, pixivapi.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -207,7 +221,6 @@ func (c *Client) exchange(ctx context.Context, form map[string]string) (authResp
 	if len(bytes.TrimSpace(body)) == 0 {
 		return authResponse{}, pixivapi.MalformedResponse()
 	}
-	var result authResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return authResponse{}, pixivapi.MalformedResponse()
 	}

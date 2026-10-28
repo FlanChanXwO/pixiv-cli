@@ -13,7 +13,9 @@
 
 ## 变更
 
-- CLI 写到 stderr 的日志改为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`，按终端着色，转义控制字符并缩进多行值；JSON 日志带 `source`。命令失败不再额外写一条重复的终止日志。
+- JSON 日志恢复 ERROR 命令失败记录；debug 日志增加 SDK 错误创建位置和安全的 typed 网络细节，覆盖 OAuth 换 token 失败。
+
+- CLI 写到 stderr 的日志改为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`，按终端着色，转义控制字符并缩进多行值；JSON 日志带 `source`。默认文本日志只保留一行错误。
 - 收藏读取部分失败时，MCP 搜索筛选条件会保留，并报告部分结果，不再丢弃筛选条件或已成功读取的条目。（[#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165)）
 - 账号列表为空时编码为 JSON `null` 而不是 `[]`，保持现有 CLI JSON 契约。（[#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201)）
 
