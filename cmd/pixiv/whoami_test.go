@@ -47,6 +47,31 @@ func TestWhoamiJSONMatchesAuthList(t *testing.T) {
 	require.JSONEq(t, string(listed.Accounts[0]), stdout)
 }
 
+func TestWhoamiJSONMatchesAuthListAfterExpiredFreeze(t *testing.T) {
+	home := isolatedHome(t)
+	seedPixivAccount(t, home, "alice", true)
+	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+	expired := int64(1)
+	require.NoError(t, db.Freeze(t.Context(), 12345678, expired))
+
+	stdout, stderr, code := runWhoami(t, "--json")
+	require.Equal(t, 0, code)
+	require.Empty(t, stderr)
+	require.NotContains(t, stdout, "pool_frozen_until")
+
+	list, listErr, listCode := runCLI(t, "auth", "list", "--json")
+	require.Equal(t, 0, listCode)
+	require.Empty(t, listErr)
+	var listed struct {
+		Accounts []json.RawMessage `json:"accounts"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(list), &listed))
+	require.Len(t, listed.Accounts, 1)
+	require.JSONEq(t, string(listed.Accounts[0]), stdout)
+}
+
 func TestWhoamiUnknownUsername(t *testing.T) {
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "", true)
