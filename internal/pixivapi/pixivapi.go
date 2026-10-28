@@ -199,6 +199,7 @@ func (c *Client) send(ctx context.Context, req request, attempt int) (*http.Resp
 		logging.OperationAttr(ctx),
 	}
 	if err != nil {
+		attrs = append(attrs, logging.TransportAttrs(err)...)
 		c.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, Transport(err).Error()))...)
 		return nil, err
 	}

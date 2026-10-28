@@ -188,6 +188,7 @@ func (s *Client) doNativeWithRequest(ctx context.Context, rawURL string, kind re
 			logging.OperationAttr(ctx),
 		}
 		if err != nil {
+			attrs = append(attrs, logging.TransportAttrs(err)...)
 			s.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, safeExternalError(ctx, "FANBOX request failed", err).Error()))...)
 			return nil, safeExternalError(ctx, "FANBOX request failed", err)
 		}

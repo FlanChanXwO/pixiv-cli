@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 var (
@@ -193,6 +196,7 @@ func (c *solverClient) call(ctx context.Context, payload solverRequest) (solverR
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return solverResponse{}, ctxErr
 		}

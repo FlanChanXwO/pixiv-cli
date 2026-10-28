@@ -6,11 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
 
 // Loader 实现文件与 HTTP(S) source 的单次流式载入。
@@ -135,6 +138,7 @@ func (l *Loader) loadURL(ctx context.Context, source string) (*Snapshot, error) 
 	}
 	response, err := client.Do(request)
 	if err != nil {
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
