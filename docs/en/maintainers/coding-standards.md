@@ -133,7 +133,7 @@ No internal compatibility: a change that supersedes an entry point removes the o
 Limits, timeouts, retries, truncation, and fallbacks exist only for a verified requirement, a platform constraint, an established contract, or a reproducible failure. State the trigger, cover it with the smallest evidence, and report failures instead of discarding valid data silently. Document an unsupported capability as unsupported.
 
 ```go
-// sdk/resource.go: the value type owns redaction, so every model containing Resource inherits it.
+// sdk/resource.go: JSON encoding omits URL, request headers, and expiry metadata.
 
 // MarshalJSON emits only the opaque reference and the credential requirement,
 // never URL, request headers, or expiry metadata.
@@ -277,9 +277,9 @@ Retain tests for credential privacy, data integrity and persistence, public CLI/
 - Use `httptest`, temporary directories, and real stores. Do not add test helper packages, fixture constructors, mock hierarchies, or production exports that exist for tests.
 - Keep each assertion at its owning boundary; a CLI or MCP output test exercises presentation, not SDK mapping again.
 - Keep CI workflows and steps unchanged during test cleanup. Preserve workflow-selected CI tests verbatim with their supporting code and fixtures; they are exempt from the file/function/case caps and `testdata` restriction. Broad `go test ./...` selectors do not exempt the whole repository. In a mixed file, keep the selected test, its comments, and required declarations exactly; other tests still follow this checklist. Recheck selectors before rewriting tests; report a selector with no matching test instead of claiming a pass.
-- Preserve the CI-selected inventory exactly: whole packages `scripts/citest` (platform-smoke, container-smoke, and release runs), `scripts/release` (release workflow), `internal/cli/auth/loginhelper`, and `internal/media/ugoira/...`; named tests `cmd/pixiv/TestPixivBinaryPackagedSmoke`, `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`, `internal/cli/TestAuthURLCallback`, `internal/cli/TestAuthURLHandlerInstall`, and `internal/cli/TestNormalCLIInvocationEnsuresPersistentHandlerWithoutBlockingCommand`.
+- Preserve the CI-selected inventory exactly: whole packages `scripts/citest` (platform-smoke, container-smoke, and release runs), `scripts/release` (release workflow), `internal/cli/auth/loginhelper`, and `internal/media/ugoira/...`; named tests `cmd/pixiv/TestPixivBinaryPackagedSmoke` and `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`. Recheck the names and package paths against current workflow selectors before test cleanup.
 - Remove duplicate assertions, getter and pure-forwarding tests, tests of test helpers or test harnesses, and completed migration comparison/feature tests. Remove their orphan helpers, fixtures, and test-only production seams with them; preserve v1.2.x database-opening evidence. Real-environment tests are manual, not permanent tracked tests.
-- Temporary investigation lives in ignored `tmp/test/`, so ordinary `go test ./...` does not discover it. Use synthetic credentials.
+- Temporary investigation lives in ignored `tmp/test/_probe/`, so ordinary `go test ./...` does not discover it. Use synthetic credentials.
 - A behavior change observes a failing test first, then passes, then keeps the regression. An import or toolchain failure is not Red. Pure restructuring uses before and after characterization.
 
 Test layout, CI exemptions, and the live verification procedure: [development](development.md#tests).
