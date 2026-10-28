@@ -1,6 +1,6 @@
 //go:build linux
 
-package loginhelper
+package urlscheme
 
 import (
 	"context"

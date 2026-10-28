@@ -1,9 +1,10 @@
-// Package loginhelper 接收 pixiv:// 回调，并管理远程登录中转与桌面协议关联。
+// Package urlscheme 负责 pixiv:// URL scheme 的平台安装、回调分发与远程登录 hand-off。
 //
 // 包的组成：[HandleCallback] 分派系统回调，[StartRemoteLogin] 与 [RemoteCallbackSession]
 // 管理远程 relay，[Install] 和 [EnsurePersistentIfNeeded] 维护桌面 handler。回调与 relay
-// 的私有状态只留在本包，登录命令的上层流程在 auth 包。
-package loginhelper
+// 的私有状态只留在本包；登录命令的上层流程在 internal/cli/auth，远程中继的 HTTP 协议在
+// internal/loginrelay。
+package urlscheme
 
 import (
 	"bytes"

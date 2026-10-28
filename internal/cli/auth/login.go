@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth/loginhelper"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -258,10 +258,10 @@ func (s *loginServer) waitFinalPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *loginServer) installHandler(ctx context.Context) {
 	s.initializeErrors()
-	if err := loginhelper.EnsurePersistentIfNeeded(ctx); err != nil {
+	if err := urlscheme.EnsurePersistentIfNeeded(ctx); err != nil {
 		s.writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
 	}
-	cleanup, err := loginhelper.Install(ctx, "http://"+s.actualAddr+"/callback")
+	cleanup, err := urlscheme.Install(ctx, "http://"+s.actualAddr+"/callback")
 	if err != nil {
 		s.writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
 	} else if cleanup != nil {

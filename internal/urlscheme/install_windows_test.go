@@ -1,6 +1,6 @@
 //go:build windows
 
-package loginhelper
+package urlscheme
 
 import (
 	"context"

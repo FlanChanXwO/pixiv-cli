@@ -144,7 +144,7 @@ Use at most one `x_test.go` beside its production owner `x.go`; platform-specifi
 | Directory | Reason |
 | --- | --- |
 | `internal/pixivaccount` | `pixiv_test.go` calls private `newAccountWithToken` to check credential formatting/slog privacy; the rotation test uses the external package. |
-| `internal/cli/auth/loginhelper` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
+| `internal/urlscheme` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
 | `internal/media/ugoira` | Preserved native CI tests inspect private decoding, quantization and GIF/APNG encoding state. |
 | `internal/storage/database` | The preserved Windows named CI test retains its original package declaration; other database tests use the external package. |
 | `scripts/release` | Preserved release CI tests exercise the command package and private release/artifact operations. |

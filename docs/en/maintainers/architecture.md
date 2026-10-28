@@ -91,9 +91,9 @@ Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input a
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import`, commands marked offline such as `whoami` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
 - **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. When changing root bool parsing, manually verify repeated overrides such as `--help=false` preserve the secret-export boundary.
 
-### `internal/cli/auth/loginhelper`
+### `internal/urlscheme`
 
-Owns the URL scheme helper, persistent handler manifest, one-shot remote hand-off private state and remote callback client. `internal/cli/auth` installs the on-demand handler through it and keeps OAuth, loopback HTTP, browser, TTY and relay server orchestration.
+Owns the `pixiv://` URL scheme: platform handler installation, callback dispatch, persistent handler manifest, one-shot remote hand-off private state and the remote callback client. `internal/cli/auth` installs the on-demand handler through it and keeps OAuth, loopback HTTP, browser, TTY and relay server orchestration. The relay HTTP protocol stays in `internal/loginrelay`.
 
 | Platform | Mechanism |
 | --- | --- |
