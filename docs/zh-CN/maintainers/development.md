@@ -144,7 +144,7 @@ CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.
 | 目录 | 理由 |
 | --- | --- |
 | `internal/pixivaccount` | `pixiv_test.go` 调用私有 `newAccountWithToken` 检查凭据格式化/slog 脱敏；轮换测试使用外部包。 |
-| `internal/cli/auth/loginhelper` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
+| `internal/urlscheme` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
 | `internal/media/ugoira` | 保留的 native CI 测试观察私有解码、量化与 GIF/APNG 编码状态。 |
 | `internal/storage/database` | 保留的 Windows 点名 CI 测试沿用原 package 声明；其他数据库测试使用外部包。 |
 | `scripts/release` | 保留的 release CI 测试运行命令包及私有发布/产物操作。 |

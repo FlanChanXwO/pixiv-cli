@@ -49,7 +49,7 @@ flowchart TD
 
 | Worker | 隔离方式 |
 | --- | --- |
-| Platform | 矩阵从可信 workflow ref 解析；只有矩阵任务以 `contents: read` checkout 精确 PR head；单独的发布任务从不 checkout PR 代码，只持有完成内部 Check Run 所需的 `checks: write`。六个原生任务并行，包括 Windows 根回调装配与原生 `loginhelper` 契约；运行 Go 编码器包测试 |
+| Platform | 矩阵从可信 workflow ref 解析；只有矩阵任务以 `contents: read` checkout 精确 PR head；单独的发布任务从不 checkout PR 代码，只持有完成内部 Check Run 所需的 `checks: write`。六个原生任务并行，包括 Windows 根回调装配与原生 `urlscheme` 契约；运行 Go 编码器包测试 |
 | Container | 对 Linux amd64/arm64 使用同样的隔离模型，任务并行 |
 
 两者都以 `CGO_ENABLED=0` 构建，保留可信 ref、精确 head 校验与独立结果发布者。`Platform smoke worker` / `Container smoke worker` Check Run 只是可信的结果桥；worker 矩阵不是必需检查；PR 门禁任务镜像聚合结果，失败时保留 worker 详情 URL。

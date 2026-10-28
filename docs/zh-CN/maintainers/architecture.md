@@ -91,9 +91,9 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import`、标记为离线的命令（例如 `whoami`）与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
 - **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool 解析变更时，手动核对 `--help=false` 等重复覆盖形式仍遵守 secret 导出边界。
 
-### `internal/cli/auth/loginhelper`
+### `internal/urlscheme`
 
-负责 URL scheme helper、持久化 handler 清单、一次性远程 hand-off 私有状态与远程回调 client。`internal/cli/auth` 通过它安装按需 handler，并保留 OAuth、loopback HTTP、浏览器、TTY 与 relay server 编排。
+负责 `pixiv://` URL scheme：平台 handler 安装、回调分发、持久化 handler 清单、一次性远程 hand-off 私有状态与远程回调 client。`internal/cli/auth` 通过它安装按需 handler，并保留 OAuth、loopback HTTP、浏览器、TTY 与 relay server 编排。中继的 HTTP 协议留在 `internal/loginrelay`。
 
 | 平台 | 机制 |
 | --- | --- |

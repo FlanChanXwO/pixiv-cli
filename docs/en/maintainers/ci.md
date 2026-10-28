@@ -49,7 +49,7 @@ Real Pixiv/FANBOX SDK E2E never enters PR CI; the offline `go test ./...` in the
 
 | Worker | Isolation |
 | --- | --- |
-| Platform | Matrix resolved from the trusted workflow ref; only matrix jobs check out the exact PR head with `contents: read`; a separate publisher never checks out PR code and holds only `checks: write` to complete the internal Check Run. Six native jobs in parallel, incl. Windows root callback wiring and the native `loginhelper` contract; runs the Go encoder package tests |
+| Platform | Matrix resolved from the trusted workflow ref; only matrix jobs check out the exact PR head with `contents: read`; a separate publisher never checks out PR code and holds only `checks: write` to complete the internal Check Run. Six native jobs in parallel, incl. Windows root callback wiring and the native `urlscheme` contract; runs the Go encoder package tests |
 | Container | Same isolation model for Linux amd64/arm64, jobs in parallel |
 
 Both build with `CGO_ENABLED=0`, keep the trusted ref, exact-head validation and independent result publisher. `Platform smoke worker` / `Container smoke worker` Check Runs are only the trusted result bridge; worker matrices are not required checks; the PR gate mirrors the aggregate outcome and keeps the worker details URL on failure.
