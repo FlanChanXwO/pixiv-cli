@@ -392,6 +392,9 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 	return accountFromPixiv(account), nil
 }
 
+// AccountJSON 返回与 `pixiv auth list --json` 单账号项相同的公开摘要；不含凭据。
+func AccountJSON(account pixivaccount.AccountSummary) any { return accountFromPixiv(account) }
+
 func accountFromPixiv(account pixivaccount.AccountSummary) accountOut {
 	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: true, PremiumStatus: account.Premium}
 	if account.PoolStatusKnown {

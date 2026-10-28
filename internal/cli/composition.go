@@ -49,6 +49,15 @@ func (a app) newPixivAccountServices() (authcommands.AccountService, pixivaccoun
 	return authcommands.AccountService{Pixiv: service, LoadRuntime: a.runtimeConfig}, pixivaccount.LoginService{Pixiv: service}, nil
 }
 
+// currentPixivUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
+func (a app) currentPixivUser(ctx context.Context) (*pixivaccount.AccountSummary, error) {
+	db, err := a.openAuthDatabase()
+	if err != nil {
+		return nil, err
+	}
+	return pixivaccount.NewService(db, settings.DefaultStore()).CurrentUser(ctx)
+}
+
 func (a app) newPixivSDKPorts() (pixivSDKPorts, error) {
 	db, err := a.openAuthDatabase()
 	if err != nil {
