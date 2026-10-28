@@ -24,7 +24,9 @@ func TestCommandFailureLogging(t *testing.T) {
 	for _, format := range []string{"text", "json"} {
 		for _, level := range []string{"info", "debug"} {
 			t.Run(format+"/"+level, func(t *testing.T) {
-				t.Setenv("HOME", t.TempDir())
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				t.Setenv("USERPROFILE", home)
 				t.Setenv("PIXIV_LOG_FORMAT", format)
 				t.Setenv("PIXIV_LOG_LEVEL", level)
 				var output, diagnostics bytes.Buffer
@@ -34,6 +36,11 @@ func TestCommandFailureLogging(t *testing.T) {
 				require.Contains(t, text, "error:")
 				require.NotContains(t, text, "synthetic-user")
 				require.NotContains(t, text, "synthetic-password")
+				if level == "debug" {
+					require.Contains(t, text, "Request failed")
+					require.Contains(t, text, "127.0.0.1:1")
+					require.Contains(t, text, "ECONNREFUSED")
+				}
 				if format == "text" && level == "info" {
 					require.NotContains(t, text, "Command failed")
 				} else {
