@@ -12,12 +12,12 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +37,7 @@ var novelRecordTypes = map[string]struct{}{
 
 type listOptions struct {
 	command.Options
-	input    *inputcmd.State
+	input    *input.State
 	ndjson   bool
 	limit    int
 	page     int
@@ -48,13 +48,13 @@ type listOptions struct {
 
 type detailOptions struct {
 	command.Options
-	input *inputcmd.State
+	input *input.State
 	typ   string
 }
 
 type mutationOptions struct {
 	command.Options
-	input    *inputcmd.State
+	input    *input.State
 	typ      string
 	restrict string
 	tags     []string
@@ -158,7 +158,7 @@ func (a commandRunner) newDetail() *cobra.Command {
 		Short: "Show the current user's bookmark detail",
 		Args: func(cmd *cobra.Command, args []string) error {
 			usage := "pixiv bookmark detail [options] ARTWORK_ID_OR_NOVEL_ID_OR_URL"
-			if opts.input.Mode() == inputcmd.RecordMode {
+			if opts.input.Mode() == input.RecordMode {
 				if len(args) != 0 {
 					return fmt.Errorf("usage: %s", usage)
 				}
@@ -167,11 +167,11 @@ func (a commandRunner) newDetail() *cobra.Command {
 			return a.env.ExactArgs(1, usage)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			input, err := a.bookmarkDetailInput(cmd, args, opts)
+			source, err := a.bookmarkDetailInput(cmd, args, opts)
 			if err != nil {
 				return err
 			}
-			target, err := resolver.Resolve(cmd.Context(), input, bookmarkDetailContract())
+			target, err := resolver.Resolve(cmd.Context(), source, bookmarkDetailContract())
 			if err != nil {
 				return err
 			}
@@ -224,8 +224,8 @@ func (a commandRunner) newDetail() *cobra.Command {
 }
 
 func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, opts detailOptions) (resolver.Input, error) {
-	input := resolver.Input{Type: opts.typ}
-	if opts.input.Mode() == inputcmd.RecordMode {
+	target := resolver.Input{Type: opts.typ}
+	if opts.input.Mode() == input.RecordMode {
 		body, err := io.ReadAll(opts.input.Reader(a.env.In))
 		if err != nil {
 			return resolver.Input{}, fmt.Errorf("read bookmark detail record: %w", err)
@@ -234,14 +234,14 @@ func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, op
 		if err != nil {
 			return resolver.Input{}, err
 		}
-		input.Record = &source
-		return input, nil
+		target.Record = &source
+		return target, nil
 	}
 	if len(args) != 1 {
 		return resolver.Input{}, errors.New("bookmark detail requires one artwork or novel ID/URL")
 	}
-	input.Value = args[0]
-	return input, nil
+	target.Value = args[0]
+	return target, nil
 }
 
 type bookmarkDetailResult struct {
@@ -295,7 +295,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			if err != nil {
 				return a.env.UsageError(err)
 			}
-			if _, err := inputcmd.RecordFailureStrategy(opts.onError); err != nil {
+			if _, err := input.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.UsageError(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
@@ -313,7 +313,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 				}
 				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_add", opts.onError, recordTypes, invoke)
 			}
-			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
+			id, err := input.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.env.UsageError(err)
 			}
@@ -324,7 +324,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
 	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
-	cmd.Flags().StringVar(&opts.onError, "on-error", inputcmd.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -341,7 +341,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			if err != nil {
 				return a.env.UsageError(err)
 			}
-			if _, err := inputcmd.RecordFailureStrategy(opts.onError); err != nil {
+			if _, err := input.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.UsageError(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
@@ -359,7 +359,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 				}
 				return a.env.ConsumeActionRecords(cmd, opts.input, "bookmark_remove", opts.onError, recordTypes, invoke)
 			}
-			id, err := inputcmd.PositiveInt64(args[0], "bookmark target ID")
+			id, err := input.PositiveInt64(args[0], "bookmark target ID")
 			if err != nil {
 				return a.env.UsageError(err)
 			}
@@ -368,7 +368,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
-	cmd.Flags().StringVar(&opts.onError, "on-error", inputcmd.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	command.Bind(cmd, command.PixivData())
 	return cmd
@@ -417,9 +417,9 @@ func bookmarkTagsContract() resolver.Contract {
 	return bookmarkContract("bookmark tags")
 }
 
-func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, state *inputcmd.State, typ string, contract resolver.Contract) (int64, error) {
-	input := resolver.Input{Type: typ}
-	if state.Mode() == inputcmd.RecordMode {
+func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, state *input.State, typ string, contract resolver.Contract) (int64, error) {
+	target := resolver.Input{Type: typ}
+	if state.Mode() == input.RecordMode {
 		body, err := io.ReadAll(state.Reader(a.env.In))
 		if err != nil {
 			return 0, fmt.Errorf("read bookmark target record: %w", err)
@@ -428,21 +428,21 @@ func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, 
 		if err != nil {
 			return 0, err
 		}
-		input.Record = &source
+		target.Record = &source
 	} else {
 		if len(args) != 1 {
 			return 0, errors.New("bookmark target requires one user ID or URL")
 		}
-		input.Value = args[0]
+		target.Value = args[0]
 	}
-	target, err := resolver.Resolve(cmd.Context(), input, contract)
+	resolved, err := resolver.Resolve(cmd.Context(), target, contract)
 	if err != nil {
 		return 0, err
 	}
-	if target.TargetKind != resolver.TargetKindUser {
+	if resolved.TargetKind != resolver.TargetKindUser {
 		return 0, errors.New("bookmark target must identify a user")
 	}
-	return target.ID, nil
+	return resolved.ID, nil
 }
 
 func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {

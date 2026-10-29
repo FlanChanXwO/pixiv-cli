@@ -6,7 +6,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
-	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

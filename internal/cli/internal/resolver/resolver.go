@@ -13,7 +13,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // TargetKind 表示命令契约选定的输入命名空间。user_bookmarks、artwork_series 这类 URL

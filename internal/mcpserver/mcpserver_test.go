@@ -14,11 +14,11 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/tools"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	fanboxsdk "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func TestToolsListContract(t *testing.T) {
 	require.NoError(t, err)
 	defer login.Close()
 	ports := pixiv.SDKPorts{Media: media, Downloads: &pixiv.LocalDownloads{}, Login: login, Accounts: accounts.Selection{Store: store, Load: func(context.Context) (accounts.LocalSnapshot, error) { panic("discovery must not read accounts") }}}
-	server := mcpserver.New(ports, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	server := mcpserver.New(ports, pixiv.Account{}, tools.SDKPorts{}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
 	require.NoError(t, err)
@@ -67,9 +67,9 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
 	}
-	client, err := fanboxsdk.OpenWith(fanboxsdk.SessionCredentials{FANBOXSESSID: "session-canary"}, fanboxsdk.Options{HTTPClient: httpClient})
+	client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: "session-canary"}, fanbox.Options{HTTPClient: httpClient})
 	require.NoError(t, err)
-	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{OpenLease: func(context.Context, fanbox.Account) (*lifecycle.Lease[*fanboxsdk.Client], error) {
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, tools.SDKPorts{OpenLease: func(context.Context, tools.Account) (*lifecycle.Lease[*fanbox.Client], error) {
 		return lifecycle.NewLease(client, func() error { client.CloseIdleConnections(); return nil }), nil
 	}}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -91,7 +91,7 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 }
 
 func TestInvalidToolInputKeepsCredentialsPrivate(t *testing.T) {
-	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, fanbox.SDKPorts{}, nil)
+	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, tools.SDKPorts{}, nil)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
 	require.NoError(t, err)

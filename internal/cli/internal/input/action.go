@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

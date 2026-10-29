@@ -15,20 +15,20 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 // Options 保存 detail 自己声明的 flag，只承接 Cobra 解析结果，不创建资源。
 type Options struct {
 	command.Options
-	input  *inputcmd.State
+	input  *input.State
 	ndjson bool
 
 	typ     string
@@ -65,7 +65,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
 		return errors.New("--json and --ndjson cannot be used together")
 	}
-	if opts.input.Mode() == inputcmd.RecordMode {
+	if opts.input.Mode() == input.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
 	a.markNDJSON(cmd, opts.ndjson)
@@ -122,18 +122,18 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		worker.env.Out = spool
 	}
 	reader := opts.input.Reader(a.env.In)
-	err = inputcmd.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, input record.Record) error {
-		entity, err := entityForRecord(input.Type(), cmd.Flags().Changed("type"), opts.typ)
+	err = input.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, item record.Record) error {
+		entity, err := entityForRecord(item.Type(), cmd.Flags().Changed("type"), opts.typ)
 		if err != nil {
 			return err
 		}
 		if err := validateContentEntity(opts.content, entity); err != nil {
 			if sdk.ReasonOf(err) == sdk.ContentUnavailable {
-				return inputcmd.FatalRecordPipeline(err)
+				return input.FatalRecordPipeline(err)
 			}
 			return err
 		}
-		id, err := inputcmd.RequiredRecordID(input)
+		id, err := input.RequiredRecordID(item)
 		if err != nil {
 			return err
 		}
@@ -149,11 +149,11 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		}
 		if !firstHuman {
 			if _, err := io.WriteString(a.env.Out, "\n---\n"); err != nil {
-				return inputcmd.FatalRecordPipeline(err)
+				return input.FatalRecordPipeline(err)
 			}
 		}
 		if _, err := io.Copy(a.env.Out, &humanBuffer); err != nil {
-			return inputcmd.FatalRecordPipeline(err)
+			return input.FatalRecordPipeline(err)
 		}
 		firstHuman = false
 		return nil
@@ -197,7 +197,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
 			value, err := record.RecordFromArtwork(result)
 			if err != nil {
 				return err
@@ -216,7 +216,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			if err != nil {
 				return err
 			}
-			if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
+			if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
 				value, err := record.RecordFromNovelContent(result)
 				if err != nil {
 					return err
@@ -234,7 +234,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
 			value, err := record.RecordFromNovel(result)
 			if err != nil {
 				return err
@@ -252,7 +252,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == inputcmd.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
 			value, err := record.RecordFromUserDetail(result)
 			if err != nil {
 				return err
@@ -270,7 +270,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 
 func (a commandRunner) writeRecord(value record.Record) error {
 	if err := json.NewEncoder(a.env.Out).Encode(value); err != nil {
-		return inputcmd.FatalRecordPipeline(err)
+		return input.FatalRecordPipeline(err)
 	}
 	return nil
 }

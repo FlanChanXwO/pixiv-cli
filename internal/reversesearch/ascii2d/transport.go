@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	fhttp "github.com/bogdanfinn/fhttp"
 	tlsclient "github.com/bogdanfinn/tls-client"
 	"github.com/bogdanfinn/tls-client/profiles"

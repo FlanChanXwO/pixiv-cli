@@ -12,7 +12,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages []int, quality DownloadQuality, ugoiraFormat UgoiraFormat, directoryTemplate string) (out DownloadedArtwork, warnings []DownloadWarning, err error) {

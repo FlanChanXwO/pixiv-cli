@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
 func decodeForTest(r io.Reader) (image.Image, error) {
-	var decoder framejpeg.Decoder
+	var decoder jpeg.Decoder
 	return decoder.Decode(r)
 }
 
@@ -92,7 +92,7 @@ type failingReader struct{ err error }
 func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 func TestDecoderReusesPlanesAndResetsState(t *testing.T) {
-	var decoder framejpeg.Decoder
+	var decoder jpeg.Decoder
 	var inputs [][]byte
 	for _, kind := range []string{"444", "progressive", "restart", "gray"} {
 		body, err := os.ReadFile(filepath.Join("..", "testdata", "jpeg-"+kind+".jpg"))
@@ -172,7 +172,7 @@ func BenchmarkReusableDecoder(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	var decoder framejpeg.Decoder
+	var decoder jpeg.Decoder
 	if _, err := decoder.Decode(bytes.NewReader(body)); err != nil {
 		b.Fatal(err)
 	}

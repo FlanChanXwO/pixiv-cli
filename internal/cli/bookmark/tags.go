@@ -8,12 +8,12 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 		return err
 	}
 	var requestedUserID int64
-	if len(args) == 1 || opts.input.Mode() == inputcmd.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
 		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkTagsContract())
 		if err != nil {
 			return err
@@ -108,7 +108,7 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 		return err
 	}
 	var userID int64
-	if len(args) == 1 || opts.input.Mode() == inputcmd.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
 		userID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkTagsContract())
 		if err != nil {
 			return err

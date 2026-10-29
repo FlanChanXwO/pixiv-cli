@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
 
 // PipelineDiagnosticError 表示错误已经按管道契约写入 stderr。它让根命令保留

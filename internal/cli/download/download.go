@@ -7,7 +7,7 @@ package download
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/spf13/cobra"
 )
 

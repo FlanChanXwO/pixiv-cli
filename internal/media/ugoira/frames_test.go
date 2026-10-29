@@ -13,7 +13,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
-	"image/jpeg"
+	stdjpeg "image/jpeg"
 	"image/png"
 	"io"
 	"io/fs"
@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	framejpeg "github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
 func (a *frameArchive) decode(ctx context.Context, frame Frame) (*image.NRGBA, error) {
@@ -36,7 +36,7 @@ func readFrameSource(ctx context.Context, r io.Reader, file string, declaredSize
 }
 
 func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
-	var decoder framejpeg.Decoder
+	var decoder jpeg.Decoder
 	var header bufio.Reader
 	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
 }
@@ -269,7 +269,7 @@ func TestDecodeFrameFormats(t *testing.T) {
 		})
 	}
 	var encoded bytes.Buffer
-	if err := jpeg.Encode(&encoded, gray, &jpeg.Options{Quality: 90}); err != nil {
+	if err := stdjpeg.Encode(&encoded, gray, &stdjpeg.Options{Quality: 90}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := decodeFrameSource(t.Context(), encoded.Bytes())
@@ -435,7 +435,7 @@ func TestFrameArchiveReusesOnlyReleasedFrame(t *testing.T) {
 	var entries []frameZipEntry
 	for i, img := range []image.Image{red, blue} {
 		var b bytes.Buffer
-		if err := jpeg.Encode(&b, img, &jpeg.Options{Quality: 90}); err != nil {
+		if err := stdjpeg.Encode(&b, img, &stdjpeg.Options{Quality: 90}); err != nil {
 			t.Fatal(err)
 		}
 		entries = append(entries, frameZipEntry{fmt.Sprintf("%d.jpg", i), b.Bytes()})

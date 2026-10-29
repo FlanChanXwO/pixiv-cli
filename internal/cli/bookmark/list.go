@@ -8,13 +8,13 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +24,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 		return err
 	}
 	var userID int64
-	if len(args) == 1 || opts.input.Mode() == inputcmd.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
 		userID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err
@@ -176,7 +176,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		return err
 	}
 	var requestedUserID int64
-	if len(args) == 1 || opts.input.Mode() == inputcmd.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
 		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err
@@ -224,7 +224,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		return err
 	}
 	var requestedUserID int64
-	if len(args) == 1 || opts.input.Mode() == inputcmd.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
 		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err

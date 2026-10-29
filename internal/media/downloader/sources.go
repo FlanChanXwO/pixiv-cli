@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // DirectResourceClient 定义直链 source 使用的窄端口；作品元数据下载仍只依赖 DownloadClient。
