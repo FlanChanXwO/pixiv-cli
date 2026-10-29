@@ -1,4 +1,4 @@
-// Package fanboxapi 提供 FANBOX 的认证请求传输、Cloudflare challenge 恢复和资源 locator
+// Package api 提供 FANBOX 的认证请求传输、Cloudflare challenge 恢复和资源 locator
 // 缓存。
 //
 // 本包不承载内容语义：路由与响应映射由 sdk/fanbox 持有。
@@ -6,7 +6,7 @@
 // 包的组成：[Client] 由 [New] 构造，持有 cookie、传输和 solver 状态；[Options] 与
 // [FlareSolverrOptions] 是配置，[Locator] 是已校验的媒体地址，[MediaRequest] 约束
 // 资源读取可用的条件头；protocol.go、identity.go、resource.go 提供校验与身份解析。
-package fanboxapi
+package api
 
 import (
 	"cmp"
@@ -130,10 +130,10 @@ func New(sessionValue string, options Options) (*Client, error) {
 }
 
 // String 只输出类型摘要，调试格式化不会打印 Cookie。
-func (*Client) String() string { return "fanboxapi.Client{}" }
+func (*Client) String() string { return "api.Client{}" }
 
 // GoString 同 [Client.String]，用于 %#v。
-func (*Client) GoString() string { return "fanboxapi.Client{}" }
+func (*Client) GoString() string { return "api.Client{}" }
 
 // CloseIdleConnections 只关闭由本 client 创建的 HTTP 连接，注入的 client 由调用方管理。
 func (c *Client) CloseIdleConnections() {

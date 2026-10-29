@@ -1,4 +1,4 @@
-package fanboxapi
+package api
 
 // PathCreatorGet 等常量是 FANBOX API 路径，相对 APIBaseURL。
 const (

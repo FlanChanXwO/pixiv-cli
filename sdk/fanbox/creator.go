@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/api"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -94,8 +94,8 @@ func (c *Client) creatorProfile(ctx context.Context, operation, creatorID string
 	var response struct {
 		Body creatorProfileWire `json:"body"`
 	}
-	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
-	if err := c.app.GetJSON(ctx, fanboxapi.PathCreatorGet, query, &response); err != nil {
+	query := url.Values{api.ParamCreatorID: {creatorID}}
+	if err := c.app.GetJSON(ctx, api.PathCreatorGet, query, &response); err != nil {
 		return creatorProfileWire{}, classifyError(operation, err)
 	}
 	profile := response.Body
@@ -119,9 +119,9 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 	path := ""
 	switch kind {
 	case CreatorListSupporting:
-		path = fanboxapi.PathPlanListSupporting
+		path = api.PathPlanListSupporting
 	case CreatorListFollowing:
-		path = fanboxapi.PathCreatorListFollowing
+		path = api.PathCreatorListFollowing
 	default:
 		return sdk.Page[CreatorSummary]{}, classifyError("Creators", errors.New("FANBOX creator list kind is invalid"))
 	}
@@ -158,8 +158,8 @@ func (c *Client) CreatorTags(ctx context.Context, request CreatorTagsRequest) ([
 	var response struct {
 		Body json.RawMessage `json:"body"`
 	}
-	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
-	if err := c.app.GetJSON(ctx, fanboxapi.PathTagGetFeatured, query, &response); err != nil {
+	query := url.Values{api.ParamCreatorID: {creatorID}}
+	if err := c.app.GetJSON(ctx, api.PathTagGetFeatured, query, &response); err != nil {
 		return nil, classifyError("CreatorTags", err)
 	}
 	items, err := decodeFeaturedTags(response.Body)

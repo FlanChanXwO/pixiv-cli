@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -39,7 +39,7 @@ func (c *Client) buildCursor(ctx context.Context, op string, baseQuery url.Value
 	if nextURL == "" {
 		return sdk.Cursor{}, nil
 	}
-	if err := fanboxapi.ValidateAPIURL(nextURL); err != nil {
+	if err := api.ValidateAPIURL(nextURL); err != nil {
 		return sdk.Cursor{}, newError(op, sdk.MalformedUpstreamResponse, errors.New("FANBOX continuation URL is invalid"))
 	}
 	payload, err := json.Marshal(continuationEnvelope{NextURL: nextURL})
@@ -87,7 +87,7 @@ func (c *Client) continuationURL(ctx context.Context, op string, baseQuery url.V
 	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.NextURL == "" {
 		return "", newError(op, sdk.InvalidCursor, errors.New("cursor payload is malformed"))
 	}
-	if err := fanboxapi.ValidateAPIURL(envelope.NextURL); err != nil {
+	if err := api.ValidateAPIURL(envelope.NextURL); err != nil {
 		return "", newError(op, sdk.InvalidCursor, errors.New("cursor continuation URL is invalid"))
 	}
 	return envelope.NextURL, nil

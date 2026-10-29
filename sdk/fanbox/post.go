@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/api"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -126,8 +126,8 @@ func (c *Client) postInfo(ctx context.Context, postID string) (postWire, error) 
 	var response struct {
 		Body postInfoWire `json:"body"`
 	}
-	query := url.Values{fanboxapi.ParamPostID: {postID}}
-	if err := c.app.GetJSON(ctx, fanboxapi.PathPostInfo, query, &response); err != nil {
+	query := url.Values{api.ParamPostID: {postID}}
+	if err := c.app.GetJSON(ctx, api.PathPostInfo, query, &response); err != nil {
 		return postWire{}, err
 	}
 	return response.Body.Post, nil
@@ -288,11 +288,11 @@ func validateImage(source imageWire) error {
 	if strings.TrimSpace(source.ID) == "" {
 		return errors.New("FANBOX image has no id")
 	}
-	if err := fanboxapi.ValidateMediaURL(source.OriginalURL); err != nil {
+	if err := api.ValidateMediaURL(source.OriginalURL); err != nil {
 		return err
 	}
 	if source.ThumbnailURL != "" {
-		return fanboxapi.ValidateMediaURL(source.ThumbnailURL)
+		return api.ValidateMediaURL(source.ThumbnailURL)
 	}
 	return nil
 }
@@ -301,7 +301,7 @@ func validateFile(source fileWire) error {
 	if strings.TrimSpace(source.ID) == "" {
 		return errors.New("FANBOX file has no id")
 	}
-	return fanboxapi.ValidateMediaURL(source.URL)
+	return api.ValidateMediaURL(source.URL)
 }
 
 // CreatorPosts lists one creator's posts.
@@ -314,9 +314,9 @@ func (c *Client) CreatorPosts(ctx context.Context, request CreatorPostsRequest) 
 	if creatorID == "" {
 		return sdk.Page[Post]{}, classifyError("CreatorPosts", errors.New("FANBOX creator id is required"))
 	}
-	cursorQuery := url.Values{fanboxapi.ParamCreatorID: {request.CreatorID}}
-	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}}
-	return c.postList(ctx, "CreatorPosts", fanboxapi.PathPostListCreator, cursorQuery, query, true, request.Cursor)
+	cursorQuery := url.Values{api.ParamCreatorID: {request.CreatorID}}
+	query := url.Values{api.ParamCreatorID: {creatorID}}
+	return c.postList(ctx, "CreatorPosts", api.PathPostListCreator, cursorQuery, query, true, request.Cursor)
 }
 
 // TaggedPosts lists one creator's posts for a single tag.
@@ -333,21 +333,21 @@ func (c *Client) TaggedPosts(ctx context.Context, request TaggedPostsRequest) (s
 	if tag == "" {
 		return sdk.Page[Post]{}, classifyError("TaggedPosts", errors.New("FANBOX tag is required"))
 	}
-	cursorQuery := url.Values{fanboxapi.ParamCreatorID: {request.CreatorID}, fanboxapi.ParamTag: {request.Tag}}
-	query := url.Values{fanboxapi.ParamCreatorID: {creatorID}, fanboxapi.ParamTag: {tag}}
-	return c.postList(ctx, "TaggedPosts", fanboxapi.PathPostListTagged, cursorQuery, query, false, request.Cursor)
+	cursorQuery := url.Values{api.ParamCreatorID: {request.CreatorID}, api.ParamTag: {request.Tag}}
+	query := url.Values{api.ParamCreatorID: {creatorID}, api.ParamTag: {tag}}
+	return c.postList(ctx, "TaggedPosts", api.PathPostListTagged, cursorQuery, query, false, request.Cursor)
 }
 
 // Home lists the current user's home feed.
 func (c *Client) Home(ctx context.Context, request HomeRequest) (sdk.Page[Post], error) {
 	ctx = logging.WithOperation(ctx, "Home")
-	return c.postList(ctx, "Home", fanboxapi.PathPostListHome, nil, url.Values{}, true, request.Cursor)
+	return c.postList(ctx, "Home", api.PathPostListHome, nil, url.Values{}, true, request.Cursor)
 }
 
 // Supporting lists posts from the current user's supporting creators.
 func (c *Client) Supporting(ctx context.Context, request SupportingRequest) (sdk.Page[Post], error) {
 	ctx = logging.WithOperation(ctx, "Supporting")
-	return c.postList(ctx, "Supporting", fanboxapi.PathPostListSupporting, nil, url.Values{}, true, request.Cursor)
+	return c.postList(ctx, "Supporting", api.PathPostListSupporting, nil, url.Values{}, true, request.Cursor)
 }
 
 // postList fetches one post page. cursorQuery binds the cursor and query is sent
@@ -361,10 +361,10 @@ func (c *Client) postList(ctx context.Context, operation, path string, cursorQue
 		return sdk.Page[Post]{}, err
 	}
 	if limit && nextURL == "" {
-		query.Set(fanboxapi.ParamLimit, strconv.Itoa(fanboxapi.PostListPageLimit))
+		query.Set(api.ParamLimit, strconv.Itoa(api.PostListPageLimit))
 	}
 	var body json.RawMessage
-	acceptItems := path == fanboxapi.PathPostListHome || path == fanboxapi.PathPostListSupporting
+	acceptItems := path == api.PathPostListHome || path == api.PathPostListSupporting
 	if err := c.getListBody(ctx, path, query, nextURL, &body, operation); err != nil {
 		return sdk.Page[Post]{}, err
 	}
