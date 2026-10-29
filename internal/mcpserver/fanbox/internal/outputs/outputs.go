@@ -8,7 +8,7 @@ package outputs
 import (
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -99,6 +99,6 @@ func PostOutFrom(post fanbox.Post) PostOut {
 
 // PostsOut 承载帖子列表工具的输出。
 type PostsOut struct {
-	Posts      []PostOut             `json:"posts"`
-	Pagination toolrun.PaginationOut `json:"pagination"`
+	Posts      []PostOut                `json:"posts"`
+	Pagination pagination.PaginationOut `json:"pagination"`
 }
