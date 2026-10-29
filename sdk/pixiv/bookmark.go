@@ -7,7 +7,7 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -17,8 +17,8 @@ type bookmarkTagWire struct {
 }
 
 type bookmarkTagsWire struct {
-	Tags    pixivapi.RequiredList[bookmarkTagWire] `json:"bookmark_tags"`
-	NextURL *string                                `json:"next_url"`
+	Tags    api.RequiredList[bookmarkTagWire] `json:"bookmark_tags"`
+	NextURL *string                           `json:"next_url"`
 }
 
 type bookmarkDetailWire struct {
@@ -37,8 +37,8 @@ type bookmarkDetailWire struct {
 func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter string, id int64) (Restrict, []string, error) {
 	var raw bookmarkDetailWire
 	if err := c.app.GetJSON(ctx, path, url.Values{parameter: {itoa(id)}}, &raw); err != nil {
-		var failure pixivapi.Failure
-		if !errors.As(err, &failure) || failure.Kind != pixivapi.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
+		var failure api.Failure
+		if !errors.As(err, &failure) || failure.Kind != api.FailureHTTPStatus || failure.StatusCode != http.StatusNotFound {
 			return "", nil, classifyAppError(err, operation)
 		}
 		return "", []string{}, nil
@@ -67,23 +67,23 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 		return sdk.Page[Artwork]{}, err
 	}
 	base := url.Values{
-		pixivapi.ParamUserID:   {itoa(request.UserID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+		api.ParamUserID:   {itoa(request.UserID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}
 	if request.Tag != "" {
-		base.Set(pixivapi.ParamTag, request.Tag)
+		base.Set(api.ParamTag, request.Tag)
 	}
-	maxID, err := c.continuationPositiveValue("UserArtworkBookmarks", base, request.Cursor, pixivapi.ParamMaxBookmarkID)
+	maxID, err := c.continuationPositiveValue("UserArtworkBookmarks", base, request.Cursor, api.ParamMaxBookmarkID)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
 	query := cloneValues(base)
 	if maxID > 0 {
-		query.Set(pixivapi.ParamMaxBookmarkID, itoa(maxID))
+		query.Set(api.ParamMaxBookmarkID, itoa(maxID))
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserBookmarksIllust, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathUserBookmarksIllust, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworkBookmarks")
 	}
 	items, err := artworkItems("UserArtworkBookmarks", raw.Illusts, false)
@@ -94,7 +94,7 @@ func (c *Client) UserArtworkBookmarks(ctx context.Context, request UserArtworkBo
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworkBookmarks")
 	}
-	return c.artworkPage("UserArtworkBookmarks", base, pixivapi.ParamMaxBookmarkID, items, next, hasNext)
+	return c.artworkPage("UserArtworkBookmarks", base, api.ParamMaxBookmarkID, items, next, hasNext)
 }
 
 // UserArtworkBookmarkTags lists the bookmark tags of one user's bookmarked
@@ -108,8 +108,8 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 		return sdk.Page[BookmarkTag]{}, err
 	}
 	base := url.Values{
-		pixivapi.ParamUserID:   {itoa(request.UserID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+		api.ParamUserID:   {itoa(request.UserID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}
 	offset, err := c.continuationPositiveOffset("UserArtworkBookmarkTags", base, request.Cursor)
 	if err != nil {
@@ -117,11 +117,11 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 
 	var raw bookmarkTagsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserBookmarkTags, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathUserBookmarkTags, query, &raw); err != nil {
 		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserArtworkBookmarkTags")
 	}
 	if !raw.Tags.Present || !raw.Tags.Valid {
@@ -138,7 +138,7 @@ func (c *Client) UserArtworkBookmarkTags(ctx context.Context, request UserArtwor
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserArtworkBookmarkTags")
 	}
-	cursor, err := c.buildCursor("UserArtworkBookmarkTags", base, pixivapi.ParamOffset, int64(next), hasNext)
+	cursor, err := c.buildCursor("UserArtworkBookmarkTags", base, api.ParamOffset, int64(next), hasNext)
 	if err != nil {
 		return sdk.Page[BookmarkTag]{}, err
 	}
@@ -151,7 +151,7 @@ func (c *Client) ArtworkBookmark(ctx context.Context, request ArtworkBookmarkReq
 	if request.ArtworkID <= 0 {
 		return ArtworkBookmarkDetail{}, newError("ArtworkBookmark", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	restrict, tags, err := c.bookmarkDetail(ctx, "ArtworkBookmark", pixivapi.PathIllustBookmarkDetail, pixivapi.ParamIllustID, request.ArtworkID)
+	restrict, tags, err := c.bookmarkDetail(ctx, "ArtworkBookmark", api.PathIllustBookmarkDetail, api.ParamIllustID, request.ArtworkID)
 	if err != nil {
 		return ArtworkBookmarkDetail{}, err
 	}
@@ -168,23 +168,23 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 		return sdk.Page[Novel]{}, err
 	}
 	base := url.Values{
-		pixivapi.ParamUserID:   {itoa(request.UserID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+		api.ParamUserID:   {itoa(request.UserID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}
 	if request.Tag != "" {
-		base.Set(pixivapi.ParamTag, request.Tag)
+		base.Set(api.ParamTag, request.Tag)
 	}
-	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", base, request.Cursor, pixivapi.ParamMaxBookmarkID)
+	maxID, err := c.continuationPositiveValue("UserNovelBookmarks", base, request.Cursor, api.ParamMaxBookmarkID)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
 	query := cloneValues(base)
 	if maxID > 0 {
-		query.Set(pixivapi.ParamMaxBookmarkID, itoa(maxID))
+		query.Set(api.ParamMaxBookmarkID, itoa(maxID))
 	}
 
 	var raw novelListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserNovelBookmarks, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathUserNovelBookmarks, query, &raw); err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
 	}
 	items, err := c.novelItems("UserNovelBookmarks", raw.Novels, false)
@@ -195,7 +195,7 @@ func (c *Client) UserNovelBookmarks(ctx context.Context, request UserNovelBookma
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "UserNovelBookmarks")
 	}
-	cursor, err := c.buildCursor("UserNovelBookmarks", base, pixivapi.ParamMaxBookmarkID, next, hasNext)
+	cursor, err := c.buildCursor("UserNovelBookmarks", base, api.ParamMaxBookmarkID, next, hasNext)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -217,9 +217,9 @@ func (c *Client) UserNovelBookmarkTags(ctx context.Context, request UserNovelBoo
 		return sdk.Page[BookmarkTag]{}, newError("UserNovelBookmarkTags", sdk.InvalidCursor, "novel bookmark tags continuation is not supported")
 	}
 	var raw bookmarkTagsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserNovelBookmarkTags, url.Values{
-		pixivapi.ParamUserID:   {itoa(request.UserID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+	if err := c.app.GetJSON(ctx, api.PathUserNovelBookmarkTags, url.Values{
+		api.ParamUserID:   {itoa(request.UserID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}, &raw); err != nil {
 		return sdk.Page[BookmarkTag]{}, classifyAppError(err, "UserNovelBookmarkTags")
 	}
@@ -244,7 +244,7 @@ func (c *Client) NovelBookmark(ctx context.Context, request NovelBookmarkRequest
 	if request.NovelID <= 0 {
 		return NovelBookmarkDetail{}, newError("NovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	restrict, tags, err := c.bookmarkDetail(ctx, "NovelBookmark", pixivapi.PathNovelBookmarkDetail, pixivapi.ParamNovelID, request.NovelID)
+	restrict, tags, err := c.bookmarkDetail(ctx, "NovelBookmark", api.PathNovelBookmarkDetail, api.ParamNovelID, request.NovelID)
 	if err != nil {
 		return NovelBookmarkDetail{}, err
 	}
@@ -297,19 +297,19 @@ type NovelBookmarkRequest struct {
 }
 
 var bookmarkArtworksContinuation = continuationSpec{
-	path:  pixivapi.PathUserBookmarksIllust,
-	keys:  []string{pixivapi.ParamMaxBookmarkID},
-	query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict, pixivapi.ParamTag},
+	path:  api.PathUserBookmarksIllust,
+	keys:  []string{api.ParamMaxBookmarkID},
+	query: []string{api.ParamUserID, api.ParamRestrict, api.ParamTag},
 }
 
 var bookmarkTagsContinuation = continuationSpec{
-	path:  pixivapi.PathUserBookmarkTags,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict},
+	path:  api.PathUserBookmarkTags,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamUserID, api.ParamRestrict},
 }
 
 var userNovelBookmarksContinuation = continuationSpec{
-	path:  pixivapi.PathUserNovelBookmarks,
-	keys:  []string{pixivapi.ParamMaxBookmarkID},
-	query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict, pixivapi.ParamTag},
+	path:  api.PathUserNovelBookmarks,
+	keys:  []string{api.ParamMaxBookmarkID},
+	query: []string{api.ParamUserID, api.ParamRestrict, api.ParamTag},
 }

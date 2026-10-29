@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -259,26 +259,26 @@ func validContinuationParams(op string, params url.Values) bool {
 		return true
 	case "RecommendedNovels":
 		allowed := map[string]bool{
-			pixivapi.ParamOffset: true, pixivapi.ParamAlreadyRecommended: true,
-			pixivapi.ParamMaxRecommend: true, pixivapi.ParamIncludeRankingNovels: true,
-			pixivapi.ParamIncludePrivacy: true,
+			api.ParamOffset: true, api.ParamAlreadyRecommended: true,
+			api.ParamMaxRecommend: true, api.ParamIncludeRankingNovels: true,
+			api.ParamIncludePrivacy: true,
 		}
 		for key, values := range params {
 			if !allowed[key] || len(values) != 1 || values[0] == "" {
 				return false
 			}
 			switch key {
-			case pixivapi.ParamOffset:
+			case api.ParamOffset:
 				value, err := strconv.ParseInt(values[0], 10, 64)
 				if err != nil || value < 0 {
 					return false
 				}
-			case pixivapi.ParamMaxRecommend:
+			case api.ParamMaxRecommend:
 				value, err := strconv.ParseInt(values[0], 10, 64)
 				if err != nil || value <= 0 {
 					return false
 				}
-			case pixivapi.ParamIncludeRankingNovels, pixivapi.ParamIncludePrivacy:
+			case api.ParamIncludeRankingNovels, api.ParamIncludePrivacy:
 				if values[0] != "true" && values[0] != "false" {
 					return false
 				}
@@ -340,21 +340,21 @@ type continuationSpec struct {
 // unknown key or out-of-range value is rejected as malformed.
 func parseContinuation(rawURL string, spec continuationSpec) (string, int64, error) {
 	if rawURL == "" || spec.path == "" || len(spec.keys) == 0 {
-		return "", 0, pixivapi.MalformedResponse()
+		return "", 0, api.MalformedResponse()
 	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" ||
 		parsed.Hostname() != appAPIHost || parsed.Port() != "" || parsed.Path != spec.path || parsed.EscapedPath() != spec.path {
-		return "", 0, pixivapi.MalformedResponse()
+		return "", 0, api.MalformedResponse()
 	}
 	values, err := url.ParseQuery(parsed.RawQuery)
 	if err != nil {
-		return "", 0, pixivapi.MalformedResponse()
+		return "", 0, api.MalformedResponse()
 	}
 	allowed := make(map[string]struct{}, len(spec.query)+len(spec.keys))
 	for _, key := range spec.keys {
 		if key == "" {
-			return "", 0, pixivapi.MalformedResponse()
+			return "", 0, api.MalformedResponse()
 		}
 		allowed[key] = struct{}{}
 	}
@@ -363,7 +363,7 @@ func parseContinuation(rawURL string, spec continuationSpec) (string, int64, err
 	}
 	for key, entries := range values {
 		if _, ok := allowed[key]; !ok || len(entries) != 1 {
-			return "", 0, pixivapi.MalformedResponse()
+			return "", 0, api.MalformedResponse()
 		}
 	}
 	continuationKey := ""
@@ -372,16 +372,16 @@ func parseContinuation(rawURL string, spec continuationSpec) (string, int64, err
 			continue
 		}
 		if continuationKey != "" {
-			return "", 0, pixivapi.MalformedResponse()
+			return "", 0, api.MalformedResponse()
 		}
 		continuationKey = key
 	}
 	if continuationKey == "" {
-		return "", 0, pixivapi.MalformedResponse()
+		return "", 0, api.MalformedResponse()
 	}
 	value, err := strconv.ParseInt(values[continuationKey][0], 10, 64)
 	if err != nil || value < 0 || (!spec.allowZero && value == 0) {
-		return "", 0, pixivapi.MalformedResponse()
+		return "", 0, api.MalformedResponse()
 	}
 	return continuationKey, value, nil
 }
@@ -394,16 +394,16 @@ func parseContinuationParams(rawURL string, spec continuationSpec) (url.Values, 
 		return nil, false, nil
 	}
 	if spec.path == "" {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" ||
 		parsed.Hostname() != appAPIHost || parsed.Port() != "" || parsed.Path != spec.path || parsed.EscapedPath() != spec.path {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	values, err := url.ParseQuery(parsed.RawQuery)
 	if err != nil {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	for key := range values {
 		for _, prefix := range spec.ignored {
@@ -414,7 +414,7 @@ func parseContinuationParams(rawURL string, spec continuationSpec) (url.Values, 
 		}
 	}
 	if err := validateContinuationParams(values, spec); err != nil {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	return values, true, nil
 }
@@ -424,18 +424,18 @@ func parseContinuationParams(rawURL string, spec continuationSpec) (url.Values, 
 // request reaches the transport.
 func validateContinuationParams(values url.Values, spec continuationSpec) error {
 	if len(values) == 0 {
-		return pixivapi.MalformedResponse()
+		return api.MalformedResponse()
 	}
 	allowed := make(map[string]struct{}, len(spec.query)+len(spec.keys))
 	for _, key := range spec.keys {
 		if key == "" {
-			return pixivapi.MalformedResponse()
+			return api.MalformedResponse()
 		}
 		allowed[key] = struct{}{}
 	}
 	for _, key := range spec.query {
 		if key == "" {
-			return pixivapi.MalformedResponse()
+			return api.MalformedResponse()
 		}
 		allowed[key] = struct{}{}
 	}
@@ -449,11 +449,11 @@ func validateContinuationParams(values url.Values, spec continuationSpec) error 
 				}
 			}
 			if !matched {
-				return pixivapi.MalformedResponse()
+				return api.MalformedResponse()
 			}
 		}
 		if len(entries) != 1 || entries[0] == "" {
-			return pixivapi.MalformedResponse()
+			return api.MalformedResponse()
 		}
 	}
 	return nil
@@ -478,8 +478,8 @@ func (s continuationSpec) parseValue(rawURL *string) (string, int64, bool, error
 	if err != nil {
 		return "", 0, false, err
 	}
-	if key == pixivapi.ParamOffset && int64(int(value)) != value {
-		return "", 0, false, pixivapi.MalformedResponse()
+	if key == api.ParamOffset && int64(int(value)) != value {
+		return "", 0, false, api.MalformedResponse()
 	}
 	return key, value, true, nil
 }
@@ -492,7 +492,7 @@ func (s continuationSpec) offset(rawURL *string) (int, bool, error) {
 		return 0, hasNext, err
 	}
 	if value <= 0 || int64(int(value)) != value {
-		return 0, false, pixivapi.MalformedResponse()
+		return 0, false, api.MalformedResponse()
 	}
 	return int(value), true, nil
 }
@@ -505,7 +505,7 @@ func (s continuationSpec) keyValue(rawURL *string) (string, int64, bool, error) 
 		return "", 0, ok, err
 	}
 	if value <= 0 {
-		return "", 0, false, pixivapi.MalformedResponse()
+		return "", 0, false, api.MalformedResponse()
 	}
 	return key, value, true, nil
 }
@@ -518,7 +518,7 @@ func (s continuationSpec) value(rawURL *string) (int64, bool, error) {
 		return 0, ok, err
 	}
 	if value <= 0 {
-		return 0, false, pixivapi.MalformedResponse()
+		return 0, false, api.MalformedResponse()
 	}
 	return value, true, nil
 }
@@ -531,7 +531,7 @@ func (s continuationSpec) params(rawURL *string) (url.Values, bool, error) {
 	}
 	values, hasNext, err := parseContinuationParams(*rawURL, s)
 	if err != nil || !hasNext {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	return values, true, nil
 }
@@ -551,7 +551,7 @@ func (c *Client) continuationKeyValue(operation string, base url.Values, cur sdk
 			if value <= 0 {
 				return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation value must be positive")
 			}
-			if key == pixivapi.ParamOffset && int64(int(value)) != value {
+			if key == api.ParamOffset && int64(int(value)) != value {
 				return "", 0, newError(operation, sdk.InvalidCursor, "cursor continuation offset is out of range")
 			}
 			return key, value, nil

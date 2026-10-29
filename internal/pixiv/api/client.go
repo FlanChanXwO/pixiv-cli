@@ -1,4 +1,4 @@
-// Package pixivapi 提供 Pixiv App API 的传输层、媒体 URL 策略与失败分类。
+// Package api 提供 Pixiv App API 的传输层、媒体 URL 策略与失败分类。
 //
 // 本包不承载内容语义：端点路由与响应映射由 sdk/pixiv 持有，OAuth token 交换在
 // 子包 oauth。
@@ -6,7 +6,7 @@
 // 包的组成：[Client] 发送 App 请求并缓存已校验的资源 locator，由 [New] 构造；
 // [Config] 是构造参数，[Failure] 是脱敏失败，[RequiredList] 与 [RequiredObject]
 // 解码必需字段；api.go 与 profile.go 声明路由、参数和请求头。
-package pixivapi
+package api
 
 import (
 	"bytes"

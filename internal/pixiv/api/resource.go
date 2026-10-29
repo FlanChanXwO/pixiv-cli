@@ -1,4 +1,4 @@
-package pixivapi
+package api
 
 import (
 	"context"

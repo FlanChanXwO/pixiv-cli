@@ -1,4 +1,4 @@
-package pixivapi
+package api
 
 // PathOAuthToken 等常量是 App API 路径。
 const (

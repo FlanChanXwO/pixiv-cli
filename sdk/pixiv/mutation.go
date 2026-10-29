@@ -5,7 +5,7 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -53,9 +53,9 @@ func (c *Client) PostArtworkComment(ctx context.Context, request PostArtworkComm
 	if request.Comment == "" {
 		return CommentMutationResult{}, newError("PostArtworkComment", sdk.InvalidArgument, "comment body must not be empty")
 	}
-	return c.postComment(ctx, "PostArtworkComment", pixivapi.PathIllustCommentAdd, url.Values{
-		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
-		pixivapi.ParamComment:  {request.Comment},
+	return c.postComment(ctx, "PostArtworkComment", api.PathIllustCommentAdd, url.Values{
+		api.ParamIllustID: {itoa(request.ArtworkID)},
+		api.ParamComment:  {request.Comment},
 	})
 }
 
@@ -75,10 +75,10 @@ func (c *Client) ReplyArtworkComment(ctx context.Context, request ReplyArtworkCo
 	if request.ParentCommentID <= 0 {
 		return CommentMutationResult{}, newError("ReplyArtworkComment", sdk.InvalidArgument, "parent comment ID must be positive")
 	}
-	return c.postComment(ctx, "ReplyArtworkComment", pixivapi.PathIllustCommentAdd, url.Values{
-		pixivapi.ParamIllustID:        {itoa(request.ArtworkID)},
-		pixivapi.ParamComment:         {request.Comment},
-		pixivapi.ParamParentCommentID: {itoa(request.ParentCommentID)},
+	return c.postComment(ctx, "ReplyArtworkComment", api.PathIllustCommentAdd, url.Values{
+		api.ParamIllustID:        {itoa(request.ArtworkID)},
+		api.ParamComment:         {request.Comment},
+		api.ParamParentCommentID: {itoa(request.ParentCommentID)},
 	})
 }
 
@@ -88,8 +88,8 @@ func (c *Client) DeleteArtworkComment(ctx context.Context, request DeleteArtwork
 	if request.CommentID <= 0 {
 		return newError("DeleteArtworkComment", sdk.InvalidArgument, "comment ID must be positive")
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathIllustCommentDelete, url.Values{
-		pixivapi.ParamCommentID: {itoa(request.CommentID)},
+	if err := c.app.PostForm(ctx, api.PathIllustCommentDelete, url.Values{
+		api.ParamCommentID: {itoa(request.CommentID)},
 	}); err != nil {
 		return classifyAppError(err, "DeleteArtworkComment")
 	}
@@ -109,9 +109,9 @@ func (c *Client) PostNovelComment(ctx context.Context, request PostNovelCommentR
 	if request.Comment == "" {
 		return CommentMutationResult{}, newError("PostNovelComment", sdk.InvalidArgument, "comment body must not be empty")
 	}
-	return c.postComment(ctx, "PostNovelComment", pixivapi.PathNovelCommentAdd, url.Values{
-		pixivapi.ParamNovelID: {itoa(request.NovelID)},
-		pixivapi.ParamComment: {request.Comment},
+	return c.postComment(ctx, "PostNovelComment", api.PathNovelCommentAdd, url.Values{
+		api.ParamNovelID: {itoa(request.NovelID)},
+		api.ParamComment: {request.Comment},
 	})
 }
 
@@ -131,10 +131,10 @@ func (c *Client) ReplyNovelComment(ctx context.Context, request ReplyNovelCommen
 	if request.ParentCommentID <= 0 {
 		return CommentMutationResult{}, newError("ReplyNovelComment", sdk.InvalidArgument, "parent comment ID must be positive")
 	}
-	return c.postComment(ctx, "ReplyNovelComment", pixivapi.PathNovelCommentAdd, url.Values{
-		pixivapi.ParamNovelID:         {itoa(request.NovelID)},
-		pixivapi.ParamComment:         {request.Comment},
-		pixivapi.ParamParentCommentID: {itoa(request.ParentCommentID)},
+	return c.postComment(ctx, "ReplyNovelComment", api.PathNovelCommentAdd, url.Values{
+		api.ParamNovelID:         {itoa(request.NovelID)},
+		api.ParamComment:         {request.Comment},
+		api.ParamParentCommentID: {itoa(request.ParentCommentID)},
 	})
 }
 
@@ -144,8 +144,8 @@ func (c *Client) DeleteNovelComment(ctx context.Context, request DeleteNovelComm
 	if request.CommentID <= 0 {
 		return newError("DeleteNovelComment", sdk.InvalidArgument, "comment ID must be positive")
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathNovelCommentDelete, url.Values{
-		pixivapi.ParamCommentID: {itoa(request.CommentID)},
+	if err := c.app.PostForm(ctx, api.PathNovelCommentDelete, url.Values{
+		api.ParamCommentID: {itoa(request.CommentID)},
 	}); err != nil {
 		return classifyAppError(err, "DeleteNovelComment")
 	}
@@ -164,10 +164,10 @@ func (c *Client) StampArtworkComment(ctx context.Context, request StampArtworkCo
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampArtworkComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
-	return c.postComment(ctx, "StampArtworkComment", pixivapi.PathIllustCommentAdd, url.Values{
-		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
-		pixivapi.ParamComment:  {request.Comment},
-		pixivapi.ParamStampID:  {itoa(request.StampID)},
+	return c.postComment(ctx, "StampArtworkComment", api.PathIllustCommentAdd, url.Values{
+		api.ParamIllustID: {itoa(request.ArtworkID)},
+		api.ParamComment:  {request.Comment},
+		api.ParamStampID:  {itoa(request.StampID)},
 	})
 }
 
@@ -183,10 +183,10 @@ func (c *Client) StampNovelComment(ctx context.Context, request StampNovelCommen
 	if request.StampID <= 0 {
 		return CommentMutationResult{}, newError("StampNovelComment", sdk.InvalidArgument, "stamp ID must be positive")
 	}
-	return c.postComment(ctx, "StampNovelComment", pixivapi.PathNovelCommentAdd, url.Values{
-		pixivapi.ParamNovelID: {itoa(request.NovelID)},
-		pixivapi.ParamComment: {request.Comment},
-		pixivapi.ParamStampID: {itoa(request.StampID)},
+	return c.postComment(ctx, "StampNovelComment", api.PathNovelCommentAdd, url.Values{
+		api.ParamNovelID: {itoa(request.NovelID)},
+		api.ParamComment: {request.Comment},
+		api.ParamStampID: {itoa(request.StampID)},
 	})
 }
 
@@ -205,13 +205,13 @@ func (c *Client) AddArtworkBookmark(ctx context.Context, request AddArtworkBookm
 		return err
 	}
 	form := url.Values{
-		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+		api.ParamIllustID: {itoa(request.ArtworkID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}
 	for _, tag := range request.Tags {
-		form.Add(pixivapi.ParamTags, tag)
+		form.Add(api.ParamTags, tag)
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathBookmarkAdd, form); err != nil {
+	if err := c.app.PostForm(ctx, api.PathBookmarkAdd, form); err != nil {
 		return classifyAppError(err, operation)
 	}
 	return nil
@@ -224,8 +224,8 @@ func (c *Client) RemoveArtworkBookmark(ctx context.Context, request RemoveArtwor
 	if request.ArtworkID <= 0 {
 		return newError(operation, sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathBookmarkDelete, url.Values{
-		pixivapi.ParamIllustID: {itoa(request.ArtworkID)},
+	if err := c.app.PostForm(ctx, api.PathBookmarkDelete, url.Values{
+		api.ParamIllustID: {itoa(request.ArtworkID)},
 	}); err != nil {
 		return classifyAppError(err, operation)
 	}
@@ -246,13 +246,13 @@ func (c *Client) AddNovelBookmark(ctx context.Context, request AddNovelBookmarkR
 		return err
 	}
 	form := url.Values{
-		pixivapi.ParamNovelID:  {itoa(request.NovelID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+		api.ParamNovelID:  {itoa(request.NovelID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}
 	for _, tag := range request.Tags {
-		form.Add(pixivapi.ParamTags, tag)
+		form.Add(api.ParamTags, tag)
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathNovelBookmarkAdd, form); err != nil {
+	if err := c.app.PostForm(ctx, api.PathNovelBookmarkAdd, form); err != nil {
 		return classifyAppError(err, "AddNovelBookmark")
 	}
 	return nil
@@ -264,8 +264,8 @@ func (c *Client) RemoveNovelBookmark(ctx context.Context, request RemoveNovelBoo
 	if request.NovelID <= 0 {
 		return newError("RemoveNovelBookmark", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathNovelBookmarkDelete, url.Values{
-		pixivapi.ParamNovelID: {itoa(request.NovelID)},
+	if err := c.app.PostForm(ctx, api.PathNovelBookmarkDelete, url.Values{
+		api.ParamNovelID: {itoa(request.NovelID)},
 	}); err != nil {
 		return classifyAppError(err, "RemoveNovelBookmark")
 	}
@@ -285,9 +285,9 @@ func (c *Client) FollowUser(ctx context.Context, request FollowUserRequest) erro
 	if err := validateRestrict("FollowUser", request.Restrict); err != nil {
 		return err
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathFollowAdd, url.Values{
-		pixivapi.ParamUserID:   {itoa(request.UserID)},
-		pixivapi.ParamRestrict: {string(request.Restrict)},
+	if err := c.app.PostForm(ctx, api.PathFollowAdd, url.Values{
+		api.ParamUserID:   {itoa(request.UserID)},
+		api.ParamRestrict: {string(request.Restrict)},
 	}); err != nil {
 		return classifyAppError(err, "FollowUser")
 	}
@@ -300,8 +300,8 @@ func (c *Client) UnfollowUser(ctx context.Context, request UnfollowUserRequest) 
 	if request.UserID <= 0 {
 		return newError("UnfollowUser", sdk.InvalidArgument, "user ID must be positive")
 	}
-	if err := c.app.PostForm(ctx, pixivapi.PathFollowDelete, url.Values{
-		pixivapi.ParamUserID: {itoa(request.UserID)},
+	if err := c.app.PostForm(ctx, api.PathFollowDelete, url.Values{
+		api.ParamUserID: {itoa(request.UserID)},
 	}); err != nil {
 		return classifyAppError(err, "UnfollowUser")
 	}

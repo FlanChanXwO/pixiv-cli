@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -83,55 +83,55 @@ type UgoiraMetadataRequest struct {
 }
 
 var relatedContinuation = continuationSpec{
-	path:     pixivapi.PathIllustRelated,
-	keys:     []string{pixivapi.ParamOffset},
-	query:    []string{pixivapi.ParamIllustID},
+	path:     api.PathIllustRelated,
+	keys:     []string{api.ParamOffset},
+	query:    []string{api.ParamIllustID},
 	prefixes: []string{"seed_illust_ids[", "viewed["},
 }
 
 var recommendedContinuation = continuationSpec{
-	path: pixivapi.PathIllustRecommended,
+	path: api.PathIllustRecommended,
 	keys: []string{
-		pixivapi.ParamOffset, pixivapi.ParamMinRecentIllusts, pixivapi.ParamMaxRecommend,
-		pixivapi.ParamIncludeRanking, pixivapi.ParamIncludePrivacy,
+		api.ParamOffset, api.ParamMinRecentIllusts, api.ParamMaxRecommend,
+		api.ParamIncludeRanking, api.ParamIncludePrivacy,
 	},
 	allowZero: true,
 	ignored:   []string{"viewed["},
 }
 
 var rankingContinuation = continuationSpec{
-	path:  pixivapi.PathIllustRanking,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamMode, pixivapi.ParamDate},
+	path:  api.PathIllustRanking,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamMode, api.ParamDate},
 }
 
 var seriesContinuation = continuationSpec{
-	path:  pixivapi.PathIllustSeries,
-	keys:  []string{pixivapi.ParamOffset, pixivapi.ParamLastOrder},
-	query: []string{pixivapi.ParamIllustSeriesID},
+	path:  api.PathIllustSeries,
+	keys:  []string{api.ParamOffset, api.ParamLastOrder},
+	query: []string{api.ParamIllustSeriesID},
 }
 
 var followingContinuation = continuationSpec{
-	path:  pixivapi.PathIllustFollow,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamRestrict},
+	path:  api.PathIllustFollow,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamRestrict},
 }
 
 var latestContinuation = continuationSpec{
-	path:  pixivapi.PathIllustNew,
-	keys:  []string{pixivapi.ParamMaxIllustID, pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamContentType, pixivapi.ParamFilter},
+	path:  api.PathIllustNew,
+	keys:  []string{api.ParamMaxIllustID, api.ParamOffset},
+	query: []string{api.ParamContentType, api.ParamFilter},
 }
 
 var userArtworksContinuation = continuationSpec{
-	path:  pixivapi.PathUserIllusts,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamUserID, pixivapi.ParamType},
+	path:  api.PathUserIllusts,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamUserID, api.ParamType},
 }
 
 var myPixivContinuation = continuationSpec{
-	path: pixivapi.PathIllustMyPixiv,
-	keys: []string{pixivapi.ParamOffset},
+	path: api.PathIllustMyPixiv,
+	keys: []string{api.ParamOffset},
 }
 
 type artworkDetailWire struct {
@@ -142,15 +142,15 @@ type artworkSeriesWire struct {
 	SeriesDetail *struct {
 		User userWire `json:"user"`
 	} `json:"illust_series_detail"`
-	Illusts pixivapi.RequiredList[artworkWire] `json:"illusts"`
-	NextURL *string                            `json:"next_url"`
+	Illusts api.RequiredList[artworkWire] `json:"illusts"`
+	NextURL *string                       `json:"next_url"`
 }
 
 type trendingArtworksWire struct {
-	Tags pixivapi.RequiredList[struct {
-		Tag            string                               `json:"tag"`
-		TranslatedName string                               `json:"translated_name"`
-		Illust         pixivapi.RequiredObject[artworkWire] `json:"illust"`
+	Tags api.RequiredList[struct {
+		Tag            string                          `json:"tag"`
+		TranslatedName string                          `json:"translated_name"`
+		Illust         api.RequiredObject[artworkWire] `json:"illust"`
 	}] `json:"trend_tags"`
 }
 
@@ -162,25 +162,25 @@ func relatedParams(rawURL *string) (url.Values, bool, error) {
 	if err != nil || !hasNext {
 		return nil, hasNext, err
 	}
-	if rawOffset := values.Get(pixivapi.ParamOffset); rawOffset != "" {
+	if rawOffset := values.Get(api.ParamOffset); rawOffset != "" {
 		value, parseErr := strconv.ParseInt(rawOffset, 10, 64)
 		if parseErr != nil || value <= 0 || int64(int(value)) != value {
-			return nil, false, pixivapi.MalformedResponse()
+			return nil, false, api.MalformedResponse()
 		}
 		return values, true, nil
 	}
 	seedIDs, ok := indexedContinuationValues(values, "seed_illust_ids[")
 	if !ok {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	viewed, ok := indexedContinuationValues(values, "viewed[")
 	if !ok {
-		return nil, false, pixivapi.MalformedResponse()
+		return nil, false, api.MalformedResponse()
 	}
 	return url.Values{
-		pixivapi.ParamIllustID:      append([]string(nil), values[pixivapi.ParamIllustID]...),
-		pixivapi.ParamSeedIllustIDs: seedIDs,
-		pixivapi.ParamViewed:        viewed,
+		api.ParamIllustID:      append([]string(nil), values[api.ParamIllustID]...),
+		api.ParamSeedIllustIDs: seedIDs,
+		api.ParamViewed:        viewed,
 	}, true, nil
 }
 
@@ -300,8 +300,8 @@ func (c *Client) ArtworkPages(ctx context.Context, request ArtworkPagesRequest) 
 
 func (c *Client) fetchArtworkDetail(ctx context.Context, operation string, artworkID int64) (artworkDetailWire, error) {
 	var raw artworkDetailWire
-	query := url.Values{pixivapi.ParamIllustID: {itoa(artworkID)}}
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustDetail, query, &raw); err != nil {
+	query := url.Values{api.ParamIllustID: {itoa(artworkID)}}
+	if err := c.app.GetJSON(ctx, api.PathIllustDetail, query, &raw); err != nil {
 		return artworkDetailWire{}, classifyAppError(err, operation)
 	}
 	if raw.Illust == nil || raw.Illust.ID <= 0 {
@@ -316,21 +316,21 @@ func (c *Client) RelatedArtworks(ctx context.Context, request RelatedArtworksReq
 	if request.ArtworkID <= 0 {
 		return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamIllustID: {itoa(request.ArtworkID)}}
+	base := url.Values{api.ParamIllustID: {itoa(request.ArtworkID)}}
 	params, err := c.continuationParams("RelatedArtworks", base, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
 	query := base
 	if params != nil {
-		if params.Get(pixivapi.ParamIllustID) != itoa(request.ArtworkID) {
+		if params.Get(api.ParamIllustID) != itoa(request.ArtworkID) {
 			return sdk.Page[Artwork]{}, newError("RelatedArtworks", sdk.InvalidCursor, "cursor continuation artwork mismatch")
 		}
 		query = params
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustRelated, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustRelated, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RelatedArtworks")
 	}
 	items, err := artworkItems("RelatedArtworks", raw.Illusts, false)
@@ -350,7 +350,7 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 	if request.SeriesID <= 0 {
 		return sdk.Page[Artwork]{}, newError("ArtworkSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamIllustSeriesID: {itoa(request.SeriesID)}}
+	base := url.Values{api.ParamIllustSeriesID: {itoa(request.SeriesID)}}
 	query := cloneValues(base)
 	key, value, err := c.continuationKeyValue("ArtworkSeries", base, request.Cursor, seriesContinuation)
 	if err != nil {
@@ -361,7 +361,7 @@ func (c *Client) ArtworkSeries(ctx context.Context, request ArtworkSeriesRequest
 	}
 
 	var raw artworkSeriesWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustSeries, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustSeries, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkSeries")
 	}
 	if raw.SeriesDetail == nil || raw.SeriesDetail.User.ID <= 0 {
@@ -390,9 +390,9 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if err := validateDate("ArtworkRanking", "date", request.Date); err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	base := url.Values{pixivapi.ParamMode: {string(request.Mode)}}
+	base := url.Values{api.ParamMode: {string(request.Mode)}}
 	if request.Date != "" {
-		base.Set(pixivapi.ParamDate, request.Date)
+		base.Set(api.ParamDate, request.Date)
 	}
 	offset, err := c.continuationPositiveOffset("ArtworkRanking", base, request.Cursor)
 	if err != nil {
@@ -400,11 +400,11 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustRanking, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustRanking, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkRanking")
 	}
 	items, err := artworkItems("ArtworkRanking", raw.Illusts, false)
@@ -415,7 +415,7 @@ func (c *Client) ArtworkRanking(ctx context.Context, request ArtworkRankingReque
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "ArtworkRanking")
 	}
-	return c.artworkPage("ArtworkRanking", base, pixivapi.ParamOffset, items, int64(next), hasNext)
+	return c.artworkPage("ArtworkRanking", base, api.ParamOffset, items, int64(next), hasNext)
 }
 
 // RecommendedArtworks lists recommended artworks. Upstream expresses the next
@@ -431,7 +431,7 @@ func (c *Client) RecommendedArtworks(ctx context.Context, request RecommendedArt
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustRecommended, params, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustRecommended, params, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "RecommendedArtworks")
 	}
 	items, err := artworkItems("RecommendedArtworks", raw.Illusts, false)
@@ -452,18 +452,18 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	base := url.Values{pixivapi.ParamRestrict: {string(restrict)}}
+	base := url.Values{api.ParamRestrict: {string(restrict)}}
 	offset, err := c.continuationPositiveOffset("FollowingArtworks", base, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustFollow, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustFollow, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
 	items, err := artworkItems("FollowingArtworks", raw.Illusts, false)
@@ -474,7 +474,7 @@ func (c *Client) FollowingArtworks(ctx context.Context, request FollowingArtwork
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "FollowingArtworks")
 	}
-	return c.artworkPage("FollowingArtworks", base, pixivapi.ParamOffset, items, int64(next), hasNext)
+	return c.artworkPage("FollowingArtworks", base, api.ParamOffset, items, int64(next), hasNext)
 }
 
 // LatestArtworks lists the newest artworks.
@@ -488,8 +488,8 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	// produced for one feed (e.g. illust) cannot be replayed against another
 	// (e.g. manga), which would resume at an offset for the wrong result set.
 	base := url.Values{
-		pixivapi.ParamContentType: {contentType},
-		pixivapi.ParamFilter:      {"for_android"},
+		api.ParamContentType: {contentType},
+		api.ParamFilter:      {"for_android"},
 	}
 	key, value, err := c.continuationKeyValue("LatestArtworks", base, request.Cursor, latestContinuation)
 	if err != nil {
@@ -501,7 +501,7 @@ func (c *Client) LatestArtworks(ctx context.Context, request LatestArtworksReque
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustNew, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustNew, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "LatestArtworks")
 	}
 	items, err := artworkItems("LatestArtworks", raw.Illusts, false)
@@ -525,18 +525,18 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
-	base := url.Values{pixivapi.ParamUserID: {itoa(request.UserID)}, pixivapi.ParamType: {kind}}
+	base := url.Values{api.ParamUserID: {itoa(request.UserID)}, api.ParamType: {kind}}
 	offset, err := c.continuationPositiveOffset("UserArtworks", base, request.Cursor)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserIllusts, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathUserIllusts, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworks")
 	}
 	items, err := artworkItems("UserArtworks", raw.Illusts, false)
@@ -547,7 +547,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "UserArtworks")
 	}
-	return c.artworkPage("UserArtworks", base, pixivapi.ParamOffset, items, int64(next), hasNext)
+	return c.artworkPage("UserArtworks", base, api.ParamOffset, items, int64(next), hasNext)
 }
 
 // MyPixivArtworks lists artworks from the current user's MyPixiv feed.
@@ -560,11 +560,11 @@ func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksReq
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathIllustMyPixiv, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathIllustMyPixiv, query, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "MyPixivArtworks")
 	}
 	items, err := artworkItems("MyPixivArtworks", raw.Illusts, true)
@@ -575,14 +575,14 @@ func (c *Client) MyPixivArtworks(ctx context.Context, request MyPixivArtworksReq
 	if err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "MyPixivArtworks")
 	}
-	return c.artworkPage("MyPixivArtworks", base, pixivapi.ParamOffset, items, int64(next), hasNext)
+	return c.artworkPage("MyPixivArtworks", base, api.ParamOffset, items, int64(next), hasNext)
 }
 
 // TrendingArtworkTags lists currently trending artwork tags.
 func (c *Client) TrendingArtworkTags(ctx context.Context, request TrendingArtworkTagsRequest) ([]TrendingTag, error) {
 	ctx = logging.WithOperation(ctx, "TrendingArtworkTags")
 	var raw trendingArtworksWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathTrendingTagsIllust, nil, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathTrendingTagsIllust, nil, &raw); err != nil {
 		return nil, classifyAppError(err, "TrendingArtworkTags")
 	}
 	if !raw.Tags.Present || !raw.Tags.Valid {
@@ -610,8 +610,8 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 		return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.InvalidArgument, "artwork ID must be positive")
 	}
 	var raw ugoiraResponseWire
-	query := url.Values{pixivapi.ParamIllustID: {itoa(request.ArtworkID)}}
-	if err := c.app.GetJSON(ctx, pixivapi.PathUgoiraMetadata, query, &raw); err != nil {
+	query := url.Values{api.ParamIllustID: {itoa(request.ArtworkID)}}
+	if err := c.app.GetJSON(ctx, api.PathUgoiraMetadata, query, &raw); err != nil {
 		return UgoiraMetadata{}, classifyAppError(err, "UgoiraMetadata")
 	}
 	if !raw.Metadata.Present || !raw.Metadata.Valid {
@@ -632,7 +632,7 @@ func (c *Client) UgoiraMetadata(ctx context.Context, request UgoiraMetadataReque
 
 // artworkItems checks the required fields of an artwork list and returns the
 // wire items unchanged.
-func artworkItems(operation string, list pixivapi.RequiredList[artworkWire], requireUser bool) ([]artworkWire, error) {
+func artworkItems(operation string, list api.RequiredList[artworkWire], requireUser bool) ([]artworkWire, error) {
 	if !list.Present || !list.Valid {
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
@@ -698,7 +698,7 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 	if !value.ZipURLs.Present || !value.ZipURLs.Valid ||
 		(value.ZipURLs.Value.Medium == "" && value.ZipURLs.Value.Original == "") ||
 		!value.Frames.Present || !value.Frames.Valid || len(value.Frames.Items) == 0 {
-		return UgoiraMetadata{}, pixivapi.MalformedResponse()
+		return UgoiraMetadata{}, api.MalformedResponse()
 	}
 	archives := make([]UgoiraArchive, 0, 2)
 	for _, candidate := range []struct {
@@ -721,7 +721,7 @@ func (c *Client) mapUgoiraMetadata(artworkID int64, value ugoiraMetadataWire) (U
 	seenFile := map[string]bool{}
 	for _, frame := range value.Frames.Items {
 		if !safeArtworkArchiveFilename(frame.File) || seenFile[frame.File] {
-			return UgoiraMetadata{}, pixivapi.MalformedResponse()
+			return UgoiraMetadata{}, api.MalformedResponse()
 		}
 		seenFile[frame.File] = true
 		frames = append(frames, UgoiraFrame{Filename: frame.File, DelayMilliseconds: frame.Delay})

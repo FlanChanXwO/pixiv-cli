@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 )
 
 // Client 保存 OAuth token 与网络配置，并串行化 token 轮换。
@@ -104,7 +104,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 		return errors.New("refresh token is required")
 	}
 	result, err := c.exchange(ctx, "Open", map[string]string{
-		"client_id": pixivapi.OAuthClientID, "client_secret": pixivapi.OAuthClientSecret,
+		"client_id": api.OAuthClientID, "client_secret": api.OAuthClientSecret,
 		"grant_type": "refresh_token", "include_policy": "true", "refresh_token": refreshToken,
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func (c *Client) Refresh(ctx context.Context) error {
 		return err
 	}
 	if token.AccessToken == "" {
-		return pixivapi.MalformedResponse()
+		return api.MalformedResponse()
 	}
 	c.store(token)
 	// OpenWith 的入口操作名是 "Open"；传输日志同样带上它。
@@ -162,9 +162,9 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 		return AuthCodeToken{}, errors.New("code verifier cannot be empty")
 	}
 	result, err := c.exchange(ctx, "Complete", map[string]string{
-		"client_id": pixivapi.OAuthClientID, "client_secret": pixivapi.OAuthClientSecret,
+		"client_id": api.OAuthClientID, "client_secret": api.OAuthClientSecret,
 		"grant_type": "authorization_code", "include_policy": "true",
-		"code": code, "code_verifier": verifier, "redirect_uri": pixivapi.OAuthRedirectURI,
+		"code": code, "code_verifier": verifier, "redirect_uri": api.OAuthRedirectURI,
 	})
 	if err != nil {
 		return AuthCodeToken{}, err
@@ -174,7 +174,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code, verifier s
 		return AuthCodeToken{}, err
 	}
 	if token.AccessToken == "" || token.RefreshToken == "" {
-		return AuthCodeToken{}, pixivapi.MalformedResponse()
+		return AuthCodeToken{}, api.MalformedResponse()
 	}
 	c.store(token)
 	return token, nil
@@ -196,33 +196,33 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 	for key, value := range form {
 		values.Set(key, value)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pixivapi.OAuthBase+pixivapi.PathOAuthToken, strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api.OAuthBase+api.PathOAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
 		details = logging.TransportAttrs(err)
-		return authResponse{}, pixivapi.Transport(err)
+		return authResponse{}, api.Transport(err)
 	}
-	for name, value := range pixivapi.OAuthHeaders() {
+	for name, value := range api.OAuthHeaders() {
 		req.Header.Set(name, value)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		details = logging.TransportAttrs(err)
-		return authResponse{}, pixivapi.Transport(err)
+		return authResponse{}, api.Transport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		details = logging.TransportAttrs(err)
-		return authResponse{}, pixivapi.Transport(err)
+		return authResponse{}, api.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return authResponse{}, pixivapi.HTTPStatus(resp.StatusCode)
+		return authResponse{}, api.HTTPStatus(resp.StatusCode)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return authResponse{}, pixivapi.MalformedResponse()
+		return authResponse{}, api.MalformedResponse()
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return authResponse{}, pixivapi.MalformedResponse()
+		return authResponse{}, api.MalformedResponse()
 	}
 	return result, nil
 }
@@ -282,7 +282,7 @@ func tokenFromResponse(r authResponse) (AuthCodeToken, error) {
 	}
 	const maxSeconds = int64(1<<63-1) / int64(time.Second)
 	if wire.ExpiresIn > maxSeconds {
-		return AuthCodeToken{}, pixivapi.MalformedResponse()
+		return AuthCodeToken{}, api.MalformedResponse()
 	}
 	var expiry time.Time
 	if wire.ExpiresIn > 0 {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -24,7 +24,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	}
 	searchQuery := searchArtworksWireQuery(request, int(state.Value))
 	var raw artworkListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathSearchIllust, searchQuery, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathSearchIllust, searchQuery, &raw); err != nil {
 		return sdk.Page[Artwork]{}, classifyAppError(err, "SearchArtworks")
 	}
 	items, err := artworkItems("SearchArtworks", raw.Illusts, false)
@@ -41,7 +41,7 @@ func (c *Client) SearchArtworks(ctx context.Context, request SearchArtworksReque
 	}
 	page := sdk.Page[Artwork]{Items: mapped}
 	if hasNext {
-		page.Next, err = c.buildCursor("SearchArtworks", query, pixivapi.ParamOffset, int64(nextOffset), true)
+		page.Next, err = c.buildCursor("SearchArtworks", query, api.ParamOffset, int64(nextOffset), true)
 		if err != nil {
 			return sdk.Page[Artwork]{}, err
 		}
@@ -174,37 +174,37 @@ func (c *Client) searchArtworksContinuation(query url.Values, cursor sdk.Cursor,
 // accepted values of the remaining enums are collected here.
 func searchArtworksWireQuery(request SearchArtworksRequest, offset int) url.Values {
 	query := url.Values{
-		pixivapi.ParamWord:         {request.Word},
-		pixivapi.ParamSearchTarget: {string(request.Target)},
-		pixivapi.ParamSort:         {string(request.Sort)},
+		api.ParamWord:         {request.Word},
+		api.ParamSearchTarget: {string(request.Target)},
+		api.ParamSort:         {string(request.Sort)},
 	}
-	setOptionalParam(query, pixivapi.ParamDuration, string(request.Duration))
-	setOptionalParam(query, pixivapi.ParamStartDate, request.StartDate)
-	setOptionalParam(query, pixivapi.ParamEndDate, request.EndDate)
-	query.Set(pixivapi.ParamSearchAIType, "0")
+	setOptionalParam(query, api.ParamDuration, string(request.Duration))
+	setOptionalParam(query, api.ParamStartDate, request.StartDate)
+	setOptionalParam(query, api.ParamEndDate, request.EndDate)
+	query.Set(api.ParamSearchAIType, "0")
 	if request.AIMode == SearchAIModeExclude {
-		query.Set(pixivapi.ParamSearchAIType, "1")
+		query.Set(api.ParamSearchAIType, "1")
 	}
 	switch request.AspectRatio {
 	case SearchAspectRatioLandscape, SearchAspectRatioPortrait, SearchAspectRatioSquare:
-		query.Set(pixivapi.ParamRatioPattern, string(request.AspectRatio))
+		query.Set(api.ParamRatioPattern, string(request.AspectRatio))
 	}
 	switch request.ContentType {
 	case SearchContentTypeIllustAndUgoira:
-		query.Set(pixivapi.ParamContentType, "illust_and_ugoira")
+		query.Set(api.ParamContentType, "illust_and_ugoira")
 	case SearchContentTypeIllust, SearchContentTypeManga, SearchContentTypeUgoira:
-		query.Set(pixivapi.ParamContentType, string(request.ContentType))
+		query.Set(api.ParamContentType, string(request.ContentType))
 	}
-	setOptionalParam(query, pixivapi.ParamTool, request.Tool)
+	setOptionalParam(query, api.ParamTool, request.Tool)
 	if request.BookmarkMin != nil {
-		query.Set(pixivapi.ParamBookmarkNumMin, strconv.Itoa(*request.BookmarkMin))
+		query.Set(api.ParamBookmarkNumMin, strconv.Itoa(*request.BookmarkMin))
 	}
 	if request.BookmarkMax != nil {
-		query.Set(pixivapi.ParamBookmarkNumMax, strconv.Itoa(*request.BookmarkMax))
+		query.Set(api.ParamBookmarkNumMax, strconv.Itoa(*request.BookmarkMax))
 	}
 	applyResolutionFilter(query, request.Resolution)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, strconv.Itoa(offset))
+		query.Set(api.ParamOffset, strconv.Itoa(offset))
 	}
 	return query
 }
@@ -243,13 +243,13 @@ type SearchArtworksRequest struct {
 }
 
 var searchContinuation = continuationSpec{
-	path: pixivapi.PathSearchIllust,
-	keys: []string{pixivapi.ParamOffset},
+	path: api.PathSearchIllust,
+	keys: []string{api.ParamOffset},
 	query: []string{
-		pixivapi.ParamWord, pixivapi.ParamSearchTarget, pixivapi.ParamSort,
-		pixivapi.ParamDuration, pixivapi.ParamStartDate, pixivapi.ParamEndDate,
-		pixivapi.ParamSearchAIType, pixivapi.ParamRatioPattern, pixivapi.ParamContentType,
-		pixivapi.ParamTool, pixivapi.ParamBookmarkNumMin, pixivapi.ParamBookmarkNumMax,
-		pixivapi.ParamWidthMin, pixivapi.ParamWidthMax, pixivapi.ParamHeightMin, pixivapi.ParamHeightMax,
+		api.ParamWord, api.ParamSearchTarget, api.ParamSort,
+		api.ParamDuration, api.ParamStartDate, api.ParamEndDate,
+		api.ParamSearchAIType, api.ParamRatioPattern, api.ParamContentType,
+		api.ParamTool, api.ParamBookmarkNumMin, api.ParamBookmarkNumMax,
+		api.ParamWidthMin, api.ParamWidthMax, api.ParamHeightMin, api.ParamHeightMax,
 	},
 }

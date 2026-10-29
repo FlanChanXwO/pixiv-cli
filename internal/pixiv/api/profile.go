@@ -1,4 +1,4 @@
-package pixivapi
+package api
 
 // AppAPIBase 与 OAuthBase 是 Pixiv App 与 OAuth 的固定入口，其余常量是请求头基线。
 const (

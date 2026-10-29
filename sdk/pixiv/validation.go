@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -75,16 +75,16 @@ func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, erro
 func applyResolutionFilter(query url.Values, resolution SearchResolution) {
 	switch resolution {
 	case SearchResolutionHigh:
-		query.Set(pixivapi.ParamWidthMin, "3000")
-		query.Set(pixivapi.ParamHeightMin, "3000")
+		query.Set(api.ParamWidthMin, "3000")
+		query.Set(api.ParamHeightMin, "3000")
 	case SearchResolutionMedium:
-		query.Set(pixivapi.ParamWidthMin, "1000")
-		query.Set(pixivapi.ParamWidthMax, "2999")
-		query.Set(pixivapi.ParamHeightMin, "1000")
-		query.Set(pixivapi.ParamHeightMax, "2999")
+		query.Set(api.ParamWidthMin, "1000")
+		query.Set(api.ParamWidthMax, "2999")
+		query.Set(api.ParamHeightMin, "1000")
+		query.Set(api.ParamHeightMax, "2999")
 	case SearchResolutionLow:
-		query.Set(pixivapi.ParamWidthMax, "999")
-		query.Set(pixivapi.ParamHeightMax, "999")
+		query.Set(api.ParamWidthMax, "999")
+		query.Set(api.ParamHeightMax, "999")
 	}
 }
 

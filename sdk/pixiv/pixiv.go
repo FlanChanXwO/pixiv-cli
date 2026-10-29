@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -55,7 +55,7 @@ type Options struct {
 type Client struct {
 	// app owns the App API transport and the access token; every operation goes
 	// through it directly.
-	app *pixivapi.Client
+	app *api.Client
 
 	userID   int64
 	userName string
@@ -81,7 +81,7 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 	if refreshToken == "" {
 		return nil, Credentials{}, newError("Open", sdk.CredentialsExpired, "refresh token is required")
 	}
-	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
+	httpClient, selfHTTP := api.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
 	oauthClient := oauth.New(refreshToken, oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP, Logger: options.Logger})
 	var client *Client
 	// Failed construction leaves no client for the caller to close.
@@ -126,7 +126,7 @@ func NewWith(accessToken string, options Options) (*Client, error) {
 	if accessToken == "" {
 		return nil, newError("New", sdk.InvalidArgument, "access token is required")
 	}
-	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
+	httpClient, selfHTTP := api.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
 	client, err := newClient(httpClient, selfHTTP, accessToken, options, 0)
 	if err != nil {
 		return nil, newError("New", sdk.LocalStateError, "cannot initialize cursor instance")
@@ -143,7 +143,7 @@ func newClient(httpClient *http.Client, selfHTTP bool, accessToken string, optio
 			return nil, err
 		}
 	}
-	app := pixivapi.New(pixivapi.Config{
+	app := api.New(api.Config{
 		HTTPClient:     httpClient,
 		OwnHTTPClient:  selfHTTP,
 		ResourceHosts:  options.ResourcePolicy.AllowedHosts,

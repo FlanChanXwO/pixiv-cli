@@ -6,7 +6,7 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -41,8 +41,8 @@ type novelDetailWire struct {
 }
 
 type novelListWire struct {
-	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
-	NextURL *string                          `json:"next_url"`
+	Novels  api.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                     `json:"next_url"`
 }
 
 type novelSeriesDetailWire struct {
@@ -54,9 +54,9 @@ type novelSeriesDetailWire struct {
 }
 
 type novelSeriesWire struct {
-	Detail  *novelSeriesDetailWire           `json:"novel_series_detail"`
-	Novels  pixivapi.RequiredList[novelWire] `json:"novels"`
-	NextURL *string                          `json:"next_url"`
+	Detail  *novelSeriesDetailWire      `json:"novel_series_detail"`
+	Novels  api.RequiredList[novelWire] `json:"novels"`
+	NextURL *string                     `json:"next_url"`
 }
 
 // mapNovel maps one upstream novel response to the public model. The cover and
@@ -105,7 +105,7 @@ func (c *Client) mapNovel(value novelWire) (Novel, error) {
 	return result, nil
 }
 
-func (c *Client) novelItems(operation string, list pixivapi.RequiredList[novelWire], requireSearchFields bool) ([]Novel, error) {
+func (c *Client) novelItems(operation string, list api.RequiredList[novelWire], requireSearchFields bool) ([]Novel, error) {
 	if !list.Present || !list.Valid {
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
@@ -147,18 +147,18 @@ func (c *Client) SearchNovels(ctx context.Context, request SearchNovelsRequest) 
 		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{
-		pixivapi.ParamWord:         {request.Word},
-		pixivapi.ParamSearchTarget: {string(request.Target)},
-		pixivapi.ParamSort:         {string(request.Sort)},
+		api.ParamWord:         {request.Word},
+		api.ParamSearchTarget: {string(request.Target)},
+		api.ParamSort:         {string(request.Sort)},
 	}
 	if request.Duration != "" {
-		query.Set(pixivapi.ParamDuration, string(request.Duration))
+		query.Set(api.ParamDuration, string(request.Duration))
 	}
 	offset, err := c.continuationPositiveOffset("SearchNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "SearchNovels", pixivapi.PathSearchNovel, query, query, offset, novelSearchContinuation, true)
+	return c.novelOffsetPage(ctx, "SearchNovels", api.PathSearchNovel, query, query, offset, novelSearchContinuation, true)
 }
 
 // Novel returns one novel by its stable ID.
@@ -176,8 +176,8 @@ func (c *Client) Novel(ctx context.Context, request NovelRequest) (Novel, error)
 
 func (c *Client) fetchNovelDetail(ctx context.Context, operation string, novelID int64) (novelDetailWire, error) {
 	var raw novelDetailWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelDetail, url.Values{
-		pixivapi.ParamNovelID: {itoa(novelID)},
+	if err := c.app.GetJSON(ctx, api.PathNovelDetail, url.Values{
+		api.ParamNovelID: {itoa(novelID)},
 	}, &raw); err != nil {
 		return novelDetailWire{}, classifyAppError(err, operation)
 	}
@@ -198,18 +198,18 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	if request.SeriesID <= 0 {
 		return NovelSeriesResult{}, newError("NovelSeries", sdk.InvalidArgument, "series ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamSeriesID: {itoa(request.SeriesID)}}
+	base := url.Values{api.ParamSeriesID: {itoa(request.SeriesID)}}
 	_, lastOrder, err := c.continuationKeyValue("NovelSeries", base, request.Cursor, novelSeriesContinuation)
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
 	query := cloneValues(base)
 	if lastOrder > 0 {
-		query.Set(pixivapi.ParamLastOrder, itoa(lastOrder))
+		query.Set(api.ParamLastOrder, itoa(lastOrder))
 	}
 
 	var raw novelSeriesWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelSeries, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathNovelSeries, query, &raw); err != nil {
 		return NovelSeriesResult{}, classifyAppError(err, "NovelSeries")
 	}
 	if raw.Detail == nil || raw.Detail.ID <= 0 || raw.Detail.User.ID <= 0 {
@@ -223,7 +223,7 @@ func (c *Client) NovelSeries(ctx context.Context, request NovelSeriesRequest) (N
 	if err != nil {
 		return NovelSeriesResult{}, classifyAppError(err, "NovelSeries")
 	}
-	next, err := c.buildCursor("NovelSeries", base, pixivapi.ParamLastOrder, nextLastOrder, hasNext)
+	next, err := c.buildCursor("NovelSeries", base, api.ParamLastOrder, nextLastOrder, hasNext)
 	if err != nil {
 		return NovelSeriesResult{}, err
 	}
@@ -253,14 +253,14 @@ func (c *Client) NovelRanking(ctx context.Context, request NovelRankingRequest) 
 		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{
-		pixivapi.ParamFilter: {"for_android"},
-		pixivapi.ParamMode:   {string(request.Mode)},
+		api.ParamFilter: {"for_android"},
+		api.ParamMode:   {string(request.Mode)},
 	}
 	offset, err := c.continuationPositiveOffset("NovelRanking", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "NovelRanking", pixivapi.PathNovelRanking, query, query, offset, novelRankingContinuation, false)
+	return c.novelOffsetPage(ctx, "NovelRanking", api.PathNovelRanking, query, query, offset, novelRankingContinuation, false)
 }
 
 // NovelContent reports that structured novel content is unavailable through
@@ -285,7 +285,7 @@ func (c *Client) RecommendedNovels(ctx context.Context, request RecommendedNovel
 	}
 
 	var raw novelListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelRecommended, params, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathNovelRecommended, params, &raw); err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "RecommendedNovels")
 	}
 	items, err := c.novelItems("RecommendedNovels", raw.Novels, false)
@@ -313,29 +313,29 @@ func (c *Client) FollowingNovels(ctx context.Context, request FollowingNovelsReq
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	query := url.Values{pixivapi.ParamRestrict: {string(restrict)}}
+	query := url.Values{api.ParamRestrict: {string(restrict)}}
 	offset, err := c.continuationPositiveOffset("FollowingNovels", query, request.Cursor)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "FollowingNovels", pixivapi.PathNovelFollow, query, query, offset, novelFollowingContinuation, false)
+	return c.novelOffsetPage(ctx, "FollowingNovels", api.PathNovelFollow, query, query, offset, novelFollowingContinuation, false)
 }
 
 // LatestNovels lists the newest novels.
 func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) (sdk.Page[Novel], error) {
 	ctx = logging.WithOperation(ctx, "LatestNovels")
-	base := url.Values{pixivapi.ParamFilter: {"for_android"}}
+	base := url.Values{api.ParamFilter: {"for_android"}}
 	_, maxNovelID, err := c.continuationKeyValue("LatestNovels", base, request.Cursor, novelLatestContinuation)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
 	query := cloneValues(base)
 	if maxNovelID > 0 {
-		query.Set(pixivapi.ParamMaxNovelID, itoa(maxNovelID))
+		query.Set(api.ParamMaxNovelID, itoa(maxNovelID))
 	}
 
 	var raw novelListWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathNovelNew, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathNovelNew, query, &raw); err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
 	items, err := c.novelItems("LatestNovels", raw.Novels, false)
@@ -346,7 +346,7 @@ func (c *Client) LatestNovels(ctx context.Context, request LatestNovelsRequest) 
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, "LatestNovels")
 	}
-	cursor, err := c.buildCursor("LatestNovels", base, pixivapi.ParamMaxNovelID, next, hasNext)
+	cursor, err := c.buildCursor("LatestNovels", base, api.ParamMaxNovelID, next, hasNext)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -365,7 +365,7 @@ func (c *Client) UserNovels(ctx context.Context, request UserNovelsRequest) (sdk
 		return sdk.Page[Novel]{}, err
 	}
 	query := url.Values{"user_id": {itoa(request.UserID)}, "filter": {"for_android"}}
-	return c.novelOffsetPage(ctx, "UserNovels", pixivapi.PathUserNovels, base, query, offset, novelUserContinuation, false)
+	return c.novelOffsetPage(ctx, "UserNovels", api.PathUserNovels, base, query, offset, novelUserContinuation, false)
 }
 
 // MyPixivNovels lists novels from the current user's MyPixiv feed.
@@ -376,7 +376,7 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
-	return c.novelOffsetPage(ctx, "MyPixivNovels", pixivapi.PathNovelMyPixiv, query, query, offset, novelMyPixivContinuation, false)
+	return c.novelOffsetPage(ctx, "MyPixivNovels", api.PathNovelMyPixiv, query, query, offset, novelMyPixivContinuation, false)
 }
 
 // novelOffsetPage backs every offset-paginated novel list. Endpoints differ only
@@ -385,7 +385,7 @@ func (c *Client) MyPixivNovels(ctx context.Context, request MyPixivNovelsRequest
 func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, base, query url.Values, offset int, spec continuationSpec, requireSearchFields bool) (sdk.Page[Novel], error) {
 	query = cloneValues(query)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 	var raw novelListWire
 	if err := c.app.GetJSON(ctx, path, query, &raw); err != nil {
@@ -399,7 +399,7 @@ func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, ba
 	if err != nil {
 		return sdk.Page[Novel]{}, classifyAppError(err, operation)
 	}
-	cursor, err := c.buildCursor(operation, base, pixivapi.ParamOffset, int64(next), hasNext)
+	cursor, err := c.buildCursor(operation, base, api.ParamOffset, int64(next), hasNext)
 	if err != nil {
 		return sdk.Page[Novel]{}, err
 	}
@@ -407,7 +407,7 @@ func (c *Client) novelOffsetPage(ctx context.Context, operation, path string, ba
 }
 
 func (c *Client) fetchNovelContent(ctx context.Context, operation string, novelID int64) ([]byte, error) {
-	body, err := c.app.GetRaw(ctx, pixivapi.PathNovelContent, url.Values{pixivapi.ParamNovelID: {itoa(novelID)}})
+	body, err := c.app.GetRaw(ctx, api.PathNovelContent, url.Values{api.ParamNovelID: {itoa(novelID)}})
 	if err != nil {
 		return nil, classifyAppError(err, operation)
 	}
@@ -477,55 +477,55 @@ type MyPixivNovelsRequest struct {
 }
 
 var novelSearchContinuation = continuationSpec{
-	path: pixivapi.PathSearchNovel,
-	keys: []string{pixivapi.ParamOffset},
+	path: api.PathSearchNovel,
+	keys: []string{api.ParamOffset},
 	query: []string{
-		pixivapi.ParamWord, pixivapi.ParamSearchTarget, pixivapi.ParamSort, pixivapi.ParamDuration,
+		api.ParamWord, api.ParamSearchTarget, api.ParamSort, api.ParamDuration,
 	},
 }
 
 var novelRankingContinuation = continuationSpec{
-	path:  pixivapi.PathNovelRanking,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamFilter, pixivapi.ParamMode},
+	path:  api.PathNovelRanking,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamFilter, api.ParamMode},
 }
 
 var novelRecommendedContinuation = continuationSpec{
-	path: pixivapi.PathNovelRecommended,
+	path: api.PathNovelRecommended,
 	keys: []string{
-		pixivapi.ParamOffset, pixivapi.ParamAlreadyRecommended,
-		pixivapi.ParamMaxRecommend, pixivapi.ParamIncludeRankingNovels, pixivapi.ParamIncludePrivacy,
+		api.ParamOffset, api.ParamAlreadyRecommended,
+		api.ParamMaxRecommend, api.ParamIncludeRankingNovels, api.ParamIncludePrivacy,
 	},
 	allowZero: true,
 }
 
 var novelSeriesContinuation = continuationSpec{
-	path:  pixivapi.PathNovelSeries,
-	keys:  []string{pixivapi.ParamLastOrder},
-	query: []string{pixivapi.ParamSeriesID},
+	path:  api.PathNovelSeries,
+	keys:  []string{api.ParamLastOrder},
+	query: []string{api.ParamSeriesID},
 }
 
 var novelFollowingContinuation = continuationSpec{
-	path:  pixivapi.PathNovelFollow,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamRestrict},
+	path:  api.PathNovelFollow,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamRestrict},
 }
 
 var novelLatestContinuation = continuationSpec{
-	path:  pixivapi.PathNovelNew,
-	keys:  []string{pixivapi.ParamMaxNovelID},
-	query: []string{pixivapi.ParamFilter},
+	path:  api.PathNovelNew,
+	keys:  []string{api.ParamMaxNovelID},
+	query: []string{api.ParamFilter},
 }
 
 var novelMyPixivContinuation = continuationSpec{
-	path: pixivapi.PathNovelMyPixiv,
-	keys: []string{pixivapi.ParamOffset},
+	path: api.PathNovelMyPixiv,
+	keys: []string{api.ParamOffset},
 }
 
 var novelUserContinuation = continuationSpec{
-	path:  pixivapi.PathUserNovels,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
+	path:  api.PathUserNovels,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamUserID, api.ParamFilter},
 }
 
 func intValue(value *int) int {

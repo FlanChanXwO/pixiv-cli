@@ -7,15 +7,15 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 type userDetailWire struct {
-	User             pixivapi.RequiredObject[userWire]             `json:"user"`
-	Profile          pixivapi.RequiredObject[profileWire]          `json:"profile"`
-	ProfilePublicity pixivapi.RequiredObject[profilePublicityWire] `json:"profile_publicity"`
-	Workspace        pixivapi.RequiredObject[workspaceWire]        `json:"workspace"`
+	User             api.RequiredObject[userWire]             `json:"user"`
+	Profile          api.RequiredObject[profileWire]          `json:"profile"`
+	ProfilePublicity api.RequiredObject[profilePublicityWire] `json:"profile_publicity"`
+	Workspace        api.RequiredObject[workspaceWire]        `json:"workspace"`
 }
 
 type profileWire struct {
@@ -113,8 +113,8 @@ type workspaceWire struct {
 
 // userPreviewsWire is the response shape user search and user lists share.
 type userPreviewsWire struct {
-	UserPreviews pixivapi.RequiredList[userPreviewWire] `json:"user_previews"`
-	NextURL      *string                                `json:"next_url"`
+	UserPreviews api.RequiredList[userPreviewWire] `json:"user_previews"`
+	NextURL      *string                           `json:"next_url"`
 }
 
 type userPreviewWire struct {
@@ -149,9 +149,9 @@ func (w *blockedPreviewWire) UnmarshalJSON(data []byte) error {
 // blockedUsersWire is the /v2/user/list response. Both envelope forms are
 // validated as required lists.
 type blockedUsersWire struct {
-	UserPreviews pixivapi.RequiredList[blockedPreviewWire] `json:"user_previews"`
-	Users        pixivapi.RequiredList[blockedPreviewWire] `json:"users"`
-	NextURL      *string                                   `json:"next_url"`
+	UserPreviews api.RequiredList[blockedPreviewWire] `json:"user_previews"`
+	Users        api.RequiredList[blockedPreviewWire] `json:"users"`
+	NextURL      *string                              `json:"next_url"`
 }
 
 func (w blockedUsersWire) list() ([]userPreviewWire, error) {
@@ -161,7 +161,7 @@ func (w blockedUsersWire) list() ([]userPreviewWire, error) {
 		list = w.UserPreviews
 	}
 	if !list.Present || !list.Valid {
-		return nil, pixivapi.MalformedResponse()
+		return nil, api.MalformedResponse()
 	}
 	items := make([]userPreviewWire, len(list.Items))
 	for index, value := range list.Items {
@@ -176,8 +176,8 @@ func (c *Client) SearchUsers(ctx context.Context, request SearchUsersRequest) (s
 	if err := validateSearchWord("SearchUsers", request.Word); err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
-	base := url.Values{pixivapi.ParamWord: {request.Word}}
-	return c.userPreviewsPage(ctx, "SearchUsers", pixivapi.PathSearchUser, base, base, request.Cursor, userSearchContinuation, false)
+	base := url.Values{api.ParamWord: {request.Word}}
+	return c.userPreviewsPage(ctx, "SearchUsers", api.PathSearchUser, base, base, request.Cursor, userSearchContinuation, false)
 }
 
 // User returns one user's detail by their stable ID.
@@ -209,12 +209,12 @@ func (c *Client) CurrentUser(ctx context.Context, request CurrentUserRequest) (U
 }
 
 func (c *Client) fetchUserDetail(ctx context.Context, operation string, userID int64, filter bool) (userDetailWire, error) {
-	query := url.Values{pixivapi.ParamUserID: {itoa(userID)}}
+	query := url.Values{api.ParamUserID: {itoa(userID)}}
 	if filter {
-		query.Set(pixivapi.ParamFilter, "for_android")
+		query.Set(api.ParamFilter, "for_android")
 	}
 	var raw userDetailWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathUserDetail, query, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathUserDetail, query, &raw); err != nil {
 		return userDetailWire{}, classifyAppError(err, operation)
 	}
 	if !raw.User.Present || !raw.User.Valid || raw.User.Value.ID <= 0 ||
@@ -289,7 +289,7 @@ func (c *Client) mapUserDetail(value userDetailWire) (UserDetail, error) {
 func (c *Client) RecommendedUsers(ctx context.Context, request RecommendedUsersRequest) (sdk.Page[UserPreview], error) {
 	ctx = logging.WithOperation(ctx, "RecommendedUsers")
 	base := url.Values{}
-	return c.userPreviewsPage(ctx, "RecommendedUsers", pixivapi.PathUserRecommended, base, base, request.Cursor, userRecommendedContinuation, true)
+	return c.userPreviewsPage(ctx, "RecommendedUsers", api.PathUserRecommended, base, base, request.Cursor, userRecommendedContinuation, true)
 }
 
 // RelatedUsers lists users related to one user.
@@ -298,20 +298,20 @@ func (c *Client) RelatedUsers(ctx context.Context, request RelatedUsersRequest) 
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("RelatedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamSeedUserID: {itoa(request.UserID)}}
-	return c.userPreviewsPage(ctx, "RelatedUsers", pixivapi.PathUserRelated, base, base, request.Cursor, userRelatedContinuation, false)
+	base := url.Values{api.ParamSeedUserID: {itoa(request.UserID)}}
+	return c.userPreviewsPage(ctx, "RelatedUsers", api.PathUserRelated, base, base, request.Cursor, userRelatedContinuation, false)
 }
 
 // UserFollowing lists the users one user follows.
 func (c *Client) UserFollowing(ctx context.Context, request UserFollowingRequest) (sdk.Page[UserPreview], error) {
 	ctx = logging.WithOperation(ctx, "UserFollowing")
-	return c.userRelationshipPage(ctx, "UserFollowing", pixivapi.PathUserFollowing, request.UserID, request.Restrict, request.Cursor, userFollowingContinuation)
+	return c.userRelationshipPage(ctx, "UserFollowing", api.PathUserFollowing, request.UserID, request.Restrict, request.Cursor, userFollowingContinuation)
 }
 
 // UserFollowers lists the users following one user.
 func (c *Client) UserFollowers(ctx context.Context, request UserFollowersRequest) (sdk.Page[UserPreview], error) {
 	ctx = logging.WithOperation(ctx, "UserFollowers")
-	return c.userRelationshipPage(ctx, "UserFollowers", pixivapi.PathUserFollower, request.UserID, request.Restrict, request.Cursor, userFollowerContinuation)
+	return c.userRelationshipPage(ctx, "UserFollowers", api.PathUserFollower, request.UserID, request.Restrict, request.Cursor, userFollowerContinuation)
 }
 
 func (c *Client) userRelationshipPage(ctx context.Context, operation, path string, userID int64, restrict Restrict, cursor sdk.Cursor, spec continuationSpec) (sdk.Page[UserPreview], error) {
@@ -323,8 +323,8 @@ func (c *Client) userRelationshipPage(ctx context.Context, operation, path strin
 		return sdk.Page[UserPreview]{}, err
 	}
 	base := url.Values{
-		pixivapi.ParamUserID:   {itoa(userID)},
-		pixivapi.ParamRestrict: {string(value)},
+		api.ParamUserID:   {itoa(userID)},
+		api.ParamRestrict: {string(value)},
 	}
 	return c.userPreviewsPage(ctx, operation, path, base, base, cursor, spec, false)
 }
@@ -335,9 +335,9 @@ func (c *Client) UserBlockedUsers(ctx context.Context, request UserBlockedUsersR
 	if request.UserID <= 0 {
 		return sdk.Page[UserPreview]{}, newError("UserBlockedUsers", sdk.InvalidArgument, "user ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamUserID: {itoa(request.UserID)}}
-	query := url.Values{pixivapi.ParamUserID: {itoa(request.UserID)}, pixivapi.ParamFilter: {"for_android"}}
-	return c.blockedUsersPage(ctx, "UserBlockedUsers", pixivapi.PathUserBlocked, base, query, request.Cursor)
+	base := url.Values{api.ParamUserID: {itoa(request.UserID)}}
+	query := url.Values{api.ParamUserID: {itoa(request.UserID)}, api.ParamFilter: {"for_android"}}
+	return c.blockedUsersPage(ctx, "UserBlockedUsers", api.PathUserBlocked, base, query, request.Cursor)
 }
 
 // MyPixivUsers lists the current user's MyPixiv feed users. It requires a
@@ -349,8 +349,8 @@ func (c *Client) MyPixivUsers(ctx context.Context, request MyPixivUsersRequest) 
 		return sdk.Page[UserPreview]{}, newError("MyPixivUsers", sdk.Unauthorized, "current user identity is unknown")
 	}
 	base := url.Values{}
-	query := url.Values{pixivapi.ParamUserID: {itoa(c.userID)}, pixivapi.ParamFilter: {"for_android"}}
-	return c.userPreviewsPage(ctx, "MyPixivUsers", pixivapi.PathUserMyPixiv, base, query, request.Cursor, userMyPixivContinuation, false)
+	query := url.Values{api.ParamUserID: {itoa(c.userID)}, api.ParamFilter: {"for_android"}}
+	return c.userPreviewsPage(ctx, "MyPixivUsers", api.PathUserMyPixiv, base, query, request.Cursor, userMyPixivContinuation, false)
 }
 
 // userPreviewsPage backs every user_previews list endpoint. base binds the cursor
@@ -366,7 +366,7 @@ func (c *Client) userPreviewsPage(ctx context.Context, operation, path string, b
 		if continuationExists {
 			// Recommended feeds report the second page as an explicit offset=0;
 			// omitting it would return the first page again.
-			query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+			query.Set(api.ParamOffset, itoa(int64(offset)))
 		}
 	} else {
 		offset, err := c.continuationPositiveOffset(operation, base, cursor)
@@ -374,7 +374,7 @@ func (c *Client) userPreviewsPage(ctx context.Context, operation, path string, b
 			return sdk.Page[UserPreview]{}, err
 		}
 		if offset > 0 {
-			query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+			query.Set(api.ParamOffset, itoa(int64(offset)))
 		}
 	}
 
@@ -397,7 +397,7 @@ func (c *Client) blockedUsersPage(ctx context.Context, operation, path string, b
 	}
 	query = cloneValues(query)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 	var raw blockedUsersWire
 	if err := c.app.GetJSON(ctx, path, query, &raw); err != nil {
@@ -419,7 +419,7 @@ func (c *Client) userPreviewsResult(operation string, base url.Values, values []
 	if err != nil {
 		return sdk.Page[UserPreview]{}, classifyAppError(err, operation)
 	}
-	nextCursor, err := c.buildCursor(operation, base, pixivapi.ParamOffset, int64(next), hasNext)
+	nextCursor, err := c.buildCursor(operation, base, api.ParamOffset, int64(next), hasNext)
 	if err != nil {
 		return sdk.Page[UserPreview]{}, err
 	}
@@ -477,39 +477,39 @@ func (c *Client) mapUserPreview(operation string, value userPreviewWire, withSam
 
 var (
 	userSearchContinuation = continuationSpec{
-		path:  pixivapi.PathSearchUser,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamWord},
+		path:  api.PathSearchUser,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamWord},
 	}
 	userRecommendedContinuation = continuationSpec{
-		path:      pixivapi.PathUserRecommended,
-		keys:      []string{pixivapi.ParamOffset},
+		path:      api.PathUserRecommended,
+		keys:      []string{api.ParamOffset},
 		allowZero: true,
 	}
 	userRelatedContinuation = continuationSpec{
-		path:  pixivapi.PathUserRelated,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamSeedUserID},
+		path:  api.PathUserRelated,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamSeedUserID},
 	}
 	userFollowingContinuation = continuationSpec{
-		path:  pixivapi.PathUserFollowing,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict},
+		path:  api.PathUserFollowing,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamUserID, api.ParamRestrict},
 	}
 	userFollowerContinuation = continuationSpec{
-		path:  pixivapi.PathUserFollower,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamUserID, pixivapi.ParamRestrict},
+		path:  api.PathUserFollower,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamUserID, api.ParamRestrict},
 	}
 	userBlockedContinuation = continuationSpec{
-		path:  pixivapi.PathUserBlocked,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
+		path:  api.PathUserBlocked,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamUserID, api.ParamFilter},
 	}
 	userMyPixivContinuation = continuationSpec{
-		path:  pixivapi.PathUserMyPixiv,
-		keys:  []string{pixivapi.ParamOffset},
-		query: []string{pixivapi.ParamUserID, pixivapi.ParamFilter},
+		path:  api.PathUserMyPixiv,
+		keys:  []string{api.ParamOffset},
+		query: []string{api.ParamUserID, api.ParamFilter},
 	}
 )
 
