@@ -1,4 +1,4 @@
-package pixivaccount
+package account
 
 import (
 	"context"

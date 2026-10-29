@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	inputcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 )
 
@@ -115,7 +115,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	return nil
 }
 
-func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInput) {
+func (a controller) bindAuthImportInput(cmd *cobra.Command, target *authImportInput) {
 	validate := cmd.Args
 	cmd.Args = func(ctxCmd *cobra.Command, args []string) error {
 		if len(args) == 0 && !a.env.CanPrompt() {
@@ -126,7 +126,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInp
 			if err != nil {
 				return fmt.Errorf("read auth import stdin: %w", err)
 			}
-			first, hasValue := inputcmd.FirstNonWhitespace(body)
+			first, hasValue := input.FirstNonWhitespace(body)
 			if hasValue && first == '{' {
 				if !json.Valid(body) {
 					return errors.New("invalid auth export bundle JSON")
@@ -134,7 +134,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInp
 				if cmd.Flags().Changed("proxy") || cmd.Flags().Changed("no-proxy") {
 					return errors.New("bundle import cannot be combined with --proxy or --no-proxy")
 				}
-				*input = authImportInput{bundle: body}
+				*target = authImportInput{bundle: body}
 				command.SetOffline(ctxCmd)
 				command.Bind(ctxCmd, command.AuthBundleImport())
 			} else {
@@ -142,7 +142,7 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, input *authImportInp
 				if err != nil {
 					return err
 				}
-				*input = authImportInput{token: token}
+				*target = authImportInput{token: token}
 			}
 		}
 		return validate(ctxCmd, args)

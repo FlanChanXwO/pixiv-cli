@@ -1,10 +1,10 @@
-// Package fanboxaccount 提供 FANBOX 本地账号领域，以及 CLI/MCP 共用的账号与 session 服务。
+// Package account 提供 FANBOX 本地账号领域，以及 CLI/MCP 共用的账号与 session 服务。
 //
 // FANBOX 的账号选择、会话校验和存储端口独立于 Pixiv。
 //
 // 包的组成：[Account] 是保存的账号记录，[Repository] 与 [DefaultStore] 是存储端口，
 // [Service] 负责导入、选择、列出与打开客户端，[AccountSummary] 是面向输出的摘要。
-package fanboxaccount
+package account
 
 import (
 	"context"

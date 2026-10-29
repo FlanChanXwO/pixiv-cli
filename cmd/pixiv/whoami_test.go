@@ -12,7 +12,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/stretchr/testify/require"
@@ -126,7 +126,7 @@ func seedPixivAccount(t *testing.T, home, username string, premium bool) {
 	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	account := pixivaccount.New(12345678, username, []byte("synthetic-refresh-token"))
+	account := account.New(12345678, username, []byte("synthetic-refresh-token"))
 	account.PremiumStatus = &premium
 	require.NoError(t, db.SavePixivCredential(t.Context(), account))
 	require.NoError(t, db.SetPixivSchedulable(t.Context(), []int64{12345678}, false))

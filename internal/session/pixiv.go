@@ -13,8 +13,8 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -46,7 +46,7 @@ type PoolConfig struct {
 type ConfigLoader func() (PoolConfig, error)
 
 // AccountService 定义 account 叶服务为 client 生命周期提供的最小端口。
-// *pixivaccount.Service 直接满足该接口；账号选择与持久化由该叶服务负责。
+// *account.Service 直接满足该接口；账号选择与持久化由该叶服务负责。
 type AccountService interface {
 	OpenClient(context.Context, pixiv.Options) (*pixiv.Client, error)
 	OpenAccountClient(context.Context, int64, pixiv.Options) (*pixiv.Client, error)
@@ -78,7 +78,7 @@ type Pixiv struct {
 }
 
 var (
-	_ AccountService = (*pixivaccount.Service)(nil)
+	_ AccountService = (*account.Service)(nil)
 	_ PoolExecutor   = pool.Scheduler{}
 	_ RotationGate   = (*pool.Gate)(nil)
 )

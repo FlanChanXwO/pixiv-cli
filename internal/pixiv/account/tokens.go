@@ -1,4 +1,4 @@
-package pixivaccount
+package account
 
 import "github.com/FlanChanXwO/pixiv-cli/internal/credential"
 

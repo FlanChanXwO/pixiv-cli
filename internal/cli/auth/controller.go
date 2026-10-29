@@ -3,7 +3,7 @@ package auth
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 )
 
 // controller 保存 auth 命令树共用的执行环境和延迟打开的账号、登录服务。
@@ -18,7 +18,7 @@ func newController(env command.Env, support Support) controller {
 
 type runtimeServices struct {
 	Account AccountService
-	Login   pixivaccount.LoginService
+	Login   account.LoginService
 	// LoadRuntime 每次调用读取最新配置；登录与检查需要当前代理设置。
 	LoadRuntime func() (settings.RuntimeConfig, error)
 }

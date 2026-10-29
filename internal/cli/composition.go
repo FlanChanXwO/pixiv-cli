@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
-	downloadcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
@@ -16,15 +16,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	downloader "github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount/pool"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
-	database "github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -40,13 +40,13 @@ func (a app) openAuthDatabase() (*database.DB, error) {
 	return db, nil
 }
 
-func (a app) newPixivAccountServices() (authcommands.AccountService, pixivaccount.LoginService, error) {
+func (a app) newPixivAccountServices() (auth.AccountService, pixivaccount.LoginService, error) {
 	db, err := a.openAuthDatabase()
 	if err != nil {
-		return authcommands.AccountService{}, pixivaccount.LoginService{}, err
+		return auth.AccountService{}, pixivaccount.LoginService{}, err
 	}
 	service := pixivaccount.NewService(db, settings.DefaultStore())
-	return authcommands.AccountService{Pixiv: service, LoadRuntime: a.runtimeConfig}, pixivaccount.LoginService{Pixiv: service}, nil
+	return auth.AccountService{Pixiv: service, LoadRuntime: a.runtimeConfig}, pixivaccount.LoginService{Pixiv: service}, nil
 }
 
 // currentPixivUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
@@ -226,7 +226,7 @@ func (a app) commandExecutor() pixivcmd.Executor {
 // newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开数据库。
 func (a app) newAuthCommand() *cobra.Command {
 	var once sync.Once
-	var account authcommands.AccountService
+	var account auth.AccountService
 	var login pixivaccount.LoginService
 	var loadErr error
 	load := func() {
@@ -234,8 +234,8 @@ func (a app) newAuthCommand() *cobra.Command {
 			account, login, loadErr = a.newPixivAccountServices()
 		})
 	}
-	return authcommands.New(a.commandEnv(), authcommands.Support{
-		Account: func() (authcommands.AccountService, error) {
+	return auth.New(a.commandEnv(), auth.Support{
+		Account: func() (auth.AccountService, error) {
 			load()
 			return account, loadErr
 		},
@@ -249,12 +249,12 @@ func (a app) newAuthCommand() *cobra.Command {
 }
 
 func (a app) newDownloadCommand() *cobra.Command {
-	return downloadcommands.New(a.commandEnv(), a.commandExecutor(), func() (downloadcommands.Runtime, error) {
+	return download.New(a.commandEnv(), a.commandExecutor(), func() (download.Runtime, error) {
 		runtime, err := a.runtimeConfig()
 		if err != nil {
-			return downloadcommands.Runtime{}, err
+			return download.Runtime{}, err
 		}
-		return downloadcommands.Runtime{
+		return download.Runtime{
 			DownloadPath:      runtime.DownloadPath,
 			FilenameTemplate:  runtime.FilenameTemplate,
 			DirectoryTemplate: runtime.DirectoryTemplate,

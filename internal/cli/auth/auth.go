@@ -8,7 +8,7 @@ package auth
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/spf13/cobra"
 )
 
@@ -23,7 +23,7 @@ type Support struct {
 	// Account 延迟打开账号服务；只在执行账号子命令时调用。
 	Account func() (AccountService, error)
 	// Login 延迟打开登录服务，避免构造命令树时打开数据库。
-	Login func() (pixivaccount.LoginService, error)
+	Login func() (account.LoginService, error)
 	// LoadRuntime 每次调用读取最新的运行时配置。
 	LoadRuntime func() (settings.RuntimeConfig, error)
 	// WriteBundle 写出含凭据的 bundle；force 为 false 时不得覆盖已有文件。

@@ -13,9 +13,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
@@ -116,7 +116,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if err != nil {
 		return err
 	}
-	loginFlow, err := services.Login.Start(pixivaccount.LoginRequest{Options: loginOptions})
+	loginFlow, err := services.Login.Start(account.LoginRequest{Options: loginOptions})
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	}
 	defer cleanupLoginServer()
 
-	result, err := services.Login.Complete(ctx, loginFlow, pixivaccount.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
+	result, err := services.Login.Complete(ctx, loginFlow, account.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
 		// OAuth 真正失败后才向浏览器回最终失败页；页面不回显敏感原因。
 		notifyFinal(false)

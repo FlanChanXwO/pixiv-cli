@@ -1,8 +1,8 @@
 package database
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 )
 
 const (

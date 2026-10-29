@@ -1,4 +1,4 @@
-package pixivaccount_test
+package account_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -32,8 +32,8 @@ func TestRotationPersistsNewTokenBeforeReturningClient(t *testing.T) {
 	db, err := database.Open(directory)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	require.NoError(t, db.SavePixivCredential(t.Context(), pixivaccount.New(42, "artist", []byte("initial-refresh"))))
-	client, err := pixivaccount.NewService(db, nil).OpenAccountClient(t.Context(), 42, pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, db.SavePixivCredential(t.Context(), account.New(42, "artist", []byte("initial-refresh"))))
+	client, err := account.NewService(db, nil).OpenAccountClient(t.Context(), 42, pixiv.Options{HTTPClient: httpClient})
 	require.NoError(t, err)
 	require.EqualValues(t, 42, client.UserID())
 	require.NoError(t, db.Close())

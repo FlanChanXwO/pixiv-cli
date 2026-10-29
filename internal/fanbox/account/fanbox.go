@@ -1,4 +1,4 @@
-package fanboxaccount
+package account
 
 import (
 	"context"

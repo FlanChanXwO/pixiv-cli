@@ -1,11 +1,11 @@
-// Package pixivaccount 提供 Pixiv 本地账号领域、凭据轮换持久化与公开 SDK 会话。
+// Package account 提供 Pixiv 本地账号领域、凭据轮换持久化与公开 SDK 会话。
 //
 // 账号凭据由本包保持 opaque：调用方只能取得副本，格式化与日志不会输出 refresh token。
 //
 // 包的组成：[Service] 负责账号选择、登录与凭据轮换，[Account] 是保存的账号记录，
 // [Repository] 与 [DefaultStore] 是存储端口，[ReadSessions] 为 MCP 复用读取会话，
 // [Chooser] 与 [Scheduler] 提供账号池的选择策略与执行编排。
-package pixivaccount
+package account
 
 import (
 	"context"

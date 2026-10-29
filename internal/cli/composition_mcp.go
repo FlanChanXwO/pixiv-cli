@@ -14,16 +14,16 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	unifiedmcp "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
-	mcpauth "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	fanboxmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	mcpaccounts "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
-	mediaproxy "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
-	sdkfanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	sdkpixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func (a app) runPixivMCP(ctx context.Context, request mcp.Request) (result error) {
@@ -57,14 +57,14 @@ func (a app) runPixivMCP(ctx context.Context, request mcp.Request) (result error
 func (a app) newMCPSDKPorts(ports pixivSDKPorts, reverseSearchPorts pixivmcpserver.ReverseSearchPorts) (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) {
 	sdkPorts := pixivmcpserver.SDKPorts{
 		Logger: a.logger(),
-		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 			return ports.execute(ctx, pixivRequest(account), attempt)
 		},
 		ReverseSearch: reverseSearchPorts,
 	}
 	fanboxPorts := fanboxmcpserver.SDKPorts{
 		Logger: a.logger(),
-		OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*sdkfanbox.Client], error) {
+		OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*fanbox.Client], error) {
 			service, err := a.newFanboxService()
 			if err != nil {
 				return nil, err
@@ -85,16 +85,16 @@ func (a app) runMCPStdio(ctx context.Context, runtime settings.RuntimeConfig, sd
 	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: defaultDownloadService(), Path: runtime.DownloadPath, FilenameTemplate: runtime.FilenameTemplate, DirectoryTemplate: runtime.DirectoryTemplate}
 	// 只经本地 Facade 解析一次身份，后续阶段固定使用同一账号，避免并发请求各选到不同账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
-		err := ports.execute(ctx, pixivcmd.Request{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *sdkpixiv.Client) (bool, error) {
+		err := ports.execute(ctx, pixivcmd.Request{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *pixiv.Client) (bool, error) {
 			account.UserID = client.UserID()
 			return false, nil
 		})
 		return account, err
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*sdkpixiv.Client], error) {
+	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 		return ports.openLease(ctx, pixivRequest(account))
 	}
-	return unifiedmcp.RunStdio(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
+	return mcpserver.RunStdio(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), a.in, a.out)
 }
 
 // runMCPHTTP 在显式 --port 时启动共享账号选择、登录 relay 与媒体代理。
@@ -107,20 +107,20 @@ func (a app) runMCPHTTP(ctx context.Context, runtime settings.RuntimeConfig, sdk
 	if err != nil {
 		return err
 	}
-	store := mcpauth.Store{Path: filename}
-	if _, err := mcpauth.NewHandler(baseURL, store); err != nil {
+	store := auth.Store{Path: filename}
+	if _, err := auth.NewHandler(baseURL, store); err != nil {
 		return err
 	}
 	if _, err := store.Read(ctx); err != nil {
 		return err
 	}
-	selection := mcpaccounts.Selection{Store: store, Load: ports.localAccounts}
+	selection := accounts.Selection{Store: store, Load: ports.localAccounts}
 	login, err := a.newMCPLogin(ctx, baseURL, selection, request.HTTPSProxyOverride)
 	if err != nil {
 		return err
 	}
 	defer login.Close()
-	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*sdkpixiv.Client], error) {
+	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*pixiv.Client], error) {
 		return ports.openLease(ctx, pixivcmd.Request{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 	if err != nil {
@@ -134,10 +134,10 @@ func (a app) runMCPHTTP(ctx context.Context, runtime settings.RuntimeConfig, sdk
 	}
 	defer func() { result = errors.Join(result, media.CloseAnimations()) }()
 	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, selection, login
-	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *sdkpixiv.Client) (bool, error)) error {
+	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 		return ports.read(ctx, pixivRequest(account), callback)
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*sdkpixiv.Client], error) {
+	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 		snapshot, err := ports.readSession(ctx, pixivRequest(account))
 		return snapshot.Lease, err
 	}
@@ -150,7 +150,7 @@ func (a app) runMCPHTTP(ctx context.Context, runtime settings.RuntimeConfig, sdk
 		return account, nil
 	}
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
-	return unifiedmcp.RunHTTP(ctx, unifiedmcp.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), listenAddr, baseURL, store, a.errOut, login, media)
+	return mcpserver.RunHTTP(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), listenAddr, baseURL, store, a.errOut, login, media)
 }
 
 // configureMCPMedia 挂媒体阶段观测；日志只带固定阶段名和计数。
@@ -217,42 +217,42 @@ func initMCPAuth(ctx context.Context, reset bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return (mcpauth.Store{Path: filename}).Init(ctx, reset)
+	return (auth.Store{Path: filename}).Init(ctx, reset)
 }
 
-func (a app) newMCPLogin(ctx context.Context, baseURL string, selection mcpaccounts.Selection, proxy *string) (*mcpaccounts.Login, error) {
+func (a app) newMCPLogin(ctx context.Context, baseURL string, selection accounts.Selection, proxy *string) (*accounts.Login, error) {
 	// 登录启动串行执行；成功后保留同一个账号服务，后续完成步骤复用它。
-	var service *pixivaccount.LoginService
-	return mcpaccounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (mcpaccounts.LoginAttempt, error) {
+	var service *account.LoginService
+	return accounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (accounts.LoginAttempt, error) {
 		if service == nil {
 			_, loaded, err := a.newPixivAccountServices()
 			if err != nil {
-				return mcpaccounts.LoginAttempt{}, err
+				return accounts.LoginAttempt{}, err
 			}
 			service = &loaded
 		}
-		options := sdkpixiv.LoginOptions{}
+		options := pixiv.LoginOptions{}
 		if proxy != nil {
 			client, err := httpclient.HTTPClient(*proxy)
 			if err != nil {
-				return mcpaccounts.LoginAttempt{}, err
+				return accounts.LoginAttempt{}, err
 			}
 			options.HTTPClient = client
 		}
-		start, err := service.Start(pixivaccount.LoginRequest{Options: options})
+		start, err := service.Start(account.LoginRequest{Options: options})
 		if err != nil {
-			return mcpaccounts.LoginAttempt{}, err
+			return accounts.LoginAttempt{}, err
 		}
-		return mcpaccounts.LoginAttempt{
+		return accounts.LoginAttempt{
 			AuthorizationURL: start.AuthorizationURL,
 			AcceptsCallback:  start.AcceptsCallbackURL,
-			Complete: func(ctx context.Context, callback string) (mcpaccounts.LoginResult, error) {
+			Complete: func(ctx context.Context, callback string) (accounts.LoginResult, error) {
 				// 显式代理 client 由组合根创建，关闭也由它负责。
 				if options.HTTPClient != nil {
 					defer options.HTTPClient.CloseIdleConnections()
 				}
-				account, err := service.Complete(ctx, start, pixivaccount.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
-				result := mcpaccounts.LoginResult{Account: mcpaccounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
+				account, err := service.Complete(ctx, start, account.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
+				result := accounts.LoginResult{Account: accounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
 				if err != nil {
 					return result, err
 				}

@@ -7,14 +7,14 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/spf13/cobra"
 )
 
 type accountStore interface {
-	ImportSession(context.Context, string, bool, *string) (fanboxaccount.AccountSummary, error)
-	ListAccounts(context.Context) ([]fanboxaccount.AccountSummary, error)
-	Status(context.Context) (*fanboxaccount.AccountSummary, error)
+	ImportSession(context.Context, string, bool, *string) (account.AccountSummary, error)
+	ListAccounts(context.Context) ([]account.AccountSummary, error)
+	Status(context.Context) (*account.AccountSummary, error)
 	UseAccount(context.Context, int64) error
 	UseAuto() error
 	RemoveAccount(context.Context, int64) error
@@ -22,7 +22,7 @@ type accountStore interface {
 
 type commandRunner struct {
 	env      command.Env
-	accounts func() (*fanboxaccount.Service, error)
+	accounts func() (*account.Service, error)
 	browser  BrowserProvider
 }
 
@@ -49,7 +49,7 @@ type BrowserProvider interface {
 }
 
 // New 构造 `pixiv fanbox auth` 命令组；account 服务延迟打开，构造命令树不访问账号库。
-func New(env command.Env, accounts func() (*fanboxaccount.Service, error), browser BrowserProvider) *cobra.Command {
+func New(env command.Env, accounts func() (*account.Service, error), browser BrowserProvider) *cobra.Command {
 	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",

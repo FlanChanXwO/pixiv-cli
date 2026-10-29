@@ -1,4 +1,4 @@
-package pixivaccount
+package account
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/stretchr/testify/require"
 )
@@ -17,8 +17,8 @@ import (
 func TestAccountFormattingKeepsCredentialsPrivate(t *testing.T) {
 	const secret = "credential-canary"
 	cookie := credential.New([]byte(secret))
-	account := New(42, "artist", []byte(secret))
-	for _, value := range []any{account, &account, newAccountWithToken(42, "artist", true, secret), fanboxaccount.New(42, "artist", "creator", []byte(secret)), cookie} {
+	saved := New(42, "artist", []byte(secret))
+	for _, value := range []any{saved, &saved, newAccountWithToken(42, "artist", true, secret), account.New(42, "artist", "creator", []byte(secret)), cookie} {
 		var output bytes.Buffer
 		for _, format := range []string{"%v", "%+v", "%#v"} {
 			fmt.Fprintf(&output, format, value)

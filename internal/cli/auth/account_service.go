@@ -14,8 +14,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // accountOut 定义所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
@@ -66,15 +66,15 @@ type AccountService struct {
 
 // accountPort 定义 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
 type accountPort interface {
-	ImportAccount(context.Context, string, bool, pixiv.Options) (pixivaccount.AccountSummary, error)
-	ListAccounts(context.Context) ([]pixivaccount.AccountSummary, error)
+	ImportAccount(context.Context, string, bool, pixiv.Options) (account.AccountSummary, error)
+	ListAccounts(context.Context) ([]account.AccountSummary, error)
 	UseAccount(context.Context, int64) error
 	RemoveAccount(context.Context, int64) error
-	CheckAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
-	RefreshAccount(context.Context, int64, pixiv.Options) (pixivaccount.AccountSummary, error)
-	CurrentUser(context.Context) (*pixivaccount.AccountSummary, error)
-	RestoreAccounts(context.Context, []pixivaccount.RestoreAccountInput) (pixivaccount.RestoreAccountsResult, error)
-	AccountsWithTokens(context.Context) ([]pixivaccount.AccountWithToken, error)
+	CheckAccount(context.Context, int64, pixiv.Options) (account.AccountSummary, error)
+	RefreshAccount(context.Context, int64, pixiv.Options) (account.AccountSummary, error)
+	CurrentUser(context.Context) (*account.AccountSummary, error)
+	RestoreAccounts(context.Context, []account.RestoreAccountInput) (account.RestoreAccountsResult, error)
+	AccountsWithTokens(context.Context) ([]account.AccountWithToken, error)
 	SetPoolSchedulable(context.Context, []int64, bool) error
 	SetAllPoolSchedulable(context.Context, bool) error
 }
@@ -192,13 +192,13 @@ func (s AccountService) importBundle(ctx context.Context, body []byte) (accountB
 	if err != nil {
 		return accountBundleImportOut{}, err
 	}
-	inputs := make([]pixivaccount.RestoreAccountInput, 0, len(bundle.Accounts))
-	for _, account := range bundle.Accounts {
-		summary := pixivaccount.AccountSummary{UserID: account.UserID, Username: account.Username}
-		inputs = append(inputs, pixivaccount.RestoreAccountInput{
+	inputs := make([]account.RestoreAccountInput, 0, len(bundle.Accounts))
+	for _, entry := range bundle.Accounts {
+		summary := account.AccountSummary{UserID: entry.UserID, Username: entry.Username}
+		inputs = append(inputs, account.RestoreAccountInput{
 			Account:         summary,
-			RefreshToken:    account.RefreshToken,
-			IsBundleDefault: account.UserID == bundle.DefaultUserID,
+			RefreshToken:    entry.RefreshToken,
+			IsBundleDefault: entry.UserID == bundle.DefaultUserID,
 		})
 	}
 	restore, err := service.RestoreAccounts(ctx, inputs)
@@ -289,9 +289,9 @@ func (s AccountService) export(request accountExportRequest) (accountExportResul
 	selected := accounts
 	if !request.All {
 		selected = nil
-		for _, account := range accounts {
-			if account.UserID == request.UserID {
-				selected = []pixivaccount.AccountWithToken{account}
+		for _, entry := range accounts {
+			if entry.UserID == request.UserID {
+				selected = []account.AccountWithToken{entry}
 				break
 			}
 		}
@@ -394,9 +394,9 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 }
 
 // AccountJSON 返回与 `pixiv auth list --json` 单账号项相同的公开摘要；不含凭据。
-func AccountJSON(account pixivaccount.AccountSummary) any { return accountFromPixiv(account) }
+func AccountJSON(account account.AccountSummary) any { return accountFromPixiv(account) }
 
-func accountFromPixiv(account pixivaccount.AccountSummary) accountOut {
+func accountFromPixiv(account account.AccountSummary) accountOut {
 	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: true, PremiumStatus: account.Premium}
 	if account.PoolStatusKnown {
 		schedulable, eligible := account.Schedulable, account.Eligible
@@ -409,7 +409,7 @@ func accountFromPixiv(account pixivaccount.AccountSummary) accountOut {
 	return result
 }
 
-func accountImportOutFrom(account pixivaccount.AccountSummary, status string) accountImportOut {
+func accountImportOutFrom(account account.AccountSummary, status string) accountImportOut {
 	return accountImportOut{UserID: account.UserID, Username: account.Username, Status: status}
 }
 

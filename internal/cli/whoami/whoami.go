@@ -10,16 +10,16 @@ import (
 	"io"
 	"strconv"
 
-	authcommands "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	pixivaccount "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
 
 // New 构造 `pixiv whoami`；current 是执行时才调用的只读账号端口。
-func New(env command.Env, current func(context.Context) (*pixivaccount.AccountSummary, error)) *cobra.Command {
+func New(env command.Env, current func(context.Context) (*account.AccountSummary, error)) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "whoami",
@@ -34,7 +34,7 @@ func New(env command.Env, current func(context.Context) (*pixivaccount.AccountSu
 				return err
 			}
 			if jsonOut {
-				return env.PrintJSON(authcommands.AccountJSON(*account))
+				return env.PrintJSON(auth.AccountJSON(*account))
 			}
 			return printText(env.Out, account)
 		},
@@ -46,7 +46,7 @@ func New(env command.Env, current func(context.Context) (*pixivaccount.AccountSu
 	return cmd
 }
 
-func printText(out io.Writer, account *pixivaccount.AccountSummary) error {
+func printText(out io.Writer, account *account.AccountSummary) error {
 	line := strconv.FormatInt(account.UserID, 10)
 	if account.Username != "" {
 		line = plaintext.SafeLine(account.Username) + " (" + line + ")"
