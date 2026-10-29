@@ -226,6 +226,9 @@ func (w *writer[T]) consume(items []T) (bool, error) {
 	}
 }
 
+// closeSpool 延迟求值，保证 begin 在每次重放尝试中新建的临时文档也会被清理。
+func (w *writer[T]) closeSpool() { w.spool.Close() }
+
 func (w *writer[T]) commit() error {
 	if w.format != FormatJSON {
 		return nil
@@ -296,7 +299,7 @@ func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyR
 
 func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
 	w := newWriter(runner.Out, format, plan.Skip, list)
-	defer w.spool.Close()
+	defer w.closeSpool()
 	_, err := pagination.TraverseWith(ctx, runner.Execute(request), plan, w.begin,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
@@ -331,7 +334,7 @@ func RunPages[T any](ctx context.Context, out io.Writer, plan pagination.PagePla
 	if err := w.begin(); err != nil {
 		return err
 	}
-	defer w.spool.Close()
+	defer w.closeSpool()
 	err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		page, err := fetch(ctx, cursor)
 		return page.Items, page.Next, err
