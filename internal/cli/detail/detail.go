@@ -10,16 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -27,8 +25,8 @@ import (
 
 // Options 保存 detail 自己声明的 flag，只承接 Cobra 解析结果，不创建资源。
 type Options struct {
-	command.Options
-	input  *input.State
+	environment.Options
+	input  *environment.State
 	ndjson bool
 
 	typ     string
@@ -36,14 +34,14 @@ type Options struct {
 }
 
 type commandRunner struct {
-	env    command.Env
-	runner pixivcmd.Runner
+	env    environment.Env
+	runner session.Runner
 }
 
 // New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
-	options := Options{typ: string(resolver.ResultKindArtwork)}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
+	options := Options{typ: string(target.ResultKindArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
 		Short: "Show one artwork, novel, or user",
@@ -57,7 +55,7 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 	options.input = env.BindTextOrRecord(cmd, 1, 1, 0)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
 	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -65,7 +63,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
 		return errors.New("--json and --ndjson cannot be used together")
 	}
-	if opts.input.Mode() == input.RecordMode {
+	if opts.input.Mode() == environment.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
 	a.markNDJSON(cmd, opts.ndjson)
@@ -87,7 +85,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 }
 
 func validateContentEntity(content bool, entity string) error {
-	if content && entity != string(resolver.ResultKindNovel) {
+	if content && entity != string(target.ResultKindNovel) {
 		return errors.New("--content is only supported when --type novel")
 	}
 	if content {
@@ -122,18 +120,18 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		worker.env.Out = spool
 	}
 	reader := opts.input.Reader(a.env.In)
-	err = input.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, item record.Record) error {
+	err = record.ConsumeNDJSONRecords(cmd.Context(), reader, a.env.Err, "detail", true, func(ctx context.Context, item record.Record) error {
 		entity, err := entityForRecord(item.Type(), cmd.Flags().Changed("type"), opts.typ)
 		if err != nil {
 			return err
 		}
 		if err := validateContentEntity(opts.content, entity); err != nil {
 			if sdk.ReasonOf(err) == sdk.ContentUnavailable {
-				return input.FatalRecordPipeline(err)
+				return record.FatalRecordPipeline(err)
 			}
 			return err
 		}
-		id, err := input.RequiredRecordID(item)
+		id, err := record.RequiredRecordID(item)
 		if err != nil {
 			return err
 		}
@@ -149,11 +147,11 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		}
 		if !firstHuman {
 			if _, err := io.WriteString(a.env.Out, "\n---\n"); err != nil {
-				return input.FatalRecordPipeline(err)
+				return record.FatalRecordPipeline(err)
 			}
 		}
 		if _, err := io.Copy(a.env.Out, &humanBuffer); err != nil {
-			return input.FatalRecordPipeline(err)
+			return record.FatalRecordPipeline(err)
 		}
 		firstHuman = false
 		return nil
@@ -172,7 +170,7 @@ func (a commandRunner) jsonOutput(cmd *cobra.Command, opts Options) (bool, error
 	if cmd.Flags().Changed("json") {
 		override = &opts.JSON
 	}
-	return a.env.JSONOut(override)
+	return a.env.ResolveJSON(override)
 }
 
 func (a commandRunner) runOne(cmd *cobra.Command, entity string, id int64, opts Options, recordMode bool) error {
@@ -185,19 +183,19 @@ func (a commandRunner) runOne(cmd *cobra.Command, entity string, id int64, opts 
 }
 
 func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command, entity string, id int64, opts Options, ndjson, jsonOut bool) error {
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	switch entity {
-	case string(resolver.ResultKindArtwork):
-		result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
+	case string(target.ResultKindArtwork):
+		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
 			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 		})
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == environment.RecordMode) {
 			value, err := record.RecordFromArtwork(result)
 			if err != nil {
 				return err
@@ -207,16 +205,16 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return printArtwork(a.env.Out, result)
-	case string(resolver.ResultKindNovel):
+		return display.PrintArtworkDetail(a.env.Out, result)
+	case string(target.ResultKindNovel):
 		if opts.content {
-			result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
+			result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
 				return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
 			})
 			if err != nil {
 				return err
 			}
-			if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
+			if ndjson || (jsonOut && opts.input.Mode() == environment.RecordMode) {
 				value, err := record.RecordFromNovelContent(result)
 				if err != nil {
 					return err
@@ -226,15 +224,15 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			if jsonOut {
 				return a.env.PrintJSON(result)
 			}
-			return printNovelContent(a.env.Out, result)
+			return display.PrintNovelContent(a.env.Out, result)
 		}
-		result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
+		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
 			return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
 		})
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == environment.RecordMode) {
 			value, err := record.RecordFromNovel(result)
 			if err != nil {
 				return err
@@ -244,15 +242,15 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return printNovel(a.env.Out, result)
-	case string(resolver.ResultKindUser):
-		result, err := pixivcmd.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
+		return display.PrintNovelDetail(a.env.Out, result)
+	case string(target.ResultKindUser):
+		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 			return client.User(ctx, pixiv.UserRequest{UserID: id})
 		})
 		if err != nil {
 			return err
 		}
-		if ndjson || (jsonOut && opts.input.Mode() == input.RecordMode) {
+		if ndjson || (jsonOut && opts.input.Mode() == environment.RecordMode) {
 			value, err := record.RecordFromUserDetail(result)
 			if err != nil {
 				return err
@@ -262,7 +260,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return printUser(a.env.Out, result)
+		return display.PrintUserDetail(a.env.Out, result)
 	default:
 		return errors.New("type must be one of artwork, novel, user")
 	}
@@ -270,7 +268,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 
 func (a commandRunner) writeRecord(value record.Record) error {
 	if err := json.NewEncoder(a.env.Out).Encode(value); err != nil {
-		return input.FatalRecordPipeline(err)
+		return record.FatalRecordPipeline(err)
 	}
 	return nil
 }
@@ -295,12 +293,12 @@ func entityForRecord(typ string, explicit bool, requested string) (string, error
 
 func resolveRecordEntity(typ string) (string, error) {
 	switch typ {
-	case string(resolver.ResultKindArtwork), string(resolver.SubtypeIllust), string(resolver.SubtypeManga), string(resolver.SubtypeUgoira):
-		return string(resolver.ResultKindArtwork), nil
-	case string(resolver.ResultKindNovel):
-		return string(resolver.ResultKindNovel), nil
-	case string(resolver.ResultKindUser):
-		return string(resolver.ResultKindUser), nil
+	case string(target.ResultKindArtwork), string(target.SubtypeIllust), string(target.SubtypeManga), string(target.SubtypeUgoira):
+		return string(target.ResultKindArtwork), nil
+	case string(target.ResultKindNovel):
+		return string(target.ResultKindNovel), nil
+	case string(target.ResultKindUser):
+		return string(target.ResultKindUser), nil
 	default:
 		return "", fmt.Errorf("unsupported record type %q", typ)
 	}
@@ -308,9 +306,9 @@ func resolveRecordEntity(typ string) (string, error) {
 
 func resolveEntity(value string) (string, error) {
 	switch value {
-	case string(resolver.ResultKindArtwork), string(resolver.SubtypeIllust), string(resolver.SubtypeManga), string(resolver.SubtypeUgoira):
-		return string(resolver.ResultKindArtwork), nil
-	case string(resolver.ResultKindNovel), string(resolver.ResultKindUser):
+	case string(target.ResultKindArtwork), string(target.SubtypeIllust), string(target.SubtypeManga), string(target.SubtypeUgoira):
+		return string(target.ResultKindArtwork), nil
+	case string(target.ResultKindNovel), string(target.ResultKindUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -327,141 +325,12 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
 	want := map[string]pixiv.ReferenceKind{
-		string(resolver.ResultKindArtwork): pixiv.ReferenceKindArtwork,
-		string(resolver.ResultKindNovel):   pixiv.ReferenceKindNovel,
-		string(resolver.ResultKindUser):    pixiv.ReferenceKindUser,
+		string(target.ResultKindArtwork): pixiv.ReferenceKindArtwork,
+		string(target.ResultKindNovel):   pixiv.ReferenceKindNovel,
+		string(target.ResultKindUser):    pixiv.ReferenceKindUser,
 	}
 	if ref.Kind != want[entity] {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))
 	}
 	return ref.ID, nil
-}
-
-func printArtwork(out io.Writer, item pixiv.Artwork) error {
-	tags := make([]string, 0, len(item.Tags))
-	for _, tag := range item.Tags {
-		tags = append(tags, tag.Name)
-	}
-	url := ""
-	if item.ID > 0 {
-		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", item.ID)
-	}
-	for _, line := range []string{
-		fmt.Sprintf("url: %s\n", url), fmt.Sprintf("id: %d\n", item.ID), fmt.Sprintf("title: %s\n", item.Title),
-		fmt.Sprintf("author: %s (%d)\n", item.User.Name, item.User.ID), fmt.Sprintf("type: %s\n", string(item.Kind)),
-		fmt.Sprintf("page_count: %d\n", item.PageCount), fmt.Sprintf("bookmarks: %d\n", item.TotalBookmarks),
-		fmt.Sprintf("views: %d\n", item.TotalViews), fmt.Sprintf("tags: %s\n", strings.Join(tags, ",")),
-	} {
-		if _, err := io.WriteString(out, line); err != nil {
-			return err
-		}
-	}
-	if caption := plaintext.HTMLPlainText(item.Caption); caption != "" {
-		if _, err := fmt.Fprintf(out, "caption:\n%s\n", caption); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func printNovel(out io.Writer, item pixiv.Novel) error {
-	_, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, item.Title, item.User.Name)
-	return err
-}
-
-func printNovelContent(out io.Writer, content pixiv.NovelContent) error {
-	if _, err := fmt.Fprintf(out, "novel %d: %s\n", content.NovelID, content.Title); err != nil {
-		return err
-	}
-	for _, block := range content.Blocks {
-		switch block.Kind {
-		case pixiv.NovelBlockParagraph, pixiv.NovelBlockHeader:
-			if _, err := fmt.Fprintln(out, block.Text); err != nil {
-				return err
-			}
-		case pixiv.NovelBlockImage:
-			if block.Image != nil {
-				if _, err := fmt.Fprintf(out, "[image resource %s] %s\n", block.Image.Resource.Ref.String(), block.Image.Caption); err != nil {
-					return err
-				}
-			}
-		case pixiv.NovelBlockFile:
-			if block.File != nil {
-				if _, err := fmt.Fprintf(out, "[file %s resource %s] %s\n", block.File.Filename, block.File.Resource.Ref.String(), block.File.Caption); err != nil {
-					return err
-				}
-			}
-		case pixiv.NovelBlockUnknown:
-			if block.Unknown != nil {
-				if _, err := fmt.Fprintf(out, "[unknown block %s]\n", block.Unknown.RawType); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func printUser(out io.Writer, result pixiv.UserDetail) error {
-	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
-	if result.User.Name != "" {
-		lines = append(lines, fmt.Sprintf("name: %s", result.User.Name))
-	}
-	if result.User.Account != "" {
-		lines = append(lines, fmt.Sprintf("account: %s", result.User.Account))
-	}
-	if result.User.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment: %s", result.User.Comment))
-	}
-	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
-		lines = append(lines, fmt.Sprintf("webpage: %s", webpage))
-	}
-	if result.Profile.Region != "" {
-		lines = append(lines, fmt.Sprintf("region: %s", result.Profile.Region))
-	}
-	if result.Profile.CountryCode != "" {
-		lines = append(lines, fmt.Sprintf("country: %s", result.Profile.CountryCode))
-	}
-	if result.Profile.Job != "" {
-		lines = append(lines, fmt.Sprintf("job: %s", result.Profile.Job))
-	}
-	lines = append(lines,
-		fmt.Sprintf("artworks: %d", result.Profile.TotalIllusts),
-		fmt.Sprintf("manga: %d", result.Profile.TotalManga),
-		fmt.Sprintf("novels: %d", result.Profile.TotalNovels),
-		fmt.Sprintf("following: %d", result.Profile.TotalFollowUsers),
-	)
-	for _, field := range []struct {
-		name  string
-		value string
-	}{
-		{"workspace pc", result.Workspace.PC}, {"workspace monitor", result.Workspace.Monitor},
-		{"workspace tool", result.Workspace.Tool}, {"workspace scanner", result.Workspace.Scanner},
-		{"workspace tablet", result.Workspace.Tablet}, {"workspace mouse", result.Workspace.Mouse},
-		{"workspace printer", result.Workspace.Printer}, {"workspace desktop", result.Workspace.Desktop},
-		{"workspace music", result.Workspace.Music}, {"workspace desk", result.Workspace.Desk},
-		{"workspace chair", result.Workspace.Chair}, {"workspace comment", result.Workspace.Comment},
-	} {
-		if field.value != "" {
-			lines = append(lines, fmt.Sprintf("%s: %s", field.name, field.value))
-		}
-	}
-	for _, line := range lines {
-		if _, err := fmt.Fprintln(out, line); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func publicWebpage(raw string) string {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return ""
-	}
-	parsed.User = nil
-	parsed.RawQuery = ""
-	parsed.ForceQuery = false
-	parsed.Fragment = ""
-	return parsed.String()
 }

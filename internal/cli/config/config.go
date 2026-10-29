@@ -10,9 +10,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )
 
@@ -37,19 +36,19 @@ func invalidCLIConfigKey(key settings.Key) error {
 }
 
 // New 构造 config 命令组；store 是 config.toml 的唯一读写入口。
-func New(env command.Env, store settings.Store) *cobra.Command {
+func New(env environment.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage global Pixiv CLI settings",
 		RunE:  func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	cmd.AddCommand(newPathCommand(env, store), newGetCommand(env, store), newSetCommand(env, store), newUnsetCommand(env, store))
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
-	command.Bind(cmd, command.Execution{})
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.WrapUsage})
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }
 
-func newPathCommand(env command.Env, store settings.Store) *cobra.Command {
+func newPathCommand(env environment.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "path",
 		Short: "Print the config.toml path",
@@ -63,12 +62,12 @@ func newPathCommand(env command.Env, store settings.Store) *cobra.Command {
 			return err
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.UsageError})
-	command.Bind(cmd, command.ConfigPath())
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0, Reader: env.In, UsageError: env.WrapUsage})
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func newGetCommand(env command.Env, store settings.Store) *cobra.Command {
+func newGetCommand(env environment.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get KEY",
 		Short: "Print one effective config value",
@@ -78,12 +77,12 @@ func newGetCommand(env command.Env, store settings.Store) *cobra.Command {
 			return get(env, store, settings.Key(args[0]))
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.UsageError})
-	command.Bind(cmd, command.Normal())
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.WrapUsage})
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func get(env command.Env, store settings.Store, key settings.Key) error {
+func get(env environment.Env, store settings.Store, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}
@@ -103,7 +102,7 @@ func get(env command.Env, store settings.Store, key settings.Key) error {
 	return err
 }
 
-func newSetCommand(env command.Env, store settings.Store) *cobra.Command {
+func newSetCommand(env environment.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set KEY [VALUE]",
 		Short: "Set one config value in config.toml",
@@ -120,7 +119,7 @@ func newSetCommand(env command.Env, store settings.Store) *cobra.Command {
 				return errors.New("sensitive config values must be provided through non-TTY stdin")
 			}
 			if settings.IsSensitiveSetting(key) {
-				if input.IsTTY(env.In) {
+				if environment.IsTTY(env.In) {
 					return errors.New("sensitive config values require non-TTY stdin")
 				}
 				return nil
@@ -133,7 +132,7 @@ func newSetCommand(env command.Env, store settings.Store) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := settings.Key(args[0])
 			if settings.IsSensitiveSetting(key) {
-				raw, err := input.ReadValue(env.In)
+				raw, err := environment.ReadValue(env.In)
 				if err != nil {
 					return fmt.Errorf("read sensitive config value from stdin: %w", err)
 				}
@@ -142,18 +141,18 @@ func newSetCommand(env command.Env, store settings.Store) *cobra.Command {
 			return set(env, store, key, args[1])
 		},
 	}
-	input.Bind(cmd, input.InputSpec{
-		Codec: input.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1,
-		Reader: env.In, UsageError: env.UsageError,
+	environment.BindInput(cmd, environment.InputSpec{
+		Codec: environment.TextValue, MinArgs: 1, MaxArgs: 2, FillPosition: 1,
+		Reader: env.In, UsageError: env.WrapUsage,
 		Enabled: func(_ *cobra.Command, args []string) bool {
 			return len(args) == 0 || !settings.IsSensitiveSetting(settings.Key(args[0]))
 		},
 	})
-	command.Bind(cmd, command.Normal())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func set(env command.Env, store settings.Store, key settings.Key, raw string) error {
+func set(env environment.Env, store settings.Store, key settings.Key, raw string) error {
 	result, err := store.Set(key, raw)
 	if err != nil {
 		return err
@@ -165,7 +164,7 @@ func set(env command.Env, store settings.Store, key settings.Key, raw string) er
 	return err
 }
 
-func newUnsetCommand(env command.Env, store settings.Store) *cobra.Command {
+func newUnsetCommand(env environment.Env, store settings.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "unset KEY",
 		Short: "Remove one config value from config.toml",
@@ -175,12 +174,12 @@ func newUnsetCommand(env command.Env, store settings.Store) *cobra.Command {
 			return unset(env, store, settings.Key(args[0]))
 		},
 	}
-	input.Bind(cmd, input.InputSpec{Codec: input.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.UsageError})
-	command.Bind(cmd, command.Normal())
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.TextValue, MinArgs: 1, MaxArgs: 1, FillPosition: 0, Reader: env.In, UsageError: env.WrapUsage})
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func unset(env command.Env, store settings.Store, key settings.Key) error {
+func unset(env environment.Env, store settings.Store, key settings.Key) error {
 	if !isCLIConfigAlias(key) {
 		return invalidCLIConfigKey(key)
 	}

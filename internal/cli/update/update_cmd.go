@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -20,7 +19,7 @@ type commandOptions struct {
 }
 
 // New 构造 update 命令；loadRuntime 提供配置中的默认代理。
-func New(env command.Env, loadRuntime func() (settings.RuntimeConfig, error)) *cobra.Command {
+func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)) *cobra.Command {
 	var opts commandOptions
 	cmd := &cobra.Command{
 		Use:     "update",
@@ -67,8 +66,8 @@ func New(env command.Env, loadRuntime func() (settings.RuntimeConfig, error)) *c
 	flags.BoolVar(&opts.includePrerelease, "prerelease", false, "include prerelease updates")
 	flags.BoolVar(&opts.jsonOut, "json", false, "print update check status as JSON (requires --check)")
 	flags.StringVar(&opts.proxy, "proxy", "", "HTTP(S) proxy URL for this update command")
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
-	command.Bind(cmd, command.UpdateCommand())
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0})
+	environment.Bind(cmd, environment.UpdateCommand())
 	return cmd
 }
 
@@ -77,6 +76,6 @@ func printResult(out io.Writer, result selfupdate.UpdateResult) error {
 	if result.LatestVersion != nil {
 		latestVersion = *result.LatestVersion
 	}
-	_, err := fmt.Fprintf(out, "source: %s\ncurrent version: %s\nlatest version: %s\nupdate available: %s\n", result.Source, result.CurrentVersion, latestVersion, command.TextBool(result.UpdateAvailable))
+	_, err := fmt.Fprintf(out, "source: %s\ncurrent version: %s\nlatest version: %s\nupdate available: %s\n", result.Source, result.CurrentVersion, latestVersion, environment.TextBool(result.UpdateAvailable))
 	return err
 }

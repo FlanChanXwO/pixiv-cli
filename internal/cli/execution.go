@@ -11,9 +11,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -124,7 +124,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 		}
 	}
 	// 阶段 5：记录失败并映射退出码（NDJSON 命令走成功语义）。
-	ndjsonOutput := commandWritesNDJSON(target) || command.OutputNDJSON(target)
+	ndjsonOutput := commandWritesNDJSON(target) || environment.OutputNDJSON(target)
 	if err != nil && !(ndjsonOutput && errors.Is(err, syscall.EPIPE)) && a.logs.ctx != nil {
 		attrs := append([]slog.Attr{slog.Any(logging.AttrError, err)}, logging.OriginAttr(err)...)
 		a.logs.logger.LogAttrs(a.logs.ctx, a.logs.failureLevel, "Command failed", attrs...)
@@ -149,7 +149,7 @@ func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 		fmt.Fprintln(a.errOut, "error:", usageErr.err)
 		return 2
 	}
-	var pipelineErr *input.PipelineDiagnosticError
+	var pipelineErr *record.PipelineDiagnosticError
 	if errors.As(err, &pipelineErr) {
 		return 1
 	}
@@ -183,7 +183,7 @@ func normalizeFlagError(err error) error {
 }
 
 // commandWritesNDJSON 只认命令自己 --ndjson flag 的显式取值；自动 NDJSON 由 command owner
-// 通过 command.SetOutputNDJSON 记录。
+// 通过 environment.SetOutputNDJSON 记录。
 func commandWritesNDJSON(cmd *cobra.Command) bool {
 	flag := cmd.Flags().Lookup("ndjson")
 	return flag != nil && flag.Changed && flag.Value.String() == "true"
@@ -220,7 +220,7 @@ func registerReverseSearchCloser(state *closeState, searcher reversesearch.Searc
 	}
 }
 
-func (a app) startLogging(cmd *cobra.Command, requirement command.Execution) error {
+func (a app) startLogging(cmd *cobra.Command, requirement environment.Execution) error {
 	if !requirement.EnsureConfig || isQuietConfigCommand(cmd) {
 		return nil
 	}
@@ -256,7 +256,7 @@ func (a app) enablePipelineSignal() {
 	a.pipelineSignal.stop = a.pipelineSignal.enable()
 }
 
-func (a app) enableMCPBrokenPipeSignal(requirement command.Execution) {
+func (a app) enableMCPBrokenPipeSignal(requirement environment.Execution) {
 	if a.mcpBrokenPipeSignal.stop != nil || !requirement.MCP {
 		return
 	}

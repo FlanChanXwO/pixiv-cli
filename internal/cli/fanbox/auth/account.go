@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
+	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/spf13/cobra"
 )
@@ -99,7 +99,7 @@ func (a commandRunner) importSession(cmd *cobra.Command, value string, setDefaul
 	if err != nil {
 		return err
 	}
-	proxyOverride, err := fanboxcmd.ProxyOverride(cmd)
+	proxyOverride, err := fanboxcli.ProxyOverride(cmd)
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func (a commandRunner) newListCommand() *cobra.Command {
 }
 
 func (a commandRunner) runList(cmd *cobra.Command, jsonOut bool) error {
-	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
+	if _, err := fanboxcli.ProxyOverride(cmd); err != nil {
 		return err
 	}
 	service, err := a.accounts()
@@ -289,7 +289,7 @@ func (a commandRunner) newStatusCommand() *cobra.Command {
 }
 
 func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool) error {
-	if _, err := fanboxcmd.ProxyOverride(cmd); err != nil {
+	if _, err := fanboxcli.ProxyOverride(cmd); err != nil {
 		return err
 	}
 	service, err := a.accounts()
@@ -331,7 +331,7 @@ func (a commandRunner) printSummary(summary account.AccountSummary, jsonOut bool
 	if summary.CreatorID != "" {
 		fmt.Fprintf(a.env.Out, "creator:%s\n", summary.CreatorID)
 	}
-	fmt.Fprintf(a.env.Out, "default:%s\n", command.TextBool(summary.Default))
+	fmt.Fprintf(a.env.Out, "default:%s\n", environment.TextBool(summary.Default))
 	return nil
 }
 

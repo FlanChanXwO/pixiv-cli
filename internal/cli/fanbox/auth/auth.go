@@ -6,7 +6,7 @@ package auth
 import (
 	"context"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +21,7 @@ type accountStore interface {
 }
 
 type commandRunner struct {
-	env      command.Env
+	env      environment.Env
 	accounts func() (*account.Service, error)
 	browser  BrowserProvider
 }
@@ -49,7 +49,7 @@ type BrowserProvider interface {
 }
 
 // New 构造 `pixiv fanbox auth` 命令组；account 服务延迟打开，构造命令树不访问账号库。
-func New(env command.Env, accounts func() (*account.Service, error), browser BrowserProvider) *cobra.Command {
+func New(env environment.Env, accounts func() (*account.Service, error), browser BrowserProvider) *cobra.Command {
 	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",
@@ -67,9 +67,9 @@ func New(env command.Env, accounts func() (*account.Service, error), browser Bro
 		a.newStatusCommand(),
 	)
 	env.BindNoInput(cmd)
-	command.Bind(cmd, command.Execution{})
+	environment.Bind(cmd, environment.Execution{})
 	for _, child := range cmd.Commands() {
-		command.Bind(child, command.FanboxAuth())
+		environment.Bind(child, environment.FanboxAuth())
 	}
 	return cmd
 }

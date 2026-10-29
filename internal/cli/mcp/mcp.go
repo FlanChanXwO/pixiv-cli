@@ -13,8 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/spf13/cobra"
 )
@@ -26,8 +25,8 @@ type Request struct {
 }
 
 // New 构造 Pixiv MCP 入口；run 启动 stdio 或 HTTP runtime，initAuth 初始化 HTTP owner。
-func New(env command.Env, run func(context.Context, Request) error, initAuth func(context.Context, bool) (string, error)) *cobra.Command {
-	var options command.ProxyOptions
+func New(env environment.Env, run func(context.Context, Request) error, initAuth func(context.Context, bool) (string, error)) *cobra.Command {
+	var options environment.ProxyOptions
 	var hostAddr, baseURL string
 	var port int
 	cmd := &cobra.Command{
@@ -36,7 +35,7 @@ func New(env command.Env, run func(context.Context, Request) error, initAuth fun
 		Example: "pixiv mcp\npixiv mcp --port 1270\npixiv mcp --port 1270 --base-url https://mcp.example.com",
 		Args:    env.ExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			proxyOverride, err := command.ProxyOverride(cmd, options)
+			proxyOverride, err := environment.ProxyOverride(cmd, options)
 			if err != nil {
 				return err
 			}
@@ -60,8 +59,8 @@ func New(env command.Env, run func(context.Context, Request) error, initAuth fun
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical public URL; requires --port and HTTPS outside loopback")
 
 	env.BindProxyFlags(cmd, &options)
-	input.Bind(cmd, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
-	command.Bind(cmd, command.PixivMCP())
+	environment.BindInput(cmd, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0})
+	environment.Bind(cmd, environment.PixivMCP())
 	auth := &cobra.Command{Use: "auth", Short: "Manage the MCP owner"}
 	var reset bool
 	init := &cobra.Command{
@@ -80,8 +79,8 @@ func New(env command.Env, run func(context.Context, Request) error, initAuth fun
 		},
 	}
 	// 本地 owner 管理不能继承 server 的启动、账号和日志副作用。
-	command.Bind(auth, command.Execution{})
-	input.Bind(init, input.InputSpec{Codec: input.NoInput, MinArgs: 0, MaxArgs: 0})
+	environment.Bind(auth, environment.Execution{})
+	environment.BindInput(init, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0})
 	init.Flags().BoolVar(&reset, "reset", false, "Rotate the owner secret and revoke all OAuth grants; keep clients and selected account")
 	auth.AddCommand(init)
 	cmd.AddCommand(auth)

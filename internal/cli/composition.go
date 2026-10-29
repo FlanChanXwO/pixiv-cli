@@ -9,13 +9,13 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
+	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	fanboxauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
 	fanboxdownload "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/download"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
@@ -40,13 +40,13 @@ func (a app) openAuthDatabase() (*database.DB, error) {
 	return db, nil
 }
 
-func (a app) newPixivAccountServices() (auth.AccountService, pixivaccount.LoginService, error) {
+func (a app) newPixivAccountServices() (*pixivaccount.Service, pixivaccount.LoginService, error) {
 	db, err := a.openAuthDatabase()
 	if err != nil {
-		return auth.AccountService{}, pixivaccount.LoginService{}, err
+		return nil, pixivaccount.LoginService{}, err
 	}
 	service := pixivaccount.NewService(db, settings.DefaultStore())
-	return auth.AccountService{Pixiv: service, LoadRuntime: a.runtimeConfig}, pixivaccount.LoginService{Pixiv: service}, nil
+	return service, pixivaccount.LoginService{Pixiv: service}, nil
 }
 
 // currentPixivUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
@@ -89,14 +89,14 @@ func (a app) newPixivFacade(db *database.DB, service *pixivaccount.Service, gate
 }
 
 func (a app) newPixivSDKPortClosures(db *database.DB, facade *session.Pixiv, readSessions *pixivaccount.ReadSessions) pixivSDKPorts {
-	openLease := func(ctx context.Context, request pixivcmd.Request) (*lifecycle.Lease[*pixiv.Client], error) {
+	openLease := func(ctx context.Context, request session.ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error) {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig, a.logger())
 		if err != nil {
 			return nil, err
 		}
 		return facade.Open(ctx, session.Request{UserID: request.UserID, Options: options})
 	}
-	execute := func(ctx context.Context, request pixivcmd.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+	execute := func(ctx context.Context, request session.ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 		options, err := pixivOptionsFromRequest(request, a.runtimeConfig, a.logger())
 		if err != nil {
 			return err
@@ -107,7 +107,7 @@ func (a app) newPixivSDKPortClosures(db *database.DB, facade *session.Pixiv, rea
 	return pixivSDKPorts{
 		watchReadSessions: func(ctx context.Context) error { return readSessions.Watch(ctx, db.Path()) },
 		readSession:       readSession,
-		read: func(ctx context.Context, request pixivcmd.Request, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+		read: func(ctx context.Context, request session.ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
 			snapshot, err := readSession(ctx, request)
 			if err != nil {
 				return err
@@ -126,8 +126,8 @@ func (a app) newPixivSDKPortClosures(db *database.DB, facade *session.Pixiv, rea
 }
 
 // newReadSessionPort 复用账号读取快照，并按请求选择代理覆写与请求节奏。
-func (a app) newReadSessionPort(readSessions *pixivaccount.ReadSessions) func(context.Context, pixivcmd.Request) (mediaproxy.Session, error) {
-	return func(ctx context.Context, request pixivcmd.Request) (mediaproxy.Session, error) {
+func (a app) newReadSessionPort(readSessions *pixivaccount.ReadSessions) func(context.Context, session.ProxyRequest) (mediaproxy.Session, error) {
+	return func(ctx context.Context, request session.ProxyRequest) (mediaproxy.Session, error) {
 		cfg, err := a.runtimeConfig()
 		if err != nil {
 			return mediaproxy.Session{}, err
@@ -196,8 +196,8 @@ func defaultDownloadService() downloader.DownloadService {
 }
 
 // commandEnv 构造所有 command owner 共用的执行环境；JSON 默认值按调用读取当前配置。
-func (a app) commandEnv() command.Env {
-	return command.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, EnablePipelineSignal: a.enablePipelineSignal, ResolveJSON: func(override *bool) (bool, error) {
+func (a app) commandEnv() environment.Env {
+	return environment.Env{In: a.in, Out: a.out, Err: a.errOut, WrapUsage: newUsageError, EnablePipelineSignal: a.enablePipelineSignal, ResolveJSON: func(override *bool) (bool, error) {
 		if override != nil {
 			return *override, nil
 		}
@@ -210,11 +210,11 @@ func (a app) commandEnv() command.Env {
 }
 
 // commandExecutor 在每个命令树内只打开一次账号池，之后所有请求都走公开 SDK 的重放边界。
-func (a app) commandExecutor() pixivcmd.Executor {
+func (a app) commandExecutor() session.Executor {
 	var once sync.Once
 	var ports pixivSDKPorts
 	var portsErr error
-	return func(ctx context.Context, request pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+	return func(ctx context.Context, request session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		once.Do(func() { ports, portsErr = a.newPixivSDKPorts() })
 		if portsErr != nil {
 			return portsErr
@@ -226,7 +226,7 @@ func (a app) commandExecutor() pixivcmd.Executor {
 // newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开数据库。
 func (a app) newAuthCommand() *cobra.Command {
 	var once sync.Once
-	var account auth.AccountService
+	var account *pixivaccount.Service
 	var login pixivaccount.LoginService
 	var loadErr error
 	load := func() {
@@ -235,7 +235,7 @@ func (a app) newAuthCommand() *cobra.Command {
 		})
 	}
 	return auth.New(a.commandEnv(), auth.Support{
-		Account: func() (auth.AccountService, error) {
+		Account: func() (*pixivaccount.Service, error) {
 			load()
 			return account, loadErr
 		},
@@ -262,7 +262,7 @@ func (a app) newDownloadCommand() *cobra.Command {
 	}, defaultDownloadService)
 }
 
-func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
+func (a app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
 	var once sync.Once
 	var service *session.Fanbox
 	var serviceErr error
@@ -278,17 +278,17 @@ func (a app) newFanboxCommandGroup(env command.Env) *cobra.Command {
 			return runtime.DownloadPath, err
 		}),
 	}
-	children = append(children, post.Commands(env, load)...)
-	return newFanboxCommand(env, children)
+	children = append(children, browse.Commands(env, load)...)
+	return fanboxcli.NewCommand(env, children)
 }
 
 type pixivSDKPorts struct {
 	watchReadSessions func(context.Context) error
-	readSession       func(context.Context, pixivcmd.Request) (mediaproxy.Session, error)
-	read              func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	readSession       func(context.Context, session.ProxyRequest) (mediaproxy.Session, error)
+	read              func(context.Context, session.ProxyRequest, func(context.Context, *pixiv.Client) (bool, error)) error
 	localAccounts     func(context.Context) (accounts.LocalSnapshot, error)
-	openLease         func(context.Context, pixivcmd.Request) (*lifecycle.Lease[*pixiv.Client], error)
-	execute           func(context.Context, pixivcmd.Request, func(context.Context, *pixiv.Client) (bool, error)) error
+	openLease         func(context.Context, session.ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error)
+	execute           func(context.Context, session.ProxyRequest, func(context.Context, *pixiv.Client) (bool, error)) error
 }
 
 func openCLIAuthDatabase() (*database.DB, error) {

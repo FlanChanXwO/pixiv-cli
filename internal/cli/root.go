@@ -17,8 +17,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/follow"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mcp"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/mypixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/ranking"
@@ -30,7 +28,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -60,7 +60,7 @@ func (a app) newRootCommand() *cobra.Command {
 			return cmd.Help()
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			requirement := command.For(cmd)
+			requirement := environment.For(cmd)
 			// 显式 --ndjson 在执行前就可知；自动 NDJSON 由 command owner 经 AutoNDJSON 决定，
 			// 因此这里只处理前者。
 			if commandWritesNDJSON(cmd) {
@@ -91,12 +91,12 @@ func (a app) newRootCommand() *cobra.Command {
 			return nil
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
-			if command.For(cmd).AutomaticUpdate {
+			if environment.For(cmd).AutomaticUpdate {
 				update.RunAutomaticCheck(cmd, a.errOut, a.runtimeConfig)
 			}
 		},
 	}
-	command.Bind(cmd, command.Execution{})
+	environment.Bind(cmd, environment.Execution{})
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return normalizeFlagError(err) })
 	cmd.SetVersionTemplate("pixiv {{.Version}}\n")
 	// 不把 Cobra 的 help handler 作为公开 root subcommand；根命令仍通过
@@ -115,7 +115,7 @@ func (a app) newRootCommand() *cobra.Command {
 	return cmd
 }
 
-func (a app) pixivCommands(env command.Env, exec pixivcmd.Executor) []*cobra.Command {
+func (a app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
 		search.New(env, exec, reverseSearch),
@@ -127,7 +127,7 @@ func (a app) pixivCommands(env command.Env, exec pixivcmd.Executor) []*cobra.Com
 		recommended.New(env, exec),
 		timeline.New(env, exec),
 		mypixiv.New(env, exec),
-		user.New(env, pixivcmd.New(env.Out, exec), func() *cobra.Command { return follow.New(env, exec) }),
+		user.New(env, session.NewRunner(env.Out, exec), func() *cobra.Command { return follow.New(env, exec) }),
 		bookmark.New(env, exec),
 		follow.New(env, exec),
 	}

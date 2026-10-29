@@ -12,9 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/post"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
+	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -22,14 +23,14 @@ import (
 )
 
 type commandRunner struct {
-	env          command.Env
+	env          environment.Env
 	open         func() (*session.Fanbox, error)
 	downloadPath func() (string, error)
 }
 
 // New 构造 `pixiv fanbox download` 命令。downloadPath 只在命令执行时读取，
 // 构造命令树不会打开配置文件。
-func New(env command.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
+func New(env environment.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
 	a := commandRunner{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
 		Use:   "download SOURCE...",
@@ -40,7 +41,7 @@ func New(env command.Env, open func() (*session.Fanbox, error), downloadPath fun
 		},
 	}
 	env.BindTextValue(cmd, 1, -1, 0)
-	command.Bind(cmd, command.FanboxData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -50,14 +51,17 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	baseDir := filepath.Join(downloadPath, "fanbox")
-	return fanboxcmd.UseClient(cmd, a.open, func(client *fanbox.Client) error {
+	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		seen := make(map[string]struct{})
 		for _, source := range args {
-			fetch, err := post.PostsFetch(cmd.Context(), client, source)
+			fetch, err := browse.PostsFetch(cmd.Context(), client, source)
 			if err != nil {
 				return err
 			}
-			if err := fanboxcmd.Traverse(cmd.Context(), command.AllResults(), fetch, func(posts []fanbox.Post) error {
+			if err := pagination.PageItems(cmd.Context(), pagination.PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]fanbox.Post, sdk.Cursor, error) {
+				page, err := fetch(ctx, cursor)
+				return page.Items, page.Next, err
+			}, func(posts []fanbox.Post) error {
 				for _, post := range posts {
 					if err := a.savePostAssets(cmd.Context(), client, baseDir, post, seen); err != nil {
 						return err

@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -61,11 +61,11 @@ func (s *spool) write(value any) error {
 	if !s.jsonOut {
 		switch typed := value.(type) {
 		case pixiv.Artwork:
-			return pixivcmd.PrintArtworks(s.file, []pixiv.Artwork{typed})
+			return display.PrintArtworks(s.file, []pixiv.Artwork{typed})
 		case pixiv.Novel:
-			return pixivcmd.PrintNovels(s.file, []pixiv.Novel{typed})
+			return display.PrintNovels(s.file, []pixiv.Novel{typed})
 		case pixiv.UserPreview:
-			return pixivcmd.PrintUserPreviews(s.file, []pixiv.UserPreview{typed})
+			return display.PrintUserPreviews(s.file, []pixiv.UserPreview{typed})
 		}
 		return nil
 	}

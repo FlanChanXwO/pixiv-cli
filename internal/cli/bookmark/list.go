@@ -7,39 +7,39 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
 	var userID int64
-	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == environment.RecordMode {
 		userID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err
 		}
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
@@ -49,7 +49,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		attemptUserID := userID
 		if attemptUserID == 0 {
-			resolvedUserID, err := pixivcmd.CurrentUserID(client)
+			resolvedUserID, err := session.CurrentUserID(client)
 			if err != nil {
 				return false, err
 			}
@@ -59,7 +59,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 			bookmarkArtworkStream(client, attemptUserID, opts),
 			bookmarkNovelStream(client, attemptUserID, opts),
 		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan.PagePlan(), streams)
+		items, _, _, err := pagination.CollectStreams(ctx, plan, streams)
 		if err != nil {
 			return false, err
 		}
@@ -71,7 +71,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				if err != nil {
 					return false, err
 				}
-				if err := pixivcmd.WriteJSONLine(&staged, value); err != nil {
+				if err := record.WriteJSONLine(&staged, value); err != nil {
 					return false, err
 				}
 			}
@@ -84,7 +84,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				}
 				records = append(records, value)
 			}
-			if err := pixivcmd.WriteJSONValue(&staged, struct {
+			if err := record.WriteJSONValue(&staged, struct {
 				Records []record.Record `json:"records"`
 			}{Records: records}); err != nil {
 				return false, err
@@ -93,10 +93,10 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 			for _, item := range items {
 				var err error
 				switch item.kind {
-				case string(resolver.ResultKindArtwork):
-					err = pixivcmd.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
-				case string(resolver.ResultKindNovel):
-					err = pixivcmd.PrintNovels(&staged, []pixiv.Novel{item.novel})
+				case string(target.ResultKindArtwork):
+					err = display.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
+				case string(target.ResultKindNovel):
+					err = display.PrintNovels(&staged, []pixiv.Novel{item.novel})
 				}
 				if err != nil {
 					return false, err
@@ -122,7 +122,7 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(resolver.ResultKindArtwork), artwork: item})
+				items = append(items, bookmarkListItem{kind: string(target.ResultKindArtwork), artwork: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -144,7 +144,7 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(resolver.ResultKindNovel), novel: item})
+				items = append(items, bookmarkListItem{kind: string(target.ResultKindNovel), novel: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -161,9 +161,9 @@ func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStre
 
 func (item bookmarkListItem) record() (record.Record, error) {
 	switch item.kind {
-	case string(resolver.ResultKindArtwork):
+	case string(target.ResultKindArtwork):
 		return record.RecordFromArtwork(item.artwork)
-	case string(resolver.ResultKindNovel):
+	case string(target.ResultKindNovel):
 		return record.RecordFromNovel(item.novel)
 	default:
 		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)
@@ -171,27 +171,27 @@ func (item bookmarkListItem) record() (record.Record, error) {
 }
 
 func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
 	var requestedUserID int64
-	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == environment.RecordMode {
 		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err
 		}
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
@@ -200,7 +200,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 	userID := requestedUserID
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		if userID == 0 {
-			userID, err = pixivcmd.CurrentUserID(client)
+			userID, err = session.CurrentUserID(client)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -211,35 +211,35 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: func() string {
+	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string {
 		return fmt.Sprintf("bookmarks by %d", userID)
 	}, Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
-		return pixivcmd.PrintArtworks(a.env.Out, items)
+		return display.PrintArtworks(a.env.Out, items)
 	}})
 }
 
 func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
 	var requestedUserID int64
-	if len(args) == 1 || opts.input.Mode() == input.RecordMode {
+	if len(args) == 1 || opts.input.Mode() == environment.RecordMode {
 		requestedUserID, err = a.resolveBookmarkUserID(cmd, args, opts.input, opts.typ, bookmarkListContract())
 		if err != nil {
 			return err
 		}
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
@@ -248,7 +248,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 	userID := requestedUserID
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		if userID == 0 {
-			userID, err = pixivcmd.CurrentUserID(client)
+			userID, err = session.CurrentUserID(client)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -259,7 +259,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novel bookmarks by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error {
-		return pixivcmd.PrintNovels(a.env.Out, items)
+	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: fmt.Sprintf("novel bookmarks by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error {
+		return display.PrintNovels(a.env.Out, items)
 	}})
 }

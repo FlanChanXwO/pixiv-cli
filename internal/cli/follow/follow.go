@@ -5,32 +5,32 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
-var userRecordTypes = map[string]struct{}{string(resolver.ResultKindUser): {}}
+var userRecordTypes = map[string]struct{}{string(target.ResultKindUser): {}}
 
 type options struct {
-	command.Options
-	input    *input.State
+	environment.Options
+	input    *environment.State
 	restrict string
 	onError  string
 }
 
 type commandRunner struct {
-	env    command.Env
-	runner pixivcmd.Runner
+	env    environment.Env
+	runner session.Runner
 }
 
 // New 构造 `pixiv follow` 命令；关注与取消关注都要求已认证账号。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
 	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}
 	cmd.AddCommand(a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
@@ -47,10 +47,10 @@ func (a commandRunner) newAdd() *cobra.Command {
 			if err := validateFollowRestrict(opts.restrict); err != nil {
 				return err
 			}
-			if _, err := input.RecordFailureStrategy(opts.onError); err != nil {
-				return a.env.UsageError(err)
+			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
+				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
 				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
 					return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: id, Restrict: pixiv.Restrict(opts.restrict)})
 				})
@@ -67,9 +67,9 @@ func (a commandRunner) newAdd() *cobra.Command {
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
-	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -80,10 +80,10 @@ func (a commandRunner) newRemove() *cobra.Command {
 		Short: "Unfollow a user",
 		Args:  a.env.ActionInputArgs("pixiv follow remove [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := input.RecordFailureStrategy(opts.onError); err != nil {
-				return a.env.UsageError(err)
+			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
+				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request pixivcmd.Request, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
 				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
 					return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: id})
 				})
@@ -99,18 +99,18 @@ func (a commandRunner) newRemove() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVar(&opts.onError, "on-error", input.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options, invoke func(context.Context, pixivcmd.Request, int64) error) func(context.Context, int64) error {
-	var request pixivcmd.Request
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Options, invoke func(context.Context, session.ProxyRequest, int64) error) func(context.Context, int64) error {
+	var request session.ProxyRequest
 	initialized := false
 	return func(ctx context.Context, id int64) error {
 		if !initialized {
-			resolved, err := pixivcmd.BuildRequest(cmd, options)
+			resolved, err := a.env.Request(cmd, options.ProxyOptions)
 			if err != nil {
 				return err
 			}
@@ -122,19 +122,19 @@ func (a commandRunner) actionInvoker(cmd *cobra.Command, options command.Options
 }
 
 func resolveFollowUserID(ctx context.Context, value, operation string) (int64, error) {
-	target, err := resolver.Resolve(ctx, resolver.Input{Value: value}, resolver.Contract{
+	resolved, err := target.Resolve(ctx, target.Input{Value: value}, target.Contract{
 		Operation:   operation,
-		DefaultType: string(resolver.ResultKindUser),
-		Types: []resolver.TypeSpec{{
-			Name:              string(resolver.ResultKindUser),
-			ResultKind:        resolver.ResultKindUser,
+		DefaultType: string(target.ResultKindUser),
+		Types: []target.TypeSpec{{
+			Name:              string(target.ResultKindUser),
+			ResultKind:        target.ResultKindUser,
 			BareReferenceKind: pixiv.ReferenceKindUser,
 		}},
 	})
 	if err != nil {
 		return 0, fmt.Errorf("user_id: %w", err)
 	}
-	return target.ID, nil
+	return resolved.ID, nil
 }
 
 func validateFollowRestrict(value string) error {

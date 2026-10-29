@@ -5,12 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	// 导入 provider 会执行各自的 init 注册。
-	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/chromium"
-	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/firefox"
-	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/safari"
-
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	// 导入 provider 会执行各自的 init 注册。
 )
 
 // SystemBrowserProvider 把浏览器 cookie provider 的受约束读取结果

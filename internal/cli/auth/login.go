@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
@@ -44,7 +44,7 @@ type loginInputResult struct {
 type callbackURLAccepter = func(string) bool
 
 type accountLoginOptions struct {
-	command.ProxyOptions
+	environment.ProxyOptions
 	jsonOut          bool
 	noOpen           bool
 	useAfterLogin    bool
@@ -79,20 +79,20 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.AuthLogin())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) error {
-	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
+	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
-	services, err := a.services()
+	login, err := a.loginService()
 	if err != nil {
 		return err
 	}
-	cfg, err := services.LoadRuntime()
+	cfg, err := a.support.LoadRuntime()
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if err != nil {
 		return err
 	}
-	loginFlow, err := services.Login.Start(account.LoginRequest{Options: loginOptions})
+	loginFlow, err := login.Start(account.LoginRequest{Options: loginOptions})
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	}
 	defer cleanupLoginServer()
 
-	result, err := services.Login.Complete(ctx, loginFlow, account.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
+	result, err := login.Complete(ctx, loginFlow, account.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
 		// OAuth 真正失败后才向浏览器回最终失败页；页面不回显敏感原因。
 		notifyFinal(false)
