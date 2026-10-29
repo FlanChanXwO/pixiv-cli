@@ -26,7 +26,11 @@
 
 - 新类型和字段不用 `Kind`、`Type`（作为万能区分字段时）、`Item`、`Object`、`Misc` 做名字或后缀，改用说明具体角色的词：`Phase`、`Mode`、`Source`、`Status`、`Registry`、`Store`。上游协议本身的字段名，例如 Pixiv 的 `type`，在映射层保持原样。
 - 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（`ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
-- 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题。
+- 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题，唯一例外见下。
+
+只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`、`account`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`）。
+
+例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivaccount`、`fanboxaccount`。目前只有 `internal/cli` 组合根与 `internal/storage/database` 属于这种情况。其他情况不加 import 别名，也不写与包名相同的多余别名。
 
 ## 声明放置与文件命名
 
@@ -49,7 +53,7 @@
 
 `包名.go` 的含义是“从这里开始读这个包”，不用作杂物文件。
 
-新代码按下面顺序决定位置，第一条成立就停下：只服务一个命令，放进该命令目录；被同一产品的命令共用，或所有命令共用，放进对应的共享 CLI 包；MCP tool 放进该产品的 `tools` 包；公开能力放进 `sdk/<产品>/` 的领域文件，上游协议细节放进 `internal/pixivapi` 或 `internal/fanboxapi`；以上都不是，新建一个按职责命名的包。放进去之后，所在包、文件或类型的名字如果不再能概括全部内容，就是放错了位置。不建立 `common`、`shared`、`util`、`misc` 这类位置。
+新代码按下面顺序决定位置，第一条成立就停下：只服务一个命令，放进该命令目录；被同一产品的命令共用，或所有命令共用，放进对应的共享 CLI 包；MCP tool 放进该产品的 `tools` 包；公开能力放进 `sdk/<产品>/` 的领域文件，上游协议细节放进 `internal/pixiv/api` 或 `internal/fanbox/api`；以上都不是，新建一个按职责命名的包。放进去之后，所在包、文件或类型的名字如果不再能概括全部内容，就是放错了位置。不建立 `common`、`shared`、`util`、`misc` 这类位置。
 
 ## 命名常量
 
@@ -59,7 +63,7 @@
 | --- | --- | --- |
 | 配置键（别名） | `settings.Key` 常量，例如 `settings.KeyLogLevel` | `internal/config/settings/keys.go` |
 | 枚举取值（日志级别、输出格式、restrict、作品类型等） | 具名类型 + 常量，例如 `settings.LogLevelDebug`、`pixiv.RestrictPublic` | 与该类型放在同一文件 |
-| 上游 API 路径、query/form 参数名、请求头名 | 导出常量，例如 `pixivapi.PathUserFollower`、`pixivapi.ParamUserID`；包位于 `internal/` 下，模块外部无法引用 | `internal/pixivapi/api.go`、`internal/fanboxapi/api.go` |
+| 上游 API 路径、query/form 参数名、请求头名 | 导出常量，例如 `api.PathUserFollower`、`api.ParamUserID`；包位于 `internal/` 下，模块外部无法引用 | `internal/pixiv/api/api.go`、`internal/fanbox/api/api.go` |
 | MCP tool 名称 | 未导出常量，例如 `toolUserDetail` | 与该 tool 的注册代码放在同一文件 |
 | Go 代码中引用的数据库列名 | 未导出常量，例如 `colCredentialRevision` | `internal/storage/database/rows.go`，紧挨行结构 |
 | JSON 输出键（struct tag 以外），例如 `illusts` | 未导出常量 | 与使用它的输出代码放在同一文件 |
@@ -77,7 +81,7 @@
 配置键：配置键的声明来源仍然是 `RuntimeConfig` 字段上的 `alias` 标签，`keys.go` 中的常量必须与之一一对应。由一个表驱动测试遍历全部 `Key` 常量，确认每个都能通过 `SettingSpecByAlias` 解析；常量拼错时，程序运行时会找不到配置项。程序内部通过 `RuntimeConfig` 的字段读取配置（例如 `cfg.LogLevel`），不经过别名字符串。按别名读写的 `Store.Get/Set/Unset` 只用于 `config get/set/unset` 命令，别名来自用户输入。
 
 ```go
-// internal/pixivapi/api.go
+// internal/pixiv/api/api.go
 
 // App API 路径。
 const (
@@ -184,7 +188,7 @@ func (e Env) UsageError(err error) error { return e.WrapUsage(err) }
 ```go
 // Package pixiv provides a Go client for the Pixiv App API: artworks, novels, users, bookmarks, and comments.
 //
-// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixivapi.
+// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixiv/api.
 package pixiv
 ```
 
@@ -259,7 +263,7 @@ type Budget struct {
 | --- | --- |
 | 凭据不泄露：账号与 Cookie 类型在 `%v`、`%+v`、`%#v`、slog 中不输出凭据；日志不含 query、token、Cookie、签名 URL；MCP tool 输出不含签名 URL 与 Cookie | 账号与 Cookie 类型、请求日志、MCP 输出 |
 | 账号存储：revision 冲突、事务回滚、v1.2.x 数据库可打开、文件权限；原子替换与文件锁 | `internal/storage/*` |
-| 凭据轮换后新 token 在返回 client 前写入存储 | `internal/pixivaccount` 或 `internal/session` |
+| 凭据轮换后新 token 在返回 client 前写入存储 | `internal/pixiv/account` 或 `internal/session` |
 | 上游响应异常时返回错误；取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
 | 对外契约快照：MCP `tools/list` 一份 golden；一个 CLI 命令的 text、JSON、NDJSON；用法错误的退出码；stdio stdout 只有 JSON-RPC；HTTP 必须带 bearer | `internal/mcpserver`、`internal/cli` |
 | 环境变量优先于文件、文件优先于默认值，包括显式空值 | `internal/config/settings` |

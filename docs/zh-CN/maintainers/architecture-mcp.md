@@ -17,7 +17,7 @@ flowchart TB
     GAL["pixiv/gallery<br/>MCP Apps 视图"]
     MP["pixiv/mediaproxy<br/>capability、LRU、动画任务"]
     AM["pixiv/tools<br/>artwork_media"]
-    RS["internal/pixivaccount/reads.go<br/>MCP 读取会话"]
+    RS["internal/pixiv/account/reads.go<br/>MCP 读取会话"]
     DL["internal/media/downloader<br/>（仅 stdio）"]
     NEW --> PX & FB
     HTTP --> AUTH
@@ -63,7 +63,7 @@ flowchart LR
 - ZIP/预览写入器在写入前预留磁盘字节；内部同步原生回调在触碰文件前，把每次输出写入预留到同一个池。只有实际请求的字节放不下时才回收 ready 产物（不预先预留其空间）。原生输出上限保持强制，全局串行编码门保持共享。
 - 临时生产者与原生预留一起排队；启动清理需要服务标记与已释放的生命周期 OS 锁。GET/HEAD 期间文件保持固定；清理会等待活动工作。Gallery 通过 Apps bridge 轮询；CSP 仍禁止直接 fetch 连接。
 
-## 读取会话（`internal/pixivaccount/reads.go`）
+## 读取会话（`internal/pixiv/account/reads.go`）
 
 - 受生命周期管理的 MCP 读取会话：获取时校验本地账号修订号；只在 OAuth 刷新与成功的轮换持久化时共享轮换门。
 - 凭据替换/删除、网络变化、过期与上游 401 使代际失效并释放空闲连接。写操作 lease 与账号池提交/重放保留在 Facade 中。
