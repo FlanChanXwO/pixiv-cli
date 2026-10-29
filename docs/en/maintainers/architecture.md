@@ -71,23 +71,18 @@ The resource-only `frontend` package embeds exact paths (fixtures excluded) and 
 
 ### `internal/cli`
 
-CLI composition root. The `internal/cli` package keeps command-tree assembly and production dependency construction separate:
+CLI composition root. `internal/cli` is one `root.go` plus command directories; everything shared with MCP or another product lives at its module-level owner:
 
 | File | Owns |
 | --- | --- |
-| `root.go` | Cobra command tree, global flags, and requirement-driven startup hooks |
-| `execution.go` | execution entry points, exit codes, and resource closing (private `closeState`, idempotent reverse-order close) |
-| `composition.go` | command constructors and Pixiv/FANBOX account, SDK, download, and update dependencies |
-| `composition_options.go` | translation from runtime settings to SDK and network options |
-| `composition_mcp.go` | MCP ports, login services, and stdio/HTTP runtime startup |
-| `composition_search.go` | reverse-search ports; the only file importing `internal/reversesearch/assembly` |
+| `root.go` | `Run`, the Cobra command tree, global flags, requirement-driven startup hooks, exit-code mapping, stderr logger startup, broken-pipe policy, production wiring, and reverse-search ports; the only file importing `internal/reversesearch/assembly` |
 
 Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
 
-- **Closing:** callers stop producers and finish registration before close; the mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Close follows command completion; MCP stdio waits for in-flight handlers; close errors are joined.
-- **Owners:** `internal/cli` holds one `root.go` per composition concern plus command directories; no `internal/` subdirectory and no test files. The composition root wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`.
+- **Closing:** `lifecycle.CloseState` registers closers opened by `Run`; callers stop producers and finish registration before close; the mutex protects the list, not late registrations; closers must not register into or recursively close the same scope. Close follows command completion; MCP stdio waits for in-flight handlers; close errors are joined.
+- **Owners:** `internal/cli` holds one `root.go` plus command directories; no `internal/` subdirectory and no test files. `root.go` wires production dependencies to command owners through explicit factories and narrow ports; registered resources close in reverse. No cross-command locator, bootstrap constructor or `internal/cli/runtime`. CLI contract tests live in `cmd/pixiv` and drive `cli.Run` as a black box.
 - **Command packages:** root `internal/cli/{config,mcp,update,whoami}`; Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`; FANBOX `internal/cli/fanbox/{auth,browse,download}`. `internal/cli/fanbox` owns the group's persistent `--proxy`/`--no-proxy` flags. Pixiv data commands use `*pixiv.Client` through `session.Executor`, `session.Runner`, and `record.RunArtworks`/`RunNovels`/`RunUsers`; FANBOX commands use `*fanbox.Client` through a lazy session factory and `fanbox.UseClient`. `environment.Env` provides common input/output support.
-- **Shared helpers live at their module-level owners:** `internal/environment` (input/output streams, stdin codec, flag binding, usage marking, lifecycle annotations), `internal/pagination` (`--limit`/`--page` parsing, `PagePlan`, pagination output fields), `internal/record` (record projection, NDJSON consumption and diagnostics, list JSON/NDJSON/text output), `internal/session` (Pixiv replay executor and FANBOX lease wrappers), `internal/display` (terminal text rendering, identity format, upstream text escaping), and `internal/pixiv/target` (target resolution). These packages never import `internal/cli` or `internal/mcpserver`.
+- **Shared helpers live at their module-level owners:** `internal/environment` (input/output streams, stdin codec, flag binding, usage marking, lifecycle annotations), `internal/pagination` (`--limit`/`--page` parsing, `PagePlan`, pagination output fields), `internal/record` (record projection, NDJSON consumption and diagnostics, list JSON/NDJSON/text output), `internal/session` (Pixiv replay executor, FANBOX lease wrappers, and the production account/pool/session constructors), `internal/display` (terminal text rendering, identity format, upstream text escaping), and `internal/pixiv/target` (target resolution). These packages never import `internal/cli` or `internal/mcpserver`.
 - **`--version` / auto-update:** stdout exactly `pixiv <version>`, empty stderr, no update check. Auto-update runs only after a successful normal command, skipped for MCP, help, `--version`, `update`, all `auth export`, bundle `auth import`, commands marked offline such as `whoami` and dev builds; stable Release, 24 h throttle on the user cache, ≤ 3 s; failures only as stderr warnings — never change the exit code or leak into JSON stdout or MCP JSON-RPC.
 - **Windows startup cleanup** of pending updates is a potential mutation: all `auth export` invocations are detected before Cobra parsing and skip it. When changing root bool parsing, manually verify repeated overrides such as `--help=false` preserve the secret-export boundary.
 
@@ -132,8 +127,8 @@ Infrastructure packages themselves — `pixiv/api`, `fanbox/api`, `storage/*`, `
 | Location | Owns |
 | --- | --- |
 | `internal/logging/` | text handler renders `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]` with terminal-aware colors, quoted unprintable text and indented multiline values; JSON handler adds `source`; context call information and shared attribute keys live here; internal recovery points obtain the logger through `logging.From(ctx)`; SDK error origins remain private; typed transport attributes include `op`, `net`, `address` and known `errno` names without raw error text. |
-| `internal/cli/execution.go` | Creates the stderr logger and call context; logs `Command failed` at ERROR for JSON and DEBUG for text, with private SDK `origin` when present; retains the stderr error path |
-| `internal/cli/composition_options.go`, `composition_mcp.go` | passes the same logger to both SDKs' `Options.Logger` and MCP ports |
+| `internal/cli/root.go` | Creates the stderr logger and call context through `internal/logging`; logs `Command failed` at ERROR for JSON and DEBUG for text, with private SDK `origin` when present; retains the stderr error path |
+| `internal/cli/mcp/runtime.go`, `internal/session/options.go` | pass the same logger to both SDKs' `Options.Logger` and MCP ports |
 | `internal/mcpserver/toolrun/toolrun.go` | shared `Scope` / `AddTool` wrappers bind tool name and call ID; an error or `isError` result produces one controlled failure summary |
 | `internal/pixiv/api/` (including `oauth/`), `internal/fanbox/api/` | holds the constructor-supplied logger and records outcomes at the actual request/decision point |
 
@@ -148,7 +143,7 @@ SDK business methods only register `sdk_operation` in context through `logging.W
 | `internal/environment` | CLI-only execution environment: streams, stdin codec, flag binding, usage marking, lifecycle annotations | product protocol or account semantics; import `internal/mcpserver` |
 | `internal/display` | CLI-only terminal text: entity list lines, detail cards, `username (UID)`, upstream escaping; merged `plaintext` | JSON/NDJSON output; renderers that serve one command |
 | `internal/pixiv/searchfilter` | artwork-local rating/content-type normalization, client-side `x_restrict` and kind matching, cursor context hiding raw values | map rating to an unconfirmed upstream `x_restrict` param; hold clients, credentials or adapters (field availability and confirmed wire params stay with each command) |
-| `internal/lifecycle` | protocol-agnostic lifecycle, Lease, Attempt | own account selection, credentials or replay strategy |
+| `internal/lifecycle` | protocol-agnostic lifecycle, `Lease`, `Attempt`, `CloseState` | own account selection, credentials or replay strategy |
 | `internal/pagination` | logical pagination for one stream and ordered aggregates: filters before the global skip/limit budget, `OneBatch` stops at the first matching batch, truncation resumed via source-position checkpoint; `StreamState` = current stream + per-stream cursors (owners encode it with query/account/subtype bindings) | product semantics |
 | `internal/pagination` | reentrant execute lifecycle for single/aggregate reads, clearing uncommitted results before safe replay | own command filter wiring |
 | `internal/logging` | `log/slog` handler plus context call information; CLI, MCP, transports, pool, download and FlareSolverr share attribute keys and emit only operation, method, host, path, status, duration, attempt, wait, reason, count, origin, op, net, address and errno; text records put operation in the tag, JSON records keep it as a key and add `source`; SDK accepts one `Options.Logger`; nil keeps the SDK silent | create log files or record bodies, Cookies, tokens, queries, signed URLs or arbitrary error cause dumps |
@@ -186,11 +181,11 @@ Each product SDK `Client` holds one protocol client. `RequiredList` / `RequiredO
 
 The only product capability crossing the normal SDK boundary.
 
-Only the `internal/cli` composition root in `composition_search.go` imports `internal/reversesearch/assembly`. CLI command owners and MCP owners may use the top-level `internal/reversesearch` contract; they must not import `assembly` or provider packages such as `saucenao` and `ascii2d`.
+Only `internal/cli/root.go` imports `internal/reversesearch/assembly`. CLI command owners and MCP owners may use the top-level `internal/reversesearch` contract; they must not import `assembly` or provider packages such as `saucenao` and `ascii2d`.
 
 ```mermaid
 flowchart LR
-    COMP["internal/cli/composition_search.go"] --> ASM["reversesearch/assembly<br/>(HTTP client, proxy, SauceNAO key<br/>once per command/session)"]
+    COMP["internal/cli/root.go"] --> ASM["reversesearch/assembly<br/>(HTTP client, proxy, SauceNAO key<br/>once per command/session)"]
     ASM --> SN["reversesearch/saucenao"]
     ASM --> A2["reversesearch/ascii2d"]
     CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>(contract + Service)"]
