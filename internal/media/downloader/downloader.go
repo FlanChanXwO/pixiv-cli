@@ -289,3 +289,10 @@ func referenceURL(reference pixiv.Reference) string {
 	}
 	return raw
 }
+
+// NewService 返回生产批量下载器：作品下载按路径与文件名模板写入本地。
+func NewService() DownloadService {
+	return DownloadService{NewBatchDownloader: func(client DownloadClient, downloadPath, filenameTemplate string) (BatchDownloader, error) {
+		return NewArtworkDownloader(client, downloadPath, filenameTemplate), nil
+	}}
+}

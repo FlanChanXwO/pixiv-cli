@@ -4,7 +4,8 @@
 // use 与 close 的错误都会保留。
 //
 // 包的组成：[Lease] 持有打开的资源与关闭函数，[Attempt] 记录一次可重放操作是否已
-// 越过提交边界，[Open] 与 [Use] 是调用方注入的两个阶段。
+// 越过提交边界，[Open] 与 [Use] 是调用方注入的两个阶段，[CloseState] 逆序关闭一次
+// 执行登记的资源。
 package lifecycle
 
 import (

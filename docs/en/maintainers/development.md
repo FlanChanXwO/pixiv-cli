@@ -100,7 +100,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 ## Finding protocol and logging code
 
 - Pixiv protocol code lives in `internal/pixiv/api/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanbox/api/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixiviapi-internalfanboxapi).
-- `internal/cli/execution.go` creates the stderr logger; `internal/cli/composition_options.go` and `composition_mcp.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. CLI-wide mechanisms live at their module-level owners (`internal/environment`, `internal/pagination`, `internal/record`, `internal/session`, `internal/display`); `internal/cli` keeps only command directories and root composition files. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
+- `internal/cli/root.go` creates the stderr logger through `internal/logging`; `internal/session/options.go` and `internal/cli/mcp/runtime.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. CLI-wide mechanisms live at their module-level owners (`internal/environment`, `internal/pagination`, `internal/record`, `internal/session`, `internal/display`); `internal/cli` keeps only command directories and root composition files. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
 - For local diagnosis, run `pixiv config set log_level debug`; add `pixiv config set log_format json` when structured fields help. Settings apply on the next invocation. Text logs show the operation in the second bracket and other context as `key=value`; JSON logs keep `operation`, and MCP calls add `call_id`; data stays on stdout.
 
 ## Credentials in development
@@ -139,7 +139,7 @@ See the [coding standards](coding-standards.md#test-submission-rules) for the ex
 
 ### Test file layout
 
-Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. New tests use the external package (`X_test`). Existing CI-exempt files retain their required layout under the [handbook's test rules](coding-standards.md#test-submission-rules). The same-package exceptions are:
+Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. CLI contract tests live in `cmd/pixiv` and drive `cli.Run` as a black box with a temporary HOME, a real SQLite account store and local HTTP fixtures; `internal/cli` carries no test files. Fixtures that must reach the fixed Pixiv hosts use a CONNECT proxy plus `SSL_CERT_FILE`, because the CLI has no test-only injection point. New tests use the external package (`X_test`). Existing CI-exempt files retain their required layout under the [handbook's test rules](coding-standards.md#test-submission-rules). The same-package exceptions are:
 
 | Directory | Reason |
 | --- | --- |

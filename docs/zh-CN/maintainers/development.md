@@ -100,7 +100,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 ## 查找协议与日志实现
 
 - Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixiviapi-internalfanboxapi)。
-- `internal/cli/execution.go` 创建 stderr logger；`internal/cli/composition_options.go` 与 `composition_mcp.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。CLI 共用机制位于模块级 owner（`internal/environment`、`internal/pagination`、`internal/record`、`internal/session`、`internal/display`），`internal/cli` 只保留命令目录与根包组合文件。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
+- `internal/cli/root.go` 经 `internal/logging` 创建 stderr logger；`internal/session/options.go` 与 `internal/cli/mcp/runtime.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。CLI 共用机制位于模块级 owner（`internal/environment`、`internal/pagination`、`internal/record`、`internal/session`、`internal/display`），`internal/cli` 只保留命令目录与根包组合文件。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
 - 本地排查使用 `pixiv config set log_level debug`，需要结构化字段时再设置 `pixiv config set log_format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
 
 ## 开发中的凭据
@@ -139,7 +139,7 @@ CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.
 
 ### 测试文件布局
 
-生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。新测试使用外部包（`X_test`），CI 豁免文件按[手册测试规则](coding-standards.md#测试提交规则)保留所需布局。同包例外如下：
+生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。CLI 契约测试放在 `cmd/pixiv`，用临时 HOME、真实 SQLite 账号库与本地 HTTP 夹具通过 `cli.Run` 做黑盒测试；`internal/cli` 下没有测试文件。需要访问固定 Pixiv 主机的夹具使用 CONNECT 代理加 `SSL_CERT_FILE`，因为 CLI 不提供测试专用注入点。新测试使用外部包（`X_test`），CI 豁免文件按[手册测试规则](coding-standards.md#测试提交规则)保留所需布局。同包例外如下：
 
 | 目录 | 理由 |
 | --- | --- |

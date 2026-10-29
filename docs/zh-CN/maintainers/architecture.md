@@ -71,23 +71,18 @@ flowchart TD
 
 ### `internal/cli`
 
-CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开：
+CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 或另一产品共用的代码都放在模块级 owner：
 
 | 文件 | 负责 |
 | --- | --- |
-| `root.go` | Cobra 命令树、全局 flag、按需启动 hook |
-| `execution.go` | 执行入口、退出码、资源关闭（私有 `closeState`，按注册逆序幂等关闭） |
-| `composition.go` | 命令构造函数，以及 Pixiv/FANBOX 账号、SDK、下载与更新依赖 |
-| `composition_options.go` | 把运行时配置转换为 SDK 与网络选项 |
-| `composition_mcp.go` | MCP ports、登录服务及 stdio/HTTP runtime 启动 |
-| `composition_search.go` | 反向搜索 ports；唯一导入 `internal/reversesearch/assembly` 的文件 |
+| `root.go` | `Run`、Cobra 命令树、全局 flag、按需启动 hook、退出码映射、stderr logger 启动、broken-pipe 策略、生产装配与反向搜索 ports；唯一导入 `internal/reversesearch/assembly` 的文件 |
 
 职责：Cobra 命令树/help/flag；文本/JSON 输出；`auth import` 输入适配（位置参数 = opaque token；无参数时 TTY 隐藏输入，非 TTY 按首个非空白字节区分 token 与严格 bundle；通过管道/重定向恢复，没有 `--file`）；`auth export` secret 输出适配（无 `--output`：原始 token + 换行，或 `--all` 的 bundle；有 `--output`：私有文件 + 不含 secret 的摘要）；`--page`/`--limit` 解析（逻辑计划在 `internal/pagination`）；`auth login` 的 loopback OAuth、浏览器与 TTY；`pixiv mcp` 分发；根 `--version` 与 `pixiv update`（已移除的 `version` 子命令在解析时返回 unknown command）；只写 stderr 的只读自动更新提示。
 
-- **关闭：** 调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
-- **Owner：** `internal/cli` 只保留按组合职责拆分的根包文件与命令目录，没有 `internal/` 子目录，也没有测试文件。组合根通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。
+- **关闭：** `lifecycle.CloseState` 登记 `Run` 打开的资源；调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
+- **Owner：** `internal/cli` 只有一个 `root.go` 与命令目录，没有 `internal/` 子目录，也没有测试文件。`root.go` 通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。CLI 契约测试放在 `cmd/pixiv`，通过 `cli.Run` 做黑盒测试。
 - **命令包：** 根级 `internal/cli/{config,mcp,update,whoami}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,browse,download}`。组的持久 `--proxy`/`--no-proxy` flag 由 `internal/cli/fanbox` 拥有。Pixiv 数据命令通过 `session.Executor`、`session.Runner` 与 `record.RunArtworks`/`RunNovels`/`RunUsers` 使用 `*pixiv.Client`；FANBOX 命令通过延迟会话工厂与 `fanbox.UseClient` 使用 `*fanbox.Client`。公共输入输出由 `environment.Env` 提供。
-- **共享 helper 位于模块级 owner：** `internal/environment`（输入输出流、stdin codec、flag 绑定、usage 标记、生命周期标注）、`internal/pagination`（`--limit`/`--page` 解析、`PagePlan`、分页输出字段）、`internal/record`（record 投影、NDJSON 消费与逐行诊断、列表 JSON/NDJSON/文本输出）、`internal/session`（Pixiv 重放执行器与 FANBOX 租约包装）、`internal/display`（终端文本渲染、身份格式、上游文本转义）、`internal/pixiv/target`（目标解析）。这些包不导入 `internal/cli` 或 `internal/mcpserver`。
+- **共享 helper 位于模块级 owner：** `internal/environment`（输入输出流、stdin codec、flag 绑定、usage 标记、生命周期标注）、`internal/pagination`（`--limit`/`--page` 解析、`PagePlan`、分页输出字段）、`internal/record`（record 投影、NDJSON 消费与逐行诊断、列表 JSON/NDJSON/文本输出）、`internal/session`（Pixiv 重放执行器、FANBOX 租约包装与账号/账号池/会话的生产构造函数）、`internal/display`（终端文本渲染、身份格式、上游文本转义）、`internal/pixiv/target`（目标解析）。这些包不导入 `internal/cli` 或 `internal/mcpserver`。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import`、标记为离线的命令（例如 `whoami`）与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
 - **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool 解析变更时，手动核对 `--help=false` 等重复覆盖形式仍遵守 secret 导出边界。
 
@@ -132,8 +127,8 @@ CLI 组合根。`internal/cli` 包将命令树装配与生产依赖构造分开�
 | 位置 | 负责 |
 | --- | --- |
 | `internal/logging/` | 文本 handler 输出 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]`，按终端决定是否着色，转义不可打印文本并缩进多行值；JSON handler 带 `source`；ctx 调用信息与共享属性键也在本包；内部恢复点经 `logging.From(ctx)` 取得 logger  SDK 创建位置通过私有字段传递；传输属性只提取 typed cause 的 `op`、`net`、`address` 与已知 `errno` 名，不读取原始错误文本。 |
-| `internal/cli/execution.go` | 创建 stderr logger 和调用上下文；JSON 以 ERROR、文本以 DEBUG 记录 `Command failed`，存在 SDK 错误时附加私有 `origin`；保留 stderr 错误输出 |
-| `internal/cli/composition_options.go`、`composition_mcp.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
+| `internal/cli/root.go` | 经 `internal/logging` 创建 stderr logger 和调用上下文；JSON 以 ERROR、文本以 DEBUG 记录 `Command failed`，存在 SDK 错误时附加私有 `origin`；保留 stderr 错误输出 |
+| `internal/cli/mcp/runtime.go`、`internal/session/options.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
 | `internal/mcpserver/toolrun/toolrun.go` | 共用的 `Scope` / `AddTool` 包装，绑定工具名与调用 ID；错误或 `isError` 结果记录一次受控的失败摘要 |
 | `internal/pixiv/api/`（含 `oauth/`）、`internal/fanbox/api/` | 持有构造时传入的 logger，在实际请求与决策处记录结果 |
 
@@ -148,7 +143,7 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 | `internal/environment` | 只供 CLI 的执行环境：流、stdin codec、flag 绑定、usage 标记、生命周期标注 | 产品协议或账号语义；导入 `internal/mcpserver` |
 | `internal/display` | 只供 CLI 的终端文本：实体列表行、详情卡片、`用户名 (UID)`、上游转义；并入原 `plaintext` | JSON/NDJSON 输出；只服务一个命令的渲染 |
 | `internal/pixiv/searchfilter` | 作品本地分级/内容类型规范化，客户端侧 `x_restrict` 与类型匹配，隐藏原始值的 cursor 上下文 | 把分级映射为未确认的上游 `x_restrict` 参数；持有 client、凭据或适配器（字段可用性与已确认的 wire 参数由各命令负责） |
-| `internal/lifecycle` | 与协议无关的生命周期、Lease、Attempt | 负责账号选择、凭据或重放策略 |
+| `internal/lifecycle` | 与协议无关的生命周期、`Lease`、`Attempt`、`CloseState` | 负责账号选择、凭据或重放策略 |
 | `internal/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
 | `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count、origin、op、net、address、errno；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
@@ -186,11 +181,11 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 
 唯一跨越常规 SDK 边界的产品能力。
 
-只有 `internal/cli` 组合根中的 `composition_search.go` 导入 `internal/reversesearch/assembly`。CLI 命令 owner 与 MCP owner 可以使用顶层 `internal/reversesearch` 契约；它们不得导入 `assembly` 或 `saucenao`、`ascii2d` 等 provider 包。
+只有 `internal/cli/root.go` 导入 `internal/reversesearch/assembly`。CLI 命令 owner 与 MCP owner 可以使用顶层 `internal/reversesearch` 契约；它们不得导入 `assembly` 或 `saucenao`、`ascii2d` 等 provider 包。
 
 ```mermaid
 flowchart LR
-    COMP["internal/cli/composition_search.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
+    COMP["internal/cli/root.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
     ASM --> SN["reversesearch/saucenao"]
     ASM --> A2["reversesearch/ascii2d"]
     CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>（契约 + Service）"]
