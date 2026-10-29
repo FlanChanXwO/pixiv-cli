@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -49,13 +48,18 @@ func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
 }
 
 func TestRunArtworksClosesSpoolOnReplay(t *testing.T) {
+	// 把临时目录隔离到本测试内，避免与其他并行测试创建的同名 spool 冲突。
+	tempDir := t.TempDir()
+	t.Setenv("TMPDIR", tempDir)
+	t.Setenv("TMP", tempDir)
+	t.Setenv("TEMP", tempDir)
 	var out bytes.Buffer
 	runner := session.NewRunner(&out, func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		_, err := attempt(ctx, nil)
 		return err
 	})
 	attempts := 0
-	before := tempNames(t)
+	before := spoolNames(t, tempDir)
 	err := record.RunArtworks(context.Background(), runner, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.ArtworkList{
 		Fetch: func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			attempts++
@@ -68,16 +72,16 @@ func TestRunArtworksClosesSpoolOnReplay(t *testing.T) {
 	if !errors.Is(err, retryableErr) || out.Len() != 0 {
 		t.Fatalf("err = %v, stdout = %q; want the retryable failure and empty stdout", err, out.String())
 	}
-	if after := tempNames(t); len(after) != len(before) {
+	if after := spoolNames(t, tempDir); len(after) != len(before) {
 		t.Fatalf("spool files leaked: before=%v after=%v", before, after)
 	}
 }
 
 var retryableErr = errors.New("retry")
 
-func tempNames(t *testing.T) []string {
+func spoolNames(t *testing.T, dir string) []string {
 	t.Helper()
-	names, err := filepath.Glob(filepath.Join(os.TempDir(), "pixiv-cli-json-*.tmp"))
+	names, err := filepath.Glob(filepath.Join(dir, "pixiv-cli-json-*.tmp"))
 	if err != nil {
 		t.Fatal(err)
 	}
