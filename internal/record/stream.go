@@ -1,4 +1,4 @@
-package input
+package record
 
 import (
 	"bufio"
@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
 
 // PipelineDiagnosticError 表示错误已经按管道契约写入 stderr。它让根命令保留
@@ -64,7 +62,7 @@ func FatalRecordPipeline(err error) error { return &fatalRecordPipelineError{err
 
 // ConsumeNDJSONRecords 逐行解析 NDJSON 并顺序处理记录。它不使用 Scanner，避免
 // 合法的大记录受隐藏 token 限制；每次回调结束后才读取下一行，以便取消后不启动新任务。
-func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation string, failFast bool, consume func(context.Context, record.Record) error) error {
+func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation string, failFast bool, consume func(context.Context, Record) error) error {
 	reader := bufio.NewReader(in)
 	lineNumber := int64(0)
 	failed := false
@@ -81,7 +79,7 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 		}
 		if len(line) > 0 {
 			lineNumber++
-			parsedRecord, recordErr := record.ParseRecordJSON(bytes.TrimSpace(line))
+			parsedRecord, recordErr := ParseRecordJSON(bytes.TrimSpace(line))
 			if recordErr != nil {
 				failed = true
 				if err := writeRecordDiagnostic(errOut, operation, lineNumber, line, "invalid_record", recordErr); err != nil {
@@ -174,8 +172,8 @@ func diagnosticRecordIdentity(line []byte) (string, string) {
 }
 
 // RequiredRecordID 取出记录的正整数 ID；缺失、非数字或非正数都返回错误。
-func RequiredRecordID(value record.Record) (int64, error) {
-	id, err := PositiveInt64(value.ID(), "record id")
+func RequiredRecordID(value Record) (int64, error) {
+	id, err := parsePositiveInt64(value.ID(), "record id")
 	if err != nil {
 		return 0, fmt.Errorf("record id must be a positive integer: %w", err)
 	}

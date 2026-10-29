@@ -16,11 +16,11 @@ Name a package, file, type, function, or field for what it is and what it owns, 
 
 | Rule | Avoid | Prefer |
 | --- | --- | --- |
-| No vague names | `Deps`, `Dependencies`, `Data`, `Info`, `Facade`, `Manager`, `Helper`, `Util`, `Common`, `Base`, `Impl`, `Wrapper` | `pixivcmd.Runner`, `command.Env`, `session.Pixiv`; rename `Manager` for its actual job |
-| No dependency bags | one `Dependencies` struct per command, filled by the root and passed down | `download.New(env command.Env, session *session.Pixiv)`; split an owner that needs too many dependencies |
+| No vague names | `Deps`, `Dependencies`, `Data`, `Info`, `Facade`, `Manager`, `Helper`, `Util`, `Common`, `Base`, `Impl`, `Wrapper` | `session.Runner`, `environment.Env`, `session.Pixiv`; rename `Manager` for its actual job |
+| No dependency bags | one `Dependencies` struct per command, filled by the root and passed down | `download.New(env environment.Env, session *session.Pixiv)`; split an owner that needs too many dependencies |
 | No function field behind a same-named forwarding method, no `Fn` suffix | `PromptSecretFn func(string) (string, error)` plus `func (d Data) PromptSecret` | `func (e Env) PromptSecret(message string) (string, error)`, or a concrete type or narrow interface for behavior that must vary |
 | No context the package name already gives | `session.PixivSession`, `filename.FilenameData` | `session.Pixiv`, `filename.Fields` |
-| One name per capability | `UsageError` and `Usage`, `PrintJSON` and `WriteJSON` side by side | one name on `command.Env` |
+| One name per capability | `UsageError` and `Usage`, `PrintJSON` and `WriteJSON` side by side | one name on `environment.Env` |
 
 These rules apply to new code only (since 2026-10-26). Existing names are not renamed for them, and public SDK names are not broken again for them.
 
@@ -37,7 +37,7 @@ Exception: when one file must import both products' package in the same role, al
 | Scope of the declaration | Placement | Example |
 | --- | --- | --- |
 | Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/models.go` (public entities), `sdk/pixiv/artwork_wire.go` (artwork response shape), `sdk/pixiv/response.go` (response shapes shared across domains), `internal/storage/database/rows.go` (row structs), `errors.go` (error codes) |
-| Serves one behavior | Beside the function that uses it, above it | `internal/mcpserver/pixiv/tools/users.go`: `userArtworksIn`; `internal/cli/internal/pixivcmd/list.go`: `ArtworkList` |
+| Serves one behavior | Beside the function that uses it, above it | `internal/mcpserver/pixiv/tools/users.go`: `userArtworksIn`; `internal/record/list.go`: `ArtworkList` |
 | Methods of a type (`String`, `Valid`, `MarshalJSON`, …) | Same file as the type | `sdk/resource.go`: `Resource.MarshalJSON` |
 
 - Do not split one type per file.
@@ -53,7 +53,7 @@ Exception: when one file must import both products' package in the same role, al
 
 `name.go` means "start reading this package here". It is not a storage room.
 
-New code goes where its owner already lives, checked in this order: the directory of the one command it serves; the shared CLI package for that product or for all commands; the MCP product's `tools` package; the public SDK domain file, with upstream protocol detail in `internal/pixiv/api` or `internal/fanbox/api`; otherwise a new package named for the responsibility. If the package, file, or type name no longer summarizes its contents, the code is in the wrong place. Never create `common`, `shared`, `util`, or `misc` locations.
+New code goes where its owner already lives, checked in this order: the directory of the one command it serves; the existing module-level owner for the mechanism — `internal/environment` for the execution environment and stdin codecs, `internal/pagination` for logical pagination, `internal/record` for record projection and list/record-stream output, `internal/session` for account-bound SDK lifecycle wrappers, `internal/display` for shared terminal text, `internal/pixiv/target` for Pixiv target resolution; the MCP product's `tools` package; the public SDK domain file, with upstream protocol detail in `internal/pixiv/api` or `internal/fanbox/api`; otherwise a new package named for the responsibility. `internal/cli` holds only command directories and root composition files. If the package, file, or type name no longer summarizes its contents, the code is in the wrong place. Never create `common`, `shared`, `util`, or `misc` locations.
 
 ## Named constants
 
@@ -155,9 +155,11 @@ func (r Resource) MarshalJSON() ([]byte, error) {
 ```
 
 ```go
-// internal/cli/internal/command/env.go：Env 由组合根构造，WrapUsage 一定存在；
+// internal/environment/environment.go：Env 由组合根构造，WrapUsage 一定存在；
 // 判 nil 只会在装配写错时成立，却会把用法错误的退出码悄悄丢掉。
-func (e Env) UsageError(err error) error { return e.WrapUsage(err) }
+func (e Env) ParsePlan(cmd *cobra.Command, limit, page int) (pagination.PagePlan, error) {
+	return pagination.ParsePlan(limit, page, cmd.Flags().Changed("limit"), cmd.Flags().Changed("page"))
+}
 ```
 
 ## Program output

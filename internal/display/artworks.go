@@ -1,12 +1,10 @@
-package pixivcmd
+package display
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -79,84 +77,42 @@ func printArtworkLine(out io.Writer, item pixiv.Artwork, safe bool) error {
 	for _, tag := range item.Tags {
 		name := tag.Name
 		if safe {
-			name = plaintext.SafeLine(name)
+			name = SafeLine(name)
 		}
 		tags = append(tags, name)
 	}
 	title, author := item.Title, item.User.Name
 	if safe {
-		title, author = plaintext.SafeLine(title), plaintext.SafeLine(author)
+		title, author = SafeLine(title), SafeLine(author)
 	}
 	_, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, title, author, item.TotalBookmarks, item.TotalViews, strings.Join(tags, ","))
 	return err
 }
 
-// PrintNovels 每本小说输出一行，格式为 ID、标题和作者。
-func PrintNovels(out io.Writer, items []pixiv.Novel) error {
-	return printNovels(out, items, false)
-}
-
-// PrintNovelsSafe 转义小说标题和作者，供直接回显上游文本的用户命令使用。
-func PrintNovelsSafe(out io.Writer, items []pixiv.Novel) error {
-	return printNovels(out, items, true)
-}
-
-func printNovels(out io.Writer, items []pixiv.Novel, safe bool) error {
-	for _, item := range items {
-		title, author := item.Title, item.User.Name
-		if safe {
-			title, author = plaintext.SafeLine(title), plaintext.SafeLine(author)
+// PrintArtworkDetail 输出作品详情卡片；上游文本原样进入终端。
+func PrintArtworkDetail(out io.Writer, item pixiv.Artwork) error {
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		tags = append(tags, tag.Name)
+	}
+	url := ""
+	if item.ID > 0 {
+		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", item.ID)
+	}
+	for _, line := range []string{
+		fmt.Sprintf("url: %s\n", url), fmt.Sprintf("id: %d\n", item.ID), fmt.Sprintf("title: %s\n", item.Title),
+		fmt.Sprintf("author: %s (%d)\n", item.User.Name, item.User.ID), fmt.Sprintf("type: %s\n", string(item.Kind)),
+		fmt.Sprintf("page_count: %d\n", item.PageCount), fmt.Sprintf("bookmarks: %d\n", item.TotalBookmarks),
+		fmt.Sprintf("views: %d\n", item.TotalViews), fmt.Sprintf("tags: %s\n", strings.Join(tags, ",")),
+	} {
+		if _, err := io.WriteString(out, line); err != nil {
+			return err
 		}
-		if _, err := fmt.Fprintf(out, "%d %s — %s\n", item.ID, title, author); err != nil {
+	}
+	if caption := htmlPlainText(item.Caption); caption != "" {
+		if _, err := fmt.Fprintf(out, "caption:\n%s\n", caption); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// PrintUserPreviews 每个用户预览输出一行，格式为 ID 和用户名。
-func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
-	return printUserPreviews(out, users, false)
-}
-
-// PrintUserPreviewsSafe 转义用户名，供直接回显上游文本的用户命令使用。
-func PrintUserPreviewsSafe(out io.Writer, users []pixiv.UserPreview) error {
-	return printUserPreviews(out, users, true)
-}
-
-func printUserPreviews(out io.Writer, users []pixiv.UserPreview, safe bool) error {
-	for _, item := range users {
-		name := item.User.Name
-		if safe {
-			name = plaintext.SafeLine(name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, name); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// WriteJSONLine 输出一个紧凑 JSON 值并追加换行。
-func WriteJSONLine(out io.Writer, value any) error {
-	body, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	if _, err := out.Write(body); err != nil {
-		return err
-	}
-	_, err = io.WriteString(out, "\n")
-	return err
-}
-
-// WriteJSONValue 输出一个两空格缩进的 JSON 值并追加换行。
-func WriteJSONValue(out io.Writer, value any) error {
-	body, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	body = append(body, '\n')
-	_, err = out.Write(body)
-	return err
 }

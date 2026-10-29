@@ -1,8 +1,8 @@
-// Package resolver 按命令声明的契约，把文本值或结构化记录解析成 Pixiv 目标。
+// Package target 按命令声明的契约，把文本值或结构化记录解析成 Pixiv 目标。
 //
 // 包的组成：[Resolve] 应用一份 [Contract] 并返回 [Target]。
 // 只有契约显式提供 [BareIDPolicy] 时才会为裸 ID 发起探测请求，其余情况不做网络 I/O。
-package resolver
+package target
 
 import (
 	"context"

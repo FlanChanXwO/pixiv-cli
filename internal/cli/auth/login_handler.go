@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -61,7 +61,7 @@ func (a controller) newAccountURLCallbackCommand() *cobra.Command {
 		},
 	}
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.HiddenCallback())
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }
 
@@ -81,6 +81,6 @@ func (a controller) newAccountURLHandlerInstallCommand() *cobra.Command {
 		},
 	}
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.HiddenCallback())
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }

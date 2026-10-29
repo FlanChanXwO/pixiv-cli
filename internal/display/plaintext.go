@@ -1,8 +1,4 @@
-// Package plaintext 把上游 HTML 与文本转成可安全打印到终端的输出。
-//
-// [SafeLine] 转义换行、ANSI ESC 与其他控制字符，[HTMLPlainText] 去掉标记并保留段落
-// 换行；JSON 输出由 encoding/json 自行转义，不经过本包。
-package plaintext
+package display
 
 import (
 	"strconv"
@@ -32,9 +28,9 @@ func safeLines(value string) string {
 	return strings.Join(lines, "\n")
 }
 
-// HTMLPlainText 把 HTML 片段转成终端可读的纯文本，并用 safeLines 转义结果。输出 JSON 的
+// htmlPlainText 把 HTML 片段转成终端可读的纯文本，并用 safeLines 转义结果。输出 JSON 的
 // 调用方保留原始标记，只在展示层压平。
-func HTMLPlainText(raw string) string {
+func htmlPlainText(raw string) string {
 	if raw == "" {
 		return ""
 	}

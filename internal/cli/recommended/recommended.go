@@ -8,19 +8,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type options struct {
-	command.Options
+	environment.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -32,20 +34,20 @@ type options struct {
 const recommendationKindAll = "all"
 
 type commandRunner struct {
-	env    command.Env
-	runner pixivcmd.Runner
+	env    environment.Env
+	runner session.Runner
 }
 
 // New 构造 `pixiv recommended` 命令；--type all 需要多段输出，只在全部成功后才提交。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
 	opts := options{contentType: string(pixiv.SearchContentTypeAll)}
 	cmd := &cobra.Command{
 		Use:   "recommended [KIND]",
 		Short: "Show personalized recommendations",
 		Args:  env.MaxArgs(1, "pixiv recommended [KIND] [options]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kind, err := resolveKind(cmd, args, &opts, a.env.UsageError)
+			kind, err := resolveKind(cmd, args, &opts, a.env.WrapUsage)
 			if err != nil {
 				return err
 			}
@@ -53,12 +55,12 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 		},
 	}
 	env.BindCommonFlags(cmd, &opts.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
-	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	environment.BindNDJSONFlag(cmd, &opts.ndjson)
+	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user, all")
 	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter applied after recommendation pagination: all, illust, manga")
 	env.BindTextValue(cmd, 0, 1, 0)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -75,18 +77,18 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	if kind == "" {
 		return "", errors.New("recommended requires KIND or --type")
 	}
-	if cmd.Flags().Changed("type") && kind != string(resolver.ResultKindArtwork) && kind != string(resolver.ResultKindNovel) && kind != string(resolver.ResultKindUser) && kind != recommendationKindAll {
+	if cmd.Flags().Changed("type") && kind != string(target.ResultKindArtwork) && kind != string(target.ResultKindNovel) && kind != string(target.ResultKindUser) && kind != recommendationKindAll {
 		return "", usage(errors.New("type must be one of artwork, novel, user, all"))
 	}
 	if cmd.Flags().Changed("content-type") {
-		if kind != string(resolver.ResultKindArtwork) {
+		if kind != string(target.ResultKindArtwork) {
 			return "", usage(errors.New("--content-type is only supported when --type artwork"))
 		}
 		if opts.contentType != string(pixiv.SearchContentTypeAll) && opts.contentType != string(pixiv.SearchContentTypeIllust) && opts.contentType != string(pixiv.SearchContentTypeManga) {
 			return "", usage(errors.New("content-type must be one of all, illust, manga"))
 		}
 	}
-	if kind == string(resolver.ResultKindArtwork) {
+	if kind == string(target.ResultKindArtwork) {
 		if opts.contentType == string(pixiv.SearchContentTypeManga) {
 			return string(pixiv.SearchContentTypeManga), nil
 		}
@@ -99,21 +101,21 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 	if !validKind(kind) {
 		return errors.New("recommendation kind must be one of: all, illust, manga, novel, user")
 	}
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(jsonOverride)
+		jsonOut, err = a.env.ResolveJSON(jsonOverride)
 		if err != nil {
 			return err
 		}
@@ -140,14 +142,14 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 }
 
 func validKind(kind string) bool {
-	return kind == recommendationKindAll || kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) || kind == string(resolver.ResultKindNovel) || kind == string(resolver.ResultKindUser)
+	return kind == recommendationKindAll || kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) || kind == string(target.ResultKindNovel) || kind == string(target.ResultKindUser)
 }
 
-func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, plan command.Plan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
+func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	if kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) {
-		jsonKey := string(pixivcmd.JSONKeyIllusts)
+		jsonKey := string(record.JSONKeyIllusts)
 		if kind == string(pixiv.SearchContentTypeManga) {
-			jsonKey = string(pixivcmd.JSONKeyManga)
+			jsonKey = string(record.JSONKeyManga)
 		}
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
@@ -156,13 +158,13 @@ func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, pla
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner.RunArtworks(ctx, request, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Key: pixivcmd.JSONKey(jsonKey), Heading: func() string {
+		return record.RunArtworks(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Key: record.JSONKey(jsonKey), Heading: func() string {
 			return fmt.Sprintf("recommended %s", kind)
 		}, Fetch: fetch, PostFilter: func(items []pixiv.Artwork) []pixiv.Artwork {
 			return filterRecommendedArtworks(items, artworkFilter)
-		}, Print: func(items []pixiv.Artwork, start int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
+		}, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
-	if kind == string(resolver.ResultKindNovel) {
+	if kind == string(target.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 			if err != nil {
@@ -170,7 +172,7 @@ func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, pla
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner.RunNovels(ctx, request, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "recommended novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "recommended novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
@@ -179,7 +181,7 @@ func (a commandRunner) runOne(ctx context.Context, request pixivcmd.Request, pla
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunUsers(ctx, request, plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.UserList{Heading: func() string { return "recommended users" }, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return pixivcmd.PrintUserPreviews(a.env.Out, items) }})
+	return record.RunUsers(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string { return "recommended users" }, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func resolveArtworkFilter(kind, contentType string) (searchfilter.Filter, error) {
@@ -214,7 +216,7 @@ func fetchRecommendedArtworks(client *pixiv.Client, filter searchfilter.Filter) 
 
 // runAllNDJSON 保留 all 的既有类别顺序。每写出一条记录即标记提交，因此账号池只会
 // 在任何下游可见输出之前重放 429。
-func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan command.Plan) (bool, error) {
+func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan pagination.PagePlan) (bool, error) {
 	encoder := json.NewEncoder(a.env.Out)
 	committed := false
 	writeArtworks := func(items []pixiv.Artwork) error {
@@ -231,7 +233,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 		return nil
 	}
 	var visualItems []pixiv.Artwork
-	if err := command.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
+	if err := pagination.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {
@@ -242,7 +244,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 			return committed, err
 		}
 	}
-	if err := command.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -263,7 +265,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 	}); err != nil {
 		return committed, err
 	}
-	err := command.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err

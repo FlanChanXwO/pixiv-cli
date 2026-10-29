@@ -9,8 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )
 
@@ -63,17 +62,17 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindAuthImportInput(cmd, &input)
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions, input authImportInput) error {
 	if len(input.bundle) > 0 {
-		services, err := a.services()
+		service, err := a.accountService()
 		if err != nil {
 			return err
 		}
-		result, err := services.Account.importBundle(cmd.Context(), input.bundle)
+		result, err := service.importBundle(cmd.Context(), input.bundle)
 		if err != nil {
 			return err
 		}
@@ -86,7 +85,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		fmt.Fprintf(a.env.Out, "default uid: %d\n", result.DefaultUserID)
 		return nil
 	}
-	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
+	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
@@ -94,11 +93,11 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	if err != nil {
 		return err
 	}
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
-	result, err := services.Account.importAccount(cmd.Context(), accountImportRequest{
+	result, err := service.importAccount(cmd.Context(), accountImportRequest{
 		TokenInput:         tokenInput,
 		HTTPSProxyOverride: proxyOverride,
 	})
@@ -119,14 +118,14 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, target *authImportIn
 	validate := cmd.Args
 	cmd.Args = func(ctxCmd *cobra.Command, args []string) error {
 		if len(args) == 0 && !a.env.CanPrompt() {
-			if _, err := command.ProxyOverride(ctxCmd, accountImportOptions{}.ProxyOptions); err != nil {
+			if _, err := environment.ProxyOverride(ctxCmd, accountImportOptions{}.ProxyOptions); err != nil {
 				return err
 			}
 			body, err := io.ReadAll(a.env.In)
 			if err != nil {
 				return fmt.Errorf("read auth import stdin: %w", err)
 			}
-			first, hasValue := input.FirstNonWhitespace(body)
+			first, hasValue := environment.FirstNonWhitespace(body)
 			if hasValue && first == '{' {
 				if !json.Valid(body) {
 					return errors.New("invalid auth export bundle JSON")
@@ -135,8 +134,8 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, target *authImportIn
 					return errors.New("bundle import cannot be combined with --proxy or --no-proxy")
 				}
 				*target = authImportInput{bundle: body}
-				command.SetOffline(ctxCmd)
-				command.Bind(ctxCmd, command.AuthBundleImport())
+				environment.SetOffline(ctxCmd)
+				environment.Bind(ctxCmd, environment.AuthBundleImport())
 			} else {
 				token, err := readRefreshTokenInput(bytes.NewReader(body))
 				if err != nil {

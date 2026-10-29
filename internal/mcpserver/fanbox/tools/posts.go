@@ -124,8 +124,8 @@ type creatorSummaryOut struct {
 }
 
 type creatorsOut struct {
-	Creators   []creatorSummaryOut   `json:"creators"`
-	Pagination toolrun.PaginationOut `json:"pagination"`
+	Creators   []creatorSummaryOut      `json:"creators"`
+	Pagination pagination.PaginationOut `json:"pagination"`
 }
 
 func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mcp.CallToolResult, creatorsOut, error) {
@@ -156,7 +156,7 @@ func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mc
 	for _, item := range items {
 		creatorsOut.Creators = append(creatorsOut.Creators, creatorSummaryOut{ID: item.ID, Name: item.Name, Icon: outputs.ResourceOutFrom(item.Icon.Resource)})
 	}
-	creatorsOut.Pagination = toolrun.ListPagination(plan, input.Limit, len(creatorsOut.Creators), hasMore)
+	creatorsOut.Pagination = pagination.ListPagination(plan, input.Limit, len(creatorsOut.Creators), hasMore)
 	return outputs.Result(false, fmt.Sprintf("Retrieved %d creators.", len(creatorsOut.Creators))), creatorsOut, nil
 }
 
@@ -313,7 +313,7 @@ type resolveURLIn struct {
 }
 
 // postList 让 traversal 负责分页，同时保留 FANBOX 自己的列表 envelope。
-func postList(ctx context.Context, limit *int, plan toolrun.ListPlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) (*mcp.CallToolResult, outputs.PostsOut, error) {
+func postList(ctx context.Context, limit *int, plan pagination.PagePlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) (*mcp.CallToolResult, outputs.PostsOut, error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	items, more, err := collectPages(ctx, plan, fetch)
 	if err != nil {
@@ -322,11 +322,11 @@ func postList(ctx context.Context, limit *int, plan toolrun.ListPlan, fetch func
 	for _, post := range items {
 		out.Posts = append(out.Posts, outputs.PostOutFrom(post))
 	}
-	out.Pagination = toolrun.ListPagination(plan, limit, len(out.Posts), more)
+	out.Pagination = pagination.ListPagination(plan, limit, len(out.Posts), more)
 	return outputs.Result(false, fmt.Sprintf("Retrieved %d posts.", len(out.Posts))), out, nil
 }
 
-func collectPages[T any](ctx context.Context, plan toolrun.ListPlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) ([]T, bool, error) {
+func collectPages[T any](ctx context.Context, plan pagination.PagePlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) ([]T, bool, error) {
 	items, result, err := pagination.CollectPagesFrom(ctx, pagination.PagePlan{Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch}, sdk.Cursor{}, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, sdk.Cursor{}, err

@@ -3,7 +3,8 @@
 // 本包只处理 execute 生命周期、分页计划和 opaque cursor，不负责账号选择、网络策略、
 // 过滤语义或具体产品的错误映射。
 //
-// 包的组成：[TraversePages] 与 [CollectPagesFrom] 按 [PagePlan] 遍历单个 cursor 链，
+// 包的组成：[ParsePlan] 校验 --limit/--page，[PagePlan] 表示逻辑分页请求；
+// [TraversePages] 与 [CollectPagesFrom] 按 [PagePlan] 遍历单个 cursor 链，
 // [CollectFilteredPagesFrom] 在分页前过滤，[CollectStreams] 合并多条 [Stream]；
 // [TraverseWith] 系列把以上能力接到可重放的 execute 边界上。
 package pagination
@@ -21,8 +22,10 @@ type Cursor interface {
 	String() string
 }
 
-// PagePlan 描述逻辑分页请求。Limit 为 0 时遍历全部结果。
+// PagePlan 描述逻辑分页请求。Page 是 1-based 逻辑页，只用于输出；
+// Limit 为 0 时遍历全部结果。
 type PagePlan struct {
+	Page     int
 	Skip     int
 	Limit    int
 	OneBatch bool

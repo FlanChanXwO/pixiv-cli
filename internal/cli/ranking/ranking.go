@@ -6,16 +6,18 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type options struct {
-	command.Options
+	environment.Options
 	ndjson bool
 	typ    string
 	mode   string
@@ -25,14 +27,14 @@ type options struct {
 }
 
 type commandRunner struct {
-	env    command.Env
-	runner pixivcmd.Runner
+	env    environment.Env
+	runner session.Runner
 }
 
 // New 构造 `pixiv ranking` 命令，作品和小说排行共用同一套分页与输出。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec)}
-	options := options{typ: string(resolver.ResultKindArtwork), mode: string(pixiv.RankingModeDay)}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
+	options := options{typ: string(target.ResultKindArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show artwork or novel ranking",
@@ -42,45 +44,45 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 		},
 	}
 	env.BindCommonFlags(cmd, &options.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &options.ndjson)
+	environment.BindNDJSONFlag(cmd, &options.ndjson)
 	flags := cmd.Flags()
 	flags.StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork or novel")
 	flags.StringVar(&options.mode, "mode", options.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
 	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD (artwork ranking only)")
-	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
+	environment.BindListFlags(cmd, &options.limit, &options.page)
 	env.BindNoInput(cmd)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a commandRunner) run(cmd *cobra.Command, opts options) error {
-	if opts.typ != string(resolver.ResultKindArtwork) && opts.typ != string(resolver.ResultKindNovel) {
+	if opts.typ != string(target.ResultKindArtwork) && opts.typ != string(target.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if opts.typ == string(resolver.ResultKindNovel) && cmd.Flags().Changed("date") {
+	if opts.typ == string(target.ResultKindNovel) && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	format := pixivcmd.FormatOf(jsonOut, ndjson)
-	if opts.typ == string(resolver.ResultKindNovel) {
+	format := record.FormatOf(jsonOut, ndjson)
+	if opts.typ == string(target.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
 			if err != nil {
@@ -88,10 +90,10 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner.RunNovels(cmd.Context(), request, plan, format, pixivcmd.NovelList{
+		return record.RunNovels(cmd.Context(), a.runner, request, plan, format, record.NovelList{
 			Heading: fmt.Sprintf("%s novel ranking", opts.mode),
 			Fetch:   fetch,
-			Print:   func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) },
+			Print:   func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) },
 		})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
@@ -101,11 +103,11 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunArtworks(cmd.Context(), request, plan, format, pixivcmd.ArtworkList{
-		Heading: pixivcmd.Static(fmt.Sprintf("%s ranking", opts.mode)),
+	return record.RunArtworks(cmd.Context(), a.runner, request, plan, format, record.ArtworkList{
+		Heading: record.StaticHeading(fmt.Sprintf("%s ranking", opts.mode)),
 		Fetch:   fetch,
 		Print: func(items []pixiv.Artwork, start int) error {
-			return pixivcmd.PrintArtworksRanked(a.env.Out, items, start)
+			return display.PrintArtworksRanked(a.env.Out, items, start)
 		},
 	})
 }

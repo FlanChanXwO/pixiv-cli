@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/search"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
@@ -35,8 +35,8 @@ func TestSearchOutputContract(t *testing.T) {
 	for _, format := range []string{"text", "json", "ndjson"} {
 		t.Run(format, func(t *testing.T) {
 			var output, diagnostics bytes.Buffer
-			env := command.Env{In: strings.NewReader(""), Out: &output, Err: &diagnostics, ResolveJSON: func(override *bool) (bool, error) { return override != nil && *override, nil }}
-			cmd := search.New(env, func(ctx context.Context, _ pixivcmd.Request, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			env := environment.Env{In: strings.NewReader(""), Out: &output, Err: &diagnostics, ResolveJSON: func(override *bool) (bool, error) { return override != nil && *override, nil }}
+			cmd := search.New(env, func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 				_, err := attempt(ctx, client)
 				return err
 			}, nil)

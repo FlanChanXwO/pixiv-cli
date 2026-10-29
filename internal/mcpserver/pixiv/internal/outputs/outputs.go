@@ -11,7 +11,7 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -41,7 +41,7 @@ func Result(out Records) *mcp.CallToolResult {
 
 // Error 返回 isError 的实体列表结果，并保留空的 records 与第一页分页。
 func Error(err error) (*mcp.CallToolResult, Records, error) {
-	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	out := Records{Records: []record.Record{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
@@ -88,7 +88,7 @@ func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 }
 
 // RecommendedPage 把一条推荐流的分页包成指针，供 RecommendedPagination 使用。
-func RecommendedPage(plan toolrun.ListPlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
+func RecommendedPage(plan pagination.PagePlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
 	value := toolhost.ListPagination(plan, limit, returned, more)
 	return &value
 }
@@ -128,7 +128,7 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 返回 isError 的评论结果，列表为空、分页为第一页。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
@@ -179,7 +179,7 @@ func BookmarkTagsResult(out BookmarkTags) *mcp.CallToolResult {
 
 // BookmarkTagsError 返回 isError 的收藏标签结果，列表为空、分页为第一页。
 func BookmarkTagsError(err error) (*mcp.CallToolResult, BookmarkTags, error) {
-	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	out := BookmarkTags{Tags: []pixiv.BookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
@@ -205,7 +205,7 @@ func BookmarkTagsAllResult(out BookmarkTagsAll) *mcp.CallToolResult {
 
 // BookmarkTagsAllError 返回 isError 的结果，标签为空数组、分页为第一页。
 func BookmarkTagsAllError(err error) (*mcp.CallToolResult, BookmarkTagsAll, error) {
-	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: toolrun.PaginationOut{Page: 1}}}
+	out := BookmarkTagsAll{Tags: []TypedBookmarkTag{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 

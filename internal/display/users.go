@@ -1,24 +1,46 @@
-package user
+package display
 
 import (
 	"fmt"
 	"io"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// printUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制
+// PrintUserPreviews 每个用户预览输出一行，格式为 ID 和用户名。
+func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
+	return printUserPreviews(out, users, false)
+}
+
+// PrintUserPreviewsSafe 转义用户名，供直接回显上游文本的用户命令使用。
+func PrintUserPreviewsSafe(out io.Writer, users []pixiv.UserPreview) error {
+	return printUserPreviews(out, users, true)
+}
+
+func printUserPreviews(out io.Writer, users []pixiv.UserPreview, safe bool) error {
+	for _, item := range users {
+		name := item.User.Name
+		if safe {
+			name = SafeLine(name)
+		}
+		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PrintUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制
 // 字节破坏终端的逐行协议。
-func printUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
+func PrintUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
 	for _, item := range items {
-		line := fmt.Sprintf("%d %s", item.User.ID, plaintext.SafeLine(item.User.Name))
+		line := fmt.Sprintf("%d %s", item.User.ID, SafeLine(item.User.Name))
 		if item.User.Account != "" {
-			line += " (@" + plaintext.SafeLine(item.User.Account) + ")"
+			line += " (@" + SafeLine(item.User.Account) + ")"
 		}
 		if item.User.Comment != "" {
-			line += " — " + plaintext.SafeLine(item.User.Comment)
+			line += " — " + SafeLine(item.User.Comment)
 		}
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err
@@ -27,30 +49,30 @@ func printUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
 	return nil
 }
 
-// printUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
+// PrintUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK DTO。
-func printUserDetail(out io.Writer, result pixiv.UserDetail) error {
+func PrintUserDetail(out io.Writer, result pixiv.UserDetail) error {
 	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
 	if result.User.Name != "" {
-		lines = append(lines, fmt.Sprintf("name: %s", plaintext.SafeLine(result.User.Name)))
+		lines = append(lines, fmt.Sprintf("name: %s", SafeLine(result.User.Name)))
 	}
 	if result.User.Account != "" {
-		lines = append(lines, fmt.Sprintf("account: %s", plaintext.SafeLine(result.User.Account)))
+		lines = append(lines, fmt.Sprintf("account: %s", SafeLine(result.User.Account)))
 	}
 	if result.User.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment: %s", plaintext.SafeLine(result.User.Comment)))
+		lines = append(lines, fmt.Sprintf("comment: %s", SafeLine(result.User.Comment)))
 	}
 	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
-		lines = append(lines, fmt.Sprintf("webpage: %s", plaintext.SafeLine(webpage)))
+		lines = append(lines, fmt.Sprintf("webpage: %s", SafeLine(webpage)))
 	}
 	if result.Profile.Region != "" {
-		lines = append(lines, fmt.Sprintf("region: %s", plaintext.SafeLine(result.Profile.Region)))
+		lines = append(lines, fmt.Sprintf("region: %s", SafeLine(result.Profile.Region)))
 	}
 	if result.Profile.CountryCode != "" {
-		lines = append(lines, fmt.Sprintf("country: %s", plaintext.SafeLine(result.Profile.CountryCode)))
+		lines = append(lines, fmt.Sprintf("country: %s", SafeLine(result.Profile.CountryCode)))
 	}
 	if result.Profile.Job != "" {
-		lines = append(lines, fmt.Sprintf("job: %s", plaintext.SafeLine(result.Profile.Job)))
+		lines = append(lines, fmt.Sprintf("job: %s", SafeLine(result.Profile.Job)))
 	}
 	lines = append(lines,
 		fmt.Sprintf("artworks: %d", result.Profile.TotalIllusts),
@@ -76,7 +98,7 @@ func printUserDetail(out io.Writer, result pixiv.UserDetail) error {
 		{"workspace comment", result.Workspace.Comment},
 	} {
 		if field.value != "" {
-			lines = append(lines, fmt.Sprintf("%s: %s", field.name, plaintext.SafeLine(field.value)))
+			lines = append(lines, fmt.Sprintf("%s: %s", field.name, SafeLine(field.value)))
 		}
 	}
 	for _, line := range lines {

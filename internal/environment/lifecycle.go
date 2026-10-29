@@ -1,9 +1,4 @@
-// Package command 提供 CLI 各 command owner 共用的执行环境、生命周期声明、逻辑分页和输出暂存。
-//
-// 包的组成：[Env] 承载输入输出与 flag 绑定。
-// [Execution] 声明启动、更新和 MCP 等执行要求，[Plan] 表示逻辑分页，
-// [JSONArraySpool] 暂存单数组 JSON。
-package command
+package environment
 
 import "github.com/spf13/cobra"
 
@@ -86,43 +81,17 @@ func Normal() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true, AutomaticUpdate: true}
 }
 
-// AuthExport 关闭全部钩子：导出只写文档中约定的 stdout，不能混入启动或更新输出。
-func AuthExport() Execution { return Execution{} }
-
-// HiddenCallback 关闭全部钩子；系统协议回调必须只处理本次 URL。
-func HiddenCallback() Execution { return Execution{} }
-
-// AuthAccount 给账号管理叶子使用普通生命周期。
-func AuthAccount() Execution { return Normal() }
-
-// AuthLogin 给浏览器登录使用普通生命周期。
-func AuthLogin() Execution { return Normal() }
-
 // AuthBundleImport 不检查自动更新，避免导入凭据后立即发起无关网络请求。
 func AuthBundleImport() Execution {
-	result := AuthAccount()
+	result := Normal()
 	result.AutomaticUpdate = false
 	return result
-}
-
-// ConfigPath 显式列出与 Normal 相同的字段；config path 需要配置目录，但不执行数据命令。
-func ConfigPath() Execution {
-	return Execution{StartupHooks: true, EnsureConfig: true, AutomaticUpdate: true}
 }
 
 // UpdateCommand 不运行自动更新检查，避免 update 命令递归触发自己。
 func UpdateCommand() Execution {
 	return Execution{StartupHooks: true, EnsureConfig: true}
 }
-
-// PixivData 给 Pixiv 数据命令使用普通生命周期。
-func PixivData() Execution { return Normal() }
-
-// DownloadCommand 给下载命令使用普通生命周期。
-func DownloadCommand() Execution { return Normal() }
-
-// FanboxData 给 FANBOX 数据命令使用普通生命周期。
-func FanboxData() Execution { return Normal() }
 
 // FanboxAuth 仍运行 root 启动钩子，但不确保默认配置文件；FANBOX 登录只需要清理待安装更新、
 // 维护 pixiv:// handler 和检查自动更新，不需要 Pixiv 配置的启动副作用。

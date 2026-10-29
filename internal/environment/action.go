@@ -1,4 +1,4 @@
-package input
+package environment
 
 import (
 	"context"
@@ -45,20 +45,20 @@ func ActionOrTargetsArgs(in io.Reader, usage string, usageError func(error) erro
 // ConsumeActionRecords 在一条 operation snapshot 上顺序执行记录动作；它不缓存
 // 整个输入，因此大管道只保留当前 Record。
 func ConsumeActionRecords(ctx context.Context, in io.Reader, errOut io.Writer, operation, onError string, allowedTypes map[string]struct{}, invoke func(context.Context, int64) error, usageError func(error) error) error {
-	failFast, err := RecordFailureStrategy(onError)
+	failFast, err := record.RecordFailureStrategy(onError)
 	if err != nil {
 		return usageError(err)
 	}
-	return ConsumeNDJSONRecords(ctx, in, errOut, operation, failFast, func(ctx context.Context, value record.Record) error {
+	return record.ConsumeNDJSONRecords(ctx, in, errOut, operation, failFast, func(ctx context.Context, value record.Record) error {
 		if _, ok := allowedTypes[value.Type()]; !ok {
-			return NewRecordActionError("unsupported_type", fmt.Errorf("record type %q is not supported by %s", value.Type(), operation))
+			return record.NewRecordActionError("unsupported_type", fmt.Errorf("record type %q is not supported by %s", value.Type(), operation))
 		}
-		id, err := RequiredRecordID(value)
+		id, err := record.RequiredRecordID(value)
 		if err != nil {
-			return NewRecordActionError("invalid_id", err)
+			return record.NewRecordActionError("invalid_id", err)
 		}
 		if err := invoke(ctx, id); err != nil {
-			return NewRecordActionError("action_failed", err)
+			return record.NewRecordActionError("action_failed", err)
 		}
 		return nil
 	})

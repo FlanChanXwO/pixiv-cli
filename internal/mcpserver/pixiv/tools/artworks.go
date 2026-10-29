@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"slices"
 	"strings"
 	"time"
@@ -388,21 +389,21 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	return outputs.RecordResult(out.Records, false, ""), out, nil
 }
 
-func parseRecommendedRequest(in recommendedIn) (toolrun.ListPlan, error) {
+func parseRecommendedRequest(in recommendedIn) (pagination.PagePlan, error) {
 	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err == nil && in.Kind != kindAll && in.Kind != string(pixiv.SearchContentTypeIllust) && in.Kind != string(pixiv.SearchContentTypeManga) && in.Kind != kindNovel && in.Kind != kindUser {
 		err = errors.New("kind must be one of: all, illust, manga, novel, user")
 	}
 	if err != nil {
-		return toolrun.ListPlan{}, err
+		return pagination.PagePlan{}, err
 	}
 	if err := validateKindFilters(in); err != nil {
-		return toolrun.ListPlan{}, err
+		return pagination.PagePlan{}, err
 	}
 	return plan, nil
 }
 
-func recommendedInitialCursor(in recommendedIn, plan toolrun.ListPlan) (sdk.Cursor, error) {
+func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.Cursor, error) {
 	if in.Cursor == nil {
 		return sdk.Cursor{}, nil
 	}
@@ -416,7 +417,7 @@ func recommendedInitialCursor(in recommendedIn, plan toolrun.ListPlan) (sdk.Curs
 	return binding.Decode(in.Cursor)
 }
 
-func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	var visualItems []pixiv.Artwork
 	var visualMore bool
 	var visualNext sdk.Cursor
@@ -449,7 +450,7 @@ func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv
 	return nil
 }
 
-func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan toolrun.ListPlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
+func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan pagination.PagePlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
 	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(kind, in.IllustFilter))
 	if err != nil {
 		return err
@@ -473,7 +474,7 @@ func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, pl
 	return nil
 }
 
-func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != kindAll && in.Kind != kindNovel {
 		return nil
 	}
@@ -501,7 +502,7 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 	return err
 }
 
-func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan toolrun.ListPlan, initial sdk.Cursor, out *outputs.Recommended) error {
+func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
 	if in.Kind != kindAll && in.Kind != kindUser {
 		return nil
 	}

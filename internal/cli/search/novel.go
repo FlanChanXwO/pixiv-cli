@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type novelOptions struct {
-	command.Options
+	environment.Options
 	ndjson   bool
 	limit    int
 	page     int
@@ -25,12 +27,12 @@ type novelOptions struct {
 
 // NewNovel 构造 `pixiv novel` 命令组，其 search 叶子与 `pixiv search --type novel`
 // 共用同一套执行逻辑。
-func NewNovel(env command.Env, exec pixivcmd.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func NewNovel(env environment.Env, exec session.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -49,14 +51,14 @@ func (a commandRunner) newNovelSearchCommand() *cobra.Command {
 		},
 	}
 	a.env.BindCommonFlags(cmd, &opts.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
+	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
 	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
-	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	a.env.BindTextValue(cmd, 1, -1, 0)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -72,21 +74,21 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 	if opts.period == periodHalfYear || opts.period == periodYear {
 		return errors.New("novel period must be one of day, week, month")
 	}
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(jsonOverride)
+		jsonOut, err = a.env.ResolveJSON(jsonOverride)
 		if err != nil {
 			return err
 		}
@@ -101,7 +103,7 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.runner.RunNovels(cmd.Context(), request, plan, pixivcmd.FormatOf(jsonOut, opts.ndjson), pixivcmd.NovelList{Heading: fmt.Sprintf("novels for %q", word), Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
+	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.NovelList{Heading: fmt.Sprintf("novels for %q", word), Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 }
 
 // resolveNovelSearchBy 将小说搜索 target 限定为 v1 合同支持的三种值，避免复用

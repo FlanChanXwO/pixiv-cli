@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -57,7 +57,7 @@ func shouldCheck(cmd *cobra.Command) bool {
 	if cmd.CommandPath() == "pixiv auth export" {
 		return false
 	}
-	if command.IsOffline(cmd) {
+	if environment.IsOffline(cmd) {
 		return false
 	}
 	if helpFlag := cmd.Flags().Lookup("help"); helpFlag != nil && helpFlag.Changed {

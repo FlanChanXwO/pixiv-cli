@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
@@ -218,7 +219,7 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 
 // listUserRelations 在账号池重放边界内收集关注者、关注中、相关或屏蔽用户，输出统一的
 // records envelope；账号与分页计划由调用方解析。
-func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan toolrun.ListPlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
+func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan pagination.PagePlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		var result sdk.Page[pixiv.UserPreview]
 		var err error

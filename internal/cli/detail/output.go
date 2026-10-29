@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func (s *jsonArraySpool) close() error {
 
 // markNDJSON 记录 detail 的输出模式，只在确实要写记录流时安装 broken-pipe 策略。
 func (a commandRunner) markNDJSON(cmd *cobra.Command, enabled bool) {
-	command.SetOutputNDJSON(cmd, enabled)
+	environment.SetOutputNDJSON(cmd, enabled)
 	if enabled && a.env.EnablePipelineSignal != nil {
 		a.env.EnablePipelineSignal()
 	}

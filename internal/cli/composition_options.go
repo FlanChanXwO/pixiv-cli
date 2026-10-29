@@ -3,9 +3,9 @@ package cli
 import (
 	"log/slog"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -18,7 +18,7 @@ func defaultCLIRuntimeConfig() (settings.RuntimeConfig, error) {
 	return snapshot.Runtime()
 }
 
-func pixivOptionsFromRequest(request pixivcmd.Request, loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (pixiv.Options, error) {
+func pixivOptionsFromRequest(request session.ProxyRequest, loadRuntime func() (settings.RuntimeConfig, error), logger *slog.Logger) (pixiv.Options, error) {
 	runtime, err := loadRuntime()
 	if err != nil {
 		return pixiv.Options{}, err

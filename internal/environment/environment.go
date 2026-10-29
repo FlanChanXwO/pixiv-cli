@@ -1,4 +1,11 @@
-package command
+// Package environment 提供 CLI 各 command owner 共用的执行环境：输入输出流、stdin 输入契约、
+// flag 绑定、usage 错误标记与命令生命周期声明。
+//
+// 本包只供 internal/cli 使用；不含 Pixiv 或 FANBOX 的业务语义。
+//
+// 包的组成：[Env] 承载输入输出与 flag 绑定，[State] 保存一条命令解析后的 stdin 输入，
+// [Execution] 声明启动、更新和 MCP 等执行要求。
+package environment
 
 import (
 	"bytes"
@@ -8,7 +15,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/input"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -39,9 +45,6 @@ type Options struct {
 	ProxyOptions
 	JSON bool
 }
-
-// UsageError 把校验失败标记成使用方式错误，使调用方据此返回退出码 2。
-func (e Env) UsageError(err error) error { return e.WrapUsage(err) }
 
 // ExactArgs 校验位置参数个数恰好为 count。个数不符按普通命令失败处理；
 // usage 退出码只留给未知选项和显式输入契约违规。
@@ -91,9 +94,6 @@ func (e Env) JSONOverride(cmd *cobra.Command, opts Options) *bool {
 	return &value
 }
 
-// JSONOut 解析本次执行生效的 JSON 设置，显式 override 优先于配置。
-func (e Env) JSONOut(override *bool) (bool, error) { return e.ResolveJSON(override) }
-
 // ProxyOverride 解析共用的代理 flag；两者都未出现时返回 nil，表示沿用配置。
 func ProxyOverride(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
@@ -125,62 +125,62 @@ func (e Env) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 }
 
 // BindTextValue 把 stdin 声明为单个文本值，并返回本次命令的输入状态。
-func (e Env) BindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *input.State {
-	return input.Bind(cmd, input.InputSpec{
-		Codec:        input.TextValue,
+func (e Env) BindTextValue(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *State {
+	return BindInput(cmd, InputSpec{
+		Codec:        TextValue,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
 		FillPosition: fillPosition,
 		Reader:       e.In,
-		UsageError:   e.UsageError,
+		UsageError:   e.WrapUsage,
 	})
 }
 
 // BindTextValueWhen 与 BindTextValue 相同，但 enabled 返回 false 时不读取 stdin。
-func (e Env) BindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPosition int, enabled func(*cobra.Command, []string) bool) *input.State {
-	return input.Bind(cmd, input.InputSpec{
-		Codec:        input.TextValue,
+func (e Env) BindTextValueWhen(cmd *cobra.Command, minArgs, maxArgs, fillPosition int, enabled func(*cobra.Command, []string) bool) *State {
+	return BindInput(cmd, InputSpec{
+		Codec:        TextValue,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
 		FillPosition: fillPosition,
 		Reader:       e.In,
-		UsageError:   e.UsageError,
+		UsageError:   e.WrapUsage,
 		Enabled:      enabled,
 	})
 }
 
 // BindTextOrRecord 让 stdin 在单个文本值和 NDJSON 记录流之间自动判别。
-func (e Env) BindTextOrRecord(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *input.State {
-	return input.Bind(cmd, input.InputSpec{
-		Codec:        input.TextOrRecord,
+func (e Env) BindTextOrRecord(cmd *cobra.Command, minArgs, maxArgs, fillPosition int) *State {
+	return BindInput(cmd, InputSpec{
+		Codec:        TextOrRecord,
 		MinArgs:      minArgs,
 		MaxArgs:      maxArgs,
 		FillPosition: fillPosition,
 		Reader:       e.In,
-		UsageError:   e.UsageError,
+		UsageError:   e.WrapUsage,
 	})
 }
 
 // BindNoInput 声明命令不读取 stdin，保留 stdin 给 MCP 等协议使用。
-func (e Env) BindNoInput(cmd *cobra.Command) *input.State {
-	return input.Bind(cmd, input.InputSpec{
-		Codec:      input.NoInput,
+func (e Env) BindNoInput(cmd *cobra.Command) *State {
+	return BindInput(cmd, InputSpec{
+		Codec:      NoInput,
 		MinArgs:    0,
 		MaxArgs:    0,
 		Reader:     e.In,
-		UsageError: e.UsageError,
+		UsageError: e.WrapUsage,
 	})
 }
 
 // ActionInputArgs 给出 TextOrRecord 动作命令共用的位置参数校验。
 func (e Env) ActionInputArgs(usage string) cobra.PositionalArgs {
-	return input.ActionInputArgs(e.In, usage, e.UsageError)
+	return ActionInputArgs(e.In, usage, e.WrapUsage)
 }
 
 // ConsumeActionRecords 把标准记录解析和逐行诊断交给 input 包；允许的实体类型、
 // 已解析的输入状态和实际动作由调用方负责。
-func (e Env) ConsumeActionRecords(cmd *cobra.Command, state *input.State, operation, onError string, allowedTypes map[string]struct{}, invoke func(context.Context, int64) error) error {
-	return input.ConsumeActionRecords(cmd.Context(), state.Reader(e.In), e.Err, operation, onError, allowedTypes, invoke, e.UsageError)
+func (e Env) ConsumeActionRecords(cmd *cobra.Command, state *State, operation, onError string, allowedTypes map[string]struct{}, invoke func(context.Context, int64) error) error {
+	return ConsumeActionRecords(cmd.Context(), state.Reader(e.In), e.Err, operation, onError, allowedTypes, invoke, e.WrapUsage)
 }
 
 // AutoNDJSON 决定列表命令是否输出记录流：显式 --ndjson 直接选择记录流；

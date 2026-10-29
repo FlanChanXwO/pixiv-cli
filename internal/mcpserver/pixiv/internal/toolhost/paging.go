@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -14,17 +13,17 @@ import (
 // PaginationOut 在共享逻辑页字段之外增加 Pixiv 查询绑定的批次 cursor。
 type PaginationOut struct {
 	NextCursor string `json:"next_cursor,omitempty"`
-	toolrun.PaginationOut
+	pagination.PaginationOut
 }
 
 // ListPagination 生成不含 next_cursor 的分页；cursor 由调用方确认续读可用后再填。
-func ListPagination(plan toolrun.ListPlan, limit *int, returned int, more bool) PaginationOut {
-	return PaginationOut{PaginationOut: toolrun.ListPagination(plan, limit, returned, more)}
+func ListPagination(plan pagination.PagePlan, limit *int, returned int, more bool) PaginationOut {
+	return PaginationOut{PaginationOut: pagination.ListPagination(plan, limit, returned, more)}
 }
 
 // CollectWith 通过共享 traversal 引擎执行逻辑分页，只在批次内做 MCP 实体筛选。
 // MCP 不自行打开 client、重放账号或解释 opaque cursor。
-func CollectWith[T any](ctx context.Context, app *App, plan toolrun.ListPlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+func CollectWith[T any](ctx context.Context, app *App, plan pagination.PagePlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	return collectWithFrom(ctx, app, plan, sdk.Cursor{}, fetch)
 }
 
@@ -32,7 +31,7 @@ func CollectWith[T any](ctx context.Context, app *App, plan toolrun.ListPlan, fe
 // SDK cursor 之前不会遗留未交付的条目。
 func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, sdk.Cursor, error) {
 	var next sdk.Cursor
-	items, _, err := collectWithFrom(ctx, app, toolrun.ListPlan{Page: 1, OneBatch: true}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	items, _, err := collectWithFrom(ctx, app, pagination.PagePlan{Page: 1, OneBatch: true}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		batch, continuation, err := fetch(ctx, client, cursor)
 		if err == nil && !continuation.IsZero() && continuation == cursor {
 			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
@@ -48,7 +47,7 @@ func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, 
 
 // collectWithFrom 统一逻辑分页与批次续读的 execution-attempt 生命周期；SDK cursor
 // 的解析与对外 envelope 由具体工具负责。
-func collectWithFrom[T any](ctx context.Context, app *App, plan toolrun.ListPlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+func collectWithFrom[T any](ctx context.Context, app *App, plan pagination.PagePlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
 	seen := make(map[string]struct{})
 	baseExecute := app.ReadExecutor()
 	execute := baseExecute
@@ -80,7 +79,7 @@ func collectWithFrom[T any](ctx context.Context, app *App, plan toolrun.ListPlan
 // CollectStreamsWith 让需要多条有序上游流的读工具复用同一账号池执行边界和结构化
 // 配置错误。traversal 每次 attempt 都重置聚合结果，失败 attempt 的部分结果不会带进
 // 后续安全重放。
-func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan toolrun.ListPlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
+func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan pagination.PagePlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
 	result, err := pagination.CollectStreamsWith(ctx, app.ReadExecutor(), pagination.PagePlan{
 		Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch,
 	}, streams)
@@ -92,7 +91,7 @@ func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *Ap
 }
 
 // CollectPagesFrom 保留流内过滤语义；只有完整批次结束才返回可供续读的 cursor。
-func CollectPagesFrom[T any](ctx context.Context, plan toolrun.ListPlan, initial sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, sdk.Cursor, error) {
+func CollectPagesFrom[T any](ctx context.Context, plan pagination.PagePlan, initial sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, sdk.Cursor, error) {
 	var continuation sdk.Cursor
 	seen := make(map[string]struct{})
 	items, result, err := pagination.CollectPagesFrom(ctx, pagination.PagePlan{

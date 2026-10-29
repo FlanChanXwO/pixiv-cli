@@ -9,9 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
-	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/spf13/cobra"
@@ -30,22 +29,22 @@ type ReverseSearchFunc func(context.Context, ReverseSearchRequest) (reversesearc
 
 func (a commandRunner) runReverseSearch(cmd *cobra.Command, source string, opts options) error {
 	if err := validateReverseSearchFlags(cmd); err != nil {
-		return a.env.UsageError(err)
+		return a.env.WrapUsage(err)
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	provider, err := resolveReverseSearchProvider(opts.provider)
 	if err != nil {
-		return a.env.UsageError(err)
+		return a.env.WrapUsage(err)
 	}
 	jsonOut := false
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
 			return err
 		}
@@ -170,9 +169,9 @@ func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err 
 	}
 	switch ref.Type {
 	case reversesearch.PixivRefUser:
-		return string(resolver.ResultKindUser), nil
+		return string(target.ResultKindUser), nil
 	case reversesearch.PixivRefArtwork:
-		return string(resolver.ResultKindArtwork), nil
+		return string(target.ResultKindArtwork), nil
 	default:
 		return "", errors.New("reverse search returned an invalid Pixiv identity")
 	}
@@ -192,10 +191,10 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 			}
 			line = identity.URL()
 		}
-		if title := plaintext.SafeLine(result.Title); title != "" {
+		if title := display.SafeLine(result.Title); title != "" {
 			line += " — " + title
 		}
-		if author := plaintext.SafeLine(result.Author); author != "" {
+		if author := display.SafeLine(result.Author); author != "" {
 			line += " by " + author
 		}
 		if _, err := fmt.Fprintln(out, line); err != nil {

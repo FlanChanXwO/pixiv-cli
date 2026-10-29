@@ -1,9 +1,4 @@
-// Package input 解析 CLI 显式声明的 stdin 输入：完整文本值或 NDJSON 记录流。
-//
-// 包的组成：[Bind] 把 [InputSpec] 挂到命令上并返回本次执行的 [State]。
-// 记录消费与失败策略在 records.go。
-// 本包不承载 Pixiv 或 FANBOX 的业务语义。
-package input
+package environment
 
 import (
 	"fmt"

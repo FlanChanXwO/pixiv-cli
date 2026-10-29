@@ -16,11 +16,11 @@
 
 | 规则 | 不这样写 | 这样写 |
 | --- | --- | --- |
-| 不用空泛的名字 | `Deps`、`Dependencies`、`Data`、`Info`、`Facade`、`Manager`、`Helper`、`Util`、`Common`、`Base`、`Impl`、`Wrapper` | `pixivcmd.Runner`、`command.Env`、`session.Pixiv`；`Manager` 按实际职责改名 |
-| 不建依赖袋 | 每个命令一个 `Dependencies` 结构体，由组合根填满再向下传 | `download.New(env command.Env, session *session.Pixiv)`；依赖过多的 owner 先拆职责 |
+| 不用空泛的名字 | `Deps`、`Dependencies`、`Data`、`Info`、`Facade`、`Manager`、`Helper`、`Util`、`Common`、`Base`、`Impl`、`Wrapper` | `session.Runner`、`environment.Env`、`session.Pixiv`；`Manager` 按实际职责改名 |
+| 不建依赖袋 | 每个命令一个 `Dependencies` 结构体，由组合根填满再向下传 | `download.New(env environment.Env, session *session.Pixiv)`；依赖过多的 owner 先拆职责 |
 | 不用“函数字段 + 同名转发方法”，函数字段不加 `Fn` 后缀 | `PromptSecretFn func(string) (string, error)` 加 `func (d Data) PromptSecret` | `func (e Env) PromptSecret(message string) (string, error)`；需要替换的行为用具体类型或窄接口 |
 | 不重复包名已经给出的上下文 | `session.PixivSession`、`filename.FilenameData` | `session.Pixiv`、`filename.Fields` |
-| 同一种能力只用一个名字 | `UsageError` 与 `Usage`、`PrintJSON` 与 `WriteJSON` 并存 | 统一为 `command.Env` 上的一个名字 |
+| 同一种能力只用一个名字 | `UsageError` 与 `Usage`、`PrintJSON` 与 `WriteJSON` 并存 | 统一为 `environment.Env` 上的一个名字 |
 
 以下补充规则只约束新增代码（2026-10-26 起）。现有名字不为此改名，SDK 公开名也不再为此破坏一次。
 
@@ -37,7 +37,7 @@
 | 声明的使用范围 | 放置位置 | 示例 |
 | --- | --- | --- |
 | 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/models.go`（公开实体）、`sdk/pixiv/artwork_wire.go`（作品响应结构）、`sdk/pixiv/response.go`（多个领域共用的响应结构）、`internal/storage/database/rows.go`（行结构）、`errors.go`（错误码） |
-| 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/cli/internal/pixivcmd/list.go` 中的 `ArtworkList` |
+| 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/record/list.go` 中的 `ArtworkList` |
 | 类型自身的方法（`String`、`Valid`、`MarshalJSON` 等） | 和类型放在同一个文件 | `sdk/resource.go` 中的 `Resource.MarshalJSON` |
 
 - 不按“一个类型一个文件”拆分。
@@ -53,7 +53,7 @@
 
 `包名.go` 的含义是“从这里开始读这个包”，不用作杂物文件。
 
-新代码按下面顺序决定位置，第一条成立就停下：只服务一个命令，放进该命令目录；被同一产品的命令共用，或所有命令共用，放进对应的共享 CLI 包；MCP tool 放进该产品的 `tools` 包；公开能力放进 `sdk/<产品>/` 的领域文件，上游协议细节放进 `internal/pixiv/api` 或 `internal/fanbox/api`；以上都不是，新建一个按职责命名的包。放进去之后，所在包、文件或类型的名字如果不再能概括全部内容，就是放错了位置。不建立 `common`、`shared`、`util`、`misc` 这类位置。
+新代码按下面顺序决定位置，第一条成立就停下：只服务一个命令，放进该命令目录；机制已有模块级 owner 时放进该 owner——执行环境与 stdin codec 在 `internal/environment`，逻辑分页在 `internal/pagination`，record 投影与列表/记录流输出在 `internal/record`，账号相关 SDK 生命周期包装在 `internal/session`，共用终端文本在 `internal/display`，Pixiv 目标解析在 `internal/pixiv/target`；MCP tool 放进该产品的 `tools` 包；公开能力放进 `sdk/<产品>/` 的领域文件，上游协议细节放进 `internal/pixiv/api` 或 `internal/fanbox/api`；以上都不是，新建一个按职责命名的包。`internal/cli` 只保留命令目录与根包组合文件。放进去之后，所在包、文件或类型的名字如果不再能概括全部内容，就是放错了位置。不建立 `common`、`shared`、`util`、`misc` 这类位置。
 
 ## 命名常量
 
@@ -155,9 +155,11 @@ func (r Resource) MarshalJSON() ([]byte, error) {
 ```
 
 ```go
-// internal/cli/internal/command/env.go：Env 由组合根构造，WrapUsage 一定存在；
+// internal/environment/environment.go：Env 由组合根构造，WrapUsage 一定存在；
 // 判 nil 只会在装配写错时成立，却会把用法错误的退出码悄悄丢掉。
-func (e Env) UsageError(err error) error { return e.WrapUsage(err) }
+func (e Env) ParsePlan(cmd *cobra.Command, limit, page int) (pagination.PagePlan, error) {
+	return pagination.ParsePlan(limit, page, cmd.Flags().Changed("limit"), cmd.Flags().Changed("page"))
+}
 ```
 
 ## 程序输出

@@ -1,4 +1,4 @@
-package input
+package environment
 
 import (
 	"bytes"
@@ -91,9 +91,9 @@ func (s *State) Mode() Mode {
 	return s.resolved.mode
 }
 
-// Bind 把 InputSpec 挂到 cmd 上并返回本次命令实例的输入状态。它包装原有的位置参数校验和
+// BindInput 把 InputSpec 挂到 cmd 上并返回本次命令实例的输入状态。它包装原有的位置参数校验和
 // RunE，使业务代码看到解析后的参数切片，记录消费者则从 State.Reader 取得可重放 reader。
-func Bind(cmd *cobra.Command, spec InputSpec) *State {
+func BindInput(cmd *cobra.Command, spec InputSpec) *State {
 	if cmd == nil {
 		return nil
 	}
@@ -218,12 +218,12 @@ func resolveTextOrRecord(reader io.Reader) (Mode, io.Reader, string, error) {
 				if readErr != nil {
 					return TextMode, nil, "", readErr
 				}
-				return TextMode, bytes.NewReader(nil), string(StripOneTrailingLineEnding(body)), nil
+				return TextMode, bytes.NewReader(nil), string(stripOneTrailingLineEnding(body)), nil
 			}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return TextMode, bytes.NewReader(nil), string(StripOneTrailingLineEnding(prefix)), nil
+				return TextMode, bytes.NewReader(nil), string(stripOneTrailingLineEnding(prefix)), nil
 			}
 			return TextMode, nil, "", err
 		}
@@ -256,7 +256,7 @@ func ReadValue(reader io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(StripOneTrailingLineEnding(body)), nil
+	return string(stripOneTrailingLineEnding(body)), nil
 }
 
 // FirstNonWhitespace 返回第一个非 JSON 空白的字节。记录 codec 只需要 JSON 定义的前导
@@ -279,8 +279,8 @@ func isJSONWhitespace(one byte) bool {
 	}
 }
 
-// StripOneTrailingLineEnding 只去掉末尾的一个 LF 或 CRLF，其余字节原样保留。
-func StripOneTrailingLineEnding(body []byte) []byte {
+// stripOneTrailingLineEnding 只去掉末尾的一个 LF 或 CRLF，其余字节原样保留。
+func stripOneTrailingLineEnding(body []byte) []byte {
 	if bytes.HasSuffix(body, []byte("\r\n")) {
 		return body[:len(body)-2]
 	}

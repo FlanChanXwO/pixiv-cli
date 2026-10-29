@@ -7,17 +7,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type options struct {
-	command.Options
+	environment.Options
 	ndjson bool
 	limit  int
 	page   int
@@ -25,14 +27,14 @@ type options struct {
 }
 
 type commandRunner struct {
-	env    command.Env
-	runner pixivcmd.Runner
-	exec   pixivcmd.Executor
+	env    environment.Env
+	runner session.Runner
+	exec   session.Executor
 }
 
 // New 构造 `pixiv series` 命令；SERIES_ID_OR_URL 由请求解析器判定作品或小说系列。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: pixivcmd.New(env.Out, exec), exec: exec}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "series SERIES_ID_OR_URL",
@@ -43,11 +45,11 @@ func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
 		},
 	}
 	env.BindCommonFlags(cmd, &options.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &options.ndjson)
-	pixivcmd.BindListFlags(cmd, &options.limit, &options.page)
+	environment.BindNDJSONFlag(cmd, &options.ndjson)
+	environment.BindListFlags(cmd, &options.limit, &options.page)
 	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
 	env.BindTextValue(cmd, 1, 1, 0)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -58,45 +60,45 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	if err := validateSeriesType(opts.typ); err != nil {
 		return err
 	}
-	target, err := resolver.Resolve(cmd.Context(), resolver.Input{Value: arg, Type: opts.typ}, seriesContract())
+	resolved, err := target.Resolve(cmd.Context(), target.Input{Value: arg, Type: opts.typ}, seriesContract())
 	if err != nil {
 		return err
 	}
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
 		return err
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(jsonOverride)
+		jsonOut, err = a.env.ResolveJSON(jsonOverride)
 		if err != nil {
 			return err
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	switch target.ResultKind {
-	case resolver.ResultKindArtwork:
+	switch resolved.ResultKind {
+	case target.ResultKindArtwork:
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: target.ID, Cursor: cursor})
+			result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: resolved.ID, Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.runner.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: func() string { return fmt.Sprintf("artworks in series %d", target.ID) }, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error {
-			return pixivcmd.PrintArtworksRanked(a.env.Out, items, start)
+		return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string { return fmt.Sprintf("artworks in series %d", resolved.ID) }, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error {
+			return display.PrintArtworksRanked(a.env.Out, items, start)
 		}})
-	case resolver.ResultKindNovel:
-		return a.runNovel(cmd, request, target.ID, plan, jsonOut, ndjson)
+	case target.ResultKindNovel:
+		return a.runNovel(cmd, request, resolved.ID, plan, jsonOut, ndjson)
 	default:
 		return errors.New("type must be one of artwork, novel")
 	}
@@ -104,23 +106,23 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 
 func validateSeriesType(value string) error {
 	switch value {
-	case string(resolver.ResultKindArtwork), string(resolver.ResultKindNovel):
+	case string(target.ResultKindArtwork), string(target.ResultKindNovel):
 		return nil
 	default:
 		return errors.New("type must be one of artwork, novel")
 	}
 }
 
-func seriesContract() resolver.Contract {
-	return resolver.Contract{
+func seriesContract() target.Contract {
+	return target.Contract{
 		Operation: "series",
-		Types: []resolver.TypeSpec{
-			{Name: string(resolver.ResultKindArtwork), ResultKind: resolver.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
-			{Name: string(resolver.ResultKindNovel), ResultKind: resolver.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
+		Types: []target.TypeSpec{
+			{Name: string(target.ResultKindArtwork), ResultKind: target.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
+			{Name: string(target.ResultKindNovel), ResultKind: target.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
 		},
-		URLKinds: map[pixiv.ReferenceKind]resolver.URLTypeRelation{
-			pixiv.ReferenceKindArtworkSeries: resolver.URLTypeMustMatchResult,
-			pixiv.ReferenceKindNovelSeries:   resolver.URLTypeMustMatchResult,
+		URLKinds: map[pixiv.ReferenceKind]target.URLTypeRelation{
+			pixiv.ReferenceKindArtworkSeries: target.URLTypeMustMatchResult,
+			pixiv.ReferenceKindNovelSeries:   target.URLTypeMustMatchResult,
 		},
 	}
 }
@@ -130,7 +132,7 @@ type novelSeriesOut struct {
 	Novels []pixiv.Novel     `json:"novels"`
 }
 
-func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id int64, plan command.Plan, jsonOut, ndjson bool) error {
+func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
 	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		var metadata pixiv.NovelSeries
 		var novels []pixiv.Novel
@@ -144,7 +146,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id
 			}
 			return result.Novels.Items, result.Novels.Next, nil
 		}
-		if err := command.PageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
+		if err := pagination.PageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
 			novels = append(novels, items...)
 			return nil
 		}); err != nil {
@@ -172,7 +174,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request pixivcmd.Request, id
 		if _, err := fmt.Fprintf(a.env.Out, "series %d: %s\n", metadata.ID, metadata.Title); err != nil {
 			return true, err
 		}
-		if err := pixivcmd.PrintNovels(a.env.Out, novels); err != nil {
+		if err := display.PrintNovels(a.env.Out, novels); err != nil {
 			return true, err
 		}
 		return true, nil

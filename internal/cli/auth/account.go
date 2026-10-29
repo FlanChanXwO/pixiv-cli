@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +16,7 @@ import (
 const premiumStatusUnknown = "unknown"
 
 type accountImportOptions struct {
-	command.ProxyOptions
+	environment.ProxyOptions
 	jsonOut bool
 }
 
@@ -37,12 +37,12 @@ type accountRemoveOptions struct {
 }
 
 type accountCheckOptions struct {
-	command.ProxyOptions
+	environment.ProxyOptions
 	jsonOut bool
 }
 
 type accountRefreshOptions struct {
-	command.ProxyOptions
+	environment.ProxyOptions
 	all     bool
 	jsonOut bool
 }
@@ -75,7 +75,7 @@ func (a controller) newAccountCommand() *cobra.Command {
 		a.newAccountPoolCommand(),
 	)
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.Execution{})
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }
 
@@ -100,11 +100,11 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				}
 				userID = parsed
 			}
-			services, err := a.services()
+			service, err := a.accountService()
 			if err != nil {
 				return err
 			}
-			result, err := services.Account.export(accountExportRequest{UserID: userID, All: opts.all})
+			result, err := service.export(accountExportRequest{UserID: userID, All: opts.all})
 			if err != nil {
 				return err
 			}
@@ -127,7 +127,7 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file; requires --output")
 	a.env.BindTextValueWhen(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
-	command.Bind(cmd, command.AuthExport())
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }
 
@@ -143,16 +143,16 @@ func (a controller) newAccountListCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountList(ctx context.Context, jsonOut bool) error {
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
-	result, err := services.Account.listWithContext(ctx)
+	result, err := service.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func (a controller) newAccountPoolCommand() *cobra.Command {
 		a.newAccountPoolChangeCommand("disable", false),
 	)
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.Execution{})
+	environment.Bind(cmd, environment.Execution{})
 	return cmd
 }
 
@@ -214,11 +214,11 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 		Short: "Show account pool scheduling status",
 		Args:  a.env.ExactArgs(0, "pixiv auth pool status [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			services, err := a.services()
+			service, err := a.accountService()
 			if err != nil {
 				return err
 			}
-			result, err := services.Account.poolStatus(cmd.Context())
+			result, err := service.poolStatus(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -242,7 +242,7 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -261,7 +261,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			services, err := a.services()
+			service, err := a.accountService()
 			if err != nil {
 				return err
 			}
@@ -273,7 +273,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 				}
 				userIDs = append(userIDs, userID)
 			}
-			if err := services.Account.setPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
+			if err := service.setPool(cmd.Context(), userIDs, schedulable, opts.all); err != nil {
 				return err
 			}
 			if opts.jsonOut {
@@ -294,7 +294,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 	cmd.Flags().BoolVar(&opts.all, "all", false, "apply to every stored account")
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.env.BindTextValueWhen(cmd, 0, -1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -323,17 +323,17 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	flags.BoolVar(&opts.yes, "yes", false, "skip confirmation in interactive terminals")
-	a.env.BindTextValueWhen(cmd, 0, 1, 0, nil)
-	command.Bind(cmd, command.AuthAccount())
+	a.env.BindTextValue(cmd, 0, 1, 0)
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountRemove(ctx context.Context, args []string, opts accountRemoveOptions) error {
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
-	list, err := services.Account.listWithContext(ctx)
+	list, err := service.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -350,7 +350,7 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 			return errors.New("account removal canceled")
 		}
 	}
-	_, defaultUserID, err := services.Account.remove(userID)
+	_, defaultUserID, err := service.remove(userID)
 	if err != nil {
 		return err
 	}
@@ -375,17 +375,17 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
-	a.env.BindTextValueWhen(cmd, 0, 1, 0, nil)
-	command.Bind(cmd, command.AuthAccount())
+	a.env.BindTextValue(cmd, 0, 1, 0)
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool) error {
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
-	list, err := services.Account.listWithContext(ctx)
+	list, err := service.listWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -393,7 +393,7 @@ func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool)
 	if err != nil {
 		return err
 	}
-	userID, err = services.Account.use(userID)
+	userID, err = service.use(userID)
 	if err != nil {
 		return err
 	}
@@ -423,22 +423,22 @@ func (a controller) newAccountCheckCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	a.env.BindTextValueWhen(cmd, 0, 1, 0, nil)
+	a.env.BindTextValue(cmd, 0, 1, 0)
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountCheckOptions) error {
-	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
+	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
-	result, err := services.Account.checkWithRequest(cmd.Context(), accountCheckRequest{
+	result, err := service.checkWithRequest(cmd.Context(), accountCheckRequest{
 		UserID:             userID,
 		HTTPSProxyOverride: proxyOverride,
 	})
@@ -489,22 +489,22 @@ func (a controller) newAccountRefreshCommand() *cobra.Command {
 	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
 	a.env.BindTextValueWhen(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	command.Bind(cmd, command.AuthAccount())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accountRefreshOptions) error {
-	proxyOverride, err := command.ProxyOverride(cmd, opts.ProxyOptions)
+	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
 		return err
 	}
-	services, err := a.services()
+	service, err := a.accountService()
 	if err != nil {
 		return err
 	}
 	userIDs := []int64{userID}
 	if opts.all {
-		list, err := services.Account.listWithContext(cmd.Context())
+		list, err := service.listWithContext(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -518,7 +518,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	}
 	results := make([]accountOut, 0, len(userIDs))
 	for _, selectedUserID := range userIDs {
-		result, err := services.Account.refreshWithRequest(cmd.Context(), accountRefreshRequest{
+		result, err := service.refreshWithRequest(cmd.Context(), accountRefreshRequest{
 			UserID:             selectedUserID,
 			HTTPSProxyOverride: proxyOverride,
 		})
@@ -535,7 +535,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	for _, account := range results {
 		premium := premiumStatusUnknown
 		if account.PremiumStatus != nil {
-			premium = command.TextBool(*account.PremiumStatus)
+			premium = environment.TextBool(*account.PremiumStatus)
 		}
 		fmt.Fprintf(a.env.Out, "✓ refreshed uid:%d premium:%s\n", account.UserID, premium)
 	}

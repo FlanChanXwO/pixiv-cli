@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -18,7 +21,7 @@ import (
 // options 保存关注新作与全站最新命令的共同选项。内容类型由边缘层显式选择，
 // 这样不会把插画、漫画和小说的独立 App 分页流错误合并。
 type options struct {
-	command.Options
+	environment.Options
 	ndjson      bool
 	limit       int
 	page        int
@@ -28,17 +31,17 @@ type options struct {
 }
 
 type commandRunner struct {
-	env command.Env
-	run pixivcmd.Runner
+	env environment.Env
+	run session.Runner
 }
 
 // New 构造 `pixiv timeline` 命令组；following 与 latest 共用分页、代理覆盖和输出判定。
-func New(env command.Env, exec pixivcmd.Executor) *cobra.Command {
-	a := commandRunner{env: env, run: pixivcmd.New(env.Out, exec)}
+func New(env environment.Env, exec session.Executor) *cobra.Command {
+	a := commandRunner{env: env, run: session.NewRunner(env.Out, exec)}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
 	cmd.AddCommand(a.newFollowingCommand(), a.newLatestCommand())
 	env.BindNoInput(cmd)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -53,13 +56,13 @@ func (a commandRunner) newFollowingCommand() *cobra.Command {
 		},
 	}
 	a.env.BindCommonFlags(cmd, &opts.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
-	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	environment.BindNDJSONFlag(cmd, &opts.ndjson)
+	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.SearchContentTypeAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
@@ -74,25 +77,25 @@ func (a commandRunner) newLatestCommand() *cobra.Command {
 		},
 	}
 	a.env.BindCommonFlags(cmd, &opts.Options)
-	pixivcmd.BindNDJSONFlag(cmd, &opts.ndjson)
-	pixivcmd.BindListFlags(cmd, &opts.limit, &opts.page)
+	environment.BindNDJSONFlag(cmd, &opts.ndjson)
+	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel; use --content-type for subtype")
 	cmd.Flags().StringVar(&opts.artworkType, "content-type", opts.artworkType, "artwork subtype: illust or manga")
 	a.env.BindNoInput(cmd)
-	command.Bind(cmd, command.PixivData())
+	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
-	if entity == string(resolver.SubtypeIllust) {
-		entity = string(resolver.ResultKindArtwork)
+	if entity == string(target.SubtypeIllust) {
+		entity = string(target.ResultKindArtwork)
 	}
-	if entity != string(resolver.ResultKindArtwork) && entity != string(resolver.ResultKindNovel) {
+	if entity != string(target.ResultKindArtwork) && entity != string(target.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
 	var artworkFilter searchfilter.Filter
-	if entity == string(resolver.ResultKindArtwork) {
+	if entity == string(target.ResultKindArtwork) {
 		contentType, err := searchfilter.NormalizeContentType(opts.artworkType)
 		if err != nil {
 			return err
@@ -105,7 +108,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	if err != nil {
 		return err
 	}
-	if entity == string(resolver.ResultKindArtwork) {
+	if entity == string(target.ResultKindArtwork) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			if err != nil {
@@ -115,7 +118,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 			// upstream cursor 的同时本地筛选，才能让 logical limit 跨批次补足。
 			return filterFollowingArtworks(result.Items, artworkFilter), result.Next, nil
 		}
-		return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static("new artworks from followed users"), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
+		return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading("new artworks from followed users"), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -124,32 +127,32 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "new novels from followed users", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
+	return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "new novels from followed users", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 }
 
 func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
-	if entity == string(resolver.SubtypeIllust) || entity == string(resolver.SubtypeManga) {
+	if entity == string(target.SubtypeIllust) || entity == string(target.SubtypeManga) {
 		if cmd.Flags().Changed("content-type") {
 			return errors.New("legacy artwork --type cannot be combined with --content-type")
 		}
 		opts.artworkType = entity
-		entity = string(resolver.ResultKindArtwork)
+		entity = string(target.ResultKindArtwork)
 	}
-	if entity != string(resolver.ResultKindArtwork) && entity != string(resolver.ResultKindNovel) {
+	if entity != string(target.ResultKindArtwork) && entity != string(target.ResultKindNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if entity == string(resolver.ResultKindNovel) && cmd.Flags().Changed("content-type") {
+	if entity == string(target.ResultKindNovel) && cmd.Flags().Changed("content-type") {
 		return errors.New("--content-type is only supported when --type artwork")
 	}
-	if entity == string(resolver.ResultKindArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
+	if entity == string(target.ResultKindArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
 		return errors.New("content-type must be one of: illust, manga")
 	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
 	if err != nil {
 		return err
 	}
-	if entity == string(resolver.ResultKindNovel) {
+	if entity == string(target.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
 			if err != nil {
@@ -157,7 +160,7 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return a.run.RunNovels(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.NovelList{Heading: "latest novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return pixivcmd.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "latest novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: pixiv.SearchContentType(opts.artworkType), Cursor: cursor})
@@ -166,28 +169,28 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return a.run.RunArtworks(cmd.Context(), pixivcmd.Request(request), plan, pixivcmd.FormatOf(jsonOut, ndjson), pixivcmd.ArtworkList{Heading: pixivcmd.Static(fmt.Sprintf("latest %s", opts.artworkType)), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return pixivcmd.PrintArtworks(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("latest %s", opts.artworkType)), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
 // --json 的互斥、自动 NDJSON 判定和 JSON 解析顺序保持一致。
-func (a commandRunner) resolve(cmd *cobra.Command, opts options) (command.Plan, pixivcmd.Request, bool, bool, error) {
-	plan, err := command.ParsePlan(cmd, opts.limit, opts.page)
+func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pagination.PagePlan, session.ProxyRequest, bool, bool, error) {
+	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return command.Plan{}, pixivcmd.Request{}, false, false, err
+		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
 	}
-	request, err := pixivcmd.BuildRequest(cmd, opts.Options)
+	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
-		return command.Plan{}, pixivcmd.Request{}, false, false, err
+		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return command.Plan{}, pixivcmd.Request{}, false, false, a.env.UsageError(errors.New("--ndjson cannot be used with --json"))
+		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
-		jsonOut, err = a.env.JSONOut(a.env.JSONOverride(cmd, opts.Options))
+		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return command.Plan{}, pixivcmd.Request{}, false, false, err
+			return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
 		}
 	}
 	return plan, request, jsonOut, a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut), nil
