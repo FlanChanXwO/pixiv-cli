@@ -3,12 +3,17 @@ package record_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
@@ -41,4 +46,40 @@ func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
 			t.Fatalf("output = %q, want %q", out.String(), tc.want)
 		}
 	}
+}
+
+func TestRunArtworksClosesSpoolOnReplay(t *testing.T) {
+	var out bytes.Buffer
+	runner := session.NewRunner(&out, func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		_, err := attempt(ctx, nil)
+		return err
+	})
+	attempts := 0
+	before := tempNames(t)
+	err := record.RunArtworks(context.Background(), runner, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.ArtworkList{
+		Fetch: func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			attempts++
+			if attempts == 1 {
+				return nil, sdk.Cursor{}, retryableErr
+			}
+			return []pixiv.Artwork{{ID: 7, Title: "cat"}}, sdk.Cursor{}, nil
+		},
+	})
+	if !errors.Is(err, retryableErr) || out.Len() != 0 {
+		t.Fatalf("err = %v, stdout = %q; want the retryable failure and empty stdout", err, out.String())
+	}
+	if after := tempNames(t); len(after) != len(before) {
+		t.Fatalf("spool files leaked: before=%v after=%v", before, after)
+	}
+}
+
+var retryableErr = errors.New("retry")
+
+func tempNames(t *testing.T) []string {
+	t.Helper()
+	names, err := filepath.Glob(filepath.Join(os.TempDir(), "pixiv-cli-json-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return names
 }
