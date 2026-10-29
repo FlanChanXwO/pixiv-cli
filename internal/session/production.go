@@ -57,14 +57,17 @@ type Local struct {
 	loadFanbox     func() (fanbox.Options, error)
 	loadPoolConfig func() (PoolConfig, error)
 
-	accountsOnce sync.Once
-	accounts     *account.Service
-	login        account.LoginService
-	accountsErr  error
+	accountsMu sync.Mutex
+	accounts   *account.Service
+	login      account.LoginService
 
 	pixivOnce sync.Once
 	pixiv     *pixivPorts
 	pixivErr  error
+
+	fanboxAccountsOnce sync.Once
+	fanboxAccounts     *fanboxaccount.Service
+	fanboxAccountsErr  error
 
 	fanboxOnce sync.Once
 	fanbox     *Fanbox
@@ -100,18 +103,19 @@ func (l *Local) openDatabase() (*database.DB, error) {
 	return db, nil
 }
 
-// PixivAccounts 延迟打开 Pixiv 账号服务与登录服务。
+// PixivAccounts 延迟打开 Pixiv 账号服务与登录服务；打开失败不缓存，后续调用可以重试。
 func (l *Local) PixivAccounts() (*account.Service, account.LoginService, error) {
-	l.accountsOnce.Do(func() {
+	l.accountsMu.Lock()
+	defer l.accountsMu.Unlock()
+	if l.accounts == nil {
 		db, err := l.openDatabase()
 		if err != nil {
-			l.accountsErr = err
-			return
+			return nil, account.LoginService{}, err
 		}
 		l.accounts = account.NewService(db, settings.DefaultStore())
 		l.login = account.LoginService{Pixiv: l.accounts}
-	})
-	return l.accounts, l.login, l.accountsErr
+	}
+	return l.accounts, l.login, nil
 }
 
 // CurrentUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
@@ -135,7 +139,7 @@ func (l *Local) FanboxAccounts() (*fanboxaccount.Service, error) {
 // Fanbox 延迟构造命令组共用的 FANBOX 会话。
 func (l *Local) Fanbox() (*Fanbox, error) {
 	l.fanboxOnce.Do(func() {
-		accounts, err := l.FanboxAccounts()
+		accounts, err := l.fanboxService()
 		if err != nil {
 			l.fanboxErr = err
 			return
@@ -145,13 +149,21 @@ func (l *Local) Fanbox() (*Fanbox, error) {
 	return l.fanbox, l.fanboxErr
 }
 
-// NewFanbox 构造一个独立的 FANBOX 会话，供 MCP 每次打开租约使用。
+// NewFanbox 返回执行内共享账号服务的 FANBOX 会话，供 MCP 每次打开租约使用；
+// 数据库句柄在本次执行内只打开一次，不按请求累积。
 func (l *Local) NewFanbox() (*Fanbox, error) {
-	accounts, err := l.FanboxAccounts()
+	accounts, err := l.fanboxService()
 	if err != nil {
 		return nil, err
 	}
 	return NewFanbox(accounts), nil
+}
+
+func (l *Local) fanboxService() (*fanboxaccount.Service, error) {
+	l.fanboxAccountsOnce.Do(func() {
+		l.fanboxAccounts, l.fanboxAccountsErr = l.FanboxAccounts()
+	})
+	return l.fanboxAccounts, l.fanboxAccountsErr
 }
 
 func (l *Local) ports() (*pixivPorts, error) {

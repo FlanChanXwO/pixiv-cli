@@ -36,11 +36,11 @@ type Runtime struct {
 	Out       io.Writer
 	ErrOut    io.Writer
 	Logger    func() *slog.Logger
-	Settings  func() (settings.RuntimeConfig, error)
+	Settings  settings.RuntimeConfig
 	Downloads downloader.DownloadService
 	// Local 提供 Pixiv 重放执行、只读会话与本地账号摘要。
 	Local *session.Local
-	// Fanbox 为每次请求打开独立的 FANBOX 会话。
+	// Fanbox 返回执行内共享账号库的 FANBOX 会话；每次调用只新建租约。
 	Fanbox func() (*session.Fanbox, error)
 	// ReverseSearch 是启动时固定配置的反向搜图端口。
 	ReverseSearch pixivmcpserver.ReverseSearchPorts
@@ -55,10 +55,6 @@ const mcpStateFileName = "mcp-state.json"
 
 // Run 启动 stdio 或 HTTP runtime；request.ListenAddr 为 nil 时使用 stdio。
 func (r Runtime) Run(ctx context.Context, request Request) error {
-	settings, err := r.Settings()
-	if err != nil {
-		return err
-	}
 	if request.HTTPSProxyOverride != nil {
 		if _, err := httpclient.HTTPClient(*request.HTTPSProxyOverride); err != nil {
 			return err
@@ -69,9 +65,9 @@ func (r Runtime) Run(ctx context.Context, request Request) error {
 	}
 	sdkPorts, fanboxPorts := r.sdkPorts()
 	if request.ListenAddr == nil {
-		return r.runStdio(ctx, settings, sdkPorts, fanboxPorts, request)
+		return r.runStdio(ctx, r.Settings, sdkPorts, fanboxPorts, request)
 	}
-	return r.runHTTP(ctx, settings, sdkPorts, fanboxPorts, request)
+	return r.runHTTP(ctx, r.Settings, sdkPorts, fanboxPorts, request)
 }
 
 // sdkPorts 把组合根的 SDK 边界翻译成 MCP 产品端口。

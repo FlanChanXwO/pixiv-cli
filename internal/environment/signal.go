@@ -18,9 +18,14 @@ func (b *BrokenPipe) Enable() {
 	b.stop = func() { signal.Reset(syscall.SIGPIPE) }
 }
 
-// Restore 在本次执行结束时恢复平台默认处理。
+// Installed 报告当前是否安装了 broken-pipe 策略。
+func (b *BrokenPipe) Installed() bool { return b.stop != nil }
+
+// Restore 在本次执行结束时恢复平台默认处理；重复调用是安全的。
 func (b *BrokenPipe) Restore() {
-	if b.stop != nil {
-		b.stop()
+	if b.stop == nil {
+		return
 	}
+	b.stop()
+	b.stop = nil
 }

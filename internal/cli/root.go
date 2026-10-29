@@ -56,16 +56,16 @@ import (
 type app struct {
 	in             io.Reader
 	out, errOut    io.Writer
-	pipelineSignal environment.BrokenPipe
-	mcpSignal      environment.BrokenPipe
+	pipelineSignal *environment.BrokenPipe
+	mcpSignal      *environment.BrokenPipe
 	closeState     *lifecycle.CloseState
 	local          *session.Local
 	logs           *logging.State
 }
 
-func (a app) logger() *slog.Logger { return a.logs.Logger }
+func (a *app) logger() *slog.Logger { return a.logs.Logger }
 
-func (a app) newRootCommand() *cobra.Command {
+func (a *app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pixiv",
 		Short:         "Pixiv CLI and MCP server",
@@ -128,7 +128,7 @@ func (a app) newRootCommand() *cobra.Command {
 	return cmd
 }
 
-func (a app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
+func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
 		search.New(env, exec, reverseSearch),
@@ -146,7 +146,7 @@ func (a app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.
 	}
 }
 
-func (a app) runtimeConfig() (settings.RuntimeConfig, error) {
+func (a *app) runtimeConfig() (settings.RuntimeConfig, error) {
 	snapshot, err := settings.DefaultStore().Current()
 	if err != nil {
 		return settings.RuntimeConfig{}, err
@@ -169,7 +169,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 		args = []string{"pixiv"}
 	}
 	closeState := &lifecycle.CloseState{}
-	a := app{in: in, out: out, errOut: errOut, closeState: closeState, logs: &logging.State{Logger: logging.Discard()}}
+	a := app{
+		in: in, out: out, errOut: errOut, closeState: closeState,
+		pipelineSignal: &environment.BrokenPipe{}, mcpSignal: &environment.BrokenPipe{},
+		logs: &logging.State{Logger: logging.Discard()},
+	}
 	a.local = session.NewLocal(closeState, a.pixivSettings, a.fanboxOptions, a.poolConfig)
 	defer a.pipelineSignal.Restore()
 	defer a.mcpSignal.Restore()
@@ -196,7 +200,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	return a.exitWithNDJSONScope(err, ndjsonOutput)
 }
 
-func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
+func (a *app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 	if err == nil {
 		return 0
 	}
@@ -221,7 +225,7 @@ func (a app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 	return 1
 }
 
-func (a app) startLogging(cmd *cobra.Command, requirement environment.Execution) error {
+func (a *app) startLogging(cmd *cobra.Command, requirement environment.Execution) error {
 	if !requirement.EnsureConfig || isQuietConfigCommand(cmd) {
 		return nil
 	}
@@ -244,7 +248,7 @@ func isQuietConfigCommand(cmd *cobra.Command) bool {
 
 // enablePipelineSignal 安装 NDJSON 专用的 SIGPIPE 策略。command owner 只在确定输出记录流时
 // 调用，其他命令保留平台的默认 SIGPIPE 行为，否则普通输出被关闭管道截断会被误判为成功。
-func (a app) commandEnv() environment.Env {
+func (a *app) commandEnv() environment.Env {
 	return environment.New(a.in, a.out, a.errOut, environment.NewUsageError, a.pipelineSignal.Enable, func(override *bool) (bool, error) {
 		if override != nil {
 			return *override, nil
@@ -258,11 +262,11 @@ func (a app) commandEnv() environment.Env {
 }
 
 // newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开数据库。
-func (a app) newAuthCommand() *cobra.Command {
+func (a *app) newAuthCommand() *cobra.Command {
 	return auth.New(a.commandEnv(), auth.SupportFor(a.local.PixivAccounts, a.runtimeConfig, secretfile.WriteSecretFile))
 }
 
-func (a app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
+func (a *app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
 	children := []*cobra.Command{
 		fanboxauth.New(env, a.local.FanboxAccounts, fanboxauth.SystemBrowserProvider{}),
 		fanboxdownload.New(env, a.local.Fanbox, func() (string, error) {
@@ -273,7 +277,7 @@ func (a app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
 	return fanboxcli.NewCommand(env, append(children, browse.Commands(env, a.local.Fanbox)...))
 }
 
-func (a app) pixivSettings(request session.ProxyRequest) (session.PixivSettings, error) {
+func (a *app) pixivSettings(request session.ProxyRequest) (session.PixivSettings, error) {
 	runtime, err := a.runtimeConfig()
 	if err != nil {
 		return session.PixivSettings{}, err
@@ -281,7 +285,7 @@ func (a app) pixivSettings(request session.ProxyRequest) (session.PixivSettings,
 	return session.PixivOptions(runtime, request, a.logger())
 }
 
-func (a app) fanboxOptions() (fanbox.Options, error) {
+func (a *app) fanboxOptions() (fanbox.Options, error) {
 	runtime, err := a.runtimeConfig()
 	if err != nil {
 		return fanbox.Options{}, err
@@ -289,7 +293,7 @@ func (a app) fanboxOptions() (fanbox.Options, error) {
 	return session.FanboxOptions(runtime, a.logger()), nil
 }
 
-func (a app) poolConfig() (session.PoolConfig, error) {
+func (a *app) poolConfig() (session.PoolConfig, error) {
 	runtime, err := a.runtimeConfig()
 	if err != nil {
 		return session.PoolConfig{}, err
@@ -298,7 +302,7 @@ func (a app) poolConfig() (session.PoolConfig, error) {
 }
 
 // runPixivMCP 构造 MCP 启动快照，把反向搜图与本地账号端口注入 mcp.Runtime。
-func (a app) runPixivMCP(ctx context.Context, request mcp.Request) error {
+func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 	runtime, err := a.runtimeConfig()
 	if err != nil {
 		return err
@@ -312,7 +316,7 @@ func (a app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 		Out:           a.out,
 		ErrOut:        a.errOut,
 		Logger:        a.logger,
-		Settings:      a.runtimeConfig,
+		Settings:      runtime,
 		Downloads:     downloader.NewService(),
 		Local:         a.local,
 		Fanbox:        a.local.NewFanbox,
@@ -359,7 +363,7 @@ func newMCPReverseSearchPorts(runtime settings.RuntimeConfig, request mcp.Reques
 }
 
 // reverseSearchPort 为每次命令树构造反向搜图端口；每次调用按当前配置重新读取 provider 和代理。
-func (a app) reverseSearchPort() search.ReverseSearchPort {
+func (a *app) reverseSearchPort() search.ReverseSearchPort {
 	return func(ctx context.Context, request search.ReverseSearchRequest) (reversesearch.Response, error) {
 		runtime, err := a.runtimeConfig()
 		if err != nil {
