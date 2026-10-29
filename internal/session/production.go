@@ -65,9 +65,8 @@ type Local struct {
 	pixiv     *pixivPorts
 	pixivErr  error
 
-	fanboxAccountsOnce sync.Once
-	fanboxAccounts     *fanboxaccount.Service
-	fanboxAccountsErr  error
+	fanboxAccountsMu sync.Mutex
+	fanboxAccounts   *fanboxaccount.Service
 
 	fanboxOnce sync.Once
 	fanbox     *Fanbox
@@ -160,10 +159,16 @@ func (l *Local) NewFanbox() (*Fanbox, error) {
 }
 
 func (l *Local) fanboxService() (*fanboxaccount.Service, error) {
-	l.fanboxAccountsOnce.Do(func() {
-		l.fanboxAccounts, l.fanboxAccountsErr = l.FanboxAccounts()
-	})
-	return l.fanboxAccounts, l.fanboxAccountsErr
+	l.fanboxAccountsMu.Lock()
+	defer l.fanboxAccountsMu.Unlock()
+	if l.fanboxAccounts == nil {
+		service, err := l.FanboxAccounts()
+		if err != nil {
+			return nil, err
+		}
+		l.fanboxAccounts = service
+	}
+	return l.fanboxAccounts, nil
 }
 
 func (l *Local) ports() (*pixivPorts, error) {
