@@ -1,6 +1,6 @@
 //go:build linux
 
-package secret
+package chromium
 
 import (
 	"bytes"

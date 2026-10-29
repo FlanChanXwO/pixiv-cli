@@ -2,8 +2,10 @@
 //
 // 本包只接受受约束的 [CookieQuery]，产出脱敏的 [credential.Secret]；它不识别
 // Cloudflare challenge，也不运行 challenge 绕过，只读取 cookie。本包不导入 provider
-// 子包，单独导入不会注册任何 provider；需要完整分发的调用方导入
-// internal/browsercookies/system。
+// 子包，单独导入不会注册任何 provider；需要完整分发的调用方导入 chromium、
+// firefox 与 safari 触发注册，再调用 [New]。
+//
+// [Query] 通过系统 sqlite3 命令行工具只读查询本地 cookie 数据库，供 provider 使用。
 //
 // 包的组成：[Provider] 是各浏览器实现的读取接口，[Profile] 描述可选择的 profile，
 // [Register] 与 [New] 维护名称到 provider 工厂的注册表，[CookieQuery] 约束查询字段。
@@ -157,7 +159,7 @@ func Register(name string, factory ProviderFactory) {
 
 // New 按 browser 名称创建 provider：支持 "chrome"、"edge"、
 // "firefox"、"safari"；未知名称返回 ErrUnknownBrowser。
-// provider 子包通过 init 完成注册；集成入口导入 internal/browsercookies/system
+// provider 子包通过 init 完成注册；集成入口空导入 chromium、firefox 与 safari
 // 获得完整分发。单独导入本包不会注册任何 provider。
 func New(browser string) (Provider, error) {
 	registryMu.RLock()

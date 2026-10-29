@@ -8,7 +8,6 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
 func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
@@ -22,7 +21,7 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 	if bytes.HasPrefix(localStateKey, []byte("DPAPI")) {
 		localStateKey = localStateKey[len("DPAPI"):]
 	}
-	key, err := (secret.DPAPI{}).Unprotect(ctx, localStateKey)
+	key, err := (DPAPI{}).Unprotect(ctx, localStateKey)
 	if err != nil {
 		return nil, mapDPAPIError(err)
 	}
@@ -30,7 +29,7 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 }
 
 func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, error) {
-	value, err := (secret.DPAPI{}).Unprotect(ctx, blob)
+	value, err := (DPAPI{}).Unprotect(ctx, blob)
 	if err != nil {
 		return nil, mapDPAPIError(err)
 	}
@@ -38,7 +37,7 @@ func (p *provider) decryptLegacy(ctx context.Context, blob []byte) ([]byte, erro
 }
 
 func mapDPAPIError(err error) error {
-	if errors.Is(err, secret.ErrInvalidBlob) || errors.Is(err, secret.ErrDPAPI) {
+	if errors.Is(err, ErrInvalidBlob) || errors.Is(err, ErrDPAPI) {
 		return browsercookies.ErrDPAPI
 	}
 	return err

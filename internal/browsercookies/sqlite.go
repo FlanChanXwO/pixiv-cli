@@ -1,9 +1,4 @@
-// Package sqliteio 通过系统 sqlite3 命令行工具只读查询本地 SQLite 文件。
-//
-// 仅由本包树内的 provider 使用；SQL 必须是 provider 控制的常量，参数来自受
-// 约束的 CookieQuery。任何失败的错误都是静态分类，绝不包含路径、SQL、命令
-// 输出或参数值。
-package sqliteio
+package browsercookies
 
 import (
 	"bytes"
@@ -12,20 +7,18 @@ import (
 	"errors"
 	"os/exec"
 	"strings"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 )
 
 // Query 在 dbPath 上以只读方式执行 sql。参数通过 sqlite3 CLI 的 `.parameter
 // set` 绑定（不进行 SQL 字符串拼接）。返回 CSV 行（每行按 SELECT 列序）。
 //
 // 分类错误：
-//   - 数据库被浏览器锁定时返回 browsercookies.ErrDatabaseLocked；
-//   - sqlite3 命令缺失时返回 browsercookies.ErrSQLiteUnavailable；
-//   - 其余失败返回 browsercookies.ErrQueryFailed。
+//   - 数据库被浏览器锁定时返回 ErrDatabaseLocked；
+//   - sqlite3 命令缺失时返回 ErrSQLiteUnavailable；
+//   - 其余失败返回 ErrQueryFailed。
 func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([][]string, error) {
 	if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(sql) == "" {
-		return nil, browsercookies.ErrQueryFailed
+		return nil, ErrQueryFailed
 	}
 	// SQLite 的 Windows CLI 默认 row separator 会与 C runtime 的文本换行转换叠加，
 	// 实际产生 \r\r\n，encoding/csv 会拒绝该记录。显式要求单个 \n，让 Windows
@@ -33,7 +26,7 @@ func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([
 	args := []string{"-readonly", "-noheader", "-csv", "-newline", "\n"}
 	for name, value := range params {
 		if !safeParam(name) || !safeParam(value) {
-			return nil, browsercookies.ErrQueryFailed
+			return nil, ErrQueryFailed
 		}
 		args = append(args, "-cmd", ".parameter set "+name+" "+value)
 	}
@@ -47,23 +40,23 @@ func Query(ctx context.Context, dbPath, sql string, params map[string]string) ([
 			return nil, ctx.Err()
 		}
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, browsercookies.ErrSQLiteUnavailable
+			return nil, ErrSQLiteUnavailable
 		}
 		lowerStderr := strings.ToLower(stderr.String())
 		if strings.Contains(lowerStderr, "permission denied") || strings.Contains(lowerStderr, "not authorized") {
-			return nil, browsercookies.ErrPermissionDenied
+			return nil, ErrPermissionDenied
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && (exitErr.ExitCode() == 5 || strings.Contains(lowerStderr, "locked")) {
-			return nil, browsercookies.ErrDatabaseLocked
+			return nil, ErrDatabaseLocked
 		}
-		return nil, browsercookies.ErrQueryFailed
+		return nil, ErrQueryFailed
 	}
 	reader := csv.NewReader(bytes.NewReader(out))
 	reader.FieldsPerRecord = -1
 	rows, err := reader.ReadAll()
 	if err != nil {
-		return nil, browsercookies.ErrQueryFailed
+		return nil, ErrQueryFailed
 	}
 	return rows, nil
 }

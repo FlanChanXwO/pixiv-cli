@@ -1,6 +1,6 @@
 //go:build windows
 
-package secret
+package chromium
 
 import (
 	"context"
