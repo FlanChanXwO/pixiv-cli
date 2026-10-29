@@ -170,8 +170,8 @@ Upstream protocol implementations live under each product directory, `internal/p
 
 | Location | Owns |
 | --- | --- |
-| `internal/pixiv/api/client.go`, `transport.go` | App requests, auth headers, status handling, and pacing; idempotent reads retry once only on the first 429 with a valid `Retry-After`; mutations are not replayed |
-| `internal/pixiv/api/api.go`, `profile.go`, `failure.go`, `required.go` | route/parameter/header constants, request profile, redacted failures, and required-field decoding |
+| `internal/pixiv/api/api.go`, `transport.go` | App requests, auth headers, status handling, and pacing; idempotent reads retry once only on the first 429 with a valid `Retry-After`; mutations are not replayed |
+| `internal/pixiv/api/routes.go`, `profile.go`, `failure.go`, `required.go` | route/parameter/header constants, request profile, redacted failures, and required-field decoding |
 | `internal/pixiv/api/resource.go` | signed-URL cache, media host allowlist, resource reads, and redirect validation |
 | `internal/pixiv/api/oauth/` | PKCE, authorization-code exchange, refresh-token rotation, and token state |
 | `internal/fanbox/api/` | FANBOX session Cookie, native transport, identity cache, Cloudflare challenge/solver, media locator cache, and URL policy |

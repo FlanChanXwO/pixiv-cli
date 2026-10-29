@@ -170,7 +170,7 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 
 | 位置 | 负责 |
 | --- | --- |
-| `internal/pixiv/api/client.go`、`transport.go` | App 请求、认证头、状态处理、请求节流；幂等读取仅在首次 429 带有效 `Retry-After` 时重试一次，写入不重放 |
+| `internal/pixiv/api/api.go`、`transport.go` | App 请求、认证头、状态处理、请求节流；幂等读取仅在首次 429 带有效 `Retry-After` 时重试一次，写入不重放 |
 | `internal/pixiv/api/api.go`、`profile.go`、`failure.go`、`required.go` | 路径/参数/请求头常量、请求 profile、脱敏失败与必需字段解码 |
 | `internal/pixiv/api/resource.go` | 签名 URL 缓存、媒体域名白名单、资源读取与重定向检查 |
 | `internal/pixiv/api/oauth/` | PKCE、授权码交换、refresh token 轮换与 token 状态 |
