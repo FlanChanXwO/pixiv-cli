@@ -212,3 +212,9 @@ func TextBool(value bool) string {
 	}
 	return "no"
 }
+
+// New 构造所有 command owner 共用的执行环境；WrapUsage 给参数错误打上 usage 标记，
+// ResolveJSON 在 override 为 nil 时读取运行时配置。
+func New(in io.Reader, out, errOut io.Writer, wrapUsage func(error) error, enablePipelineSignal func(), resolveJSON func(*bool) (bool, error)) Env {
+	return Env{In: in, Out: out, Err: errOut, WrapUsage: wrapUsage, EnablePipelineSignal: enablePipelineSignal, ResolveJSON: resolveJSON}
+}

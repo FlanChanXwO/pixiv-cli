@@ -2,10 +2,12 @@ package environment
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // BindNDJSONFlag 注册列表命令自己的记录流开关。
@@ -59,4 +61,19 @@ func (e Env) Request(cmd *cobra.Command, opts ProxyOptions) (session.ProxyReques
 		return session.ProxyRequest{}, err
 	}
 	return session.ProxyRequest{HTTPSProxyOverride: proxy}, nil
+}
+
+// NormalizeFlagError 把 pflag 的未知选项错误翻译成 usage 错误；其他错误原样返回。
+func NormalizeFlagError(err error) error {
+	var notExist *pflag.NotExistError
+	if !errors.As(err, &notExist) {
+		return err
+	}
+	if shortnames := notExist.GetSpecifiedShortnames(); shortnames != "" {
+		return NewUsageError(fmt.Errorf("unknown option '-%c'", []rune(shortnames)[0]))
+	}
+	if name := notExist.GetSpecifiedName(); name != "" {
+		return NewUsageError(fmt.Errorf("unknown option '--%s'", name))
+	}
+	return err
 }
