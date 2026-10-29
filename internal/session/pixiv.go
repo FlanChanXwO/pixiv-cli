@@ -3,9 +3,10 @@
 // 账号凭据与 pool 策略由叶模块实现，CLI/MCP 的请求模型和配置映射由组合根负责；
 // 本包只接收协议无关的请求值与行为端口。
 //
-// 包的组成：[Pixiv] 与 [Fanbox] 每次打开都返回独立 [lifecycle.Lease]，
-// [Request]、[OpenRequest] 与 [PoolConfig] 是请求值，[AccountService]、
-// [AccountOpener]、[PoolExecutor] 与 [RotationGate] 是注入的行为端口。
+// 包的组成：[Pixiv] 与 [Fanbox] 每次打开都返回独立 [lifecycle.Lease]；
+// [Request]、[OpenRequest]、[ProxyRequest] 与 [PoolConfig] 是请求值；
+// [Executor] 与 [Runner] 把命令 owner 的读取/修改接到重放边界；
+// [AccountService]、[AccountOpener]、[PoolExecutor] 与 [RotationGate] 是注入的行为端口。
 package session
 
 import (

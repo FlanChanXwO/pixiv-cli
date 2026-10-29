@@ -1,10 +1,12 @@
-// Package record 持有 CLI 与 MCP 共用的 Pixiv 实体 JSON 记录投影。
+// Package record 持有 CLI 与 MCP 共用的 Pixiv 实体 JSON 记录投影，以及 CLI 的记录流与
+// 列表输出。
 //
 // 记录保留源对象与未知字段，只固定顶层 id、type、url；解析时会拒绝额外的 JSON 值并
 // 删除版本类元数据键。
 //
 // 包的组成：[Record] 是记录值，[ParseRecordJSON] 解析一行 NDJSON，
-// [NewIdentityRecord] 构造只含身份字段的记录。
+// [ConsumeNDJSONRecords] 逐行消费管道并写诊断；[RunArtworks]、[RunNovels]、[RunUsers]
+// 与 [RunPages] 是 CLI 列表输出，[JSONArraySpool] 暂存完整 JSON 文档。
 package record
 
 // Record 保留可在 CLI 管道和 MCP 之间共享的 Pixiv 实体 JSON 记录。
