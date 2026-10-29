@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // spool 保存 `recommended all` 独有的多分区临时文档。单一实体列表使用共享 listing

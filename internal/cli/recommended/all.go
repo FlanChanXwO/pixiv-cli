@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // runAll 按既有类别顺序把四个推荐分区写入一份私有临时文档，只有全部读取成功后才
