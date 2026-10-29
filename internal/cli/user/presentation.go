@@ -6,7 +6,7 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // printUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制

@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	accountpixiv "github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 )
 
 // Windows CI 实际打开数据库，覆盖盘符、反斜杠、空格与 TMP 路径。
@@ -16,7 +16,7 @@ func TestOpenOnWindowsAcceptsForwardSlashFileURI(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := db.SavePixivCredential(context.Background(), accountpixiv.New(1, "user", []byte("token"))); err != nil {
+	if err := db.SavePixivCredential(context.Background(), account.New(1, "user", []byte("token"))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.GetPixiv(context.Background(), 1); err != nil {

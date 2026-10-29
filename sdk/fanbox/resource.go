@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/api"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -25,7 +25,7 @@ type resourceRefPayload struct {
 }
 
 func (c *Client) validateResourceURL(rawURL string) error {
-	if err := fanboxapi.ValidateURL(rawURL); err != nil {
+	if err := api.ValidateURL(rawURL); err != nil {
 		return newError("resource", sdk.ResourceForbidden, errors.New("resource host is not allowed"))
 	}
 	return nil
@@ -48,12 +48,12 @@ func (c *Client) newResource(kind, creatorID, postID, assetID, rawURL, filename 
 	if err != nil {
 		return sdk.Resource{}, newError("resource", sdk.UpstreamError, err)
 	}
-	c.app.CacheLocator(ref.String(), fanboxapi.Locator{URL: rawURL, Filename: filename})
+	c.app.CacheLocator(ref.String(), api.Locator{URL: rawURL, Filename: filename})
 	return sdk.Resource{
 		Ref:                 ref,
 		URL:                 rawURL,
-		RequestHeaders:      map[string]string{"Referer": fanboxapi.Referer},
-		RequiresCredentials: fanboxapi.RequiresCredentials(rawURL),
+		RequestHeaders:      map[string]string{"Referer": api.Referer},
+		RequiresCredentials: api.RequiresCredentials(rawURL),
 	}, nil
 }
 
@@ -71,7 +71,7 @@ func (c *Client) OpenResource(ctx context.Context, request sdk.OpenResourceReque
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.app.OpenMedia(ctx, locator.URL, fanboxapi.MediaRequest{
+	response, err := c.app.OpenMedia(ctx, locator.URL, api.MediaRequest{
 		Method:          string(request.Method),
 		Range:           request.Range,
 		IfNoneMatch:     request.IfNoneMatch,
@@ -130,31 +130,31 @@ func (c *Client) decodeResourceRef(ref sdk.ResourceRef) (resourceRefPayload, err
 
 // resolveResource keeps the URL and attachment name in the same cache entry.
 // Reopened references resolve metadata by kind and stable identity, never by URL.
-func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, operation string) (fanboxapi.Locator, error) {
+func (c *Client) resolveResource(ctx context.Context, ref sdk.ResourceRef, operation string) (api.Locator, error) {
 	rp, err := c.decodeResourceRef(ref)
 	if err != nil {
-		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
+		return api.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("invalid resource reference"))
 	}
 	if locator, ok := c.app.CachedLocator(ref.String()); ok {
 		return locator, nil
 	}
-	var locator fanboxapi.Locator
+	var locator api.Locator
 	switch rp.Kind {
 	case "creator_icon", "creator_cover":
 		locator.URL, err = c.resolveCreatorAssetURL(ctx, rp)
 	case "post_image", "post_file":
 		locator, err = c.resolvePostAsset(ctx, rp)
 	default:
-		return fanboxapi.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
+		return api.Locator{}, newError(operation, sdk.InvalidArgument, errors.New("resource kind is unsupported"))
 	}
 	if err != nil {
 		if _, ok := err.(*sdk.Error); ok {
-			return fanboxapi.Locator{}, err
+			return api.Locator{}, err
 		}
-		return fanboxapi.Locator{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
+		return api.Locator{}, newError(operation, sdk.MalformedUpstreamResponse, errors.New("resource metadata has no usable URL"))
 	}
 	if err := c.validateResourceURL(locator.URL); err != nil {
-		return fanboxapi.Locator{}, newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
+		return api.Locator{}, newError(operation, sdk.ResourceForbidden, errors.New("resolved resource URL is not allowed"))
 	}
 	c.app.CacheLocator(ref.String(), locator)
 	return locator, nil
@@ -187,35 +187,35 @@ func (c *Client) resolveCreatorAssetURL(ctx context.Context, rp resourceRefPaylo
 }
 
 // resolvePostAsset selects kind as well as ID: image and file ID spaces may overlap.
-func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (fanboxapi.Locator, error) {
+func (c *Client) resolvePostAsset(ctx context.Context, rp resourceRefPayload) (api.Locator, error) {
 	if rp.Post == "" || rp.Asset == "" {
-		return fanboxapi.Locator{}, errors.New("post resource reference is missing post or attachment id")
+		return api.Locator{}, errors.New("post resource reference is missing post or attachment id")
 	}
 	source, err := c.postInfo(ctx, rp.Post)
 	if err != nil {
-		return fanboxapi.Locator{}, classifyError("resource", err)
+		return api.Locator{}, classifyError("resource", err)
 	}
 	if source.Body == nil {
-		return fanboxapi.Locator{}, errors.New("post body is unavailable")
+		return api.Locator{}, errors.New("post body is unavailable")
 	}
 	images, files, err := bodyMedia(source.Body)
 	if err != nil {
-		return fanboxapi.Locator{}, classifyError("resource", err)
+		return api.Locator{}, classifyError("resource", err)
 	}
 	if rp.Kind == "post_image" {
 		for _, image := range images {
 			if image.ID == rp.Asset {
-				return fanboxapi.Locator{URL: image.OriginalURL}, nil
+				return api.Locator{URL: image.OriginalURL}, nil
 			}
 		}
 	} else if rp.Kind == "post_file" {
 		for _, file := range files {
 			if file.ID == rp.Asset {
-				return fanboxapi.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
+				return api.Locator{URL: file.URL, Filename: attachmentFilename(file.Name, file.Extension)}, nil
 			}
 		}
 	}
-	return fanboxapi.Locator{}, errors.New("post attachment is unavailable")
+	return api.Locator{}, errors.New("post attachment is unavailable")
 }
 
 // attachmentFilename keeps the upstream name instead of guessing one from a

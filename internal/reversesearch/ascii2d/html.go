@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"golang.org/x/net/html"
 )
 

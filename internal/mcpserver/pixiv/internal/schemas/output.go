@@ -4,7 +4,7 @@ import (
 	"reflect"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi/oauth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -53,7 +53,7 @@ func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	if err != nil {
 		return nil, newError("BeginLogin", sdk.UpstreamUnavailable, "cannot create oauth login session")
 	}
-	httpClient, selfHTTP := pixivapi.NewHTTPClient(options.HTTPClient, 0, nil)
+	httpClient, selfHTTP := api.NewHTTPClient(options.HTTPClient, 0, nil)
 	values := url.Values{}
 	values.Set("code_challenge", challenge)
 	values.Set("code_challenge_method", "S256")
@@ -61,7 +61,7 @@ func BeginLogin(options LoginOptions) (*LoginSession, error) {
 	values.Set("state", state)
 	return &LoginSession{state: &loginSessionState{
 		exchange:         oauth.New("", oauth.Config{HTTPClient: httpClient, OwnHTTPClient: selfHTTP}),
-		authorizationURL: strings.TrimRight(pixivapi.AppAPIBase, "/") + pixivapi.PathLogin + "?" + values.Encode(),
+		authorizationURL: strings.TrimRight(api.AppAPIBase, "/") + api.PathLogin + "?" + values.Encode(),
 		verifier:         verifier,
 		state:            state,
 	}}, nil
@@ -181,7 +181,7 @@ func loginCallbackRequiresState(parsed *url.URL) bool {
 	if strings.EqualFold(parsed.Scheme, "pixiv") && strings.EqualFold(parsed.Host, "account") && parsed.Path == "/login" {
 		return false
 	}
-	callback, err := url.Parse(pixivapi.OAuthRedirectURI)
+	callback, err := url.Parse(api.OAuthRedirectURI)
 	if err != nil {
 		return true
 	}

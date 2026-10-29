@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PrintArtworks 输出 timeline、MyPixiv、收藏和推荐共用的作品格式：URL 后跟一行元数据。

@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )

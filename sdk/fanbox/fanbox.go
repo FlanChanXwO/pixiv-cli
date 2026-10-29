@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/api"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -71,7 +71,7 @@ type FlareSolverrOptions struct {
 type Client struct {
 	// app owns the session, the transport, and the in-session caches for
 	// resource locators and the verified account identity.
-	app *fanboxapi.Client
+	app *api.Client
 }
 
 // Open creates a Client without network I/O; call ValidateSession to verify the
@@ -83,16 +83,16 @@ func Open(credentials SessionCredentials) (*Client, error) {
 // OpenWith applies the connection settings in options instead of the defaults
 // Open uses; nil fields fall back to those defaults.
 func OpenWith(credentials SessionCredentials, options Options) (*Client, error) {
-	app, err := fanboxapi.New(credentials.FANBOXSESSID, fanboxapi.Options{
+	app, err := api.New(credentials.FANBOXSESSID, api.Options{
 		HTTPClient:   options.HTTPClient,
 		ProxyURL:     options.ProxyURL,
 		UserAgent:    options.UserAgent,
-		FlareSolverr: (*fanboxapi.FlareSolverrOptions)(options.FlareSolverr),
+		FlareSolverr: (*api.FlareSolverrOptions)(options.FlareSolverr),
 		Logger:       options.Logger,
 	})
 	if err != nil {
 		reason := sdk.CredentialsExpired
-		if errors.Is(err, fanboxapi.ErrInvalidOption) {
+		if errors.Is(err, api.ErrInvalidOption) {
 			reason = sdk.InvalidArgument
 		}
 		return nil, newError("Open", reason, err)

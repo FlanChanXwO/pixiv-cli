@@ -17,7 +17,7 @@ flowchart TB
     GAL["pixiv/gallery<br/>MCP Apps view"]
     MP["pixiv/mediaproxy<br/>capabilities, LRU, animation jobs"]
     AM["pixiv/tools<br/>artwork_media"]
-    RS["internal/pixivaccount/reads.go<br/>MCP read sessions"]
+    RS["internal/pixiv/account/reads.go<br/>MCP read sessions"]
     DL["internal/media/downloader<br/>(stdio only)"]
     NEW --> PX & FB
     HTTP --> AUTH
@@ -63,7 +63,7 @@ flowchart LR
 - ZIP/preview writers reserve disk bytes before writing; a synchronous internal native callback reserves each output write against the same pool before touching the file. Ready artifacts are reclaimed only when actually requested bytes don't fit (no preemptive reservation). The native output upper limit stays enforced and the global serial encode gate stays shared.
 - Temporary producers queue with the native reservation; startup cleanup needs the service marker and a released lifetime OS lock. Files stay pinned during GET/HEAD; cleanup joins active work. Gallery polls through the Apps bridge; CSP still forbids direct fetch connections.
 
-## Read sessions (`internal/pixivaccount/reads.go`)
+## Read sessions (`internal/pixiv/account/reads.go`)
 
 - Lifecycle-managed MCP read sessions: validate the local account revision on acquisition; share the rotation gate only for OAuth refresh and successful rotation persistence.
 - Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. Mutation leases and pool commit/replay stay in the Facade.

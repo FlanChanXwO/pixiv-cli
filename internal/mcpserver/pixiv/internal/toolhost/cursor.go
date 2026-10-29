@@ -9,7 +9,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // CollectCursorWith 让 discovery 共用查询绑定与完整批次续读。bindingInput 必须是清掉

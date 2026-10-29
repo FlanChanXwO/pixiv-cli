@@ -6,7 +6,7 @@ import (
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -27,10 +27,10 @@ type commentAccessControlWire struct {
 
 // commentsWire is the response shape artwork and novel comment lists share.
 type commentsWire struct {
-	Comments      pixivapi.RequiredList[commentWire] `json:"comments"`
-	NextURL       *string                            `json:"next_url"`
-	TotalComments *int64                             `json:"total_comments"`
-	AccessControl *commentAccessControlWire          `json:"access_control"`
+	Comments      api.RequiredList[commentWire] `json:"comments"`
+	NextURL       *string                       `json:"next_url"`
+	TotalComments *int64                        `json:"total_comments"`
+	AccessControl *commentAccessControlWire     `json:"access_control"`
 	// CommentAccessControl carries the current App API scalar. It decodes
 	// separately from the object form so no business meaning is inferred for it.
 	CommentAccessControl *int64 `json:"comment_access_control"`
@@ -106,7 +106,7 @@ func (c *Client) readComments(ctx context.Context, operation, path string, base 
 	}
 	query := cloneValues(base)
 	if offset > 0 {
-		query.Set(pixivapi.ParamOffset, itoa(int64(offset)))
+		query.Set(api.ParamOffset, itoa(int64(offset)))
 	}
 	var raw commentsWire
 	if err := c.app.GetJSON(ctx, path, query, &raw); err != nil {
@@ -139,8 +139,8 @@ func (c *Client) ArtworkComments(ctx context.Context, request ArtworkCommentsReq
 	if request.ArtworkID <= 0 {
 		return CommentPage{}, newError("ArtworkComments", sdk.InvalidArgument, "artwork ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamIllustID: {itoa(request.ArtworkID)}}
-	return c.readComments(ctx, "ArtworkComments", pixivapi.PathIllustComments, base, request.Cursor, commentsContinuation)
+	base := url.Values{api.ParamIllustID: {itoa(request.ArtworkID)}}
+	return c.readComments(ctx, "ArtworkComments", api.PathIllustComments, base, request.Cursor, commentsContinuation)
 }
 
 // NovelComments lists comments on one novel.
@@ -149,14 +149,14 @@ func (c *Client) NovelComments(ctx context.Context, request NovelCommentsRequest
 	if request.NovelID <= 0 {
 		return CommentPage{}, newError("NovelComments", sdk.InvalidArgument, "novel ID must be positive")
 	}
-	base := url.Values{pixivapi.ParamNovelID: {itoa(request.NovelID)}}
-	return c.readComments(ctx, "NovelComments", pixivapi.PathNovelComments, base, request.Cursor, novelCommentsContinuation)
+	base := url.Values{api.ParamNovelID: {itoa(request.NovelID)}}
+	return c.readComments(ctx, "NovelComments", api.PathNovelComments, base, request.Cursor, novelCommentsContinuation)
 }
 
 // stampsWire is the /v1/stamps response. Upstream provides no continuation for it.
 type stampsWire struct {
-	Stamps  pixivapi.RequiredList[stampWire] `json:"stamps"`
-	NextURL *json.RawMessage                 `json:"next_url"`
+	Stamps  api.RequiredList[stampWire] `json:"stamps"`
+	NextURL *json.RawMessage            `json:"next_url"`
 }
 
 type stampWire struct {
@@ -188,14 +188,14 @@ func (c *Client) Stamps(ctx context.Context, request StampsRequest) ([]Stamp, er
 // same validation.
 func (c *Client) fetchStamps(ctx context.Context, operation string) ([]stampWire, error) {
 	var raw stampsWire
-	if err := c.app.GetJSON(ctx, pixivapi.PathStamps, nil, &raw); err != nil {
+	if err := c.app.GetJSON(ctx, api.PathStamps, nil, &raw); err != nil {
 		return nil, classifyAppError(err, operation)
 	}
 	if !raw.Stamps.Present || !raw.Stamps.Valid || raw.NextURL != nil {
 		return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 	}
 	for _, value := range raw.Stamps.Items {
-		if value.ID <= 0 || !pixivapi.ValidStampURL(value.URL) {
+		if value.ID <= 0 || !api.ValidStampURL(value.URL) {
 			return nil, newError(operation, sdk.MalformedUpstreamResponse, "")
 		}
 	}
@@ -219,13 +219,13 @@ type NovelCommentsRequest struct {
 type StampsRequest struct{}
 
 var commentsContinuation = continuationSpec{
-	path:  pixivapi.PathIllustComments,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamIllustID},
+	path:  api.PathIllustComments,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamIllustID},
 }
 
 var novelCommentsContinuation = continuationSpec{
-	path:  pixivapi.PathNovelComments,
-	keys:  []string{pixivapi.ParamOffset},
-	query: []string{pixivapi.ParamNovelID},
+	path:  api.PathNovelComments,
+	keys:  []string{api.ParamOffset},
+	query: []string{api.ParamNovelID},
 }

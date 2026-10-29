@@ -10,7 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/fanboxcmd"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanboxaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/spf13/cobra"
 )
 
@@ -320,7 +320,7 @@ func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool
 	return a.printSummary(*summary, jsonOut)
 }
 
-func (a commandRunner) printSummary(summary fanboxaccount.AccountSummary, jsonOut bool) error {
+func (a commandRunner) printSummary(summary account.AccountSummary, jsonOut bool) error {
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}

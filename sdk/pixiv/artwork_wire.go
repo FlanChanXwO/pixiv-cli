@@ -3,7 +3,7 @@ package pixiv
 import (
 	"encoding/json"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -77,8 +77,8 @@ func (w *artworkWire) UnmarshalJSON(data []byte) error {
 }
 
 type artworkListWire struct {
-	Illusts pixivapi.RequiredList[artworkWire] `json:"illusts"`
-	NextURL *string                            `json:"next_url"`
+	Illusts api.RequiredList[artworkWire] `json:"illusts"`
+	NextURL *string                       `json:"next_url"`
 }
 
 type ugoiraZipURLsWire struct {
@@ -92,12 +92,12 @@ type ugoiraFrameWire struct {
 }
 
 type ugoiraMetadataWire struct {
-	ZipURLs pixivapi.RequiredObject[ugoiraZipURLsWire] `json:"zip_urls"`
-	Frames  pixivapi.RequiredList[ugoiraFrameWire]     `json:"frames"`
+	ZipURLs api.RequiredObject[ugoiraZipURLsWire] `json:"zip_urls"`
+	Frames  api.RequiredList[ugoiraFrameWire]     `json:"frames"`
 }
 
 type ugoiraResponseWire struct {
-	Metadata pixivapi.RequiredObject[ugoiraMetadataWire] `json:"ugoira_metadata"`
+	Metadata api.RequiredObject[ugoiraMetadataWire] `json:"ugoira_metadata"`
 }
 
 func (c *Client) mapArtworks(values []artworkWire) ([]Artwork, error) {

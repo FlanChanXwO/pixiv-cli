@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
 func (k kind) keychainService() string {
@@ -26,12 +25,12 @@ func (k kind) keychainAccount() string {
 
 // keychainPassword 读取浏览器 Safe Storage 密码。
 func (p *provider) keychainPassword(ctx context.Context) ([]byte, error) {
-	password, err := secret.Keychain{}.GetPassword(ctx, p.kind.keychainService(), p.kind.keychainAccount())
+	password, err := Keychain{}.GetPassword(ctx, p.kind.keychainService(), p.kind.keychainAccount())
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if errors.Is(err, secret.ErrItemNotFound) {
+		if errors.Is(err, ErrItemNotFound) {
 			return nil, browsercookies.ErrKeychainItemNotFound
 		}
 		return nil, browsercookies.ErrKeychainAccess

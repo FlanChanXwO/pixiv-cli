@@ -6,7 +6,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/installer"
-	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/process"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 )
 
@@ -37,17 +36,10 @@ const (
 	InstallSourceRelease        = installer.InstallSourceRelease
 )
 
-// 以下别名转发 process 包的不经 shell 的命令执行器。
-type (
-	Command       = process.Command
-	CommandRunner = process.CommandRunner
-)
-
 // 这些构造器/函数是 composition root 需要的别名；默认 release cache 由本根组装。
 var (
 	DetectInstallSource         = installer.DetectInstallSource
 	NewReleaseInstaller         = installer.NewReleaseInstaller
-	NewCommandRunner            = process.NewCommandRunner
 	CleanupPendingWindowsUpdate = installer.CleanupPendingWindowsUpdate
 	ReleaseSigningKeyID         = installer.ReleaseSigningKeyID
 )

@@ -99,7 +99,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## Finding protocol and logging code
 
-- Pixiv protocol code lives in `internal/pixivapi/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanboxapi/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixivapi-internalfanboxapi).
+- Pixiv protocol code lives in `internal/pixiv/api/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanbox/api/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixiviapi-internalfanboxapi).
 - `internal/cli/execution.go` creates the stderr logger; `internal/cli/composition_options.go` and `composition_mcp.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
 - For local diagnosis, run `pixiv config set log_level debug`; add `pixiv config set log_format json` when structured fields help. Settings apply on the next invocation. Text logs show the operation in the second bracket and other context as `key=value`; JSON logs keep `operation`, and MCP calls add `call_id`; data stays on stdout.
 
@@ -143,7 +143,7 @@ Use at most one `x_test.go` beside its production owner `x.go`; platform-specifi
 
 | Directory | Reason |
 | --- | --- |
-| `internal/pixivaccount` | `pixiv_test.go` calls private `newAccountWithToken` to check credential formatting/slog privacy; the rotation test uses the external package. |
+| `internal/pixiv/account` | `pixiv_test.go` calls private `newAccountWithToken` to check credential formatting/slog privacy; the rotation test uses the external package. |
 | `internal/urlscheme` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
 | `internal/media/ugoira` | Preserved native CI tests inspect private decoding, quantization and GIF/APNG encoding state. |
 | `internal/storage/database` | The preserved Windows named CI test retains its original package declaration; other database tests use the external package. |
@@ -199,7 +199,7 @@ The Unsupported table records v1 entries that must stay absent. Evidence-gated e
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `pixiv_search_illust` has no standalone rating parameter | Preserve the local CLI contract and verify cursor/filter consistency manually; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
+| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/pixiv/searchfilter` + `sdk/pixiv` | CLI artwork search filters normalized `x_restrict` locally and binds the filter to its cursor; it does not send an upstream rating field. MCP `pixiv_search_illust` has no standalone rating parameter | Preserve the local CLI contract and verify cursor/filter consistency manually; exposing a new MCP parameter or upstream field requires its own supported behavior and synchronized schema/docs |
 | `NOVEL-SEARCH-ADVANCED` | No owner (must not be added) | SDK/MCP schema has no advanced field | May be evaluated once the upstream contract appears; schema-only placeholders are forbidden |
 
 **Evidence-gated**

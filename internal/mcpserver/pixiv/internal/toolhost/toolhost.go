@@ -22,7 +22,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

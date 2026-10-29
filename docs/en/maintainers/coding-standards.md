@@ -26,7 +26,11 @@ These rules apply to new code only (since 2026-10-26). Existing names are not re
 
 - No `Kind`, `Type` (as a catch-all discriminator), `Item`, `Object`, or `Misc` as a name or suffix. Use the specific role: `Phase`, `Mode`, `Source`, `Status`, `Registry`, `Store`. Keep upstream wire field names, such as Pixiv `type`, unchanged at the mapping layer.
 - No abbreviations: write `Config`, `Manager`, `Service`, `Message`, `Request`, `Response`, `Temporary`, `Value`. Short names remain fine for locals used within a few lines (`ctx`, `err`, `ok`, `i`, `n`, `req`) and for one- or two-letter receivers. Keep initialisms such as `ID`, `URL`, and `HTTP` in full capitals.
-- Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem.
+- Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem, with the one exception below.
+
+Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api` and `account`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`).
+
+Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivaccount` and `fanboxaccount`. Currently only the `internal/cli` composition root and `internal/storage/database` do this. Otherwise add no import alias, and never one that repeats the package name.
 
 ## Declaration placement and file names
 
@@ -49,7 +53,7 @@ These rules apply to new code only (since 2026-10-26). Existing names are not re
 
 `name.go` means "start reading this package here". It is not a storage room.
 
-New code goes where its owner already lives, checked in this order: the directory of the one command it serves; the shared CLI package for that product or for all commands; the MCP product's `tools` package; the public SDK domain file, with upstream protocol detail in `internal/pixivapi` or `internal/fanboxapi`; otherwise a new package named for the responsibility. If the package, file, or type name no longer summarizes its contents, the code is in the wrong place. Never create `common`, `shared`, `util`, or `misc` locations.
+New code goes where its owner already lives, checked in this order: the directory of the one command it serves; the shared CLI package for that product or for all commands; the MCP product's `tools` package; the public SDK domain file, with upstream protocol detail in `internal/pixiv/api` or `internal/fanbox/api`; otherwise a new package named for the responsibility. If the package, file, or type name no longer summarizes its contents, the code is in the wrong place. Never create `common`, `shared`, `util`, or `misc` locations.
 
 ## Named constants
 
@@ -59,7 +63,7 @@ Identifiers with business meaning use named constants instead of inline string l
 | --- | --- | --- |
 | Configuration key (alias) | `settings.Key` constant, for example `settings.KeyLogLevel` | `internal/config/settings/keys.go` |
 | Enum value (log level, output format, restrict, content type, …) | named type plus constants, for example `settings.LogLevelDebug`, `pixiv.RestrictPublic` | same file as the type |
-| Upstream API path, query/form parameter, header name | exported constant, for example `pixivapi.PathUserFollower`, `pixivapi.ParamUserID`; the package is under `internal/`, so module users cannot import it | `internal/pixivapi/api.go`, `internal/fanboxapi/api.go` |
+| Upstream API path, query/form parameter, header name | exported constant, for example `api.PathUserFollower`, `api.ParamUserID`; the package is under `internal/`, so module users cannot import it | `internal/pixiv/api/api.go`, `internal/fanbox/api/api.go` |
 | MCP tool name | unexported constant, for example `toolUserDetail` | same file as the tool registration |
 | Database column referenced from Go | unexported constant, for example `colCredentialRevision` | `internal/storage/database/rows.go`, beside the row struct |
 | JSON output key outside a struct tag, for example `illusts` | unexported constant | same file as the output code |
@@ -77,7 +81,7 @@ Literals remain acceptable for:
 Configuration keys: the `alias` tags on `RuntimeConfig` fields remain the source of truth, and the constants in `keys.go` match them one to one. A table-driven test walks every `Key` constant through `SettingSpecByAlias`, because a typo otherwise becomes a runtime "unknown setting". Program code reads `RuntimeConfig` fields, such as `cfg.LogLevel`, and never alias strings. `Store.Get`, `Set`, and `Unset` serve the `config get/set/unset` commands, where the alias comes from the user.
 
 ```go
-// internal/pixivapi/api.go
+// internal/pixiv/api/api.go
 
 // App API 路径。
 const (
@@ -184,7 +188,7 @@ Directives and special files:
 ```go
 // Package pixiv provides a Go client for the Pixiv App API: artworks, novels, users, bookmarks, and comments.
 //
-// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixivapi.
+// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixiv/api.
 package pixiv
 ```
 
@@ -259,7 +263,7 @@ Permanent code and behavior tests cover only these long-lived contracts, with on
 | --- | --- |
 | Credential privacy: account and Cookie values stay private under `%v`, `%+v`, `%#v`, and slog; logs omit query, token, Cookie, and signed URL; MCP output omits signed URLs and Cookie | Account and Cookie types, request logging, MCP output |
 | Account storage: revision conflicts, transaction rollback, opening a v1.2.x database, file permissions; atomic replacement and file locking | `internal/storage/*` |
-| A rotated token is persisted before the client is returned | `internal/pixivaccount` or `internal/session` |
+| A rotated token is persisted before the client is returned | `internal/pixiv/account` or `internal/session` |
 | Malformed upstream responses return errors; cancellation propagates | `sdk/pixiv`, `sdk/fanbox` |
 | Public snapshots: one full MCP `tools/list` golden; one CLI command's text, JSON, and NDJSON; usage-error exit code; stdio stdout carries only JSON-RPC; HTTP requires bearer | `internal/mcpserver`, `internal/cli` |
 | Environment over file over default, including explicit empty values | `internal/config/settings` |

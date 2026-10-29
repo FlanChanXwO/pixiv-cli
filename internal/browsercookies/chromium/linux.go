@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/secret"
 )
 
 func (k kind) secretApplication() string {
@@ -18,7 +17,7 @@ func (k kind) secretApplication() string {
 }
 
 func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
-	password, err := (secret.SecretService{}).GetPassword(ctx, p.kind.secretApplication())
+	password, err := (SecretService{}).GetPassword(ctx, p.kind.secretApplication())
 	if err != nil {
 		return nil, mapSecretError(err)
 	}
@@ -31,11 +30,11 @@ func (p *provider) encryptionKeys(ctx context.Context) ([][]byte, error) {
 
 func mapSecretError(err error) error {
 	switch {
-	case errors.Is(err, secret.ErrNotAvailableOnBuild):
+	case errors.Is(err, ErrNotAvailableOnBuild):
 		return browsercookies.ErrSecretServiceUnavailable
-	case errors.Is(err, secret.ErrItemNotFound):
+	case errors.Is(err, ErrItemNotFound):
 		return browsercookies.ErrSecretServiceAccess
-	case errors.Is(err, secret.ErrEmptyPassword), errors.Is(err, secret.ErrInvalidItem), errors.Is(err, secret.ErrSecretService):
+	case errors.Is(err, ErrEmptyPassword), errors.Is(err, ErrInvalidItem), errors.Is(err, ErrSecretService):
 		return browsercookies.ErrSecretServiceAccess
 	default:
 		return err

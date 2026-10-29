@@ -1,0 +1,283 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+)
+
+var (
+	// ErrSolverUnavailable 表示控制请求无法到达配置的 FlareSolverr 服务，区别于服务明确
+	// 报告求解失败。
+	ErrSolverUnavailable = errors.New("fanbox: FlareSolverr service unavailable")
+	// ErrSolverFailed 表示 FlareSolverr 有响应，但没有解开匿名首页 challenge。
+	ErrSolverFailed = errors.New("fanbox: FlareSolverr could not solve challenge")
+	// ErrMalformedSolverResponse 表示响应不满足只接受 clearance 的状态契约。
+	ErrMalformedSolverResponse = errors.New("fanbox: malformed FlareSolverr response")
+)
+
+type solverState struct {
+	userAgent string
+	clearance string
+	expiresAt time.Time
+	hasExpiry bool
+}
+
+type solverCall struct {
+	ctx     context.Context
+	cancel  context.CancelFunc
+	waiters int
+	done    chan struct{}
+	state   solverState
+	err     error
+}
+
+type solverResponse struct {
+	Status   string          `json:"status"`
+	Solution *solverSolution `json:"solution"`
+}
+
+type solverSolution struct {
+	UserAgent string         `json:"userAgent"`
+	Cookies   []solverCookie `json:"cookies"`
+}
+
+type solverCookie struct {
+	Name    string          `json:"name"`
+	Value   string          `json:"value"`
+	Expires json.RawMessage `json:"expires"`
+	Expiry  json.RawMessage `json:"expiry"`
+}
+
+func (s *Client) nativeState() (string, string) {
+	s.solverMu.Lock()
+	defer s.solverMu.Unlock()
+	if s.solverState != nil && s.solverState.hasExpiry && !time.Now().Before(s.solverState.expiresAt) {
+		s.solverState = nil
+	}
+	if s.solverState == nil {
+		return s.userAgent, ""
+	}
+	return s.solverState.userAgent, s.solverState.clearance
+}
+
+func nativeCookieHeader(session, clearance string) string {
+	if clearance == "" {
+		return session
+	}
+	return session + "; cf_clearance=" + clearance
+}
+
+func (s *Client) invalidateSolverState() {
+	s.solverMu.Lock()
+	s.solverState = nil
+	s.solverMu.Unlock()
+}
+
+func (s *Client) waitForSolver(ctx context.Context) (solverState, error) {
+	if err := ctx.Err(); err != nil {
+		return solverState{}, err
+	}
+
+	s.solverMu.Lock()
+	if s.solverState != nil && (!s.solverState.hasExpiry || time.Now().Before(s.solverState.expiresAt)) {
+		state := *s.solverState
+		s.solverMu.Unlock()
+		return state, nil
+	}
+	s.solverState = nil
+	call := s.solverActive
+	if call == nil || call.waiters == 0 {
+		if call != nil {
+			call.cancel()
+		}
+		// solver 请求的取消独立于任何单个 waiter，但继续携带原 ctx 的值（含可选的诊断
+		// scope），供共享操作使用。
+		callContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		call = &solverCall{ctx: callContext, cancel: cancel, done: make(chan struct{}), waiters: 1}
+		s.solverActive = call
+		go s.runSolver(call)
+	} else {
+		call.waiters++
+	}
+	s.solverMu.Unlock()
+
+	select {
+	case <-call.done:
+		return call.state, call.err
+	case <-ctx.Done():
+		s.unregisterSolverWaiter(call)
+		return solverState{}, ctx.Err()
+	}
+}
+
+func (s *Client) unregisterSolverWaiter(call *solverCall) {
+	s.solverMu.Lock()
+	defer s.solverMu.Unlock()
+	if s.solverActive != call || call.waiters == 0 {
+		return
+	}
+	call.waiters--
+	if call.waiters == 0 {
+		// 已没有调用方等待这次求解：取消直接请求，runSolver 丢弃随后完成的竞态结果。
+		call.cancel()
+	}
+}
+
+func (s *Client) runSolver(call *solverCall) {
+	defer call.cancel()
+	started := time.Now()
+	state, err := s.solveFlareSolverr(call.ctx)
+	if err == nil {
+		s.log.LogAttrs(call.ctx, slog.LevelInfo, "Cloudflare clearance acquired",
+			logging.OperationAttr(call.ctx), slog.Duration(logging.AttrDuration, time.Since(started)))
+	} else if call.ctx.Err() == nil {
+		s.log.LogAttrs(call.ctx, slog.LevelWarn, "Cloudflare solver failed",
+			logging.OperationAttr(call.ctx), slog.String(logging.AttrReason, solverFailureReason(err)))
+	}
+	s.solverMu.Lock()
+	call.state = state
+	call.err = err
+	if s.solverActive == call {
+		if call.waiters > 0 && err == nil {
+			cached := state
+			s.solverState = &cached
+		}
+		s.solverActive = nil
+	}
+	close(call.done)
+	s.solverMu.Unlock()
+}
+
+func (s *Client) solveFlareSolverr(ctx context.Context) (solverState, error) {
+	s.log.LogAttrs(ctx, slog.LevelDebug, "Starting Cloudflare solver", logging.OperationAttr(ctx))
+	payload := []byte(`{"cmd":"request.get","url":"https://www.fanbox.cc/"}`)
+	if s.flareSolverr.ProxyURL != "" {
+		payload = fmt.Appendf(nil, `{"cmd":"request.get","url":"https://www.fanbox.cc/","proxy":{"url":%q}}`, s.flareSolverr.ProxyURL)
+	}
+	endpoint := strings.TrimRight(s.flareSolverr.URL, "/") + "/v1"
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return solverState{}, ErrSolverUnavailable
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	transport := &http.Transport{Proxy: nil}
+	client := &http.Client{
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	defer transport.CloseIdleConnections()
+	response, err := client.Do(request)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return solverState{}, ctxErr
+		}
+		return solverState{}, ErrSolverUnavailable
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return solverState{}, ErrSolverFailed
+	}
+	var decoded solverResponse
+	decoder := json.NewDecoder(response.Body)
+	if err := decoder.Decode(&decoded); err != nil {
+		return solverState{}, ErrMalformedSolverResponse
+	}
+	if decoded.Status != "ok" {
+		return solverState{}, ErrSolverFailed
+	}
+	return validateSolverSolution(decoded.Solution)
+}
+
+func solverFailureReason(err error) string {
+	switch {
+	case errors.Is(err, ErrSolverUnavailable):
+		return "solver unavailable"
+	case errors.Is(err, ErrSolverFailed):
+		return "solver failed"
+	case errors.Is(err, ErrMalformedSolverResponse):
+		return "malformed solver response"
+	default:
+		return "solver request failed"
+	}
+}
+
+func validateSolverSolution(solution *solverSolution) (solverState, error) {
+	if solution == nil || !validHeaderValue(solution.UserAgent) {
+		return solverState{}, ErrMalformedSolverResponse
+	}
+	var clearance string
+	var expiryRaw json.RawMessage
+	count := 0
+	for _, cookie := range solution.Cookies {
+		if cookie.Name != "cf_clearance" {
+			// 其他 solver cookie 一律丢弃，不校验，也不计入 clearance 契约。
+			continue
+		}
+		count++
+		if count > 1 || cookie.Value == "" || !validCookieValue(cookie.Value) {
+			return solverState{}, ErrMalformedSolverResponse
+		}
+		clearance = cookie.Value
+		if len(cookie.Expiry) != 0 && string(cookie.Expiry) != "null" {
+			expiryRaw = cookie.Expiry
+		} else if len(cookie.Expires) != 0 && string(cookie.Expires) != "null" {
+			expiryRaw = cookie.Expires
+		}
+	}
+	if count != 1 {
+		return solverState{}, ErrMalformedSolverResponse
+	}
+	expiresAt, hasExpiry, err := parseSolverExpiry(expiryRaw)
+	if err != nil {
+		return solverState{}, ErrMalformedSolverResponse
+	}
+	return solverState{userAgent: solution.UserAgent, clearance: clearance, expiresAt: expiresAt, hasExpiry: hasExpiry}, nil
+}
+
+func validHeaderValue(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < 0x20 || char == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func parseSolverExpiry(raw json.RawMessage) (time.Time, bool, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return time.Time{}, false, nil
+	}
+	var numeric json.Number
+	if err := json.Unmarshal(raw, &numeric); err == nil {
+		value, err := numeric.Int64()
+		if err != nil || value <= 0 {
+			return time.Time{}, false, errors.New("solver expiry is invalid")
+		}
+		return time.Unix(value, 0), true, nil
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil || text == "" {
+		return time.Time{}, false, errors.New("solver expiry is invalid")
+	}
+	for _, layout := range []string{time.RFC3339, http.TimeFormat} {
+		if value, err := time.Parse(layout, text); err == nil {
+			return value, true, nil
+		}
+	}
+	return time.Time{}, false, errors.New("solver expiry is invalid")
+}

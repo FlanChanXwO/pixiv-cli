@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 type sourceTrust struct {
@@ -129,11 +129,11 @@ func verifySourceTrust(repoRoot, tag, defaultBranch string) (sourceTrust, error)
 }
 
 func verifyPublishedRelease(client githubClient, repository, tag string, stable bool) error {
-	version, err := releaseTagVersion(tag)
+	releaseVersion, err := releaseTagVersion(tag)
 	if err != nil {
 		return err
 	}
-	if stable && versionpkg.Channel(version) != "stable" {
+	if stable && version.Channel(releaseVersion) != "stable" {
 		return fmt.Errorf("Release %q uses a prerelease semantic version, stable Release required", tag)
 	}
 	path, err := githubRepositoryPath(repository)
@@ -196,11 +196,11 @@ func releaseTagVersion(tag string) (string, error) {
 	if !strings.HasPrefix(tag, "v") || len(tag) == 1 {
 		return "", fmt.Errorf("release tag must be v-prefixed semantic version: %q", tag)
 	}
-	version := strings.TrimPrefix(tag, "v")
-	if err := versionpkg.Validate(version); err != nil {
+	releaseVersion := strings.TrimPrefix(tag, "v")
+	if err := version.Validate(releaseVersion); err != nil {
 		return "", err
 	}
-	return version, nil
+	return releaseVersion, nil
 }
 
 // gitEnv 返回针对指定仓库根运行 git 的环境变量。git 会让继承的

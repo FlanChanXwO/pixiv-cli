@@ -5,8 +5,8 @@
 // [browsercookies.Register] 注册。
 //
 // 包的组成：provider 实现 [browsercookies.Provider]；chromecrypto.go、decrypt.go 与
-// legacy_keys_unix.go 处理密文格式和密钥解包，darwin.go、linux.go、windows.go 提供
-// 各平台的秘密后端，paths_*.go 给出用户数据根目录。
+// legacy_keys_unix.go 处理密文格式和密钥解包，secret_*.go 提供各平台的秘密后端，
+// paths_*.go 给出用户数据根目录。
 package chromium
 
 import (
@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
@@ -110,7 +109,7 @@ func (p *provider) DiscoverProfiles(ctx context.Context) ([]browsercookies.Profi
 }
 
 // Read 读取 profileID 下匹配 query 的 cookie secret。解密前查询已经收敛到
-// 固定 host/name，且浏览器数据库通过 sqliteio 的只读参数查询。
+// 固定 host/name，且浏览器数据库通过 browsercookies.Query 的只读参数查询。
 func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, profileID string) ([]credential.Secret, error) {
 	if err := query.Valid(); err != nil {
 		return nil, err
@@ -130,7 +129,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		"@h2": strings.TrimPrefix(query.Host, "."),
 		"@n":  query.Name,
 	}
-	rows, err := sqliteio.Query(ctx, cookiesPath, selectCookiesSQL, params)
+	rows, err := browsercookies.Query(ctx, cookiesPath, selectCookiesSQL, params)
 	if err != nil {
 		return nil, err
 	}

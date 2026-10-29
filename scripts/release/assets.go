@@ -19,7 +19,7 @@ import (
 	"sort"
 	"strings"
 
-	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"gopkg.in/yaml.v3"
 )
 
@@ -50,17 +50,17 @@ func runAssets(arguments []string) error {
 func runChannel(arguments []string) error {
 	flags := flag.NewFlagSet("channel", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	version := flags.String("version", "", "semantic version without v")
+	releaseVersion := flags.String("version", "", "semantic version without v")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("channel accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := versionpkg.Validate(*version); err != nil {
+	if err := version.Validate(*releaseVersion); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(os.Stdout, versionpkg.Channel(*version))
+	_, err := fmt.Fprintln(os.Stdout, version.Channel(*releaseVersion))
 	return err
 }
 
@@ -69,14 +69,14 @@ func runChannel(arguments []string) error {
 func runAssetsValidate(arguments []string) error {
 	flags := flag.NewFlagSet("validate", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	version := flags.String("version", "", "semantic version without v")
+	releaseVersion := flags.String("version", "", "semantic version without v")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate accepts no positional arguments: %q", flags.Arg(0))
 	}
-	return versionpkg.Validate(*version)
+	return version.Validate(*releaseVersion)
 }
 
 // runValidateSource 在 SemVer 之外校验待发布 source 的产品 Skill metadata。SkillHub 和
@@ -84,7 +84,7 @@ func runAssetsValidate(arguments []string) error {
 func runValidateSource(arguments []string) error {
 	flags := flag.NewFlagSet("validate-source", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	version := flags.String("version", "", "semantic version without v")
+	releaseVersion := flags.String("version", "", "semantic version without v")
 	productSkill := flags.String("product-skill", "", "path to the released product SKILL.md")
 	if err := flags.Parse(arguments); err != nil {
 		return err
@@ -95,15 +95,15 @@ func runValidateSource(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("validate-source accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := versionpkg.Validate(*version); err != nil {
+	if err := version.Validate(*releaseVersion); err != nil {
 		return err
 	}
 	skillVersion, err := productSkillVersion(*productSkill)
 	if err != nil {
 		return err
 	}
-	if skillVersion != *version {
-		return fmt.Errorf("product skill version %q does not match release version %q", skillVersion, *version)
+	if skillVersion != *releaseVersion {
+		return fmt.Errorf("product skill version %q does not match release version %q", skillVersion, *releaseVersion)
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func productSkillVersion(path string) (string, error) {
 	if metadata.Version == "" {
 		return "", fmt.Errorf("product skill %q has no version", path)
 	}
-	if err := versionpkg.Validate(metadata.Version); err != nil {
+	if err := version.Validate(metadata.Version); err != nil {
 		return "", fmt.Errorf("product skill %q has invalid version: %w", path, err)
 	}
 	return metadata.Version, nil
@@ -152,7 +152,7 @@ func runPackage(arguments []string) error {
 	flags := flag.NewFlagSet("package", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	repoRoot := flags.String("repo-root", "", "repository root")
-	version := flags.String("version", "", "semantic version without v")
+	releaseVersion := flags.String("version", "", "semantic version without v")
 	targetText := flags.String("target", "", "platform target in GOOS/GOARCH form")
 	binary := flags.String("binary", "", "built pixiv executable")
 	outputDir := flags.String("output-dir", "", "existing directory receiving the archive")
@@ -162,7 +162,7 @@ func runPackage(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("package accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := versionpkg.Validate(*version); err != nil {
+	if err := version.Validate(*releaseVersion); err != nil {
 		return err
 	}
 	target, err := parseTarget(*targetText)
@@ -180,7 +180,7 @@ func runPackage(arguments []string) error {
 		return err
 	}
 
-	archivePath := filepath.Join(*outputDir, ArchiveName(*version, target))
+	archivePath := filepath.Join(*outputDir, ArchiveName(*releaseVersion, target))
 	if _, err := os.Lstat(archivePath); err == nil {
 		return fmt.Errorf("release archive already exists: %s", archivePath)
 	} else if !os.IsNotExist(err) {
@@ -198,7 +198,7 @@ func runPackage(arguments []string) error {
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("package %s: %w", ArchiveName(*version, target), err)
+		return fmt.Errorf("package %s: %w", ArchiveName(*releaseVersion, target), err)
 	}
 	if err := requireRegularFile(archivePath, "packaged release archive"); err != nil {
 		return err
@@ -209,7 +209,7 @@ func runPackage(arguments []string) error {
 func runFinalize(arguments []string) (err error) {
 	flags := flag.NewFlagSet("finalize", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
-	version := flags.String("version", "", "semantic version without v")
+	releaseVersion := flags.String("version", "", "semantic version without v")
 	inputDir := flags.String("input-dir", "", "directory containing the six packaged archives")
 	outputDir := flags.String("output-dir", "", "new directory receiving final release assets")
 	changelog := flags.String("changelog", "", "version-specific English changelog path")
@@ -227,7 +227,7 @@ func runFinalize(arguments []string) (err error) {
 	}
 	// 1. 在任何写入之前校验版本、密钥和全部输入路径；rejectSymlinkAncestors 保证产物
 	//    只落在调用方声明的目录树内。
-	if err := versionpkg.Validate(*version); err != nil {
+	if err := version.Validate(*releaseVersion); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*keyID) == "" {
@@ -249,11 +249,11 @@ func runFinalize(arguments []string) (err error) {
 	if err != nil {
 		return err
 	}
-	englishNotes, err := NotesFromChangelog(*changelog, *version)
+	englishNotes, err := NotesFromChangelog(*changelog, *releaseVersion)
 	if err != nil {
 		return err
 	}
-	chineseNotes, err := NotesFromChangelog(*changelogChinese, *version)
+	chineseNotes, err := NotesFromChangelog(*changelogChinese, *releaseVersion)
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,7 @@ func runFinalize(arguments []string) (err error) {
 	}()
 
 	// 3. 按固定顺序复制归档并注入安装器候选，checksums 覆盖的是注入之后的字节。
-	checksums, err := copyRequiredAssets(*inputDir, stage, *version, *installSh, *installCmd, releaseSources)
+	checksums, err := copyRequiredAssets(*inputDir, stage, *releaseVersion, *installSh, *installCmd, releaseSources)
 	if err != nil {
 		return err
 	}

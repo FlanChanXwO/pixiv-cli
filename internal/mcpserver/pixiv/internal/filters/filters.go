@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // IllustFilter 描述 artwork 列表的本地筛选条件；字段为零值时该条件不生效。

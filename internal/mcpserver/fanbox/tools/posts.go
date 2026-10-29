@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	// 导入 provider 会执行各自的 init 注册。
+	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/chromium"
+	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/firefox"
+	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/safari"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/system"
 )
 
 // SystemBrowserProvider 把浏览器 cookie provider 的受约束读取结果
@@ -16,7 +20,7 @@ type SystemBrowserProvider struct{}
 
 // ReadSession 从系统浏览器读取 FANBOXSESSID；浏览器路径不会进入用户可见错误。
 func (SystemBrowserProvider) ReadSession(ctx context.Context, browser, profileID string) (session string, returnErr error) {
-	provider, err := system.New(browser)
+	provider, err := browsercookies.New(browser)
 	if err != nil {
 		return "", err
 	}

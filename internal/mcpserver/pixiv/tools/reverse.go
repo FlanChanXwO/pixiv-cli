@@ -10,7 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )

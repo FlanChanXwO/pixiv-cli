@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivapi"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -39,7 +39,7 @@ func (c *Client) newResource(kind string, id int64, page int, variant, rawURL st
 	return sdk.Resource{
 		Ref:            ref,
 		URL:            rawURL,
-		RequestHeaders: map[string]string{"Referer": pixivapi.AppReferer},
+		RequestHeaders: map[string]string{"Referer": api.AppReferer},
 	}, nil
 }
 
@@ -104,7 +104,7 @@ func (c *Client) openResourceURL(ctx context.Context, request sdk.OpenResourceRe
 			header.Set(field.name, field.value)
 		}
 	}
-	response, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
+	response, err := c.app.OpenResource(ctx, api.OpenRequest{
 		URL:    rawURL,
 		Method: string(request.Method),
 		Header: header,
@@ -154,7 +154,7 @@ func (c *Client) SaveResourceURL(ctx context.Context, rawURL string, options sdk
 		return sdk.SavedResource{}, newError(operation, sdk.InvalidArgument, "destination path is required")
 	}
 
-	stream, err := c.app.OpenResource(ctx, pixivapi.OpenRequest{
+	stream, err := c.app.OpenResource(ctx, api.OpenRequest{
 		URL:    rawURL,
 		Method: http.MethodGet,
 	})
@@ -224,8 +224,8 @@ func (c *Client) resolveResourceURL(ctx context.Context, ref sdk.ResourceRef, op
 		rawURL, err = profileImageResourceURL(detail.User.Value.ProfileImageURLs)
 	case "ugoira_archive":
 		var wire ugoiraResponseWire
-		if appErr := c.app.GetJSON(ctx, pixivapi.PathUgoiraMetadata, url.Values{
-			pixivapi.ParamIllustID: {itoa(rp.ID)},
+		if appErr := c.app.GetJSON(ctx, api.PathUgoiraMetadata, url.Values{
+			api.ParamIllustID: {itoa(rp.ID)},
 		}, &wire); appErr != nil {
 			return "", classifyAppError(appErr, operation)
 		}

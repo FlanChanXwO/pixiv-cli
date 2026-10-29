@@ -8,7 +8,7 @@ import (
 	"os"
 	"regexp"
 
-	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 // action 表示 deploy 判定结果：写入 target，或识别为已发布而 no-op。
@@ -55,7 +55,7 @@ func decide(current, requested []byte) (decision, error) {
 	}
 	result.CurrentVersion = currentVersion
 
-	order, err := versionpkg.Compare(requestedVersion, currentVersion)
+	order, err := version.Compare(requestedVersion, currentVersion)
 	if err != nil {
 		return decision{}, fmt.Errorf("compare requested %q with current %q: %w", requestedVersion, currentVersion, err)
 	}
@@ -82,11 +82,11 @@ func parseDeclaredVersion(formula []byte, label string) (string, error) {
 	if len(matches) > 1 {
 		return "", fmt.Errorf("%s formula declares multiple versions", label)
 	}
-	version := string(matches[0][1])
-	if err := versionpkg.Validate(version); err != nil {
+	releaseVersion := string(matches[0][1])
+	if err := version.Validate(releaseVersion); err != nil {
 		return "", fmt.Errorf("%s formula version: %w", label, err)
 	}
-	return version, nil
+	return releaseVersion, nil
 }
 
 // runRecover 接收 tap 当前 Formula 路径与 staging Formula 路径，把判定写入 GITHUB_OUTPUT

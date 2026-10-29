@@ -19,7 +19,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
-	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/sqliteio"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 )
 
@@ -194,7 +193,7 @@ func (p *provider) Read(ctx context.Context, query browsercookies.CookieQuery, p
 		"@h2": strings.TrimPrefix(query.Host, "."),
 		"@n":  query.Name,
 	}
-	rows, err := sqliteio.Query(ctx, dbPath, selectCookiesSQL, params)
+	rows, err := browsercookies.Query(ctx, dbPath, selectCookiesSQL, params)
 	if err != nil {
 		return nil, err
 	}

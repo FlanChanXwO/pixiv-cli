@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"sync"
 
-	reversesearch "github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )

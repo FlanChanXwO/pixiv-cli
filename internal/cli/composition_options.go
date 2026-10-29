@@ -6,8 +6,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
-	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func defaultCLIRuntimeConfig() (settings.RuntimeConfig, error) {

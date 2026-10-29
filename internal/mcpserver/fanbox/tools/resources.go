@@ -16,7 +16,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	fanbox "github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

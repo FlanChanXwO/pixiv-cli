@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixivaccount"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"gorm.io/gorm"
 )
 
 // SetPixivSchedulable 在持锁事务中一次更新给定账号的调度开关。任一 UID 不存在时
-// 整批回滚并返回 [pixivaccount.ErrNotFound]。
+// 整批回滚并返回 [account.ErrNotFound]。
 func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulable bool) error {
 	return d.withLock(ctx, func() error {
 		if err := validatePoolUserIDs(userIDs); err != nil {
@@ -23,7 +23,7 @@ func (d *DB) SetPixivSchedulable(ctx context.Context, userIDs []int64, schedulab
 				return err
 			}
 			if count != int64(len(userIDs)) {
-				return pixivaccount.ErrNotFound
+				return account.ErrNotFound
 			}
 			return tx.Model(&pixivAccountRow{}).Where(colUserID+" IN ?", userIDs).
 				Updates(map[string]any{colSchedulable: schedulable, colUpdatedAt: nowUnix()}).Error
@@ -43,9 +43,9 @@ func (d *DB) SetAllPixivSchedulable(ctx context.Context, schedulable bool) error
 }
 
 // ListPixivPoolStatus 返回 non-secret 调度状态，并在同一个事务中清理已过期冻结。
-func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (pixivaccount.PoolStatus, error) {
-	return withDatabaseValue(ctx, d, func() (pixivaccount.PoolStatus, error) {
-		var status pixivaccount.PoolStatus
+func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (account.PoolStatus, error) {
+	return withDatabaseValue(ctx, d, func() (account.PoolStatus, error) {
+		var status account.PoolStatus
 		err := d.orm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := tx.Model(&pixivAccountRow{}).
 				Where(colPoolFrozenUntil+" IS NOT NULL AND "+colPoolFrozenUntil+" <= ?", now).
@@ -57,7 +57,7 @@ func (d *DB) ListPixivPoolStatus(ctx context.Context, now int64) (pixivaccount.P
 				Order(colSortOrder).Find(&rows).Error; err != nil {
 				return err
 			}
-			status.Accounts = make([]pixivaccount.PoolCandidate, 0, len(rows))
+			status.Accounts = make([]account.PoolCandidate, 0, len(rows))
 			for _, row := range rows {
 				candidate := row.candidate(now)
 				if candidate.PoolFrozenUntil != nil && (status.EarliestFrozenUntil == nil || *candidate.PoolFrozenUntil < *status.EarliestFrozenUntil) {

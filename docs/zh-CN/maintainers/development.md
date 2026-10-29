@@ -99,7 +99,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## 查找协议与日志实现
 
-- Pixiv 协议在 `internal/pixivapi/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanboxapi/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixivapiinternalfanboxapi)。
+- Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixiviapi-internalfanboxapi)。
 - `internal/cli/execution.go` 创建 stderr logger；`internal/cli/composition_options.go` 与 `composition_mcp.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
 - 本地排查使用 `pixiv config set log_level debug`，需要结构化字段时再设置 `pixiv config set log_format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
 
@@ -143,7 +143,7 @@ CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.
 
 | 目录 | 理由 |
 | --- | --- |
-| `internal/pixivaccount` | `pixiv_test.go` 调用私有 `newAccountWithToken` 检查凭据格式化/slog 脱敏；轮换测试使用外部包。 |
+| `internal/pixiv/account` | `pixiv_test.go` 调用私有 `newAccountWithToken` 检查凭据格式化/slog 脱敏；轮换测试使用外部包。 |
 | `internal/urlscheme` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
 | `internal/media/ugoira` | 保留的 native CI 测试观察私有解码、量化与 GIF/APNG 编码状态。 |
 | `internal/storage/database` | 保留的 Windows 点名 CI 测试沿用原 package 声明；其他数据库测试使用外部包。 |
@@ -199,7 +199,7 @@ env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
-| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并手动验证 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
+| `ART-SEARCH-RATING` | `internal/cli/search` + `internal/pixiv/searchfilter` + `sdk/pixiv` | CLI 作品搜索在本地筛选规范化的 `x_restrict` 并将筛选绑定到 cursor；不发送上游分级字段。MCP `pixiv_search_illust` 没有独立的分级参数 | 保留本地 CLI 契约并手动验证 cursor/筛选一致性；暴露新的 MCP 参数或上游字段需要其自身的受支持行为与同步的 schema/文档 |
 | `NOVEL-SEARCH-ADVANCED` | 无 owner（不得新增） | SDK/MCP schema 没有高级字段 | 上游契约出现后可评估；禁止仅 schema 的占位 |
 
 **证据门禁**

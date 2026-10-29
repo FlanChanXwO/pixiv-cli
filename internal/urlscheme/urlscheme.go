@@ -20,7 +20,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
-	filelock "github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 

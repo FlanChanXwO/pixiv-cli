@@ -13,15 +13,15 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/command"
-	pixivcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/pixivcmd"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/internal/resolver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/plaintext"
-	record "github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/FlanChanXwO/pixiv-cli/internal/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	pixiv "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 

@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	versionpkg "github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
 
 const (
@@ -36,7 +36,7 @@ func runRender(arguments []string) error {
 	flags := flag.NewFlagSet("render", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	formula := flags.String("formula", "", "target formula: pixiv-cli or pixiv-cli-beta")
-	version := flags.String("version", "", "release semantic version without v")
+	releaseVersion := flags.String("version", "", "release semantic version without v")
 	checksumsPath := flags.String("checksums", "", "release checksums.txt path")
 	outputPath := flags.String("output", "", "new Ruby formula output path")
 	templatesDir := flags.String("templates", filepath.Join("templates", "homebrew"), "formula template directory")
@@ -46,14 +46,14 @@ func runRender(arguments []string) error {
 	if flags.NArg() != 0 {
 		return fmt.Errorf("render accepts no positional arguments: %q", flags.Arg(0))
 	}
-	if err := versionpkg.Validate(*version); err != nil {
+	if err := version.Validate(*releaseVersion); err != nil {
 		return err
 	}
-	formulaName, templateName, err := validateFormulaVersion(*formula, *version)
+	formulaName, templateName, err := validateFormulaVersion(*formula, *releaseVersion)
 	if err != nil {
 		return err
 	}
-	checksums, err := readChecksums(*checksumsPath, *version)
+	checksums, err := readChecksums(*checksumsPath, *releaseVersion)
 	if err != nil {
 		return err
 	}
@@ -62,24 +62,24 @@ func runRender(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	body, err := renderFormula(string(template), formulaName, *version, checksums)
+	body, err := renderFormula(string(template), formulaName, *releaseVersion, checksums)
 	if err != nil {
 		return err
 	}
 	return writeNewRegularFile(*outputPath, []byte(body))
 }
 
-func validateFormulaVersion(formula, version string) (formulaName, templateName string, err error) {
-	prerelease := versionpkg.Channel(version) == "prerelease"
+func validateFormulaVersion(formula, releaseVersion string) (formulaName, templateName string, err error) {
+	prerelease := version.Channel(releaseVersion) == "prerelease"
 	switch formula {
 	case stableFormula:
 		if prerelease {
-			return "", "", fmt.Errorf("stable formula %q only accepts a stable semantic version, got %q", stableFormula, version)
+			return "", "", fmt.Errorf("stable formula %q only accepts a stable semantic version, got %q", stableFormula, releaseVersion)
 		}
 		return stableFormula, "pixiv-cli.rb.tmpl", nil
 	case betaFormula:
 		if !prerelease {
-			return "", "", fmt.Errorf("beta formula %q only accepts a prerelease semantic version, got %q", betaFormula, version)
+			return "", "", fmt.Errorf("beta formula %q only accepts a prerelease semantic version, got %q", betaFormula, releaseVersion)
 		}
 		return betaFormula, "pixiv-cli-beta.rb.tmpl", nil
 	default:
@@ -87,7 +87,7 @@ func validateFormulaVersion(formula, version string) (formulaName, templateName 
 	}
 }
 
-func readChecksums(path, version string) (map[string]string, error) {
+func readChecksums(path, releaseVersion string) (map[string]string, error) {
 	body, err := readRegularFile(path, "checksums file")
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func readChecksums(path, version string) (map[string]string, error) {
 	targets := FixedTargets()
 	expected := make(map[string]struct{}, len(targets)+2)
 	for _, target := range targets {
-		expected[ArchiveName(version, target)] = struct{}{}
+		expected[ArchiveName(releaseVersion, target)] = struct{}{}
 	}
 	expected["install.cmd"] = struct{}{}
 	expected["install.sh"] = struct{}{}
@@ -125,22 +125,22 @@ func readChecksums(path, version string) (map[string]string, error) {
 	return checksums, nil
 }
 
-func renderFormula(template, formula, version string, checksums map[string]string) (string, error) {
+func renderFormula(template, formula, releaseVersion string, checksums map[string]string) (string, error) {
 	formulaClass := "PixivCli"
 	if formula == betaFormula {
 		formulaClass = "PixivCliBeta"
 	}
 	values := map[string]string{
 		"{{FORMULA_CLASS}}": formulaClass,
-		"{{VERSION}}":       version,
+		"{{VERSION}}":       releaseVersion,
 	}
 	for _, target := range FixedTargets() {
 		if target.GOOS == "windows" {
 			continue
 		}
-		archive := ArchiveName(version, target)
+		archive := ArchiveName(releaseVersion, target)
 		key := strings.ToUpper(target.GOOS + "_" + target.GOARCH)
-		values["{{"+key+"_URL}}"] = releaseURL(version, archive)
+		values["{{"+key+"_URL}}"] = releaseURL(releaseVersion, archive)
 		values["{{"+key+"_SHA256}}"] = checksums[archive]
 	}
 	result := template
@@ -153,8 +153,8 @@ func renderFormula(template, formula, version string, checksums map[string]strin
 	return result, nil
 }
 
-func releaseURL(version, archive string) string {
-	return "https://github.com/" + projectRepository + "/releases/download/v" + version + "/" + archive
+func releaseURL(releaseVersion, archive string) string {
+	return "https://github.com/" + projectRepository + "/releases/download/v" + releaseVersion + "/" + archive
 }
 
 func readRegularFile(path, label string) ([]byte, error) {
