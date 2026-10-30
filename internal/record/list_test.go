@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"testing"
 
@@ -38,7 +39,7 @@ func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
 		{false, true, "{\"id\":1}\n{\"id\":2}\n"},
 	} {
 		var out bytes.Buffer
-		if err := record.RunPages(context.Background(), &out, plan, "posts", tc.jsonOut, tc.ndjson, printText, item, fetch); err != nil {
+		if err := record.RunPages(context.Background(), &out, io.Discard, plan, "posts", tc.jsonOut, tc.ndjson, printText, item, fetch); err != nil {
 			t.Fatalf("RunPages: %v", err)
 		}
 		if out.String() != tc.want {
@@ -60,7 +61,7 @@ func TestRunArtworksClosesSpoolOnReplay(t *testing.T) {
 	})
 	attempts := 0
 	before := spoolNames(t, tempDir)
-	err := record.RunArtworks(context.Background(), runner, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.ArtworkList{
+	err := record.RunArtworks(context.Background(), runner, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, io.Discard, record.ArtworkList{
 		Fetch: func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			attempts++
 			if attempts == 1 {

@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
@@ -158,9 +157,7 @@ func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest,
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunArtworks(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Key: record.JSONKey(jsonKey), Heading: func() string {
-			return fmt.Sprintf("recommended %s", kind)
-		}, Fetch: fetch, PostFilter: func(items []pixiv.Artwork) []pixiv.Artwork {
+		return record.RunArtworks(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Key: record.JSONKey(jsonKey), Fetch: fetch, PostFilter: func(items []pixiv.Artwork) []pixiv.Artwork {
 			return filterRecommendedArtworks(items, artworkFilter)
 		}, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
@@ -172,7 +169,7 @@ func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest,
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunNovels(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "recommended novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
@@ -181,7 +178,7 @@ func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest,
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunUsers(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string { return "recommended users" }, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return record.RunUsers(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func resolveArtworkFilter(kind, contentType string) (searchfilter.Filter, error) {

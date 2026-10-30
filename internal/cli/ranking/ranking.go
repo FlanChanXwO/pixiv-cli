@@ -99,10 +99,21 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunNovels(cmd.Context(), a.runner, request, plan, format, record.NovelList{
-			Heading: fmt.Sprintf("%s novel ranking", opts.mode),
-			Fetch:   fetch,
-			Print:   func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) },
+		position := plan.Skip
+		return record.RunNovels(cmd.Context(), a.runner, request, plan, format, a.env.Err, record.NovelList{
+			Fetch: fetch,
+			Print: func(items []pixiv.Novel) error {
+				for _, item := range items {
+					position++
+					if _, err := fmt.Fprintf(a.env.Out, "#%d ", position); err != nil {
+						return err
+					}
+					if err := display.PrintNovels(a.env.Out, []pixiv.Novel{item}); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
 		})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
@@ -112,9 +123,8 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, format, record.ArtworkList{
-		Heading: record.StaticHeading(fmt.Sprintf("%s ranking", opts.mode)),
-		Fetch:   fetch,
+	return record.RunArtworks(cmd.Context(), a.runner, request, plan, format, a.env.Err, record.ArtworkList{
+		Fetch: fetch,
 		Print: func(items []pixiv.Artwork, start int) error {
 			return display.PrintArtworksRanked(a.env.Out, items, start)
 		},

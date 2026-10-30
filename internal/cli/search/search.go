@@ -285,7 +285,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 type artworkSearchOut struct {

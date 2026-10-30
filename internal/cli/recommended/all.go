@@ -2,8 +2,9 @@ package recommended
 
 import (
 	"context"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"fmt"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -28,14 +29,10 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 	}
 
 	for _, section := range []struct {
-		key     string
-		heading string
-		filter  searchfilter.Filter
-	}{{key: string(record.JSONKeyIllusts), heading: "recommended illustrations", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: string(record.JSONKeyManga), heading: "recommended manga", filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
+		key    string
+		filter searchfilter.Filter
+	}{{key: string(record.JSONKeyIllusts), filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: string(record.JSONKeyManga), filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
 		if err := spool.section(section.key); err != nil {
-			return false, err
-		}
-		if err := spool.heading(section.heading); err != nil {
 			return false, err
 		}
 		if err := spool.artworks(filterRecommendedArtworks(visualItems, section.filter)); err != nil {
@@ -43,9 +40,6 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 		}
 	}
 	if err := spool.section("novels"); err != nil {
-		return false, err
-	}
-	if err := spool.heading("recommended novels"); err != nil {
 		return false, err
 	}
 	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
@@ -60,9 +54,6 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 	if err := spool.section("user_previews"); err != nil {
 		return false, err
 	}
-	if err := spool.heading("recommended users"); err != nil {
-		return false, err
-	}
 	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
 		if err != nil {
@@ -71,6 +62,16 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 		return result.Items, result.Next, nil
 	}, spool.users); err != nil {
 		return false, err
+	}
+	if !jsonOut {
+		info, err := spool.file.Stat()
+		if err != nil {
+			return false, err
+		}
+		if info.Size() == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return false, err
+		}
 	}
 	// 最终 io.Copy 可能已交付部分 stdout；在尝试前关闭账号池重放窗口。
 	return true, spool.Commit(a.env.Out)

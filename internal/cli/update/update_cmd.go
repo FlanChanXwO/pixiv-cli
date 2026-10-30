@@ -58,7 +58,7 @@ func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)
 			if opts.jsonOut {
 				return env.PrintJSON(result)
 			}
-			return printResult(env.Out, result)
+			return printResult(env.Out, result, opts.check)
 		},
 	}
 	flags := cmd.Flags()
@@ -71,11 +71,27 @@ func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)
 	return cmd
 }
 
-func printResult(out io.Writer, result selfupdate.UpdateResult) error {
-	latestVersion := "none"
-	if result.LatestVersion != nil {
-		latestVersion = *result.LatestVersion
+func printResult(out io.Writer, result selfupdate.UpdateResult, check bool) error {
+	if result.UpdateAvailable && result.LatestVersion == nil {
+		if !check {
+			_, err := fmt.Fprintln(out, "Switched pixiv Homebrew channel")
+			return err
+		}
+		command := "pixiv update"
+		if result.Source == selfupdate.InstallSourceHomebrewStable {
+			command += " --prerelease"
+		}
+		_, err := fmt.Fprintf(out, "Update available: switch Homebrew channel (run %q)\n", command)
+		return err
 	}
-	_, err := fmt.Fprintf(out, "source: %s\ncurrent version: %s\nlatest version: %s\nupdate available: %s\n", result.Source, result.CurrentVersion, latestVersion, environment.TextBool(result.UpdateAvailable))
+	if result.UpdateAvailable && result.LatestVersion != nil {
+		if !check {
+			_, err := fmt.Fprintf(out, "Updated pixiv to %s\n", *result.LatestVersion)
+			return err
+		}
+		_, err := fmt.Fprintf(out, "Update available: %s → %s (run \"pixiv update\")\n", result.CurrentVersion, *result.LatestVersion)
+		return err
+	}
+	_, err := fmt.Fprintf(out, "pixiv %s is up to date\n", result.CurrentVersion)
 	return err
 }

@@ -206,16 +206,16 @@ func (a commandRunner) newDetail() *cobra.Command {
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
-				_, err = fmt.Fprintln(a.env.Out, "bookmarked: no")
+				_, err = fmt.Fprintln(a.env.Out, "No bookmark")
 				return err
 			}
-			if _, err := fmt.Fprintf(a.env.Out, "bookmarked: yes\nrestrict: %s\n", restrict); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "Bookmarked · %s\n", display.SafeLine(string(restrict))); err != nil {
 				return err
 			}
 			for i, tag := range tags {
 				tags[i] = display.SafeLine(tag)
 			}
-			_, err = fmt.Fprintf(a.env.Out, "tags: %s\n", strings.Join(tags, ","))
+			_, err = fmt.Fprintf(a.env.Out, "Tags: %s\n", strings.Join(tags, ", "))
 			return err
 		},
 	}

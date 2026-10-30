@@ -4,7 +4,6 @@ package timeline
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
@@ -124,7 +123,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 			// upstream cursor 的同时本地筛选，才能让 logical limit 跨批次补足。
 			return filterFollowingArtworks(result.Items, artworkFilter), result.Next, nil
 		}
-		return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading("new artworks from followed users"), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
+		return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -133,7 +132,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "new novels from followed users", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+	return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 }
 
 func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
@@ -166,7 +165,7 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "latest novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: pixiv.SearchContentType(opts.artworkType), Cursor: cursor})
@@ -175,7 +174,7 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("latest %s", opts.artworkType)), Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与

@@ -22,6 +22,8 @@ flowchart LR
 | 代理 URI | `http`、`https`、`socks5`、`socks5h` |
 | 反向搜图 | `pixiv search SOURCE` 传入 HTTP(S) URL 或已存在的普通文件；与 Pixiv 账号无关；可能把来源上传给第三方——请先阅读 [SauceNAO 隐私与条款](https://saucenao.com/legal.html)（上传可能被短期保留；URL 查询可能缓存更久） |
 
+文本列表每项一行，省略标题；空结果时 stdout 为空，stderr 输出 `No results.`，退出码为 0。身份显示为 `Name (UID)`，名称未知时只显示 UID；为真的状态以标签显示。detail 使用多行卡片。解析文本的脚本请改用 `--json` 或 `--ndjson`。
+
 ## CLI 使用
 
 ```bash
@@ -149,8 +151,8 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--json] [--proxy URL\|--no-proxy]` | 直接输入经校验后保存轮换 token；无参数时 TTY 隐藏输入，非 TTY 自动识别 opaque token 或严格离线 bundle。显式值永远是 token；bundle 模式与代理参数冲突。 |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | 普通 loopback OAuth。relay server 配置完整时打印一次性 hand-off URL，直接启动已安装的桌面 CLI handler。按 Pixiv UID 保存；从不打印 refresh token。 |
-| `auth list` | `pixiv auth list [--json]` | 列出本地账号；从不打印 token。文本用 `*` 表示默认账号，`✓`/`-` 表示本地是否存有 token——是本地状态标记，不代表在线有效。 |
-| `auth pool` | `pixiv auth pool status [--json]`；`pixiv auth pool enable UID... [--all]`；`pixiv auth pool disable UID... [--all]` | 查看/修改非 secret 的调度状态。`status` 报告 `enabled`、`strategy`、`schedulable`、`frozen_until` 与当前 `eligible`；enable/disable 在提交整批前校验每个 UID。 |
+| `auth list` | `pixiv auth list [--json]` | 列出本地账号；从不打印 token。文本显示 `Name (UID)`，用 `*` 标记默认账号，并按缓存状态追加 `Premium`、`pool` 和 `frozen until <RFC3339>` 标签。 |
+| `auth pool` | `pixiv auth pool status [--json]`；`pixiv auth pool enable UID... [--all]`；`pixiv auth pool disable UID... [--all]` | 查看/修改非 secret 的调度状态。文本 `status` 显示 `Account pool: enabled (round_robin)`（或 `disabled`），账号行与 `auth list` 相同；JSON 保留调度字段；enable/disable 在提交整批前校验每个 UID。 |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | 本地导出默认/指定/全部账号。无 `--output`：单账号 = 原始 token 到 stdout，`--all` = bundle 到 stdout。有 `--output`：私有 bundle + 安全摘要。`--force` 需要 `--output`。 |
 | `auth use` | `pixiv auth use [UID] [--json]` | 设置默认账号；TTY 上可交互选择。 |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | 删除账号；TTY 上默认确认。删除默认账号后自动选中第一个剩余账号。 |

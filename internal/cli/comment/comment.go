@@ -220,7 +220,7 @@ func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOp
 	if err != nil {
 		return err
 	}
-	return a.writeDeleteResult(jsonOut)
+	return a.writeDeleteResult(jsonOut, resolved.ID)
 }
 
 func (a commandRunner) runReply(cmd *cobra.Command, arg string, opts mutationOptions) error {
@@ -352,6 +352,10 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 			Stamps []pixiv.Stamp `json:"stamps"`
 		}{Stamps: stamps})
 	}
+	if len(stamps) == 0 {
+		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		return err
+	}
 	for _, item := range stamps {
 		if _, err := fmt.Fprintf(a.env.Out, "%d %s\n", item.ID, item.Image.Resource.Ref.String()); err != nil {
 			return err
@@ -401,15 +405,15 @@ func (a commandRunner) writeMutationResult(jsonOut bool, result pixiv.CommentMut
 	if jsonOut {
 		return a.env.PrintJSON(commentMutationOut{CommentID: result.CommentID})
 	}
-	_, err := fmt.Fprintf(a.env.Out, "comment id: %d\n", result.CommentID)
+	_, err := fmt.Fprintf(a.env.Out, "Posted comment %d\n", result.CommentID)
 	return err
 }
 
-func (a commandRunner) writeDeleteResult(jsonOut bool) error {
+func (a commandRunner) writeDeleteResult(jsonOut bool, commentID int64) error {
 	if jsonOut {
 		return a.env.PrintJSON(commentDeleteOut{Deleted: true})
 	}
-	_, err := fmt.Fprint(a.env.Out, "comment deleted\n")
+	_, err := fmt.Fprintf(a.env.Out, "Deleted comment %d\n", commentID)
 	return err
 }
 
@@ -498,11 +502,12 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			}
 			return true, nil
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "%s comments for %d\n", opts.typ, resolved.ID); err != nil {
-			return true, err
+		if len(comments) == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return false, err
 		}
 		for _, item := range comments {
-			if _, err := fmt.Fprintf(a.env.Out, "%d %s: %s\n", item.ID, display.SafeLine(item.User.Name), display.SafeLine(item.Comment)); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "%d  %s: %s\n", item.ID, display.SafeLine(item.User.Name), display.SafeLine(item.Comment)); err != nil {
 				return true, err
 			}
 		}

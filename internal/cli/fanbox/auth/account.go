@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/spf13/cobra"
 )
@@ -110,14 +110,8 @@ func (a commandRunner) importSession(cmd *cobra.Command, value string, setDefaul
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(account.UserID, account.DisplayName, account.CreatorID, account.Default))
 	}
-	fmt.Fprintf(a.env.Out, "imported uid:%d\n", account.UserID)
-	if account.DisplayName != "" {
-		fmt.Fprintf(a.env.Out, "display:%s\n", account.DisplayName)
-	}
-	if account.CreatorID != "" {
-		fmt.Fprintf(a.env.Out, "creator:%s\n", account.CreatorID)
-	}
-	return nil
+	_, err = fmt.Fprintf(a.env.Out, "Imported %s\n", display.Identity(account.DisplayName, account.UserID))
+	return err
 }
 
 func (a commandRunner) newListCommand() *cobra.Command {
@@ -158,22 +152,21 @@ func (a commandRunner) runList(cmd *cobra.Command, jsonOut bool) error {
 		return a.env.PrintJSON(out)
 	}
 	if len(out.Accounts) == 0 {
-		fmt.Fprintln(a.env.Out, "no accounts")
-		return nil
+		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		return err
 	}
 	for _, account := range out.Accounts {
 		marker := " "
 		if account.Default {
 			marker = "*"
 		}
-		fmt.Fprintf(a.env.Out, "%s uid:%d", marker, account.UserID)
-		if account.DisplayName != "" {
-			fmt.Fprintf(a.env.Out, " display:%s", account.DisplayName)
-		}
+		line := marker + " " + display.Identity(account.DisplayName, account.UserID)
 		if account.CreatorID != "" {
-			fmt.Fprintf(a.env.Out, " creator:%s", account.CreatorID)
+			line += "  creator: " + display.SafeLine(account.CreatorID)
 		}
-		fmt.Fprintln(a.env.Out)
+		if _, err := fmt.Fprintln(a.env.Out, line); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -209,8 +202,8 @@ func (a commandRunner) runUse(args []string, opts useOptions) error {
 		if opts.jsonOut {
 			return a.env.PrintJSON(map[string]any{"default_user_id": 0, "auto": true})
 		}
-		fmt.Fprintln(a.env.Out, "default uid: auto")
-		return nil
+		_, err := fmt.Fprintln(a.env.Out, "Now using the first account automatically")
+		return err
 	}
 	if len(args) != 1 {
 		return errors.New("usage: pixiv fanbox auth use UID | --auto")
@@ -225,8 +218,12 @@ func (a commandRunner) runUse(args []string, opts useOptions) error {
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]any{"default_user_id": userID, "auto": false})
 	}
-	fmt.Fprintf(a.env.Out, "default uid: %d\n", userID)
-	return nil
+	summary, err := service.Status(context.Background())
+	if err != nil {
+		return fmt.Errorf("default account changed; read selected account identity: %w", err)
+	}
+	_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", display.Identity(summary.DisplayName, summary.UserID))
+	return err
 }
 
 func (a commandRunner) newRemoveCommand() *cobra.Command {
@@ -263,14 +260,21 @@ func (a commandRunner) runRemove(args []string, opts removeOptions) error {
 			return errors.New("fanbox account removal canceled")
 		}
 	}
+	identity := ""
+	if !opts.jsonOut {
+		identity, err = fanboxIdentity(service, userID)
+		if err != nil {
+			return err
+		}
+	}
 	if err := service.RemoveAccount(context.Background(), userID); err != nil {
 		return err
 	}
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID})
 	}
-	fmt.Fprintf(a.env.Out, "account uid:%d removed\n", userID)
-	return nil
+	_, err = fmt.Fprintf(a.env.Out, "Removed %s\n", identity)
+	return err
 }
 
 func (a commandRunner) newStatusCommand() *cobra.Command {
@@ -324,15 +328,12 @@ func (a commandRunner) printSummary(summary account.AccountSummary, jsonOut bool
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}
-	fmt.Fprintf(a.env.Out, "uid:%d\n", summary.UserID)
-	if summary.DisplayName != "" {
-		fmt.Fprintf(a.env.Out, "display:%s\n", summary.DisplayName)
-	}
+	line := display.Identity(summary.DisplayName, summary.UserID)
 	if summary.CreatorID != "" {
-		fmt.Fprintf(a.env.Out, "creator:%s\n", summary.CreatorID)
+		line += " · creator: " + display.SafeLine(summary.CreatorID)
 	}
-	fmt.Fprintf(a.env.Out, "default:%s\n", environment.TextBool(summary.Default))
-	return nil
+	_, err := fmt.Fprintln(a.env.Out, line)
+	return err
 }
 
 func parseUID(raw string) (int64, error) {
@@ -341,4 +342,17 @@ func parseUID(raw string) (int64, error) {
 		return 0, errors.New("fanbox uid must be a positive integer")
 	}
 	return userID, nil
+}
+
+func fanboxIdentity(service *account.Service, userID int64) (string, error) {
+	accounts, err := service.ListAccounts(context.Background())
+	if err != nil {
+		return "", err
+	}
+	for _, acct := range accounts {
+		if acct.UserID == userID {
+			return display.Identity(acct.DisplayName, userID), nil
+		}
+	}
+	return display.Identity("", userID), nil
 }

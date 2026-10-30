@@ -97,6 +97,10 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 			}
 			return true, nil
 		}
+		if len(items) == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return false, err
+		}
 		for _, item := range items {
 			if _, err := fmt.Fprintf(a.env.Out, "%s (%d)\n", display.SafeLine(item.Name), item.Count); err != nil {
 				return true, err
@@ -170,8 +174,12 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 				return false, err
 			}
 		} else {
+			if len(items) == 0 {
+				_, err := fmt.Fprintln(a.env.Err, "No results.")
+				return false, err
+			}
 			for _, item := range items {
-				if _, err := fmt.Fprintf(&staged, "%s: %s (%d)\n", item.kind, display.SafeLine(item.tag.Name), item.tag.Count); err != nil {
+				if _, err := fmt.Fprintf(&staged, "%s (%d)  %s\n", display.SafeLine(item.tag.Name), item.tag.Count, item.kind); err != nil {
 					return false, err
 				}
 			}

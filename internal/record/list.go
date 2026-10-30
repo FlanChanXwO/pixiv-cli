@@ -141,9 +141,7 @@ func WriteJSONValue(out io.Writer, value any) error {
 
 // List 描述一次分页列表的输出方式；Key 为空时使用 JSONKeyIllusts。
 type List[T any] struct {
-	// Heading 在账号池选定账号之后、第一次输出之前求值，因此可以读取当前身份。
-	Heading func() string
-	Key     JSONKey
+	Key JSONKey
 	// Print 输出一批文本结果；offset 是本批在整体结果中的起点。
 	Print func(items []T, offset int) error
 	// JSONValue 把一项转成 JSON 文档里的元素。
@@ -155,13 +153,13 @@ type List[T any] struct {
 // writer 按 Format 写出一批分页结果。JSON 先写私有临时文档，失败时 stdout 保持为空；
 // NDJSON 逐条提交；文本在第一批可见后提交。
 type writer[T any] struct {
-	out            io.Writer
-	format         Format
-	list           List[T]
-	spool          *JSONArraySpool
-	headingWritten bool
-	position       int
-	encoder        *json.Encoder
+	out      io.Writer
+	format   Format
+	list     List[T]
+	spool    *JSONArraySpool
+	returned int
+	position int
+	encoder  *json.Encoder
 }
 
 func newWriter[T any](out io.Writer, format Format, position int, list List[T]) *writer[T] {
@@ -208,20 +206,14 @@ func (w *writer[T]) consume(items []T) (bool, error) {
 		}
 		return false, AppendJSONArray(w.spool, values)
 	default:
-		committed := false
-		if !w.headingWritten && w.list.Heading != nil {
-			if text := w.list.Heading(); text != "" {
-				committed = true
-				if _, err := fmt.Fprintln(w.out, text); err != nil {
-					return committed, err
-				}
-			}
-			w.headingWritten = true
+		if len(items) == 0 {
+			return false, nil
 		}
 		if err := w.list.Print(items, w.position); err != nil {
 			return true, err
 		}
 		w.position += len(items)
+		w.returned += len(items)
 		return true, nil
 	}
 }
@@ -238,9 +230,8 @@ func (w *writer[T]) commit() error {
 
 // ArtworkList 描述一次作品列表读取及输出方式。
 type ArtworkList struct {
-	Heading func() string
-	Key     JSONKey
-	Fetch   func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error)
+	Key   JSONKey
+	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error)
 	// PostFilter 只在已解析的窗口内本地筛选，不会继续向上游多取数据。
 	PostFilter func([]pixiv.Artwork) []pixiv.Artwork
 	Print      func(items []pixiv.Artwork, start int) error
@@ -248,26 +239,20 @@ type ArtworkList struct {
 
 // NovelList 描述一次小说列表读取及输出方式。
 type NovelList struct {
-	Heading string
-	Fetch   func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error)
-	Print   func(items []pixiv.Novel) error
+	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error)
+	Print func(items []pixiv.Novel) error
 }
 
 // UserList 描述一次用户预览列表读取及输出方式。
 type UserList struct {
-	Heading func() string
-	Fetch   func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error)
-	Print   func(items []pixiv.UserPreview) error
+	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error)
+	Print func(items []pixiv.UserPreview) error
 }
-
-// StaticHeading 把固定标题包装成每次调用都返回同一文本的 Heading。
-func StaticHeading(heading string) func() string { return func() string { return heading } }
 
 // RunArtworks 在账号池重放边界内执行一次分页作品读取。NDJSON 逐条提交，JSON 在完整
 // 文档写入 stdout 后提交，文本在第一批可见后提交；因此 429 只会在结果暴露前换账号。
-func RunArtworks(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, list ArtworkList) error {
-	return runPixivList(ctx, runner, request, plan, format, List[pixiv.Artwork]{
-		Heading:     list.Heading,
+func RunArtworks(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list ArtworkList) error {
+	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Artwork]{
 		Key:         list.Key,
 		Print:       list.Print,
 		JSONValue:   identityValue[pixiv.Artwork],
@@ -276,9 +261,8 @@ func RunArtworks(ctx context.Context, runner session.Runner, request session.Pro
 }
 
 // RunNovels 在同一个重放边界内执行一次分页小说读取。
-func RunNovels(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, list NovelList) error {
-	return runPixivList(ctx, runner, request, plan, format, List[pixiv.Novel]{
-		Heading:     StaticHeading(list.Heading),
+func RunNovels(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list NovelList) error {
+	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Novel]{
 		Key:         JSONKeyNovels,
 		Print:       func(items []pixiv.Novel, _ int) error { return list.Print(items) },
 		JSONValue:   identityValue[pixiv.Novel],
@@ -286,10 +270,9 @@ func RunNovels(ctx context.Context, runner session.Runner, request session.Proxy
 	}, list.Fetch, nil)
 }
 
-// RunUsers 执行一次分页用户预览读取。标题只在第一次可见输出前求值，让身份读取仍可重放。
-func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, list UserList) error {
-	return runPixivList(ctx, runner, request, plan, format, List[pixiv.UserPreview]{
-		Heading:     list.Heading,
+// RunUsers 执行一次分页用户预览读取。
+func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list UserList) error {
+	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.UserPreview]{
 		Key:         JSONKeyUsers,
 		Print:       func(items []pixiv.UserPreview, _ int) error { return list.Print(items) },
 		JSONValue:   identityValue[pixiv.UserPreview],
@@ -297,7 +280,7 @@ func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyR
 	}, list.Fetch, nil)
 }
 
-func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
+func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
 	w := newWriter(runner.Out, format, plan.Skip, list)
 	defer w.closeSpool()
 	_, err := pagination.TraverseWith(ctx, runner.Execute(request), plan, w.begin,
@@ -312,12 +295,16 @@ func runPixivList[T any](ctx context.Context, runner session.Runner, request ses
 	if err != nil {
 		return err
 	}
+	if format == FormatText && w.returned == 0 {
+		_, err := fmt.Fprintln(errOut, "No results.")
+		return err
+	}
 	return w.commit()
 }
 
 // RunPages 统一 FANBOX 列表命令的 JSON / NDJSON / 文本输出与分页。JSON 只有完整文档
 // 写入临时文件成功后才交给 stdout。
-func RunPages[T any](ctx context.Context, out io.Writer, plan pagination.PagePlan, key string, jsonOut, ndjson bool, printText func([]T) error, toJSON func(T) any, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) error {
+func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination.PagePlan, key string, jsonOut, ndjson bool, printText func([]T) error, toJSON func(T) any, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) error {
 	format := FormatText
 	if ndjson {
 		format = FormatNDJSON
@@ -343,6 +330,10 @@ func RunPages[T any](ctx context.Context, out io.Writer, plan pagination.PagePla
 		return err
 	})
 	if err != nil {
+		return err
+	}
+	if format == FormatText && w.returned == 0 {
+		_, err := fmt.Fprintln(errOut, "No results.")
 		return err
 	}
 	return w.commit()

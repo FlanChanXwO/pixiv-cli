@@ -4,16 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )
-
-// 刷新结果没有会员证据时输出 premiumStatusUnknown，不能据此断言账号不是会员。
-const premiumStatusUnknown = "unknown"
 
 type accountImportOptions struct {
 	environment.ProxyOptions
@@ -115,7 +114,7 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				if err := a.support.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
-				return writeAuthExportStdout(a.env.Out, []byte(fmt.Sprintf("output: %s\naccounts: %d\n", opts.output, result.AccountCount)))
+				return writeAuthExportStdout(a.env.Out, []byte(fmt.Sprintf("Exported %d accounts to %s\n", result.AccountCount, display.SafeLine(opts.output))))
 			}
 			if opts.all {
 				return writeAuthExportStdout(a.env.Out, result.Bundle)
@@ -161,31 +160,43 @@ func (a controller) accountList(ctx context.Context, jsonOut bool) error {
 		return a.env.PrintJSON(out)
 	}
 	if len(out.Accounts) == 0 {
-		fmt.Fprintln(a.env.Out, "no accounts")
-		return nil
+		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		return err
 	}
 	for _, acct := range out.Accounts {
-		marker := " "
-		if acct.Default {
-			marker = "*"
+		if err := printAccount(a.env.Out, acct); err != nil {
+			return err
 		}
-		credential := "-"
-		if acct.HasToken {
-			credential = "✓"
-		}
-		fmt.Fprintf(a.env.Out, "%s %s uid:%d", marker, credential, acct.UserID)
-		if acct.Username != "" {
-			fmt.Fprintf(a.env.Out, " username:%s", acct.Username)
-		}
-		if acct.Schedulable != nil {
-			fmt.Fprintf(a.env.Out, " schedulable:%t eligible:%t", *acct.Schedulable, *acct.Eligible)
-			if acct.PoolFrozenUntil != nil {
-				fmt.Fprintf(a.env.Out, " frozen_until:%s", acct.PoolFrozenUntil.UTC().Format(time.RFC3339))
-			}
-		}
-		fmt.Fprintln(a.env.Out)
 	}
 	return nil
+}
+
+func printAccount(out io.Writer, acct accountOut) error {
+	marker := " "
+	if acct.Default {
+		marker = "*"
+	}
+	line := marker + " " + display.Identity(acct.Username, acct.UserID)
+	if valueOrFalse(acct.PremiumStatus) {
+		line += "  Premium"
+	}
+	if valueOrFalse(acct.Schedulable) {
+		line += "  pool"
+	}
+	if acct.PoolFrozenUntil != nil {
+		line += "  frozen until " + acct.PoolFrozenUntil.UTC().Format(time.RFC3339)
+	}
+	_, err := fmt.Fprintln(out, line)
+	return err
+}
+
+func accountIdentity(list accountListOut, userID int64) string {
+	for _, acct := range list.Accounts {
+		if acct.UserID == userID {
+			return display.Identity(acct.Username, userID)
+		}
+	}
+	return display.Identity("", userID)
 }
 
 func (a controller) newAccountPoolCommand() *cobra.Command {
@@ -226,16 +237,17 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 			if jsonOut {
 				return a.env.PrintJSON(out)
 			}
-			fmt.Fprintf(a.env.Out, "enabled:%t strategy:%s\n", out.Enabled, out.Strategy)
-			if out.EarliestFrozenUntil != nil {
-				fmt.Fprintf(a.env.Out, "earliest_frozen_until:%s\n", out.EarliestFrozenUntil.UTC().Format(time.RFC3339))
+			state := "disabled"
+			if out.Enabled {
+				state = "enabled"
 			}
-			for _, account := range out.Accounts {
-				fmt.Fprintf(a.env.Out, "uid:%d schedulable:%t eligible:%t", account.UserID, valueOrFalse(account.Schedulable), valueOrFalse(account.Eligible))
-				if account.PoolFrozenUntil != nil {
-					fmt.Fprintf(a.env.Out, " frozen_until:%s", account.PoolFrozenUntil.UTC().Format(time.RFC3339))
+			if _, err := fmt.Fprintf(a.env.Out, "Account pool: %s (%s)\n", state, display.SafeLine(out.Strategy)); err != nil {
+				return err
+			}
+			for _, acct := range out.Accounts {
+				if err := printAccount(a.env.Out, acct); err != nil {
+					return err
 				}
-				fmt.Fprintln(a.env.Out)
 			}
 			return nil
 		},
@@ -283,12 +295,16 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 					UserIDs     []int64 `json:"user_ids,omitempty"`
 				}{Schedulable: schedulable, All: opts.all, UserIDs: userIDs})
 			}
+			accounts := formatUIDs(userIDs)
 			if opts.all {
-				fmt.Fprintf(a.env.Out, "schedulable:%t all\n", schedulable)
-			} else {
-				fmt.Fprintf(a.env.Out, "schedulable:%t uid:%s\n", schedulable, formatUIDs(userIDs))
+				accounts = "all accounts"
 			}
-			return nil
+			if schedulable {
+				_, err = fmt.Fprintf(a.env.Out, "Added %s to the account pool\n", accounts)
+			} else {
+				_, err = fmt.Fprintf(a.env.Out, "Removed %s from the account pool\n", accounts)
+			}
+			return err
 		},
 	}
 	cmd.Flags().BoolVar(&opts.all, "all", false, "apply to every stored account")
@@ -303,7 +319,7 @@ func formatUIDs(userIDs []int64) string {
 	for _, userID := range userIDs {
 		values = append(values, strconv.FormatInt(userID, 10))
 	}
-	return strings.Join(values, ",")
+	return strings.Join(values, ", ")
 }
 
 func valueOrFalse(value *bool) bool {
@@ -357,11 +373,12 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID, "default_user_id": defaultUserID})
 	}
-	fmt.Fprintf(a.env.Out, "account uid:%d removed\n", userID)
+	line := "Removed " + accountIdentity(list, userID)
 	if defaultUserID != 0 {
-		fmt.Fprintf(a.env.Out, "default uid: %d\n", defaultUserID)
+		line += "; now using " + accountIdentity(list, defaultUserID)
 	}
-	return nil
+	_, err = fmt.Fprintln(a.env.Out, line)
+	return err
 }
 
 func (a controller) newAccountUseCommand() *cobra.Command {
@@ -400,8 +417,8 @@ func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool)
 	if jsonOut {
 		return a.env.PrintJSON(map[string]int64{"default_user_id": userID})
 	}
-	fmt.Fprintf(a.env.Out, "default uid: %d\n", userID)
-	return nil
+	_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, userID))
+	return err
 }
 
 func (a controller) newAccountCheckCommand() *cobra.Command {
@@ -449,13 +466,8 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 	if opts.jsonOut {
 		return a.env.PrintJSON(out)
 	}
-	if userID == 0 {
-		fmt.Fprintf(a.env.Out, "token ok, uid:%d\n", result.UserID)
-	} else {
-		fmt.Fprintf(a.env.Out, "account uid:%d ok\n", result.UserID)
-	}
-	if result.Username != "" {
-		fmt.Fprintf(a.env.Out, "username:%s\n", result.Username)
+	if _, err := fmt.Fprintf(a.env.Out, "Token valid for %s\n", display.Identity(result.Username, result.UserID)); err != nil {
+		return err
 	}
 	if result.Warning != "" {
 		fmt.Fprintf(a.env.Err, "warning: %s\n", result.Warning)
@@ -533,11 +545,13 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 		}{Accounts: results})
 	}
 	for _, account := range results {
-		premium := premiumStatusUnknown
-		if account.PremiumStatus != nil {
-			premium = environment.TextBool(*account.PremiumStatus)
+		label := ""
+		if valueOrFalse(account.PremiumStatus) {
+			label = " · Premium"
 		}
-		fmt.Fprintf(a.env.Out, "✓ refreshed uid:%d premium:%s\n", account.UserID, premium)
+		if _, err := fmt.Fprintf(a.env.Out, "Refreshed %s%s\n", display.Identity(account.Username, account.UserID), label); err != nil {
+			return err
+		}
 	}
 	return nil
 }

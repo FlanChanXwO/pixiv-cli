@@ -78,7 +78,7 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind str
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
 			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, plan, "creators", jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "creators", jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
 			return printCreators(a.env.Out, items)
 		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
@@ -113,7 +113,7 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts options)
 		if err != nil {
 			return err
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, fetch)
 	})
@@ -226,8 +226,14 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			}
 			return nil
 		}
+		if len(out) == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return err
+		}
 		for _, tag := range out {
-			fmt.Fprintf(a.env.Out, "tag:%s\n", display.SafeLine(tag.Name))
+			if _, err := fmt.Fprintln(a.env.Out, display.SafeLine(tag.Name)); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -281,7 +287,7 @@ func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanb
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		return record.RunPages(cmd.Context(), a.env.Out, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, bind(client))
 	})
@@ -353,15 +359,11 @@ func postOutFrom(post fanbox.Post) postOut {
 
 func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 	for _, creator := range creators {
-		if _, err := fmt.Fprintf(out, "id:%s", display.SafeLine(creator.ID)); err != nil {
-			return err
-		}
+		identity := display.SafeLine(creator.ID)
 		if creator.Name != "" {
-			if _, err := fmt.Fprintf(out, " name:%s", display.SafeLine(creator.Name)); err != nil {
-				return err
-			}
+			identity = display.SafeLine(creator.Name) + " (" + identity + ")"
 		}
-		if _, err := fmt.Fprintln(out); err != nil {
+		if _, err := fmt.Fprintln(out, identity); err != nil {
 			return err
 		}
 	}
@@ -370,8 +372,15 @@ func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 
 func printPosts(out io.Writer, posts []fanbox.Post) error {
 	for _, post := range posts {
-		if _, err := fmt.Fprintf(out, "id:%s title:%s published:%s restricted:%s\n",
-			display.SafeLine(post.ID), display.SafeLine(post.Title), postOutFrom(post).PublishedAt, environment.TextBool(post.IsRestricted)); err != nil {
+		locked := ""
+		if post.IsRestricted {
+			locked = " [locked]"
+		}
+		date := ""
+		if !post.PublishedAt.IsZero() {
+			date = post.PublishedAt.Format(time.DateOnly)
+		}
+		if _, err := fmt.Fprintf(out, "%s  %s  %s%s\n", display.SafeLine(post.ID), date, display.SafeLine(post.Title), locked); err != nil {
 			return err
 		}
 	}

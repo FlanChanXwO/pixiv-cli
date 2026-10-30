@@ -106,7 +106,7 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.NovelList{Heading: fmt.Sprintf("novels for %q", word), Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, opts.ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 }
 
 // resolveNovelSearchBy 将小说搜索 target 限定为 v1 合同支持的三种值，避免复用
