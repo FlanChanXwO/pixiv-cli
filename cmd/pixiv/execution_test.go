@@ -76,3 +76,17 @@ func TestEmptyAuthAccountsArray(t *testing.T) {
 	require.Zero(t, code, stderr)
 	require.Contains(t, stdout, `"accounts": []`)
 }
+
+func TestNotLoggedInOneErrorLine(t *testing.T) {
+	isolatedHome(t)
+	for _, args := range [][]string{{"ranking"}, {"fanbox", "creators"}} {
+		stdout, stderr, code := runCLI(t, args...)
+		require.Equal(t, 1, code)
+		require.Empty(t, stdout)
+		login := "pixiv auth login"
+		if args[0] == "fanbox" {
+			login = "pixiv fanbox auth login"
+		}
+		require.Equal(t, "error: not logged in; run \""+login+"\"\n", stderr)
+	}
+}

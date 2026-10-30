@@ -1,7 +1,11 @@
 package environment
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"net/http"
 
 	"github.com/spf13/cobra"
 )
@@ -43,4 +47,32 @@ func (e *StartupError) Unwrap() error { return e.Err }
 func WritesNDJSON(cmd *cobra.Command) bool {
 	flag := cmd.Flags().Lookup("ndjson")
 	return flag != nil && flag.Changed && flag.Value.String() == "true"
+}
+
+// ErrorText 在 CLI 边界解释常见 SDK 错误，保留原始错误值供结构化调用方使用。
+func ErrorText(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "request timed out; check your connection and try again"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "operation canceled; run the command again when ready"
+	}
+	var failure *sdk.Error
+	if !errors.As(err, &failure) {
+		return err.Error()
+	}
+	switch failure.Reason {
+	case sdk.Unauthorized, sdk.CredentialsExpired:
+		login := "pixiv auth login"
+		if failure.Product == "fanbox" {
+			login = "pixiv fanbox auth login"
+		}
+		return fmt.Sprintf("not logged in; run %q", login)
+	case sdk.InvalidArgument, sdk.InvalidCursor:
+		return "invalid argument: " + failure.Detail + "; check the command's --help"
+	}
+	if failure.HTTPStatus != 0 {
+		return fmt.Sprintf("upstream returned HTTP %d (%s); check service availability and account access before trying again", failure.HTTPStatus, http.StatusText(failure.HTTPStatus))
+	}
+	return err.Error()
 }

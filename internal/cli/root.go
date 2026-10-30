@@ -214,14 +214,14 @@ func (a *app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 	}
 	var usageErr *environment.UsageError
 	if errors.As(err, &usageErr) {
-		fmt.Fprintln(a.errOut, "error:", usageErr.Err)
+		fmt.Fprintln(a.errOut, "error:", environment.ErrorText(usageErr.Err))
 		return 2
 	}
 	var pipelineErr *record.PipelineDiagnosticError
 	if errors.As(err, &pipelineErr) {
 		return 1
 	}
-	fmt.Fprintln(a.errOut, "error:", err)
+	fmt.Fprintln(a.errOut, "error:", environment.ErrorText(err))
 	return 1
 }
 
