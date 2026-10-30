@@ -267,10 +267,10 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		if err != nil {
 			return err
 		}
-		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, strategy, include)
+		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, query, strategy, include)
 	}
 	if include != nil {
-		return a.runLocallyFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, include)
+		return a.runLocallyFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, query, include)
 	}
 	if params.aiMode != pixiv.SearchAIModeOnly && params.plan.Skip > 0 {
 		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
@@ -303,7 +303,7 @@ type bookmarkFilterJSON struct {
 
 // runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
 // 过滤元数据仍由 CLI 保持。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, strategy searchfilter.BookmarkStrategy, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, strategy searchfilter.BookmarkStrategy, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:      query,
 		Plan:       plan,
@@ -314,10 +314,10 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.P
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, outcome.Filter)
+	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, outcome.Filter)
 }
 
-func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
+func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
 		Query:   query,
 		Plan:    plan,
@@ -326,10 +326,10 @@ func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.Pr
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, word, outcome.Page.Items, nil)
+	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, nil)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -354,7 +354,8 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, it
 		}
 		return a.env.PrintJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
 	}
-	if _, err := fmt.Fprintf(a.env.Out, "illustrations for %q\n", word); err != nil {
+	if len(items) == 0 {
+		_, err := fmt.Fprintln(a.env.Err, "No results.")
 		return err
 	}
 	return display.PrintArtworks(a.env.Out, items)
@@ -386,11 +387,11 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 		}{Tags: dtos})
 	}
 	for _, tag := range tags {
-		translated := tag.TranslatedName
-		if translated == "" {
-			translated = "none"
+		line := display.SafeLine(tag.Tag)
+		if tag.TranslatedName != "" {
+			line += " (" + display.SafeLine(tag.TranslatedName) + ")"
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "%s (translation: %s)\n", display.SafeLine(tag.Tag), display.SafeLine(translated)); err != nil {
+		if _, err := fmt.Fprintln(a.env.Out, line); err != nil {
 			return err
 		}
 	}

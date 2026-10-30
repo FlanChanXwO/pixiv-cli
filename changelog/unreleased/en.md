@@ -13,7 +13,7 @@
 
 ## Changed
 
-- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. Scripts parsing text should switch to `--json` or `--ndjson`; their output is unchanged.
+- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. FANBOX downloads keep stdout empty on success and no longer print saved paths. Scripts parsing text should switch to `--json` or `--ndjson`; their output is unchanged.
 
 - JSON logs restore ERROR command-failure records. Debug logs add the SDK error creation site and safe typed network details, including OAuth token exchange failures.
 

@@ -50,12 +50,15 @@ func PrintArtworkDetail(out io.Writer, item pixiv.Artwork) error {
 	if item.Kind == pixiv.ArtworkKindIllustration {
 		content = string(pixiv.SearchContentTypeIllust)
 	}
-	for _, line := range []string{
-		fmt.Sprintf("%s — %s", SafeLine(item.Title), Identity(item.User.Name, item.User.ID)),
-		url,
-		fmt.Sprintf("%s · %d pages · %d bookmarks · %d views", SafeLine(content), item.PageCount, item.TotalBookmarks, item.TotalViews),
-		"Tags: " + strings.Join(tags, ", "),
-	} {
+	lines := []string{fmt.Sprintf("%s — %s", SafeLine(item.Title), Identity(item.User.Name, item.User.ID))}
+	if url != "" {
+		lines = append(lines, url)
+	}
+	lines = append(lines, fmt.Sprintf("%s · %d pages · %d bookmarks · %d views", SafeLine(content), item.PageCount, item.TotalBookmarks, item.TotalViews))
+	if len(tags) > 0 {
+		lines = append(lines, "Tags: "+strings.Join(tags, ", "))
+	}
+	for _, line := range lines {
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err
 		}
