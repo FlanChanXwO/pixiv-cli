@@ -3,18 +3,18 @@ package main_test
 import (
 	"bytes"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBrowserProvidersStayRegistered 覆盖 fanbox auth 的 blank import：删掉任一 provider
