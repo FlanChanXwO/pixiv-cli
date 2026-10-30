@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"io"
 	"strconv"
 	"strings"
@@ -80,9 +81,16 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 			return a.env.PrintJSON(result)
 		}
 		for _, account := range result.Accounts {
-			fmt.Fprintf(a.env.Out, "%s uid:%d\n", account.Status, account.UserID)
+			if _, err := fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(account.Status), display.Identity(account.Username, account.UserID)); err != nil {
+				return err
+			}
 		}
-		fmt.Fprintf(a.env.Out, "default uid: %d\n", result.DefaultUserID)
+		for _, account := range result.Accounts {
+			if account.UserID == result.DefaultUserID {
+				_, err := fmt.Fprintf(a.env.Out, "Now using %s\n", display.Identity(account.Username, account.UserID))
+				return err
+			}
+		}
 		return nil
 	}
 	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
@@ -107,11 +115,8 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	if opts.jsonOut {
 		return a.env.PrintJSON(result)
 	}
-	fmt.Fprintf(a.env.Out, "%s uid:%d\n", result.Status, result.UserID)
-	if result.Username != "" {
-		fmt.Fprintf(a.env.Out, "username:%s\n", result.Username)
-	}
-	return nil
+	_, err = fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(result.Status), display.Identity(result.Username, result.UserID))
+	return err
 }
 
 func (a controller) bindAuthImportInput(cmd *cobra.Command, target *authImportInput) {
@@ -184,4 +189,11 @@ func readRefreshTokenInput(r io.Reader) (string, error) {
 		return "", errors.New("refresh token cannot be empty")
 	}
 	return token, nil
+}
+
+func importVerb(status string) string {
+	if status == accountImportStatusUpdated {
+		return "Updated"
+	}
+	return "Imported"
 }

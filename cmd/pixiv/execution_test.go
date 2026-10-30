@@ -140,3 +140,12 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 type failedErrorOutput struct{ err error }
 
 func (f failedErrorOutput) Write([]byte) (int, error) { return 0, f.err }
+
+func TestAuthAccountText(t *testing.T) {
+	home := isolatedHome(t)
+	seedPixivAccount(t, home, "alice\n\x1b[31m", true)
+	stdout, stderr, code := runCLI(t, "auth", "list")
+	require.Zero(t, code, stderr)
+	require.Empty(t, stderr)
+	require.Equal(t, "* alice\\n\\x1b[31m (12345678)  Premium\n", stdout)
+}

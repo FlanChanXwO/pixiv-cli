@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"net"
 	"net/http"
 	"net/url"
@@ -155,13 +156,8 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if opts.jsonOut {
 		return a.env.PrintJSON(out)
 	}
-	// 文本模式给出可直接识别账号的安全摘要，不显示 token 或冗余的成功文案。
-	fmt.Fprintf(a.env.Out, "✓ uid:%d", out.UserID)
-	if out.Username != "" {
-		fmt.Fprintf(a.env.Out, " username:%s", out.Username)
-	}
-	fmt.Fprintln(a.env.Out)
-	return nil
+	_, err = fmt.Fprintf(a.env.Out, "Logged in as %s\n", display.Identity(out.Username, out.UserID))
+	return err
 }
 
 func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCallback callbackURLAccepter, loginURL string, noOpen bool) (code string, notifyFinal func(bool), cleanup func(), err error) {
