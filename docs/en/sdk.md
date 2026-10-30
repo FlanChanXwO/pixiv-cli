@@ -404,9 +404,12 @@ Each entity has one public model type. Models carry JSON tags and marshal direct
 
 - Encode `pixiv.Artwork`, `pixiv.Novel`, `pixiv.NovelContent`, `pixiv.UgoiraMetadata`, `fanbox.Post` and the other public models directly. `sdk.Page[T]` marshals its cursor as text and a last page as an empty string.
 - CLI and MCP encode these models, pipeline `Record` values and typed envelopes.
+- `Artwork.ContentType` (`content_type`) preserves the upstream value: `ContentTypeIllust` (`illust`), `ContentTypeManga`, `ContentTypeUgoira`, or an unknown string unchanged. Replace former `Kind`/`RawKind` reads with `ContentType`; the wire field remains `type`. `UserArtworksRequest.Kind` now takes `ContentType`.
 - `Artwork` keeps upstream `IsBookmarked`, `IsMuted`, `Visible`, `SanityLevel`, `RestrictionAttributes` on search/detail as pointers, plus optional `Series` (`ID`, `Title`). Non-nil keeps explicit `false`, `0` or empty array; nil = not provided. Detail may supply `TotalComments` (search never synthesizes it). Viewer state belongs to the reading account; no per-result enrichment.
 
 ### Optional model fields
+
+`Tag.translated_name` is omitted when empty. `User.profile_image`, `Artwork.cover`, and `Novel.cover` are omitted when upstream supplied no image resource.
 
 Models omit fields upstream did not provide instead of emitting `null` or empty values — e.g. `Artwork` omits `updated_at`, `tools` and `pages` (pages only on detail). Absent viewer/safety fields, `series` and `total_comments` are omitted; an explicitly empty `restriction_attributes` stays `[]`. Treat a missing key as unknown, not `false`/`0`; MCP schemas mark these optional.
 

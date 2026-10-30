@@ -4,6 +4,12 @@
 
 ## 破坏性变更
 
+- SDK：`Artwork.Kind`/`RawKind` 与 `ArtworkKind` 合并为 `ContentType`（`illust`、`manga`、`ugoira`），未知值原样保留；空标签译名和缺失的头像/封面字段省略。
+- CLI JSON：内容列表改为 `{records, pagination}`，ID 为字符串；`recommended --type all` 按 `artworks`、`novels`、`users` 分区。账号摘要删除 `has_token`、`premium_status_checked_at`、`warning`、`eligible`，以及列表/bundle 导入结果中重复的 `default_user_id`。
+- NDJSON：作品行使用 `type:"artwork"`，子类型筛选改用 `content_type`；未知上游作品类型保留并可继续处理。管道诊断删除固定的 `kind:"record_error"`。
+- MCP 参数：实体 `kind` 改为 `type`；`pixiv_recommended` 使用 `type=all|artwork|novel|user`，作品可另设 `content_type=all|illust|manga`，结果按实体分区。`fanbox_creators.kind` 与 CLI `fanbox creators --kind` 改为 `relation` / `--relation`。
+
+
 - `pixiv mcp` 不再接受 `mcp_gallery_cache_ttl` 与 `mcp_gallery_concurrency` 设置，请从 `config.toml` 中删除。（[#168](https://github.com/FlanChanXwO/pixiv-cli/pull/168)）
 
 ## 新增
@@ -13,7 +19,7 @@
 
 ## 变更
 
-- CLI 文本输出统一使用账号身份、状态标签、无标题的单行列表与详情卡片；空结果在 stderr 输出 `No results.`，退出码为 0。对于支持 `--json` 或 `--ndjson` 的命令，解析文本的脚本请改用这些选项，这两种输出保持原样。
+- CLI 文本输出统一使用账号身份、状态标签、无标题的单行列表与详情卡片；空结果在 stderr 输出 `No results.`，退出码为 0。对于支持 `--json` 或 `--ndjson` 的命令，解析文本的脚本请改用这些选项，机器输出的迁移见上方破坏性变更。
 - `pixiv fanbox download` 成功时 stdout 为空，不再打印保存路径；该命令没有 `--json` 或 `--ndjson` 选项。
 
 - JSON 日志恢复 ERROR 命令失败记录；debug 日志增加 SDK 错误创建位置和安全的 typed 网络细节，覆盖 OAuth 换 token 失败。

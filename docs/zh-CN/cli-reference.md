@@ -90,7 +90,9 @@ flowchart LR
 
 - 账号池成员由数据库 `schedulable` 标记决定；用 `pixiv auth pool status|enable|disable` 管理。写操作、认证与配置从不使用账号池。
 - 数据命令拒绝 `--uid` 与 `--refresh-token`。
-- **Record：** stdout 非终端且未选择输出格式时，视觉列表写出 canonical NDJSON。每行有稳定的字符串 `id`、`type`、`url`。`download`、`bookmark add/remove` 与 `follow add/remove` 无需位置 ID 即可消费兼容 record；bookmark 的 record 必须匹配所选 `--type` 命名空间（默认 artwork，`--type novel` 为小说）。
+- **JSON 列表：** 内容列表返回 `{"records": [...], "pagination": {"page", "limit", "returned", "has_more", "next_page"}}`。元素与 NDJSON 行一致，ID 为字符串，空列表为 `[]`。省略 limit 时为 `null`，显式 `--limit 0` 时为 `0`。JSON 在私有临时文件中暂存，全部请求成功后提交。评论在信封旁保留可选 `total`/`access_control`，小说系列保留 `series`。
+- **推荐分区：** `recommended --type all --json` 返回 `{artworks: {records, pagination}, novels: {records, pagination}, users: {records, pagination}}`。作品共用一个上游窗口，各分区独立分页。
+- **Record：** stdout 非终端且未选择输出格式时，视觉列表写出 canonical NDJSON。每行有稳定的字符串 `id`、`type`、`url`。作品记录使用 `type:"artwork"`，子类型保留在 `content_type:"illust"|"manga"|"ugoira"`；未知上游类型原样保留。筛选漫画使用 `.content_type == "manga"`。`download`、`bookmark add/remove` 与 `follow add/remove` 无需位置 ID 即可消费兼容 record；bookmark 的 record 必须匹配所选 `--type` 命名空间（默认 artwork，`--type novel` 为小说）。
 - **关注：** 显式目标必须是正整数用户 ID（用户 URL 在本地被拒绝）。`pixiv user follow add/remove` 与根命令 `pixiv follow add/remove` 共用同一 owner；`add --restrict public|private` 默认 `public`。
 - **评论：** `create/reply/stamp/delete` 只接受一个正整数 ID，不消费 Record。读取保留可选的 `total`/`access_control`；opaque 数值 `comment_access_control` 保留在 `access_control.comment_access_control`，不推断布尔值。create/reply/stamp 返回上游的正整数 `comment_id`；delete 返回状态。`comment stamps` 只读、不分页。`--json` 与显式 `--ndjson` 优先。
 
@@ -181,7 +183,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | 默认本地 stdio；显式 `--port` 启用认证 HTTP。 |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | 初始化 MCP owner 并只打印一次 secret；reset 撤销授权，保留 client 与已选账号。 |
 | `fanbox auth` | `pixiv fanbox auth import\|list\|use\|remove\|status` | 本地 FANBOX 会话；值从不打印。原生 `--proxy`/`--no-proxy` 只作用于 FANBOX 命令。 |
-| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | 支持中或关注中的创作者。 |
+| `fanbox creators` | `pixiv fanbox creators [--relation supporting\|following] [--page N --limit N]` | 支持中或关注中的创作者。 |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | 来自创作者、标签、帖子 ID 或受支持 FANBOX URL 的帖子。 |
 | `fanbox tags` | `pixiv fanbox tags CREATOR` | 创作者的精选标签。 |
 | `fanbox home` / `supporting` | `pixiv fanbox home\|supporting [--page N --limit N]` | 已认证的主页或支持中 feed。 |
@@ -313,7 +315,7 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 | `detail --type novel` | 正整数 ID | 元数据；`--content` → `content_unavailable`，不调用已拒绝端点，无 WebView fallback |
 | `detail --type artwork` | 正整数 ID，或 HTTPS `pixiv.net`/`www.pixiv.net` `/artworks/{id}`（可带语言段、query、fragment） | |
 | `detail --type novel\|user` | 正整数 ID | 用户/小说 URL 绝不被当作作品 URL；不支持的形态在本地失败 |
-| `detail`（stdin record） | `illust`、`manga`、`ugoira`、通用 `artwork` → 作品详情；`novel`、`user` → 对应详情 | `--ndjson` = record，`--json` = 一个数组，省略且非 TTY = NDJSON；不接受聚合的 `search --json` |
+| `detail`（stdin record） | `artwork`（任意 `content_type`）→ 作品详情；`novel`、`user` → 对应详情 | `--ndjson` = record，`--json` = 一个数组，省略且非 TTY = NDJSON；不接受聚合的 `search --json` |
 | `user follow add/remove`、`follow add/remove` | 正整数用户 ID 或 canonical 用户 Record | 主页 URL 在本地被拒绝；`--restrict` `public`（默认）或 `private`；成功输出保持为空 |
 | `download` | 作品引用、允许的 CDN URL、`/users/{id}`、`/users/{id}/artworks`、`/users/{id}/bookmarks/artworks` | 用户/收藏来源分页遍历 `illust`、`manga`、`ugoira` 并按首次出现去重；系列 URL 被拒绝；需要 App OAuth，无 Web fallback；URL 解析在本地进行（不抓 HTML、不跟随重定向） |
 

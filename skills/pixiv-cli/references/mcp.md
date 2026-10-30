@@ -2,9 +2,11 @@
 
 ## Tool names and migration
 
-Use `pixiv_comments` and `pixiv_comment_create|reply|stamp|delete` with required `kind=artwork|novel`. Create/reply/stamp take positive `id`; delete takes `comment_id`. `pixiv_bookmark_add|remove` also require `kind` and positive `id`; add retains `restrict` and `tags`. Mutation outputs retain the original action and `illust_id`/`novel_id` fields. These are independent actions with distinct approval hints, not an `action` dispatcher.
+Use `pixiv_comments` and `pixiv_comment_create|reply|stamp|delete` with required `type=artwork|novel`. Create/reply/stamp take positive `id`; delete takes `comment_id`. `pixiv_bookmark_add|remove` also require `type` and positive `id`; add retains `restrict` and `tags`. Mutation outputs retain the original action and `illust_id`/`novel_id` fields. These are independent actions with distinct approval hints, not an `action` dispatcher.
 
-Read selectors are explicit: `pixiv_user_bookmarks(kind=artwork|novel)`, `pixiv_user_relations(relation=followers|following|related)`, `pixiv_timeline_following(kind=artwork|novel)`, `pixiv_timeline_latest(content_type=illust|manga|novel)`, and `pixiv_mypixiv(kind=artwork|novel|user)`. Keep matching typed filters only; novel user bookmarks have no new filter, and followers do not accept `user_filter`. Related users accept but ignore `restrict`. `pixiv_bookmark_list_all` retains artwork-then-novel pagination; the two recommendation tools remain distinct.
+Read selectors are explicit: `pixiv_user_bookmarks(type=artwork|novel)`, `pixiv_user_relations(relation=followers|following|related)`, `pixiv_timeline_following(type=artwork|novel)`, `pixiv_timeline_latest(content_type=illust|manga|novel)`, and `pixiv_mypixiv(type=artwork|novel|user)`. Keep matching typed filters only; novel user bookmarks have no new filter, and followers do not accept `user_filter`. Related users accept but ignore `restrict`. `pixiv_bookmark_list_all` retains artwork-then-novel pagination; the two recommendation tools remain distinct.
+
+Use `fanbox_creators` with `relation=supporting|following` (default `supporting`). `pixiv_recommended` uses `type=all|artwork|novel|user`, optional artwork-only `content_type=all|illust|manga`, and returns the requested `{artworks, novels, users}` partitions, each `{records, pagination}`.
 
 Use `fanbox_creator_posts` with `creator_id` and an optional non-empty `tag` (omit it for untagged creator posts); `fanbox_feed` requires `source=home|supporting`. The old type-specific names and `fanbox_tagged_posts|home|supporting` are unregistered. Use current discovery and the [migration table](https://github.com/FlanChanXwO/pixiv-cli/blob/main/docs/en/mcp-tools.md#tool-migration), not cached tool metadata.
 
@@ -79,7 +81,7 @@ Download controls use standard ui/download-file only when the host advertises do
 
 Failed continuation retains loaded records; retry is explicit. For pixiv_search_illust, pixiv_illust_related, pixiv_illust_ranking and pixiv_illust_recommended default batches, pass pagination.next_cursor unchanged as cursor with the same original arguments (including search query/strategy, ID, ranking mode/date and filters where applicable), omitting page/limit; the Gallery supports this route. The cursor contains no credentials and is not an authorization token; SDK account binding still applies.
 
-For pixiv_recommended default batches, each pagination stream may return its own next_cursor: continue with that stream’s kind, retain only its applicable filters, and omit page/limit. Do not send a stream cursor with kind=all or another kind, and do not invent cursors/page sizes. Local mocks do not prove live display, playback or download support.
+For pixiv_recommended default batches, each artworks/novels/users partition may return its own next_cursor: continue with that stream’s type, retain its content_type and only its applicable filters, and omit page/limit. Do not send a stream cursor with type=all or another type, and do not invent cursors/page sizes. Local mocks do not prove live display, playback or download support.
 
 ## FANBOX resource delivery
 
