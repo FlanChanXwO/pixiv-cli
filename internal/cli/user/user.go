@@ -402,6 +402,9 @@ func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listO
 }
 
 func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts listOptions) error {
+	if err := validateRelationshipRestrict(opts.restrict); err != nil {
+		return err
+	}
 	requested, err := requestedUserID(args)
 	if err != nil {
 		return err

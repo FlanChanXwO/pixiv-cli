@@ -63,6 +63,9 @@ func (a commandRunner) newNovelSearchCommand() *cobra.Command {
 }
 
 func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts novelOptions) error {
+	if err := validateSort(opts.sortMode); err != nil {
+		return err
+	}
 	target, err := resolveNovelSearchBy(opts.searchBy)
 	if err != nil {
 		return err

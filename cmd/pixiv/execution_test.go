@@ -90,3 +90,25 @@ func TestNotLoggedInOneErrorLine(t *testing.T) {
 		require.Equal(t, "error: not logged in; run \""+login+"\"\n", stderr)
 	}
 }
+
+func TestEnumsBeforeAccount(t *testing.T) {
+	isolatedHome(t)
+	for _, args := range [][]string{
+		{"ranking", "--mode", "nope"},
+		{"timeline", "following", "--type", "artwork", "--restrict", "nope"},
+		{"search", "cat", "--sort", "nope"},
+		{"novel", "search", "cat", "--sort", "nope"},
+		{"bookmark", "list", "--restrict", "nope"},
+		{"bookmark", "tags", "--restrict", "nope"},
+		{"bookmark", "add", "101", "--restrict", "nope"},
+		{"user", "bookmarks", "7", "--restrict", "nope"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runCLI(t, args...)
+			require.NotZero(t, code)
+			require.Empty(t, stdout)
+			require.Contains(t, stderr, "must be")
+			require.NotContains(t, stderr, "not logged in")
+		})
+	}
+}

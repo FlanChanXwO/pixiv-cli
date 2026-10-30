@@ -87,6 +87,12 @@ func (a commandRunner) newLatestCommand() *cobra.Command {
 }
 
 func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
+	switch pixiv.Restrict(opts.restrict) {
+	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
+	default:
+		return errors.New("restrict must be one of: public, private; see pixiv timeline following --help")
+	}
+
 	entity := opts.contentType
 	if entity == string(target.SubtypeIllust) {
 		entity = string(target.ResultKindArtwork)

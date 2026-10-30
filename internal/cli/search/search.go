@@ -201,6 +201,9 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return a.runTrendingTags(cmd, opts.Options)
 	}
+	if err := validateSort(opts.sortMode); err != nil {
+		return err
+	}
 	entity, err := resolveEntityType(opts.typ)
 	if err != nil {
 		return err
@@ -596,4 +599,13 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 func validDate(value string) bool {
 	parsed, err := time.Parse("2006-01-02", value)
 	return err == nil && parsed.Format("2006-01-02") == value
+}
+
+func validateSort(value string) error {
+	switch pixiv.SortMode(value) {
+	case "", pixiv.SortModeDateDesc, pixiv.SortModeDateAsc, pixiv.SortModePopularDesc:
+		return nil
+	default:
+		return errors.New("sort must be one of: date_desc, date_asc, popular_desc; see pixiv search --help")
+	}
 }

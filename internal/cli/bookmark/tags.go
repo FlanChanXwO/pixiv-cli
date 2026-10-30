@@ -18,6 +18,9 @@ import (
 )
 
 func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptions) error {
+	if err := validateRestrict(opts.restrict); err != nil {
+		return err
+	}
 	if opts.typ == "all" {
 		return a.runAllTags(cmd, args, opts)
 	}

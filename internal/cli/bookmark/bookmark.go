@@ -290,6 +290,9 @@ func (a commandRunner) newAdd() *cobra.Command {
 		Short: "Bookmark an artwork or novel",
 		Args:  a.env.ActionInputArgs("pixiv bookmark add [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateRestrict(opts.restrict); err != nil {
+				return err
+			}
 			typ, err := bookmarkMutationType(opts.typ)
 			if err != nil {
 				return a.env.WrapUsage(err)
@@ -380,6 +383,9 @@ func (a commandRunner) bindListFlags(cmd *cobra.Command, opts *listOptions) {
 }
 
 func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptions) error {
+	if err := validateRestrict(opts.restrict); err != nil {
+		return err
+	}
 	switch opts.typ {
 	case string(target.ResultKindArtwork):
 		return a.runArtworkList(cmd, args, opts)
@@ -457,5 +463,14 @@ func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Opt
 			initialized = true
 		}
 		return invoke(ctx, request, id)
+	}
+}
+
+func validateRestrict(value string) error {
+	switch pixiv.Restrict(value) {
+	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
+		return nil
+	default:
+		return errors.New("restrict must be one of: public, private; see pixiv bookmark --help")
 	}
 }
