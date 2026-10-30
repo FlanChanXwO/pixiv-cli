@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
@@ -51,6 +52,14 @@ func WritesNDJSON(cmd *cobra.Command) bool {
 
 // ErrorText 在 CLI 边界解释常见 SDK 错误，保留原始错误值供结构化调用方使用。
 func ErrorText(err error) string {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var messages []string
+		for _, cause := range joined.Unwrap() {
+			messages = append(messages, ErrorText(cause))
+		}
+		return strings.Join(messages, "; ")
+	}
+
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "request timed out; check your connection and try again"
 	}
@@ -65,7 +74,7 @@ func ErrorText(err error) string {
 	case sdk.Unauthorized, sdk.CredentialsExpired:
 		login := "pixiv auth login"
 		if failure.Product == "fanbox" {
-			login = "pixiv fanbox auth login"
+			login = "pixiv fanbox auth import"
 		}
 		return fmt.Sprintf("not logged in; run %q", login)
 	case sdk.InvalidArgument, sdk.InvalidCursor:

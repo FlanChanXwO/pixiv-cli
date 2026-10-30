@@ -85,7 +85,7 @@ func TestNotLoggedInOneErrorLine(t *testing.T) {
 		require.Empty(t, stdout)
 		login := "pixiv auth login"
 		if args[0] == "fanbox" {
-			login = "pixiv fanbox auth login"
+			login = "pixiv fanbox auth import"
 		}
 		require.Equal(t, "error: not logged in; run \""+login+"\"\n", stderr)
 	}

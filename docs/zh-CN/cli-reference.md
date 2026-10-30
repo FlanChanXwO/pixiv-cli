@@ -417,7 +417,7 @@ flowchart LR
 
 文本输出将上游标题、用户名、评论、标签与简介转义为单行，控制字符显示为可打印的转义序列。JSON 与 NDJSON 保留原始值。FANBOX 创作者和帖子命令写入输出失败时会返回错误。
 
-默认文本日志下，命令失败向 stderr 输出一行 `error: <message>`。缺少 Pixiv 凭据时输出 `error: not logged in; run "pixiv auth login"`；FANBOX 的登录命令为 `pixiv fanbox auth login`。参数无效、上游 HTTP 状态、超时与取消的错误均给出下一步。本地枚举参数（含 `ranking --mode`）先于打开账号校验。SDK 错误码与 MCP 结构化错误保持现有契约。
+默认文本日志下，命令失败向 stderr 输出一行 `error: <message>`。缺少 Pixiv 凭据时输出 `error: not logged in; run "pixiv auth login"`；FANBOX 的登录命令为 `pixiv fanbox auth import`。参数无效、上游 HTTP 状态、超时与取消的错误均给出下一步。本地枚举参数（含 `ranking --mode`）先于打开账号校验。SDK 错误码与 MCP 结构化错误保持现有契约。
 
 `pixiv auth list --json` 的空账号列表输出 `"accounts": []`。
 
