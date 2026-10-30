@@ -35,11 +35,11 @@ func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
 		jsonOut, ndjson bool
 		want            string
 	}{
-		{true, false, "{\n  \"posts\": [\n    {\n      \"id\": 1\n    },\n    {\n      \"id\": 2\n    }\n  ]\n}\n"},
+		{true, false, "{\"records\":[{\"id\":1},{\"id\":2}],\"pagination\":{\"page\":1,\"limit\":2,\"returned\":2,\"has_more\":false,\"next_page\":null}}\n"},
 		{false, true, "{\"id\":1}\n{\"id\":2}\n"},
 	} {
 		var out bytes.Buffer
-		if err := record.RunPages(context.Background(), &out, io.Discard, plan, "posts", tc.jsonOut, tc.ndjson, printText, item, fetch); err != nil {
+		if err := record.RunPages(context.Background(), &out, io.Discard, plan, tc.jsonOut, tc.ndjson, printText, item, fetch); err != nil {
 			t.Fatalf("RunPages: %v", err)
 		}
 		if out.String() != tc.want {
@@ -87,4 +87,22 @@ func spoolNames(t *testing.T, dir string) []string {
 		t.Fatal(err)
 	}
 	return names
+}
+
+func TestArtworkRecordPreservesContentType(t *testing.T) {
+	value, err := record.RecordFromArtwork(pixiv.Artwork{ID: 101, ContentType: "future_art"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := value.MarshalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := record.ParseRecordJSON(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type() != "artwork" || parsed.ID() != "101" || !bytes.Contains(body, []byte(`"content_type":"future_art"`)) {
+		t.Fatalf("record: %s", body)
+	}
 }

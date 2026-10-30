@@ -263,7 +263,7 @@ func imageResource(c claims, artwork pixiv.Artwork) (sdk.ResourceRef, error) {
 	switch {
 	case c.Quality == "avatar":
 		ref = artwork.User.ProfileImage.Resource.Ref
-	case artwork.Kind == pixiv.ArtworkKindUgoira:
+	case artwork.ContentType == pixiv.ContentTypeUgoira:
 		if c.Page == 1 && c.Quality != "original" {
 			ref = artwork.Cover.Resource.Ref
 			if c.Quality == "thumbnail" {

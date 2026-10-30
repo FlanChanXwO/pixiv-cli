@@ -48,7 +48,7 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 		return outputs.Error(err)
 	}
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(in.Type), Cursor: cursor})
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(in.Type), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
@@ -71,9 +71,9 @@ func (t pixivTools) registerUserBookmarks(server *mcp.Server) {
 	})
 }
 
-// userBookmarksIn 的 kind 选择作品或小说收藏；user_id 省略时使用当前认证账号。
+// userBookmarksIn 的 type 选择作品或小说收藏；user_id 省略时使用当前认证账号。
 type userBookmarksIn struct {
-	Kind         string                `json:"kind" jsonschema:"content type"`
+	Type         string                `json:"type" jsonschema:"entity type: artwork or novel"`
 	UserID       int64                 `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to the authenticated user"`
 	Restrict     string                `json:"restrict,omitempty" jsonschema:"public or private"`
 	Tag          string                `json:"tag,omitempty"`
@@ -86,10 +86,10 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.Kind == kindNovel && in.IllustFilter != nil {
-		return outputs.Error(errors.New("illust_filter requires kind=artwork"))
+	if in.Type == kindNovel && in.IllustFilter != nil {
+		return outputs.Error(errors.New("illust_filter requires type=artwork"))
 	}
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
 		if err != nil {
 			return outputs.Error(err)
@@ -144,7 +144,7 @@ func userBookmarksInputSchema() *jsonschema.Schema {
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["kind"].Enum = []any{kindArtwork, kindNovel}
+	schema.Properties["type"].Enum = []any{kindArtwork, kindNovel}
 	return schema
 }
 func (t pixivTools) registerUserDetail(server *mcp.Server) {

@@ -46,10 +46,7 @@ type downloadOptions struct {
 }
 
 var visualRecordTypes = map[string]struct{}{
-	string(target.ResultKindArtwork): {},
-	string(target.SubtypeIllust):     {},
-	string(target.SubtypeManga):      {},
-	string(target.SubtypeUgoira):     {},
+	string(target.NamespaceArtwork): {},
 }
 
 func (a controller) usageError(err error) error { return a.env.WrapUsage(err) }

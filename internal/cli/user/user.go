@@ -125,7 +125,7 @@ func (a commandRunner) newDetailCommand() *cobra.Command {
 }
 
 func (a commandRunner) newArtworksCommand() *cobra.Command {
-	opts := listOptions{illustType: string(target.SubtypeIllust)}
+	opts := listOptions{illustType: string(pixiv.ContentTypeIllust)}
 	cmd := &cobra.Command{
 		Use:   "artworks [USER_ID]",
 		Short: "List a user's artworks",
@@ -286,10 +286,10 @@ func requestedUserID(args []string) (int64, error) {
 func resolveUserID(ctx context.Context, value, operation string) (int64, error) {
 	resolved, err := target.Resolve(ctx, target.Input{Value: value}, target.Contract{
 		Operation:   operation,
-		DefaultType: string(target.ResultKindUser),
+		DefaultType: string(target.NamespaceUser),
 		Types: []target.TypeSpec{{
-			Name:              string(target.ResultKindUser),
-			ResultKind:        target.ResultKindUser,
+			Name:              string(target.NamespaceUser),
+			ResultKind:        target.NamespaceUser,
 			BareReferenceKind: pixiv.ReferenceKindUser,
 		}},
 	})
@@ -307,8 +307,8 @@ func requestedResolvedUserID(ctx context.Context, args []string, operation strin
 }
 
 func validateArtworkType(value string) error {
-	switch pixiv.ArtworkKind(value) {
-	case "", pixiv.ArtworkKindIllustration, pixiv.ArtworkKind("illust"), pixiv.ArtworkKindManga, pixiv.ArtworkKindUgoira:
+	switch pixiv.ContentType(value) {
+	case "", pixiv.ContentTypeIllust, pixiv.ContentTypeManga, pixiv.ContentTypeUgoira:
 		return nil
 	default:
 		return sdk.NewError("pixiv", "user artworks", sdk.InvalidArgument,
@@ -388,7 +388,7 @@ func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listO
 				return nil, sdk.Cursor{}, identityErr
 			}
 		}
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(opts.illustType), Cursor: cursor})
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(opts.illustType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}

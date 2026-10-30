@@ -280,7 +280,8 @@ func (t pixivTools) registerRecommended(server *mcp.Server) {
 
 type recommendedIn struct {
 	Cursor       *string               `json:"cursor,omitempty"`
-	Kind         string                `json:"kind" jsonschema:"required: all, illust, manga, novel, or user"`
+	ContentType  string                `json:"content_type,omitempty"`
+	Type         string                `json:"type" jsonschema:"required: all, artwork, novel, or user"`
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
 	UserFilter   *filters.UserFilter   `json:"user_filter,omitempty"`
@@ -291,10 +292,11 @@ func recommendedInputSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"kind"},
+		"required":             []string{"type"},
 		"properties": map[string]any{
-			"cursor":        map[string]any{"type": "string", "description": "Opaque default-batch continuation for a single kind; omit page and limit."},
-			"kind":          map[string]any{"type": "string", "enum": []string{kindAll, string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), kindNovel, kindUser}},
+			"cursor":        map[string]any{"type": "string", "description": "Opaque default-batch continuation for a single type; omit page and limit."},
+			"type":          schemas.EnumString("Required entity type.", kindAll, kindArtwork, kindNovel, kindUser),
+			"content_type":  schemas.EnumString("Artwork category; only valid for type=artwork; defaults to all.", kindAll, string(pixiv.ContentTypeIllust), string(pixiv.ContentTypeManga)),
 			"illust_filter": filters.IllustFilterSchema(),
 			"novel_filter":  filters.NovelFilterSchema(),
 			"user_filter":   filters.UserFilterSchema(),
@@ -304,39 +306,39 @@ func recommendedInputSchema() map[string]any {
 	}
 }
 
-func validateKindFilters(in recommendedIn) error {
-	switch in.Kind {
+func validateRecommendedFilters(in recommendedIn) error {
+	switch in.Type {
 	case kindAll:
 		return nil
-	case string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga):
+	case kindArtwork:
 		if in.NovelFilter != nil {
-			return errors.New("novel_filter conflicts with kind")
+			return errors.New("novel_filter conflicts with type")
 		}
 		if in.UserFilter != nil {
-			return errors.New("user_filter conflicts with kind")
+			return errors.New("user_filter conflicts with type")
 		}
-		if in.IllustFilter != nil && in.IllustFilter.Type != "" && in.IllustFilter.Type != in.Kind {
-			return errors.New("illust_filter.type conflicts with kind")
+		if in.IllustFilter != nil && in.IllustFilter.Type != "" && in.ContentType != "" && in.ContentType != kindAll && in.IllustFilter.Type != in.ContentType {
+			return errors.New("illust_filter.type conflicts with content_type")
 		}
 	case kindNovel:
 		if in.IllustFilter != nil {
-			return errors.New("illust_filter conflicts with kind")
+			return errors.New("illust_filter conflicts with type")
 		}
 		if in.UserFilter != nil {
-			return errors.New("user_filter conflicts with kind")
+			return errors.New("user_filter conflicts with type")
 		}
 	case kindUser:
 		if in.IllustFilter != nil {
-			return errors.New("illust_filter conflicts with kind")
+			return errors.New("illust_filter conflicts with type")
 		}
 		if in.NovelFilter != nil {
-			return errors.New("novel_filter conflicts with kind")
+			return errors.New("novel_filter conflicts with type")
 		}
 	}
 	return nil
 }
 
-func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
+func artworkFilterForContentType(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
 	if kind != string(pixiv.SearchContentTypeIllust) && kind != string(pixiv.SearchContentTypeManga) {
 		return filter
 	}
@@ -351,7 +353,7 @@ func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.Il
 }
 
 func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*mcp.CallToolResult, outputs.Recommended, error) {
-	out := outputs.NewRecommended()
+	out := outputs.Recommended{}
 	plan, err := parseRecommendedRequest(in)
 	if err != nil {
 		return outputs.RecommendedError(err)
@@ -371,7 +373,7 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	}
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		// 重放必须丢弃前一账号/尝试的记录与分页状态。
-		out = outputs.NewRecommended()
+		out = outputs.Recommended{}
 		if err := t.recommendedArtworkStreams(ctx, client, in, plan, initial, &out); err != nil {
 			return false, err
 		}
@@ -386,18 +388,26 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	return outputs.RecordResult(out.Records, false, ""), out, nil
+	return outputs.RecommendedResult(out), out, nil
 }
 
 func parseRecommendedRequest(in recommendedIn) (pagination.PagePlan, error) {
 	plan, err := toolrun.ParseListPlan(in.ListIn)
-	if err == nil && in.Kind != kindAll && in.Kind != string(pixiv.SearchContentTypeIllust) && in.Kind != string(pixiv.SearchContentTypeManga) && in.Kind != kindNovel && in.Kind != kindUser {
-		err = errors.New("kind must be one of: all, illust, manga, novel, user")
+	if err == nil && in.Type != kindAll && in.Type != kindArtwork && in.Type != kindNovel && in.Type != kindUser {
+		err = errors.New("type must be one of: all, artwork, novel, user")
 	}
 	if err != nil {
 		return pagination.PagePlan{}, err
 	}
-	if err := validateKindFilters(in); err != nil {
+	if in.ContentType != "" {
+		if in.Type != kindArtwork {
+			return pagination.PagePlan{}, errors.New("content_type requires type=artwork")
+		}
+		if in.ContentType != kindAll && in.ContentType != string(pixiv.ContentTypeIllust) && in.ContentType != string(pixiv.ContentTypeManga) {
+			return pagination.PagePlan{}, errors.New("content_type must be all, illust, or manga")
+		}
+	}
+	if err := validateRecommendedFilters(in); err != nil {
 		return pagination.PagePlan{}, err
 	}
 	return plan, nil
@@ -407,10 +417,10 @@ func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.C
 	if in.Cursor == nil {
 		return sdk.Cursor{}, nil
 	}
-	if !plan.OneBatch || in.Kind == kindAll {
-		return sdk.Cursor{}, errors.New("cursor requires a single kind and omitted page and limit")
+	if !plan.OneBatch || in.Type == kindAll {
+		return sdk.Cursor{}, errors.New("cursor requires a single type and omitted page and limit")
 	}
-	binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Kind))
+	binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Type))
 	if err != nil {
 		return sdk.Cursor{}, err
 	}
@@ -418,40 +428,25 @@ func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.C
 }
 
 func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
-	var visualItems []pixiv.Artwork
-	var visualMore bool
-	var visualNext sdk.Cursor
-	if in.Kind == kindAll || in.Kind == string(pixiv.SearchContentTypeIllust) || in.Kind == string(pixiv.SearchContentTypeManga) {
-		rawArtworkCtx, err := filters.WithIllustFilter(ctx, nil)
-		if err != nil {
-			return err
-		}
-		visualItems, visualMore, visualNext, err = toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
-			if e != nil {
-				return nil, sdk.Cursor{}, e
-			}
-			return r.Items, r.Next, nil
-		})
-		if err != nil {
-			return err
-		}
+	if in.Type != kindAll && in.Type != kindArtwork {
+		return nil
 	}
-	if in.Kind == kindAll || in.Kind == string(pixiv.SearchContentTypeIllust) {
-		if err := appendRecommendedArtworks(ctx, out, plan, in, string(pixiv.SearchContentTypeIllust), visualItems, visualMore, visualNext); err != nil {
-			return err
-		}
+	rawArtworkCtx, err := filters.WithIllustFilter(ctx, nil)
+	if err != nil {
+		return err
 	}
-	if in.Kind == kindAll || in.Kind == string(pixiv.SearchContentTypeManga) {
-		if err := appendRecommendedArtworks(ctx, out, plan, in, string(pixiv.SearchContentTypeManga), visualItems, visualMore, visualNext); err != nil {
-			return err
-		}
+	items, more, next, err := toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		page, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
+		return page.Items, page.Next, err
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+	return appendRecommendedArtworks(ctx, out, plan, in, kindArtwork, items, more, next)
 }
 
 func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan pagination.PagePlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
-	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(kind, in.IllustFilter))
+	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForContentType(in.ContentType, in.IllustFilter))
 	if err != nil {
 		return err
 	}
@@ -460,22 +455,18 @@ func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, pl
 	if err != nil {
 		return err
 	}
-	out.Records = append(out.Records, recordItems...)
-	page := outputs.RecommendedPage(plan, in.Limit, len(filtered), more)
+	page := toolhost.ListPagination(plan, in.Limit, len(filtered), more)
 	page.NextCursor, err = streamContinuation(in, kind, next)
 	if err != nil {
 		return err
 	}
-	if kind == string(pixiv.SearchContentTypeIllust) {
-		out.Pagination.Illust = page
-	} else {
-		out.Pagination.Manga = page
-	}
+	out.Artworks = &outputs.Records{Records: recordItems, Pagination: page}
+
 	return nil
 }
 
 func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
-	if in.Kind != kindAll && in.Kind != kindNovel {
+	if in.Type != kindAll && in.Type != kindNovel {
 		return nil
 	}
 	novelCtx, err := filters.WithNovelFilter(ctx, in.NovelFilter)
@@ -496,14 +487,14 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 	if err != nil {
 		return err
 	}
-	out.Records = append(out.Records, recordItems...)
-	out.Pagination.Novel = outputs.RecommendedPage(plan, in.Limit, len(items), more)
-	out.Pagination.Novel.NextCursor, err = streamContinuation(in, kindNovel, next)
+	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
+	page.NextCursor, err = streamContinuation(in, kindNovel, next)
+	out.Novels = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
 
 func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
-	if in.Kind != kindAll && in.Kind != kindUser {
+	if in.Type != kindAll && in.Type != kindUser {
 		return nil
 	}
 	userCtx, err := filters.WithUserFilter(ctx, in.UserFilter)
@@ -524,17 +515,18 @@ func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Cli
 	if err != nil {
 		return err
 	}
-	out.Records = append(out.Records, recordItems...)
-	out.Pagination.User = outputs.RecommendedPage(plan, in.Limit, len(items), more)
-	out.Pagination.User.NextCursor, err = streamContinuation(in, kindUser, next)
+	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
+	page.NextCursor, err = streamContinuation(in, kindUser, next)
+	out.Users = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
 
-// streamInput 只携带客户端所选 kind 的续读参数。
+// streamInput 只携带客户端所选实体类型的续读参数。
 func streamInput(in recommendedIn, kind string) recommendedIn {
-	in.Kind = kind
+	in.Type = kind
 	in.Cursor = nil
-	if kind != string(pixiv.SearchContentTypeIllust) && kind != string(pixiv.SearchContentTypeManga) {
+	if kind != kindArtwork {
+		in.ContentType = ""
 		in.IllustFilter = nil
 	}
 	if kind != kindNovel {
@@ -548,9 +540,6 @@ func streamInput(in recommendedIn, kind string) recommendedIn {
 
 func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string, error) {
 	if next.IsZero() {
-		return "", nil
-	}
-	if (kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga)) && in.IllustFilter != nil && in.IllustFilter.Type != "" && in.IllustFilter.Type != kind {
 		return "", nil
 	}
 	binding, err := toolhost.BindCursor("recommended", streamInput(in, kind))

@@ -4,6 +4,12 @@
 
 ## Breaking changes
 
+- SDK: replace `Artwork.Kind`/`RawKind` and `ArtworkKind` with `ContentType` (`illust`, `manga`, `ugoira`); unknown values are preserved. Empty tag translations and missing profile/cover images are omitted.
+- CLI JSON: content lists use `{records, pagination}` with string IDs; `recommended --type all` groups `artworks`, `novels`, and `users`. Auth summaries remove `has_token`, `premium_status_checked_at`, `warning`, `eligible`, and redundant list/bundle-import `default_user_id`.
+- NDJSON: artwork rows use `type:"artwork"`; select subtypes through `content_type`. Unknown upstream artwork types remain usable. Pipeline diagnostics drop the constant `kind:"record_error"`.
+- MCP parameters: entity `kind` becomes `type`; `pixiv_recommended` uses `type=all|artwork|novel|user` plus artwork-only `content_type=all|illust|manga`, and returns entity partitions. `fanbox_creators.kind` and CLI `fanbox creators --kind` become `relation` / `--relation`.
+
+
 - `pixiv mcp` no longer accepts the `mcp_gallery_cache_ttl` and `mcp_gallery_concurrency` settings; remove them from `config.toml`. ([#168](https://github.com/FlanChanXwO/pixiv-cli/pull/168))
 
 ## Added
@@ -13,7 +19,7 @@
 
 ## Changed
 
-- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. For commands that support `--json` or `--ndjson`, scripts parsing text should use those options; their output is unchanged.
+- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. For commands that support `--json` or `--ndjson`, scripts parsing text should use those options; see the breaking machine-output changes above.
 - `pixiv fanbox download` keeps stdout empty on success and no longer prints saved paths. This command has no `--json` or `--ndjson` option.
 
 - JSON logs restore ERROR command-failure records. Debug logs add the SDK error creation site and safe typed network details, including OAuth token exchange failures.

@@ -404,9 +404,12 @@ fmt.Println(saved.Path, saved.Size, saved.ContentType)
 
 - 直接编码 `pixiv.Artwork`、`pixiv.Novel`、`pixiv.NovelContent`、`pixiv.UgoiraMetadata`、`fanbox.Post` 等公开模型。`sdk.Page[T]` 把 cursor 输出为文本，最后一页输出空串。
 - CLI 与 MCP 编码这些模型、管道 `Record` 值与类型化信封。
+- `Artwork.ContentType`（`content_type`）保留上游值：`ContentTypeIllust`（`illust`）、`ContentTypeManga`、`ContentTypeUgoira` 或原样未知字符串。原 `Kind`/`RawKind` 读取迁移到 `ContentType`；wire 字段仍为 `type`。`UserArtworksRequest.Kind` 的类型同步改为 `ContentType`。
 - `Artwork` 在搜索/详情中以指针保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，另有可选 `Series`（`ID`、`Title`）。非 nil 保留显式的 `false`、`0` 或空数组；nil = 当前端点未提供。详情可提供 `TotalComments`（搜索从不合成）。viewer 状态属于执行读取的账号；不会逐条补充请求。
 
 ### 可选模型字段
+
+`Tag.translated_name` 为空时省略。上游未提供图片资源时，省略整个 `User.profile_image`、`Artwork.cover`、`Novel.cover`。
 
 模型省略上游未提供的字段，而不是输出 `null` 或空值——例如 `Artwork` 省略 `updated_at`、`tools` 与 `pages`（pages 仅在详情中）。缺失的 viewer/安全字段、`series` 与 `total_comments` 被省略；显式为空的 `restriction_attributes` 保持 `[]`。缺失的 key 视为未知，不是 `false`/`0`；MCP schema 将这些字段标为可选。
 

@@ -25,7 +25,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 	if opts.typ == "all" {
 		return a.runAllTags(cmd, args, opts)
 	}
-	if opts.typ != string(target.ResultKindArtwork) && opts.typ != string(target.ResultKindNovel) {
+	if opts.typ != string(target.NamespaceArtwork) && opts.typ != string(target.NamespaceNovel) {
 		return errors.New("bookmark tags type must be one of artwork, novel, all")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
@@ -64,7 +64,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 				}
 			}
 			var result sdk.Page[pixiv.BookmarkTag]
-			if opts.typ == string(target.ResultKindNovel) {
+			if opts.typ == string(target.NamespaceNovel) {
 				result, err = client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			} else {
 				result, err = client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -75,10 +75,11 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 			return result.Items, result.Next, nil
 		}
 		var items []pixiv.BookmarkTag
-		if err := pagination.PageItems(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
 			items = append(items, page...)
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return false, err
 		}
 		if ndjson {
@@ -90,9 +91,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 			return len(items) > 0, nil
 		}
 		if jsonOut {
-			if err := a.env.PrintJSON(struct {
-				Tags []pixiv.BookmarkTag `json:"bookmark_tags"`
-			}{Tags: items}); err != nil {
+			if err := record.WriteJSONValue(a.env.Out, record.NewListOutput(items, plan, page)); err != nil {
 				return true, err
 			}
 			return true, nil
@@ -151,7 +150,7 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 			bookmarkArtworkTagStream(client, attemptUserID, opts),
 			bookmarkNovelTagStream(client, attemptUserID, opts),
 		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan, streams)
+		items, _, page, err := pagination.CollectStreams(ctx, plan, streams)
 		if err != nil {
 			return false, err
 		}
@@ -168,9 +167,7 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 			for _, item := range items {
 				dtos = append(dtos, item.dto())
 			}
-			if err := record.WriteJSONValue(&staged, struct {
-				Tags []typedBookmarkTagDTO `json:"bookmark_tags"`
-			}{Tags: dtos}); err != nil {
+			if err := record.WriteJSONValue(&staged, record.NewListOutput(dtos, plan, page)); err != nil {
 				return false, err
 			}
 		} else {
@@ -203,7 +200,7 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: string(target.ResultKindArtwork), tag: item})
+				items = append(items, bookmarkTagItem{kind: string(target.NamespaceArtwork), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -225,7 +222,7 @@ func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: string(target.ResultKindNovel), tag: item})
+				items = append(items, bookmarkTagItem{kind: string(target.NamespaceNovel), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},

@@ -64,7 +64,7 @@ type LatestArtworksRequest struct {
 // UserArtworksRequest lists one user's artworks.
 type UserArtworksRequest struct {
 	UserID int64
-	Kind   ArtworkKind
+	Kind   ContentType
 	Cursor sdk.Cursor
 }
 
@@ -219,19 +219,6 @@ func indexedContinuationValues(params url.Values, prefix string) ([]string, bool
 		values[index] = value
 	}
 	return values, true
-}
-
-func artworkKind(raw string) (ArtworkKind, string) {
-	switch raw {
-	case "illust":
-		return ArtworkKindIllustration, raw
-	case "manga":
-		return ArtworkKindManga, raw
-	case "ugoira":
-		return ArtworkKindUgoira, raw
-	default:
-		return ArtworkKindUnknown, raw
-	}
 }
 
 func (c *Client) artworkPage(op string, query url.Values, key string, values []artworkWire, nextValue int64, hasNext bool) (sdk.Page[Artwork], error) {
@@ -521,7 +508,7 @@ func (c *Client) UserArtworks(ctx context.Context, request UserArtworksRequest) 
 	if request.UserID <= 0 {
 		return sdk.Page[Artwork]{}, newError("UserArtworks", sdk.InvalidArgument, "user ID must be positive")
 	}
-	kind, err := normalizeUserArtworkKind("UserArtworks", request.Kind)
+	kind, err := normalizeUserContentType("UserArtworks", request.Kind)
 	if err != nil {
 		return sdk.Page[Artwork]{}, err
 	}

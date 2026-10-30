@@ -93,14 +93,14 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	}
 
 	entity := opts.contentType
-	if entity == string(target.SubtypeIllust) {
-		entity = string(target.ResultKindArtwork)
+	if entity == string(pixiv.ContentTypeIllust) {
+		entity = string(target.NamespaceArtwork)
 	}
-	if entity != string(target.ResultKindArtwork) && entity != string(target.ResultKindNovel) {
+	if entity != string(target.NamespaceArtwork) && entity != string(target.NamespaceNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
 	var artworkFilter searchfilter.Filter
-	if entity == string(target.ResultKindArtwork) {
+	if entity == string(target.NamespaceArtwork) {
 		contentType, err := searchfilter.NormalizeContentType(opts.artworkType)
 		if err != nil {
 			return err
@@ -113,7 +113,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 	if err != nil {
 		return err
 	}
-	if entity == string(target.ResultKindArtwork) {
+	if entity == string(target.NamespaceArtwork) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			if err != nil {
@@ -137,27 +137,27 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 
 func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 	entity := opts.contentType
-	if entity == string(target.SubtypeIllust) || entity == string(target.SubtypeManga) {
+	if entity == string(pixiv.ContentTypeIllust) || entity == string(pixiv.ContentTypeManga) {
 		if cmd.Flags().Changed("content-type") {
 			return errors.New("legacy artwork --type cannot be combined with --content-type")
 		}
 		opts.artworkType = entity
-		entity = string(target.ResultKindArtwork)
+		entity = string(target.NamespaceArtwork)
 	}
-	if entity != string(target.ResultKindArtwork) && entity != string(target.ResultKindNovel) {
+	if entity != string(target.NamespaceArtwork) && entity != string(target.NamespaceNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if entity == string(target.ResultKindNovel) && cmd.Flags().Changed("content-type") {
+	if entity == string(target.NamespaceNovel) && cmd.Flags().Changed("content-type") {
 		return errors.New("--content-type is only supported when --type artwork")
 	}
-	if entity == string(target.ResultKindArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
+	if entity == string(target.NamespaceArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
 		return errors.New("content-type must be one of: illust, manga")
 	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
 	if err != nil {
 		return err
 	}
-	if entity == string(target.ResultKindNovel) {
+	if entity == string(target.NamespaceNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
 			if err != nil {
@@ -207,7 +207,7 @@ func filterFollowingArtworks(items []pixiv.Artwork, filter searchfilter.Filter) 
 	}
 	filtered := make([]pixiv.Artwork, 0, len(items))
 	for _, item := range items {
-		if filter.Matches(item.XRestrict, string(item.Kind)) {
+		if filter.Matches(item.XRestrict, string(item.ContentType)) {
 			filtered = append(filtered, item)
 		}
 	}

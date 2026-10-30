@@ -30,7 +30,7 @@ func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Ar
 		}
 		warning = &DownloadWarning{
 			IllustID: artwork.ID,
-			Type:     string(pixiv.ArtworkKindUgoira),
+			Type:     string(pixiv.ContentTypeUgoira),
 			Message:  message,
 		}
 		basename = fallback

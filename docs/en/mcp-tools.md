@@ -140,7 +140,7 @@ stateDiagram-v2
 | `limit: 0` | traverse until the cursor ends |
 | `page` | 1-based; requires positive `limit` |
 
-Entity filters run before logical pagination; duplicates are removed by stable entity identity. Results expose `pagination.page`, `limit`, `returned`, `has_more`, and `next_page` when another logical page exists. `pixiv_recommended(kind="all")` exposes independent pagination for illust, manga, novel and user. Most SDK cursors stay inside the server.
+Entity filters run before logical pagination; duplicates are removed by stable entity identity. Results expose `pagination.page`, `limit`, `returned`, `has_more`, and `next_page` when another logical page exists. `pixiv_recommended(type="all")` exposes independent `artworks`, `novels`, and `users` partitions. Most SDK cursors stay inside the server.
 
 **Default-batch cursors** — `pixiv_search_illust`, `pixiv_illust_related`, `pixiv_illust_ranking`, `pixiv_illust_recommended` return `pagination.next_cursor` when a default batch has more:
 
@@ -154,9 +154,11 @@ flowchart LR
 
 - The envelope binds the original arguments (query/strategy, artwork ID, ranking mode/date, filters) and carries SDK continuation state, not credentials — encoding, not encryption or authorization. The SDK revalidates operation/query/account binding each time.
 - Changed arguments, incompatible account, malformed or immediately repeated cursors fail explicitly. A batch consumes all returned items before advancing, including traversal past filtered-empty upstream batches. Positive-limit logical pagination is unchanged.
-- `pixiv_recommended`: default batches attach `next_cursor` independently to `pagination.illust`, `manga`, `novel`, `user`. A stream cursor needs its matching single `kind`, the same applicable filter, omitted `page`/`limit`; `kind=all` with a cursor is rejected — drop other kinds' filters. Initial illust/manga projections share one upstream window; continuing one does not consume the other. An empty filtered visual window can still continue; filters excluding a visual kind produce no cursor for it. Failed or replayed attempts never leak records or pagination from earlier attempts.
+- `pixiv_recommended`: `{artworks, novels, users}` contains only requested partitions, each `{records, pagination}`. Default batches can include `next_cursor` in each partition's `pagination`. Resume with the matching single `type`, the same `content_type` and applicable filter, and omitted `page`/`limit`. Artwork filtering follows the upstream window. Failed/replayed attempts discard all prior partitions.
 
-**`pixiv_comments`** — closed input `{kind, id, page, limit}`, required `kind=artwork|novel`, positive `id`. Output `{comments, pagination}` plus optional `total` / `access_control` (omitted when upstream lacks them). Artwork and novel use their current comment operations. Opaque numeric `comment_access_control` is kept as `access_control.comment_access_control` — no inferred `can_comment`/`is_locked`. No mutation-only `stamp_id`; no standalone `stamps` tool.
+**`pixiv_comments`** — closed input `{type, id, page, limit}`, required `type=artwork|novel`, positive `id`. Output `{comments, pagination}` plus optional `total` / `access_control` (omitted when upstream lacks them). Artwork and novel use their current comment operations. Opaque numeric `comment_access_control` is kept as `access_control.comment_access_control` — no inferred `can_comment`/`is_locked`. No mutation-only `stamp_id`; no standalone `stamps` tool.
+
+Artwork records use `type:"artwork"` and `content_type` for the original upstream category (`illust`, `manga`, `ugoira`, or an unknown value). IDs remain strings. Empty translated tag names and absent `profile_image`/`cover` fields are omitted.
 
 **Output safety** — records keep public fields and an opaque resource reference when needed; never resolved/signed URLs, request headers, Cookies, expiry metadata, access tokens or other transport credentials (same for novel content blocks and comment/profile images). Structured results use the public SDK models and typed envelopes. FANBOX first-party resources carry opaque `ref` and optional `requires_credentials`, never `url`, `request_headers` or `expires_at`.
 
@@ -274,28 +276,28 @@ Hints support host approval; they are not server-enforced authorization. `openWo
 
 ## Tool migration
 
-Consolidated tools need an explicit selector — no implicit target type. Old names are unregistered (no aliases). Output schemas, mutation `action` values and output ID fields are unchanged; only target inputs become `id` where shown. Filters for another entity type are rejected before account access.
+Consolidated tools need an explicit selector — no implicit target type. Old names are unregistered (no aliases). Mutation `action` values and output ID fields are retained; only target inputs become `id` where shown. Filters for another entity type are rejected before account access.
 
 | Previous entry | Current call / argument change |
 | --- | --- |
-| `pixiv_illust_comments`, `pixiv_novel_comments` | `pixiv_comments`, add `kind=artwork` / `novel`; retain `id` |
-| `pixiv_create_artwork_comment`, `pixiv_create_novel_comment` | `pixiv_comment_create`, add `kind`; rename `illust_id` / `novel_id` to `id` |
+| `pixiv_illust_comments`, `pixiv_novel_comments` | `pixiv_comments`, add `type=artwork` / `novel`; retain `id` |
+| `pixiv_create_artwork_comment`, `pixiv_create_novel_comment` | `pixiv_comment_create`, add `type`; rename `illust_id` / `novel_id` to `id` |
 | `pixiv_reply_artwork_comment`, `pixiv_reply_novel_comment` | `pixiv_comment_reply`, same target mapping; retain `parent_comment_id` |
 | `pixiv_stamp_artwork_comment`, `pixiv_stamp_novel_comment` | `pixiv_comment_stamp`, same target mapping; retain `stamp_id` and optional `comment` |
-| `pixiv_delete_artwork_comment`, `pixiv_delete_novel_comment` | `pixiv_comment_delete`, add `kind=artwork` / `novel`; retain `comment_id` |
-| `pixiv_add_bookmark`, `pixiv_add_novel_bookmark` | `pixiv_bookmark_add`, add `kind=artwork` / `novel`; rename target to `id`; retain `restrict` and `tags` |
-| `pixiv_remove_bookmark`, `pixiv_remove_novel_bookmark` | `pixiv_bookmark_remove`, add `kind=artwork` / `novel`; rename target to `id` |
-| `pixiv_novel_bookmark_tags` | `pixiv_bookmark_tags`, add `kind="novel"` (`artwork` is the default); paging/visibility and output envelope preserved |
+| `pixiv_delete_artwork_comment`, `pixiv_delete_novel_comment` | `pixiv_comment_delete`, add `type=artwork` / `novel`; retain `comment_id` |
+| `pixiv_add_bookmark`, `pixiv_add_novel_bookmark` | `pixiv_bookmark_add`, add `type=artwork` / `novel`; rename target to `id`; retain `restrict` and `tags` |
+| `pixiv_remove_bookmark`, `pixiv_remove_novel_bookmark` | `pixiv_bookmark_remove`, add `type=artwork` / `novel`; rename target to `id` |
+| `pixiv_novel_bookmark_tags` | `pixiv_bookmark_tags`, add `type="novel"` (`artwork` is the default); paging/visibility and output envelope preserved |
 | `fanbox_creator_posts`, `fanbox_tagged_posts` | `fanbox_creator_posts`, omit `tag` / retain required non-empty tag |
 | `fanbox_home`, `fanbox_supporting` | `fanbox_feed(source=home)` / `fanbox_feed(source=supporting)` |
-| `pixiv_user_bookmarks`, `pixiv_user_novel_bookmarks` | `pixiv_user_bookmarks`, add `kind=artwork` / `novel` |
+| `pixiv_user_bookmarks`, `pixiv_user_novel_bookmarks` | `pixiv_user_bookmarks`, add `type=artwork` / `novel` |
 | `pixiv_user_followers`, `pixiv_user_following`, `pixiv_related_users` | `pixiv_user_relations`, add `relation=followers` / `following` / `related` |
-| `pixiv_timeline_illust_following`, `pixiv_timeline_novel_following` | `pixiv_timeline_following`, add `kind=artwork` / `novel` |
+| `pixiv_timeline_illust_following`, `pixiv_timeline_novel_following` | `pixiv_timeline_following`, add `type=artwork` / `novel` |
 | `pixiv_timeline_illust_latest`, `pixiv_timeline_novel_latest` | `pixiv_timeline_latest`, retain `content_type=illust\|manga` / add `content_type=novel` |
-| `pixiv_mypixiv_illusts`, `pixiv_mypixiv_novels`, `pixiv_mypixiv_users` | `pixiv_mypixiv`, add `kind=artwork` / `novel` / `user` |
+| `pixiv_mypixiv_illusts`, `pixiv_mypixiv_novels`, `pixiv_mypixiv_users` | `pixiv_mypixiv`, add `type=artwork` / `novel` / `user` |
 | `download`, `download_random_from_recommendation` | `pixiv_download`, `pixiv_download_random_from_recommendation` (stdio only) |
 
-- `kind=artwork` includes manga and Ugoira where the original operation did. Only the matching `illust_filter` / `novel_filter` / `user_filter` may be supplied; novel user bookmarks have no new filter. `restrict` affects followers/following only; related users keep their ignored-field behavior.
+- `type=artwork` includes manga and Ugoira where the original operation did. Only the matching `illust_filter` / `novel_filter` / `user_filter` may be supplied; novel user bookmarks have no new filter. `restrict` affects followers/following only; related users keep their ignored-field behavior.
 - Still separate: `pixiv_bookmark_list_all` (one logical budget across artwork-then-novel); `pixiv_illust_recommended` vs `pixiv_recommended` (the former filters during collection and returns a records pagination envelope; the latter projects typed streams from one window with different cursor binding and pagination). Reads/writes, additions/removals, login/status, Gallery/media, local downloads/protected HTTP media and Pixiv/FANBOX credentials stay distinct.
 
 ## Read tools
@@ -311,25 +313,25 @@ Artwork records from `search_illust` and `illust_detail` keep upstream `is_bookm
 | `pixiv_novel_detail` / `pixiv_novel_content` | Positive `novel_id`; metadata / retained `content_unavailable` compatibility tool (empty blocks, rejected endpoint not called). |
 | `pixiv_illust_related` | Positive `illust_id`, optional `illust_filter`, `page`, `limit`; `cursor` needs omitted `page`/`limit`. |
 | `pixiv_illust_series` / `pixiv_novel_series` | Positive `series_id`, `page`, `limit`; novel series also returns safe series metadata. |
-| `pixiv_comments` | Required `kind=artwork\|novel`, positive `id`; optional `page`, `limit`. See [above](#errors-pagination-and-output). |
+| `pixiv_comments` | Required `type=artwork\|novel`, positive `id`; optional `page`, `limit`. See [above](#errors-pagination-and-output). |
 | `pixiv_illust_ranking` | Optional `mode` (closed enum, default `day`), `date` (valid `YYYY-MM-DD`), `illust_filter`, `page`, `limit`; `cursor` needs omitted `page`/`limit`. |
 | `pixiv_search_user` | Required non-blank `word` (blank rejected before the SDK), optional `user_filter`, `page`, `limit`; App user search. |
 | `pixiv_illust_recommended` | Optional `illust_filter`, `page`, `limit`; `cursor` needs omitted `page`/`limit`. |
-| `pixiv_recommended` | Required `kind`: `all`, `illust`, `manga`, `novel`, `user`; matching typed filters, `page`, `limit`. `illust`/`manga` select the subtype; conflicting filters rejected before the SDK; `all` = four independent streams, atomic failure. `cursor` needs a matching single kind and omitted page/limit. |
+| `pixiv_recommended` | Required `type=all\|artwork\|novel\|user`; optional `content_type=all\|illust\|manga` with `type=artwork` (default `all`), matching filters, `page`, `limit`. Returns requested `artworks`, `novels`, `users` partitions, each `{records, pagination}`. `cursor` requires a single type and omitted page/limit. |
 | `pixiv_trending_tags_illust` | No input; complete current artwork trending-tag list; empty upstream = successful empty result. |
-| `pixiv_timeline_following` | Required `kind=artwork\|novel`; optional `restrict` (`public` default or `private`), matching filter, `page`, `limit`. Artwork includes illust, manga, Ugoira. |
+| `pixiv_timeline_following` | Required `type=artwork\|novel`; optional `restrict` (`public` default or `private`), matching filter, `page`, `limit`. Artwork includes illust, manga, Ugoira. |
 | `pixiv_timeline_latest` | Required `content_type=illust\|manga\|novel`; optional matching filter, `page`, `limit`. |
-| `pixiv_mypixiv` | Required `kind=artwork\|novel\|user`; optional matching filter, `page`, `limit`. Authenticated account's MyPixiv only. |
+| `pixiv_mypixiv` | Required `type=artwork\|novel\|user`; optional matching filter, `page`, `limit`. Authenticated account's MyPixiv only. |
 | `pixiv_user_detail` | Required positive `user_id`; one safe public profile record. |
 | `pixiv_user_artworks` | Optional `user_id`, `type` (`illust`, `manga`, `ugoira`), `illust_filter`, `page`, `limit`; omitted ID = authenticated user. |
 | `pixiv_user_novels` | Optional `user_id`, `novel_filter`, `page`, `limit`; omitted ID = authenticated user. |
-| `pixiv_user_bookmarks` | Required `kind=artwork\|novel`; optional `user_id`, `restrict`, `tag`, `page`, `limit`; `illust_filter` artwork-only. Omitted/zero user ID = authenticated account; null paging/filter values keep their meaning. |
+| `pixiv_user_bookmarks` | Required `type=artwork\|novel`; optional `user_id`, `restrict`, `tag`, `page`, `limit`; `illust_filter` artwork-only. Omitted/zero user ID = authenticated account; null paging/filter values keep their meaning. |
 | `pixiv_bookmark_list_all` | Optional `user_id`, `restrict`, `tag`, `page`, `limit`; artwork then novel bookmarks; `page`/`limit` over the concatenation; any required stream failure → error, no partial records. |
 | `pixiv_bookmark_tags_all` | Optional `user_id`, `restrict`, `page`, `limit`; artwork then novel tags, each with `content_type` and original `count`; same-name tags not merged; any stream failure → no partial tags. |
 | `pixiv_novel_bookmark_detail` | Required positive `novel_id`; `{bookmarked, restrict, tags}`, absent/unbookmarked state preserved; candidate novel-bookmark detail App API. |
 | `pixiv_user_relations` | Required `relation=followers\|following\|related`; optional `user_id`, `restrict`, `page`, `limit`; `user_filter` for following/related only; omitted ID = authenticated account; `restrict` accepted but ignored for related. |
 | `pixiv_blocked_users` | Optional `user_id`, compatibility `restrict`, `page`, `limit`; omitted ID = authenticated user. App failure reported, never a Web fallback. |
-| `pixiv_bookmark_tags` | Optional `kind` (`artwork` default or `novel`), `user_id`, `restrict`, `page`, `limit`; `{bookmark_tags, pagination}`. |
+| `pixiv_bookmark_tags` | Optional `type` (`artwork` default or `novel`), `user_id`, `restrict`, `page`, `limit`; `{bookmark_tags, pagination}`. |
 | `pixiv_bookmark_detail` | Required positive `illust_id`; `{bookmarked, restrict, tags}`; `tags` is `[]` when none, including unbookmarked. |
 
 All reads use the same application/public-SDK path and keep typed authentication, authorization, not-found, upstream, cancellation and malformed-response errors — never an empty success from a missing optional port or failed App request.
@@ -338,12 +340,12 @@ All reads use the same application/public-SDK path and keep typed authentication
 
 | Tool | Input | Structured output |
 | --- | --- | --- |
-| `pixiv_bookmark_add` | `kind=artwork\|novel`, positive `id`, optional `restrict`, `tags` | `{success, action, illust_id}` or `{success, action, novel_id}` |
-| `pixiv_bookmark_remove` | `kind=artwork\|novel`, positive `id` | `{success, action, illust_id}` or `{success, action, novel_id}` |
-| `pixiv_comment_create` | `kind=artwork\|novel`, positive `id`, non-empty `comment` | `{success, action, illust_id/novel_id, comment_id}` |
-| `pixiv_comment_reply` | Required `kind=artwork\|novel`, positive `id`, non-empty `comment` and positive `parent_comment_id` | `{success, action, illust_id/novel_id, comment_id}` |
-| `pixiv_comment_stamp` | `kind=artwork\|novel`, positive `id` and `stamp_id`, optional `comment` (empty for sticker-only) | `{success, action, illust_id/novel_id, comment_id}` |
-| `pixiv_comment_delete` | `kind=artwork\|novel`, positive `comment_id`; no content ID | `{success, action, comment_id}` |
+| `pixiv_bookmark_add` | `type=artwork\|novel`, positive `id`, optional `restrict`, `tags` | `{success, action, illust_id}` or `{success, action, novel_id}` |
+| `pixiv_bookmark_remove` | `type=artwork\|novel`, positive `id` | `{success, action, illust_id}` or `{success, action, novel_id}` |
+| `pixiv_comment_create` | `type=artwork\|novel`, positive `id`, non-empty `comment` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_reply` | Required `type=artwork\|novel`, positive `id`, non-empty `comment` and positive `parent_comment_id` | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_stamp` | `type=artwork\|novel`, positive `id` and `stamp_id`, optional `comment` (empty for sticker-only) | `{success, action, illust_id/novel_id, comment_id}` |
+| `pixiv_comment_delete` | `type=artwork\|novel`, positive `comment_id`; no content ID | `{success, action, comment_id}` |
 | `pixiv_follow_user` | `user_id`, optional `restrict` | `{success, action, user_id}` |
 | `pixiv_unfollow_user` | `user_id` | `{success, action, user_id}` |
 
@@ -356,7 +358,7 @@ Same server, schemas via `tools/list`, FANBOX-specific credentials.
 | Tools | Semantics |
 | --- | --- |
 | `fanbox_current_user` | Current authenticated FANBOX user. |
-| `fanbox_creator`, `fanbox_creators` | One creator profile, or supporting/following creators. |
+| `fanbox_creator`, `fanbox_creators` | One creator profile, or `relation=supporting\|following` creators (default `supporting`). |
 | `fanbox_creator_tags` | Tags used by a creator. |
 | `fanbox_creator_posts` | Required `creator_id`; optional non-empty `tag`, `page`, `limit`. No tag → CreatorPosts; tag → TaggedPosts; explicit empty tag is an error. |
 | `fanbox_post` | One post and its safe resource references. |

@@ -131,12 +131,12 @@ type creatorsOut struct {
 func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mcp.CallToolResult, creatorsOut, error) {
 	creatorsOut := creatorsOut{Creators: []creatorSummaryOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
-	kind := fanbox.CreatorListKind(input.Kind)
-	if input.Kind == "" {
+	kind := fanbox.CreatorListKind(input.Relation)
+	if input.Relation == "" {
 		kind = fanbox.CreatorListSupporting
 	}
 	if err == nil && kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
-		err = errors.New("kind must be one of: supporting, following")
+		err = errors.New("relation must be one of: supporting, following")
 	}
 	if err != nil {
 		return outputs.Result(true, "Error: "+err.Error()), creatorsOut, nil
@@ -161,7 +161,7 @@ func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mc
 }
 
 type creatorsIn struct {
-	Kind string `json:"kind,omitempty" jsonschema:"supporting or following"`
+	Relation string `json:"relation,omitempty" jsonschema:"supporting or following"`
 	toolrun.ListIn
 }
 

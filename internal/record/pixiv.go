@@ -11,24 +11,7 @@ import (
 // RecordFromArtwork 将 public artwork 映射为管道记录。
 func RecordFromArtwork(artwork pixiv.Artwork) (Record, error) {
 	url := "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10)
-	recordType, err := artworkRecordType(artwork.Kind)
-	if err != nil {
-		return Record{}, err
-	}
-	return recordFromValue(artwork, artwork.ID, recordType, url)
-}
-
-func artworkRecordType(kind pixiv.ArtworkKind) (string, error) {
-	switch kind {
-	case pixiv.ArtworkKindIllustration:
-		return "illust", nil
-	case pixiv.ArtworkKindManga:
-		return "manga", nil
-	case pixiv.ArtworkKindUgoira:
-		return "ugoira", nil
-	default:
-		return "", errors.New("unsupported artwork kind for record")
-	}
+	return recordFromValue(artwork, artwork.ID, "artwork", url)
 }
 
 // RecordFromNovel 将 public novel 映射为管道记录。

@@ -59,7 +59,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 			bookmarkArtworkStream(client, attemptUserID, opts),
 			bookmarkNovelStream(client, attemptUserID, opts),
 		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan, streams)
+		items, _, page, err := pagination.CollectStreams(ctx, plan, streams)
 		if err != nil {
 			return false, err
 		}
@@ -84,18 +84,16 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				}
 				records = append(records, value)
 			}
-			if err := record.WriteJSONValue(&staged, struct {
-				Records []record.Record `json:"records"`
-			}{Records: records}); err != nil {
+			if err := record.WriteJSONValue(&staged, record.NewListOutput(records, plan, page)); err != nil {
 				return false, err
 			}
 		} else {
 			for _, item := range items {
 				var err error
 				switch item.kind {
-				case string(target.ResultKindArtwork):
+				case string(target.NamespaceArtwork):
 					err = display.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
-				case string(target.ResultKindNovel):
+				case string(target.NamespaceNovel):
 					err = display.PrintNovels(&staged, []pixiv.Novel{item.novel})
 				}
 				if err != nil {
@@ -122,7 +120,7 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(target.ResultKindArtwork), artwork: item})
+				items = append(items, bookmarkListItem{kind: string(target.NamespaceArtwork), artwork: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -144,7 +142,7 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(target.ResultKindNovel), novel: item})
+				items = append(items, bookmarkListItem{kind: string(target.NamespaceNovel), novel: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -161,9 +159,9 @@ func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStre
 
 func (item bookmarkListItem) record() (record.Record, error) {
 	switch item.kind {
-	case string(target.ResultKindArtwork):
+	case string(target.NamespaceArtwork):
 		return record.RecordFromArtwork(item.artwork)
-	case string(target.ResultKindNovel):
+	case string(target.NamespaceNovel):
 		return record.RecordFromNovel(item.novel)
 	default:
 		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)

@@ -16,51 +16,22 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// TargetKind 表示命令契约选定的输入命名空间。user_bookmarks、artwork_series 这类 URL
-// 专属身份留在 Target.ReferenceKind，不合并成新的全局类型。
-type TargetKind string
+// Namespace 指定输入身份或操作内容的命名空间；URL 专属身份由 ReferenceKind 保留。
+type Namespace string
 
 const (
-	// TargetKindArtwork 表示输入按作品 ID 或作品 URL 解析。
-	TargetKindArtwork TargetKind = "artwork"
-	// TargetKindNovel 表示输入按小说 ID 或小说 URL 解析。
-	TargetKindNovel TargetKind = "novel"
-	// TargetKindUser 表示输入按用户 ID 或用户 URL 解析。
-	TargetKindUser TargetKind = "user"
-	// TargetKindSeries 表示输入按系列 ID 或系列 URL 解析。
-	TargetKindSeries TargetKind = "series"
-	// TargetKindComment 表示输入按评论 ID 解析；评论没有可引用的 Pixiv 页面。
-	TargetKindComment TargetKind = "comment"
-)
-
-// ResultKind 表示命令返回或修改的内容类别，与输入命名空间分开。
-type ResultKind string
-
-const (
-	// ResultKindArtwork 表示操作对象是作品。
-	ResultKindArtwork ResultKind = "artwork"
-	// ResultKindNovel 表示操作对象是小说。
-	ResultKindNovel ResultKind = "novel"
-	// ResultKindUser 表示操作对象是用户。
-	ResultKindUser ResultKind = "user"
-	// ResultKindSeries 表示操作对象是系列。
-	ResultKindSeries ResultKind = "series"
-	// ResultKindComment 表示操作对象是评论。
-	ResultKindComment ResultKind = "comment"
-	// ResultKindTag 表示操作对象是标签。
-	ResultKindTag ResultKind = "tag"
-)
-
-// Subtype 表示端点自己的内容子类型，和输入命名空间、结果类别都分开。
-type Subtype string
-
-const (
-	// SubtypeIllust 表示静态插画。
-	SubtypeIllust Subtype = "illust"
-	// SubtypeManga 表示漫画。
-	SubtypeManga Subtype = "manga"
-	// SubtypeUgoira 表示动图作品。
-	SubtypeUgoira Subtype = "ugoira"
+	// NamespaceArtwork 表示作品。
+	NamespaceArtwork Namespace = "artwork"
+	// NamespaceNovel 表示小说。
+	NamespaceNovel Namespace = "novel"
+	// NamespaceUser 表示用户。
+	NamespaceUser Namespace = "user"
+	// NamespaceSeries 表示系列。
+	NamespaceSeries Namespace = "series"
+	// NamespaceComment 表示评论。
+	NamespaceComment Namespace = "comment"
+	// NamespaceTag 表示标签。
+	NamespaceTag Namespace = "tag"
 )
 
 // Source 记录解析结果的本地输入来源，便于诊断时区分 ID、URL 和探测。
@@ -99,12 +70,11 @@ type Input struct {
 // 提供时使用的命名空间；例如收藏列表把作品、小说结果选择器映射到用户裸 ID 命名空间。
 type TypeSpec struct {
 	Name              string
-	ResultKind        ResultKind
-	Subtype           Subtype
+	ResultKind        Namespace
 	BareReferenceKind pixiv.ReferenceKind
 	// BareTargetKind 承载没有可引用 Pixiv 页面的输入身份，例如评论 ID。设置时若同时
 	// 提供 BareReferenceKind，两者推导出的目标类型必须一致。
-	BareTargetKind TargetKind
+	BareTargetKind Namespace
 	// All 表示该类型是“全部”聚合选择器，不是具体子类型。
 	All bool
 }
@@ -150,13 +120,11 @@ type Contract struct {
 }
 
 // Target 保存 command owner 使用的解析结果。TargetKind 是输入命名空间，ResultKind 是选定的
-// 操作内容，ReferenceKind 保留用户收藏、作品系列这类 URL 专属区别；All 是选择器，
-// 不会出现在 Subtype 里。
+// 操作内容；两者共用 Namespace，ReferenceKind 保留 URL 专属区别。
 type Target struct {
 	ID            int64
-	TargetKind    TargetKind
-	ResultKind    ResultKind
-	Subtype       Subtype
+	TargetKind    Namespace
+	ResultKind    Namespace
 	ReferenceKind pixiv.ReferenceKind
 	OwnerUserID   int64
 	All           bool
@@ -227,9 +195,6 @@ func resolveRecord(source record.Record, typeName string, contract Contract) (Ta
 		return Target{}, err
 	}
 	if err := validateURLRelation(ref, selection, contract.URLKinds[ref.Kind], contract); err != nil {
-		return Target{}, err
-	}
-	if err := mergeRecordSubtype(&selection, source.Type(), contract); err != nil {
 		return Target{}, err
 	}
 	target, err := targetFromReference(ref, selection, SourceRecord, contract)
@@ -326,7 +291,7 @@ func selectType(typeName string, ref pixiv.Reference, contract Contract) (TypeSp
 	}
 	var selected *TypeSpec
 	for _, candidate := range types {
-		if candidate.All || candidate.ResultKind != want || candidate.Subtype != "" {
+		if candidate.All || candidate.ResultKind != want {
 			continue
 		}
 		copy := candidate
@@ -364,7 +329,6 @@ func targetFromReference(ref pixiv.Reference, selection TypeSpec, source Source,
 		ID:            ref.ID,
 		TargetKind:    targetKind,
 		ResultKind:    selection.ResultKind,
-		Subtype:       selection.Subtype,
 		ReferenceKind: ref.Kind,
 		OwnerUserID:   ref.OwnerUserID,
 		All:           selection.All,
@@ -381,7 +345,6 @@ func targetFromID(id int64, selection TypeSpec, source Source, contract Contract
 		ID:            id,
 		TargetKind:    targetKind,
 		ResultKind:    selection.ResultKind,
-		Subtype:       selection.Subtype,
 		ReferenceKind: selection.BareReferenceKind,
 		All:           selection.All,
 		Source:        source,
@@ -389,33 +352,30 @@ func targetFromID(id int64, selection TypeSpec, source Source, contract Contract
 }
 
 func validateRecordNamespace(recordType string, refKind pixiv.ReferenceKind, contract Contract) error {
-	result, _, ok := recordTypeMeaning(recordType)
-	if !ok {
-		return invalid(contract, "record type is not a supported Pixiv namespace or subtype")
-	}
+	result := Namespace(recordType)
 	switch refKind {
 	case pixiv.ReferenceKindArtwork:
-		if result != ResultKindArtwork {
+		if result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork URL")
 		}
 	case pixiv.ReferenceKindNovel:
-		if result != ResultKindNovel {
+		if result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel URL")
 		}
 	case pixiv.ReferenceKindUser:
-		if result != ResultKindUser {
+		if result != NamespaceUser {
 			return invalid(contract, "record type conflicts with user URL")
 		}
 	case pixiv.ReferenceKindUserBookmarks:
-		if recordType != string(pixiv.ReferenceKindUserBookmarks) && result != ResultKindArtwork {
+		if recordType != string(pixiv.ReferenceKindUserBookmarks) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with user bookmarks URL")
 		}
 	case pixiv.ReferenceKindArtworkSeries:
-		if recordType != string(ResultKindSeries) && result != ResultKindArtwork {
+		if recordType != string(NamespaceSeries) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork series URL")
 		}
 	case pixiv.ReferenceKindNovelSeries:
-		if recordType != string(ResultKindSeries) && result != ResultKindNovel {
+		if recordType != string(NamespaceSeries) && result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel series URL")
 		}
 	default:
@@ -424,80 +384,42 @@ func validateRecordNamespace(recordType string, refKind pixiv.ReferenceKind, con
 	return nil
 }
 
-func mergeRecordSubtype(selection *TypeSpec, recordType string, contract Contract) error {
-	_, recordSubtype, ok := recordTypeMeaning(recordType)
-	if !ok || recordSubtype == "" {
-		return nil
-	}
-	if selection.All || selection.ResultKind != ResultKindArtwork {
-		return invalid(contract, "record artwork subtype conflicts with the selected type")
-	}
-	if selection.Subtype != "" && selection.Subtype != recordSubtype {
-		return invalid(contract, "record artwork subtype conflicts with the selected type")
-	}
-	selection.Subtype = recordSubtype
-	return nil
-}
-
-func recordTypeMeaning(value string) (ResultKind, Subtype, bool) {
-	switch value {
-	case string(ResultKindArtwork):
-		return ResultKindArtwork, "", true
-	case string(SubtypeIllust):
-		return ResultKindArtwork, SubtypeIllust, true
-	case string(SubtypeManga):
-		return ResultKindArtwork, SubtypeManga, true
-	case string(SubtypeUgoira):
-		return ResultKindArtwork, SubtypeUgoira, true
-	case string(ResultKindNovel):
-		return ResultKindNovel, "", true
-	case string(ResultKindUser):
-		return ResultKindUser, "", true
-	case string(ResultKindSeries):
-		return "", "", true
-	case string(pixiv.ReferenceKindUserBookmarks):
-		return "", "", true
-	default:
-		return "", "", false
-	}
-}
-
-func resultKindForReference(kind pixiv.ReferenceKind) (ResultKind, bool) {
+func resultKindForReference(kind pixiv.ReferenceKind) (Namespace, bool) {
 	switch kind {
 	case pixiv.ReferenceKindArtwork, pixiv.ReferenceKindUserBookmarks, pixiv.ReferenceKindArtworkSeries:
-		return ResultKindArtwork, true
+		return NamespaceArtwork, true
 	case pixiv.ReferenceKindNovel, pixiv.ReferenceKindNovelSeries:
-		return ResultKindNovel, true
+		return NamespaceNovel, true
 	case pixiv.ReferenceKindUser:
-		return ResultKindUser, true
+		return NamespaceUser, true
 	default:
 		return "", false
 	}
 }
 
-func targetKindForReference(kind pixiv.ReferenceKind) (TargetKind, bool) {
+func targetKindForReference(kind pixiv.ReferenceKind) (Namespace, bool) {
 	switch kind {
 	case pixiv.ReferenceKindArtwork:
-		return TargetKindArtwork, true
+		return NamespaceArtwork, true
 	case pixiv.ReferenceKindNovel:
-		return TargetKindNovel, true
+		return NamespaceNovel, true
 	case pixiv.ReferenceKindUser, pixiv.ReferenceKindUserBookmarks:
-		return TargetKindUser, true
+		return NamespaceUser, true
 	case pixiv.ReferenceKindArtworkSeries, pixiv.ReferenceKindNovelSeries:
-		return TargetKindSeries, true
+		return NamespaceSeries, true
 	default:
 		return "", false
 	}
 }
 
-func targetKindForType(selection TypeSpec, contract Contract) (TargetKind, error) {
+func targetKindForType(selection TypeSpec, contract Contract) (Namespace, error) {
 	fromReference, referenceOK := targetKindForReference(selection.BareReferenceKind)
 	if selection.BareReferenceKind != "" && !referenceOK {
 		return "", invalid(contract, "type contains an unsupported bare reference kind")
 	}
 	if selection.BareTargetKind != "" {
 		switch selection.BareTargetKind {
-		case TargetKindArtwork, TargetKindNovel, TargetKindUser, TargetKindSeries, TargetKindComment:
+		case NamespaceArtwork, NamespaceNovel, NamespaceUser, NamespaceSeries, NamespaceComment:
 		default:
 			return "", invalid(contract, "type contains an unsupported bare target kind")
 		}

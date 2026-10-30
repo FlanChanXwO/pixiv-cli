@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -9,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	"io"
 	"math/big"
 	"net"
@@ -16,6 +18,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +36,7 @@ func TestSearchOutputContract(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true, IsCA: true,
-		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc"},
+		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc", "i.pximg.net"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
@@ -50,6 +53,8 @@ func TestSearchOutputContract(t *testing.T) {
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "artist", false)
 	assertSearchOutput(t, proxy.URL)
+	assertUnknownArtwork(t, proxy.URL)
+	assertRecordPipelines(t, proxy.URL)
 	assertEscapesUpstreamText(t, proxy.URL)
 	assertFanboxPropagatesWriteError(t, proxy.URL)
 	assertAdditionalEscaping(t, proxy.URL)
@@ -102,7 +107,14 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"body":{"creators":[{"creatorId":"line\n\u001b[31m"}]}}`)
 	case "/post.listCreator":
 		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
+	case "/images/202.jpg":
+		w.Header().Set("Content-Type", "image/jpeg")
+		fmt.Fprint(w, "fixture-image")
 	case "/v1/illust/detail":
+		if r.URL.Query().Get("illust_id") == "202" {
+			fmt.Fprint(w, `{"illust":{"id":202,"title":"pipe","type":"illust","page_count":1,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7},"meta_single_page":{"original_image_url":"https://i.pximg.net/images/202.jpg"}}}`)
+			return
+		}
 		fmt.Fprintf(w, `{"illust":%s}`, artwork)
 	case "/v2/novel/series":
 		fmt.Fprintf(w, `{"novel_series_detail":{"id":101,"title":"line\n\u001b[31m","user":{"id":7,"name":"artist"}},"novels":[%s],"next_url":null}`, novel)
@@ -117,6 +129,14 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	case "/v1/user/bookmark-tags/illust":
 		fmt.Fprint(w, `{"bookmark_tags":[{"name":"line\n\u001b[31m","count":1}],"next_url":null}`)
 	case "/v1/search/illust":
+		if r.URL.Query().Get("word") == "pipe" {
+			fmt.Fprint(w, `{"illusts":[{"id":202,"title":"pipe","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}],"next_url":null}`)
+			return
+		}
+		if r.URL.Query().Get("word") == "unknown" {
+			fmt.Fprint(w, `{"illusts":[{"id":101,"type":"future_art","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}],"next_url":null}`)
+			return
+		}
 		if r.URL.Query().Get("word") == "unsafe" {
 			fmt.Fprintf(w, `{"illusts":[%s],"next_url":null}`, artwork)
 			return
@@ -125,4 +145,34 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func assertUnknownArtwork(t *testing.T, proxyURL string) {
+	t.Helper()
+	stdout, stderr, code := runCLI(t, "search", "unknown", "--ndjson", "--proxy", proxyURL)
+	require.Equal(t, 0, code, stderr)
+	require.Contains(t, stdout, `"content_type":"future_art"`)
+	require.Contains(t, stdout, `"type":"artwork"`)
+}
+
+func assertRecordPipelines(t *testing.T, proxyURL string) {
+	t.Helper()
+	stream, stderr, code := runCLI(t, "search", "pipe", "--ndjson", "--proxy", proxyURL)
+	require.Zero(t, code, stderr)
+	directory := t.TempDir()
+	for _, args := range [][]string{{"detail", "--ndjson"}, {"download", "--output", directory, "--filename-template", "{id}"}} {
+		var out, diagnostics bytes.Buffer
+		command := append(append([]string{"pixiv"}, args...), "--proxy", proxyURL)
+		code := cli.Run(t.Context(), command, strings.NewReader(stream), &out, &diagnostics)
+		require.Zero(t, code, diagnostics.String())
+		if args[0] == "detail" {
+			require.Contains(t, out.String(), `"type":"artwork"`)
+		}
+	}
+	files, err := os.ReadDir(directory)
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	body, err := os.ReadFile(filepath.Join(directory, files[0].Name()))
+	require.NoError(t, err)
+	require.Equal(t, "fixture-image", string(body))
 }

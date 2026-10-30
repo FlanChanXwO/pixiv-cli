@@ -89,7 +89,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 				return err
 			}
 		}
-		_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, result.DefaultUserID))
+		_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, result.defaultUserID))
 		return err
 	}
 	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)

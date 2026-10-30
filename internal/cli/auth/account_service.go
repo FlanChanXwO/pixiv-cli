@@ -20,21 +20,16 @@ import (
 
 // accountOut 定义所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
 type accountOut struct {
-	UserID                 int64      `json:"user_id,omitempty"`
-	Username               string     `json:"username,omitempty"`
-	Default                bool       `json:"default"`
-	HasToken               bool       `json:"has_token"`
-	PremiumStatus          *bool      `json:"premium_status,omitempty"`
-	PremiumStatusCheckedAt *time.Time `json:"premium_status_checked_at,omitempty"`
-	Schedulable            *bool      `json:"schedulable,omitempty"`
-	Eligible               *bool      `json:"eligible,omitempty"`
-	PoolFrozenUntil        *time.Time `json:"pool_frozen_until,omitempty"`
-	Warning                string     `json:"warning,omitempty"`
+	UserID          int64      `json:"user_id,omitempty"`
+	Username        string     `json:"username,omitempty"`
+	Default         bool       `json:"default"`
+	PremiumStatus   *bool      `json:"premium_status,omitempty"`
+	Schedulable     *bool      `json:"schedulable,omitempty"`
+	PoolFrozenUntil *time.Time `json:"pool_frozen_until,omitempty"`
 }
 
 type accountListOut struct {
-	DefaultUserID int64        `json:"default_user_id,omitempty"`
-	Accounts      []accountOut `json:"accounts"`
+	Accounts []accountOut `json:"accounts"`
 }
 
 // accountImportOut 只包含 user_id、username 和 status；导入结果不会回显 token，
@@ -47,7 +42,7 @@ type accountImportOut struct {
 
 type accountBundleImportOut struct {
 	Accounts      []accountImportOut `json:"accounts"`
-	DefaultUserID int64              `json:"default_user_id"`
+	defaultUserID int64
 }
 
 type accountPoolStatusOut struct {
@@ -207,7 +202,7 @@ func (s AccountService) importBundle(ctx context.Context, body []byte) (accountB
 	}
 	result := accountBundleImportOut{
 		Accounts:      make([]accountImportOut, 0, len(restore.Accounts)),
-		DefaultUserID: restore.ResultingDefault,
+		defaultUserID: restore.ResultingDefault,
 	}
 	for _, outcome := range restore.Accounts {
 		status := accountImportStatusAdded
@@ -228,9 +223,6 @@ func (s AccountService) listWithContext(ctx context.Context) (accountListOut, er
 	result := accountListOut{Accounts: make([]accountOut, 0, len(accounts))}
 	for _, account := range accounts {
 		result.Accounts = append(result.Accounts, accountFromPixiv(account))
-		if account.Default {
-			result.DefaultUserID = account.UserID
-		}
 	}
 	return result, nil
 }
@@ -340,7 +332,7 @@ func (s AccountService) remove(userID int64) (accountOut, int64, error) {
 		return accountOut{}, 0, err
 	}
 	removed.Default = false
-	return removed, updated.DefaultUserID, nil
+	return removed, updated.defaultUserID(), nil
 }
 
 func (s AccountService) use(userID int64) (int64, error) {
@@ -395,10 +387,10 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 func AccountJSON(account account.AccountSummary) any { return accountFromPixiv(account) }
 
 func accountFromPixiv(account account.AccountSummary) accountOut {
-	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, HasToken: true, PremiumStatus: account.Premium}
+	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, PremiumStatus: account.Premium}
 	if account.PoolStatusKnown {
-		schedulable, eligible := account.Schedulable, account.Eligible
-		result.Schedulable, result.Eligible = &schedulable, &eligible
+		schedulable := account.Schedulable
+		result.Schedulable = &schedulable
 		if account.PoolFrozenUntil != nil {
 			frozen := time.Unix(*account.PoolFrozenUntil, 0).UTC()
 			result.PoolFrozenUntil = &frozen
@@ -527,4 +519,13 @@ func rejectDuplicateObjectKeys(body []byte) error {
 		}
 	}
 	return nil
+}
+
+func (list accountListOut) defaultUserID() int64 {
+	for _, account := range list.Accounts {
+		if account.Default {
+			return account.UserID
+		}
+	}
+	return 0
 }

@@ -374,7 +374,7 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID, "default_user_id": defaultUserID})
 	}
 	line := "Removed " + accountIdentity(list, userID)
-	if list.DefaultUserID == userID && defaultUserID != 0 {
+	if list.defaultUserID() == userID && defaultUserID != 0 {
 		line += "; now using " + accountIdentity(list, defaultUserID)
 	}
 	_, err = fmt.Fprintln(a.env.Out, line)
@@ -468,9 +468,6 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 	}
 	if _, err := fmt.Fprintf(a.env.Out, "Token valid for %s\n", display.Identity(result.Username, result.UserID)); err != nil {
 		return err
-	}
-	if result.Warning != "" {
-		fmt.Fprintf(a.env.Err, "warning: %s\n", result.Warning)
 	}
 	return nil
 }

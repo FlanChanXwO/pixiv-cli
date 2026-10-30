@@ -19,7 +19,6 @@ func (*PipelineDiagnosticError) Error() string { return "pipeline records failed
 
 // recordDiagnostic 携带一条写入 stderr 的逐行失败诊断；ID 与 Type 在能解析时带上。
 type recordDiagnostic struct {
-	Kind      string `json:"kind"`
 	Operation string `json:"operation"`
 	Line      int64  `json:"line"`
 	ID        string `json:"id,omitempty"`
@@ -143,7 +142,6 @@ func RecordFailureStrategy(value string) (bool, error) {
 
 func writeRecordDiagnostic(out io.Writer, operation string, lineNumber int64, line []byte, code string, cause error) error {
 	diagnostic := recordDiagnostic{
-		Kind:      "record_error",
 		Operation: operation,
 		Line:      lineNumber,
 		Code:      code,

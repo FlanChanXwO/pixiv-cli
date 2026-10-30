@@ -199,25 +199,13 @@ func RecordsOutputSchema() *jsonschema.Schema {
 	}
 }
 
-// RecommendedOutputSchema 返回 recommended 四路聚合 envelope 的 schema。pagination
-// 只公开四种流类型，SDK continuation 不进入协议。
+// RecommendedOutputSchema 按实体分区公开 records 与 pagination。
 func RecommendedOutputSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
-			"records": recordArraySchema(),
-			"pagination": {
-				Type: "object",
-				Properties: map[string]*jsonschema.Schema{
-					string(pixiv.SearchContentTypeIllust): OpenObjectSchema(),
-					string(pixiv.SearchContentTypeManga):  OpenObjectSchema(),
-					string(pixiv.ReferenceKindNovel):      OpenObjectSchema(),
-					string(pixiv.ReferenceKindUser):       OpenObjectSchema(),
-				},
-				AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
-			},
+			"artworks": RecordsOutputSchema(), "novels": RecordsOutputSchema(), "users": RecordsOutputSchema(),
 		},
-		Required:             []string{"records", "pagination"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 }

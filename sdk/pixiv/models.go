@@ -18,25 +18,21 @@ const (
 	RestrictPrivate Restrict = "private"
 )
 
-// ArtworkKind distinguishes the artwork types unified in Artwork.
-type ArtworkKind string
+// ContentType preserves the upstream artwork category, including unknown values.
+type ContentType string
 
-// ArtworkKindIllustration, ArtworkKindManga, and ArtworkKindUgoira are the
-// three upstream types Artwork represents.
+// ContentTypeIllust, ContentTypeManga, and ContentTypeUgoira name known categories.
 const (
-	ArtworkKindIllustration ArtworkKind = "illustration"
-	ArtworkKindManga        ArtworkKind = "manga"
-	ArtworkKindUgoira       ArtworkKind = "ugoira"
-	// ArtworkKindUnknown preserves an upstream kind the SDK does not yet
-	// recognize; Artwork.RawKind carries the original identifier.
-	ArtworkKindUnknown ArtworkKind = "unknown"
+	ContentTypeIllust ContentType = "illust"
+	ContentTypeManga  ContentType = "manga"
+	ContentTypeUgoira ContentType = "ugoira"
 )
 
 // Tag names one artwork or novel tag. TranslatedName is empty when upstream
 // provided no translation.
 type Tag struct {
 	Name           string `json:"name"`
-	TranslatedName string `json:"translated_name"`
+	TranslatedName string `json:"translated_name,omitempty"`
 }
 
 // ImageResource exposes a first-party image through the shared resource
@@ -49,6 +45,9 @@ type ImageResource struct {
 	Width    int          `json:"width"`
 	Height   int          `json:"height"`
 }
+
+// IsZero reports whether upstream supplied no image resource.
+func (image ImageResource) IsZero() bool { return image.Resource.Ref.IsZero() }
 
 // Stamp identifies one Pixiv comment stamp. Image is a first-party resource
 // keyed by the stable stamp ID; upstream provides no image dimensions here.
@@ -83,8 +82,7 @@ type Artwork struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
 	Caption        string        `json:"caption"`
-	Kind           ArtworkKind   `json:"kind"`
-	RawKind        string        `json:"raw_kind"`
+	ContentType    ContentType   `json:"content_type"`
 	Tags           []Tag         `json:"tags"`
 	User           User          `json:"user"`
 	PublishedAt    time.Time     `json:"published_at"`
@@ -97,7 +95,7 @@ type Artwork struct {
 	XRestrict      int           `json:"x_restrict"`
 	AIType         int           `json:"ai_type"`
 	Tools          []string      `json:"tools,omitempty"`
-	Cover          ImageResource `json:"cover"`
+	Cover          ImageResource `json:"cover,omitzero"`
 	Pages          []ArtworkPage `json:"pages,omitempty"`
 
 	// Nil viewer and safety fields mean the current endpoint did not provide them.
@@ -127,7 +125,7 @@ type Novel struct {
 	IsOriginal     bool          `json:"is_original"`
 	TotalBookmarks int           `json:"total_bookmarks"`
 	TotalViews     int           `json:"total_views"`
-	Cover          ImageResource `json:"cover"`
+	Cover          ImageResource `json:"cover,omitzero"`
 }
 
 // User is an addressable Pixiv user. ProfileImage is the profile image
@@ -138,7 +136,7 @@ type User struct {
 	Account      string        `json:"account"`
 	Comment      string        `json:"comment"`
 	IsFollowed   bool          `json:"is_followed"`
-	ProfileImage ImageResource `json:"profile_image"`
+	ProfileImage ImageResource `json:"profile_image,omitzero"`
 }
 
 // UserDetail adds profile and workspace information beyond the User identity.

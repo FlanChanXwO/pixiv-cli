@@ -52,7 +52,7 @@ Do not ask for an undisclosed token in chat or launch a hidden prompt in an agen
 
 Use the requested scope and command-specific flags. A supported positive `--limit N` requests N logical results; reaching N is not proof that only N exist. Use `--limit 0` only for an explicit exhaustive request. `--page` requires positive `--limit`; an omitted limit normally means one logical batch, not the entire corpus. Local filters can skip empty upstream batches; do not invent request caps.
 
-Use text for a small display-only result. Visual listing commands emit canonical NDJSON automatically when stdout is piped; `--ndjson` makes that explicit. `--json` is one complete result document where supported and cannot combine with `--ndjson`. Check status before parsing; failed commands may produce ordinary stderr and empty stdout. Do not install processing tools merely to format output.
+Use text for a small display-only result. Visual listing commands emit canonical NDJSON automatically when stdout is piped; `--ndjson` makes that explicit. Content lists use `--json` as `{records, pagination}` with the same string-ID records as NDJSON; artworks use `type:"artwork"` plus `content_type` (including unknown upstream values). `recommended --type all --json` returns `artworks`, `novels`, `users` partitions. `--json` is one complete result document where supported and cannot combine with `--ndjson`. Check status before parsing; failed commands may produce ordinary stderr and empty stdout. Do not install processing tools merely to format output.
 
 ```text
 pixiv search "landscape" --type artwork --limit 20 --ndjson | pixiv detail

@@ -73,7 +73,7 @@ func New(env environment.Env, exec session.Executor, reverseSearch ReverseSearch
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
-		typ:         string(target.ResultKindArtwork),
+		typ:         string(target.NamespaceArtwork),
 		contentType: string(pixiv.SearchContentTypeAll),
 		resolution:  string(pixiv.SearchResolutionAll),
 		aspectRatio: string(pixiv.SearchAspectRatioAll),
@@ -211,7 +211,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 	if err := validateEntityFlags(cmd, entity); err != nil {
 		return err
 	}
-	if entity == string(target.ResultKindNovel) {
+	if entity == string(target.NamespaceNovel) {
 		return a.runNovelSearch(cmd, args, novelOptions{
 			Options:  opts.Options,
 			ndjson:   opts.ndjson,
@@ -222,7 +222,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 			period:   opts.period,
 		})
 	}
-	if entity == string(target.ResultKindUser) {
+	if entity == string(target.NamespaceUser) {
 		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
 			Options: opts.Options,
 			NDJSON:  opts.ndjson,
@@ -256,7 +256,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		// 但不能伪造为 upstream 的 rating/x_restrict 请求参数。
 		query.CursorContext = artworkFilter.CursorContext()
 		include = func(item pixiv.Artwork) (bool, error) {
-			return artworkFilter.Matches(item.XRestrict, string(item.Kind)), nil
+			return artworkFilter.Matches(item.XRestrict, string(item.ContentType)), nil
 		}
 	}
 	if params.bookmarkMin != nil || params.bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
@@ -289,8 +289,8 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 }
 
 type artworkSearchOut struct {
-	Illusts []pixiv.Artwork     `json:"illusts"`
-	Filter  *bookmarkFilterJSON `json:"filter,omitempty"`
+	record.ListOutput[record.Record]
+	Filter *bookmarkFilterJSON `json:"filter,omitempty"`
 }
 
 type bookmarkFilterJSON struct {
@@ -314,7 +314,7 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.P
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, outcome.Filter)
+	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, outcome.Filter)
 }
 
 func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
@@ -326,10 +326,11 @@ func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.Pr
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, nil)
+	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, nil)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[pixiv.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
+	items := page.Items
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -352,7 +353,11 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, items []pixiv.A
 				Completeness: bookmark.Completeness,
 			}
 		}
-		return a.env.PrintJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
+		records, err := record.FromArtworks(items)
+		if err != nil {
+			return err
+		}
+		return record.WriteJSONValue(a.env.Out, artworkSearchOut{ListOutput: record.NewListOutput(records, plan, pagination.PageResult{Returned: len(records), HasMore: !page.Next.IsZero()}), Filter: filter})
 	}
 	if len(items) == 0 {
 		_, err := fmt.Fprintln(a.env.Err, "No results.")
@@ -378,13 +383,7 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 		return err
 	}
 	if jsonOut {
-		dtos := make([]pixiv.TrendingTag, 0, len(tags))
-		for _, tag := range tags {
-			dtos = append(dtos, tag)
-		}
-		return a.env.PrintJSON(struct {
-			Tags []pixiv.TrendingTag `json:"tags"`
-		}{Tags: dtos})
+		return record.WriteJSONValue(a.env.Out, record.NewListOutput(tags, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(tags)}))
 	}
 	for _, tag := range tags {
 		line := display.SafeLine(tag.Tag)
@@ -396,14 +395,6 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 		}
 	}
 	return nil
-}
-
-func artworkDTOs(items []pixiv.Artwork) []pixiv.Artwork {
-	out := make([]pixiv.Artwork, 0, len(items))
-	for _, item := range items {
-		out = append(out, item)
-	}
-	return out
 }
 
 func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
@@ -423,7 +414,7 @@ func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 
 func resolveEntityType(value string) (string, error) {
 	switch value {
-	case string(target.ResultKindArtwork), string(target.ResultKindNovel), string(target.ResultKindUser):
+	case string(target.NamespaceArtwork), string(target.NamespaceNovel), string(target.NamespaceUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -431,7 +422,7 @@ func resolveEntityType(value string) (string, error) {
 }
 
 func validateEntityFlags(cmd *cobra.Command, entity string) error {
-	if entity == string(target.ResultKindArtwork) {
+	if entity == string(target.NamespaceArtwork) {
 		return nil
 	}
 	for _, name := range []string{"content-type", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy"} {
@@ -439,7 +430,7 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 			return fmt.Errorf("--%s is only supported when --type artwork", name)
 		}
 	}
-	if entity == string(target.ResultKindNovel) {
+	if entity == string(target.NamespaceNovel) {
 		for _, name := range []string{"start-date", "end-date", "rating"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s is not supported when --type novel", name)

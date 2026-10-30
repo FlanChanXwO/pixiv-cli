@@ -5,8 +5,9 @@ import (
 
 	"encoding/hex"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Rating 给出产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。
@@ -136,11 +137,6 @@ func matchesRating(rating Rating, xRestrict int) bool {
 func matchesContentType(contentType ContentType, kind string) bool {
 	if contentType == "" || contentType == ContentTypeAll {
 		return true
-	}
-	kind = strings.ToLower(strings.TrimSpace(kind))
-	// Artwork.Kind 保留 upstream 拼写，这里与公开的 illust 取值比较。
-	if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
-		kind = string(ContentTypeIllust)
 	}
 	switch contentType {
 	case ContentTypeIllust:

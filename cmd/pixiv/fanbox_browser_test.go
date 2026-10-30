@@ -41,7 +41,7 @@ func assertEscapesUpstreamText(t *testing.T, proxy string) {
 	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
 
 	for _, args := range [][]string{
-		{"fanbox", "creators", "--kind", "following"}, {"fanbox", "posts", "artist"},
+		{"fanbox", "creators", "--relation", "following"}, {"fanbox", "posts", "artist"},
 		{"detail", "101"}, {"detail", "101", "--type", "novel"},
 		{"search", "unsafe"}, {"search", "unsafe", "--type", "novel"},
 		{"comment", "101", "--type", "artwork"}, {"bookmark", "tags"},
@@ -57,7 +57,7 @@ func assertEscapesUpstreamText(t *testing.T, proxy string) {
 
 func assertFanboxPropagatesWriteError(t *testing.T, proxy string) {
 	t.Helper()
-	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
+	for _, args := range [][]string{{"creators", "--relation", "following"}, {"posts", "artist"}} {
 		t.Run(args[0], func(t *testing.T) {
 			var stderr bytes.Buffer
 			code := cli.Run(t.Context(), append([]string{"pixiv", "fanbox", "--proxy", proxy}, args...), strings.NewReader(""), failedOutput{}, &stderr)

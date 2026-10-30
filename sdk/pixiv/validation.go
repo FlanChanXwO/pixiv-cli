@@ -57,13 +57,13 @@ func normalizeLatestArtworkContentType(operation string, value SearchContentType
 	}
 }
 
-// normalizeUserArtworkKind maps an empty public value and illust to the same query
+// normalizeUserContentType maps an empty public value and illust to the same query
 // digest, so a valid cursor still resumes.
-func normalizeUserArtworkKind(operation string, value ArtworkKind) (string, error) {
+func normalizeUserContentType(operation string, value ContentType) (string, error) {
 	switch value {
-	case "", ArtworkKind("illust"):
+	case "", ContentType("illust"):
 		return "illust", nil
-	case ArtworkKindManga, ArtworkKindUgoira:
+	case ContentTypeManga, ContentTypeUgoira:
 		return string(value), nil
 	default:
 		return "", newError(operation, sdk.InvalidArgument, "artwork kind is unsupported")

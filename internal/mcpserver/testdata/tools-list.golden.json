@@ -343,10 +343,6 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
-        "kind": {
-          "description": "supporting or following",
-          "type": "string"
-        },
         "limit": {
           "description": "maximum items; 0 returns all items",
           "type": [
@@ -360,6 +356,10 @@
             "null",
             "integer"
           ]
+        },
+        "relation": {
+          "description": "supporting or following",
+          "type": "string"
         }
       },
       "type": "object"
@@ -1391,7 +1391,7 @@
   {
     "_meta": {
       "ui": {
-        "resourceUri": "ui://pixiv-cli/gallery/sha256-027cccfdac961ed79768c30b265781d6ab5ebcf8b549ebc241dfe084c702d854"
+        "resourceUri": "ui://pixiv-cli/gallery/sha256-ae875ccf30d715f0f77d34e6eadf0782404dafd17632c796dab2c8a6ea07b679"
       }
     },
     "annotations": {
@@ -1704,14 +1704,6 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
-          "enum": [
-            "artwork",
-            "novel"
-          ],
-          "type": "string"
-        },
         "restrict": {
           "description": "public or private; omitted or empty uses SDK default.",
           "type": "string"
@@ -1724,10 +1716,18 @@
             "array",
             "null"
           ]
+        },
+        "type": {
+          "description": "Target entity type.",
+          "enum": [
+            "artwork",
+            "novel"
+          ],
+          "type": "string"
         }
       },
       "required": [
-        "kind",
+        "type",
         "id"
       ],
       "type": "object"
@@ -1969,8 +1969,8 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
+        "type": {
+          "description": "Target entity type.",
           "enum": [
             "artwork",
             "novel"
@@ -1979,7 +1979,7 @@
         }
       },
       "required": [
-        "kind",
+        "type",
         "id"
       ],
       "type": "object"
@@ -2029,14 +2029,6 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
-        "kind": {
-          "description": "Content kind; defaults to artwork.",
-          "enum": [
-            "artwork",
-            "novel"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "maximum items; 0 returns all items",
           "type": [
@@ -2053,6 +2045,14 @@
         },
         "restrict": {
           "description": "public or private",
+          "type": "string"
+        },
+        "type": {
+          "description": "Entity type; defaults to artwork.",
+          "enum": [
+            "artwork",
+            "novel"
+          ],
           "type": "string"
         },
         "user_id": {
@@ -2187,8 +2187,8 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
+        "type": {
+          "description": "Target entity type.",
           "enum": [
             "artwork",
             "novel"
@@ -2197,7 +2197,7 @@
         }
       },
       "required": [
-        "kind",
+        "type",
         "id",
         "comment"
       ],
@@ -2253,8 +2253,8 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
+        "type": {
+          "description": "Target entity type.",
           "enum": [
             "artwork",
             "novel"
@@ -2263,7 +2263,7 @@
         }
       },
       "required": [
-        "kind",
+        "type",
         "comment_id"
       ],
       "type": "object"
@@ -2323,22 +2323,22 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
+        "parent_comment_id": {
+          "description": "Positive parent comment ID.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "type": {
+          "description": "Target entity type.",
           "enum": [
             "artwork",
             "novel"
           ],
           "type": "string"
-        },
-        "parent_comment_id": {
-          "description": "Positive parent comment ID.",
-          "minimum": 1,
-          "type": "integer"
         }
       },
       "required": [
-        "kind",
+        "type",
         "id",
         "comment",
         "parent_comment_id"
@@ -2399,22 +2399,22 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
+        "stamp_id": {
+          "description": "Positive Pixiv stamp ID.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "type": {
+          "description": "Target entity type.",
           "enum": [
             "artwork",
             "novel"
           ],
           "type": "string"
-        },
-        "stamp_id": {
-          "description": "Positive Pixiv stamp ID.",
-          "minimum": 1,
-          "type": "integer"
         }
       },
       "required": [
-        "kind",
+        "type",
         "id",
         "stamp_id"
       ],
@@ -2470,14 +2470,6 @@
           "minimum": 1,
           "type": "integer"
         },
-        "kind": {
-          "description": "Target content type.",
-          "enum": [
-            "artwork",
-            "novel"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "Maximum comments; 0 returns all; omitted reads one upstream batch.",
           "minimum": 0,
@@ -2487,10 +2479,18 @@
           "description": "1-based logical page; requires a positive limit.",
           "minimum": 1,
           "type": "integer"
+        },
+        "type": {
+          "description": "Target entity type.",
+          "enum": [
+            "artwork",
+            "novel"
+          ],
+          "type": "string"
         }
       },
       "required": [
-        "kind",
+        "type",
         "id"
       ],
       "type": "object"
@@ -3921,15 +3921,6 @@
           },
           "type": "object"
         },
-        "kind": {
-          "description": "Required content type.",
-          "enum": [
-            "artwork",
-            "novel",
-            "user"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "Maximum logical results; 0 returns all; omit for one logical batch.",
           "minimum": 0,
@@ -3960,6 +3951,15 @@
           "minimum": 1,
           "type": "integer"
         },
+        "type": {
+          "description": "Required entity type.",
+          "enum": [
+            "artwork",
+            "novel",
+            "user"
+          ],
+          "type": "string"
+        },
         "user_filter": {
           "additionalProperties": false,
           "properties": {
@@ -3972,7 +3972,7 @@
         }
       },
       "required": [
-        "kind"
+        "type"
       ],
       "type": "object"
     },
@@ -4302,8 +4302,17 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "content_type": {
+          "description": "Artwork category; only valid for type=artwork; defaults to all.",
+          "enum": [
+            "all",
+            "illust",
+            "manga"
+          ],
+          "type": "string"
+        },
         "cursor": {
-          "description": "Opaque default-batch continuation for a single kind; omit page and limit.",
+          "description": "Opaque default-batch continuation for a single type; omit page and limit.",
           "type": "string"
         },
         "illust_filter": {
@@ -4338,16 +4347,6 @@
           },
           "type": "object"
         },
-        "kind": {
-          "enum": [
-            "all",
-            "illust",
-            "manga",
-            "novel",
-            "user"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "Maximum logical results; 0 returns all; omitted reads one upstream batch. Artwork recommendation filters are applied after selecting this upstream window.",
           "minimum": 0,
@@ -4378,6 +4377,16 @@
           "minimum": 1,
           "type": "integer"
         },
+        "type": {
+          "description": "Required entity type.",
+          "enum": [
+            "all",
+            "artwork",
+            "novel",
+            "user"
+          ],
+          "type": "string"
+        },
         "user_filter": {
           "additionalProperties": false,
           "properties": {
@@ -4390,7 +4399,7 @@
         }
       },
       "required": [
-        "kind"
+        "type"
       ],
       "type": "object"
     },
@@ -4398,56 +4407,301 @@
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
-        "pagination": {
+        "artworks": {
           "additionalProperties": false,
           "properties": {
-            "illust": {
+            "access_control": {
               "additionalProperties": true,
               "type": "object"
             },
-            "manga": {
+            "bookmark_tags": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "bookmarked": {
+              "type": "boolean"
+            },
+            "comments": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "content": {
               "additionalProperties": true,
               "type": "object"
             },
-            "novel": {
+            "filter": {
+              "additionalProperties": false,
+              "properties": {
+                "completeness": {
+                  "type": "string"
+                },
+                "max": {
+                  "type": "integer"
+                },
+                "membership": {
+                  "type": "string"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "strategy": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "pagination": {
               "additionalProperties": true,
               "type": "object"
             },
-            "user": {
+            "records": {
+              "items": {
+                "additionalProperties": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "restrict": {
+              "type": "string"
+            },
+            "series": {
               "additionalProperties": true,
               "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "total": {
+              "type": "integer"
             }
           },
+          "required": [
+            "records"
+          ],
           "type": "object"
         },
-        "records": {
-          "items": {
-            "additionalProperties": true,
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              }
+        "novels": {
+          "additionalProperties": false,
+          "properties": {
+            "access_control": {
+              "additionalProperties": true,
+              "type": "object"
             },
-            "required": [
-              "id",
-              "type",
-              "url"
-            ],
-            "type": "object"
+            "bookmark_tags": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "bookmarked": {
+              "type": "boolean"
+            },
+            "comments": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "content": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "filter": {
+              "additionalProperties": false,
+              "properties": {
+                "completeness": {
+                  "type": "string"
+                },
+                "max": {
+                  "type": "integer"
+                },
+                "membership": {
+                  "type": "string"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "strategy": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "pagination": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "restrict": {
+              "type": "string"
+            },
+            "series": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "total": {
+              "type": "integer"
+            }
           },
-          "type": "array"
+          "required": [
+            "records"
+          ],
+          "type": "object"
+        },
+        "users": {
+          "additionalProperties": false,
+          "properties": {
+            "access_control": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "bookmark_tags": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "bookmarked": {
+              "type": "boolean"
+            },
+            "comments": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "content": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "filter": {
+              "additionalProperties": false,
+              "properties": {
+                "completeness": {
+                  "type": "string"
+                },
+                "max": {
+                  "type": "integer"
+                },
+                "membership": {
+                  "type": "string"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "strategy": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "pagination": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "records": {
+              "items": {
+                "additionalProperties": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "url"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "restrict": {
+              "type": "string"
+            },
+            "series": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "total": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "records"
+          ],
+          "type": "object"
         }
       },
-      "required": [
-        "records",
-        "pagination"
-      ],
       "type": "object"
     }
   },
@@ -5295,7 +5549,7 @@
   {
     "_meta": {
       "ui": {
-        "resourceUri": "ui://pixiv-cli/gallery/sha256-027cccfdac961ed79768c30b265781d6ab5ebcf8b549ebc241dfe084c702d854"
+        "resourceUri": "ui://pixiv-cli/gallery/sha256-ae875ccf30d715f0f77d34e6eadf0782404dafd17632c796dab2c8a6ea07b679"
       }
     },
     "annotations": {
@@ -5399,7 +5653,7 @@
   {
     "_meta": {
       "ui": {
-        "resourceUri": "ui://pixiv-cli/gallery/sha256-027cccfdac961ed79768c30b265781d6ab5ebcf8b549ebc241dfe084c702d854"
+        "resourceUri": "ui://pixiv-cli/gallery/sha256-ae875ccf30d715f0f77d34e6eadf0782404dafd17632c796dab2c8a6ea07b679"
       }
     },
     "annotations": {
@@ -5571,14 +5825,6 @@
           },
           "type": "object"
         },
-        "kind": {
-          "description": "Required content type.",
-          "enum": [
-            "artwork",
-            "novel"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "Maximum logical results; 0 returns all; omit for one logical batch.",
           "minimum": 0,
@@ -5616,10 +5862,18 @@
             "private"
           ],
           "type": "string"
+        },
+        "type": {
+          "description": "Required entity type.",
+          "enum": [
+            "artwork",
+            "novel"
+          ],
+          "type": "string"
         }
       },
       "required": [
-        "kind"
+        "type"
       ],
       "type": "object"
     },
@@ -5735,7 +5989,7 @@
       "additionalProperties": false,
       "properties": {
         "content_type": {
-          "description": "Required content type.",
+          "description": "Required entity type.",
           "enum": [
             "illust",
             "manga",
@@ -5941,6 +6195,9 @@
                   "caption": {
                     "type": "string"
                   },
+                  "content_type": {
+                    "type": "string"
+                  },
                   "cover": {
                     "additionalProperties": false,
                     "properties": {
@@ -5997,9 +6254,6 @@
                       "null",
                       "boolean"
                     ]
-                  },
-                  "kind": {
-                    "type": "string"
                   },
                   "page_count": {
                     "type": "integer"
@@ -6073,9 +6327,6 @@
                   "published_at": {
                     "type": "string"
                   },
-                  "raw_kind": {
-                    "type": "string"
-                  },
                   "restriction_attributes": {
                     "items": {
                       "type": "string"
@@ -6122,8 +6373,7 @@
                         }
                       },
                       "required": [
-                        "name",
-                        "translated_name"
+                        "name"
                       ],
                       "type": "object"
                     },
@@ -6225,8 +6475,7 @@
                       "name",
                       "account",
                       "comment",
-                      "is_followed",
-                      "profile_image"
+                      "is_followed"
                     ],
                     "type": "object"
                   },
@@ -6247,8 +6496,7 @@
                   "id",
                   "title",
                   "caption",
-                  "kind",
-                  "raw_kind",
+                  "content_type",
                   "tags",
                   "user",
                   "published_at",
@@ -6258,8 +6506,7 @@
                   "height",
                   "page_count",
                   "x_restrict",
-                  "ai_type",
-                  "cover"
+                  "ai_type"
                 ],
                 "type": "object"
               },
@@ -6571,14 +6818,6 @@
             "object"
           ]
         },
-        "kind": {
-          "description": "content type",
-          "enum": [
-            "artwork",
-            "novel"
-          ],
-          "type": "string"
-        },
         "limit": {
           "description": "maximum items; 0 returns all items",
           "type": [
@@ -6600,13 +6839,21 @@
         "tag": {
           "type": "string"
         },
+        "type": {
+          "description": "entity type: artwork or novel",
+          "enum": [
+            "artwork",
+            "novel"
+          ],
+          "type": "string"
+        },
         "user_id": {
           "description": "optional user ID; defaults to the authenticated user",
           "type": "integer"
         }
       },
       "required": [
-        "kind"
+        "type"
       ],
       "type": "object"
     },

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -36,85 +35,6 @@ func FormatOf(jsonOut, ndjson bool) Format {
 	return FormatText
 }
 
-// JSONKey 指定列表 JSON 文档的顶层键；这些键属于已发布的输出契约，不能改名。
-type JSONKey string
-
-const (
-	// JSONKeyIllusts 指定作品列表的默认顶层键。
-	JSONKeyIllusts JSONKey = "illusts"
-	// JSONKeyManga 指定漫画排行榜等只返回漫画的列表使用的顶层键。
-	JSONKeyManga JSONKey = "manga"
-	// JSONKeyNovels 指定小说列表的顶层键。
-	JSONKeyNovels JSONKey = "novels"
-	// JSONKeyUsers 指定用户预览列表的顶层键。
-	JSONKeyUsers JSONKey = "user_previews"
-)
-
-// JSONArraySpool 把单键列表文档的每个已确认元素写进私有临时文件；网络或编码失败时
-// stdout 保持为空，Commit 之后一次性写出完整 JSON。
-type JSONArraySpool struct {
-	file  *os.File
-	first bool
-}
-
-// NewJSONArraySpool 创建临时文件并写入文档开头 `{"key": [`。
-func NewJSONArraySpool(key string) (*JSONArraySpool, error) {
-	file, err := os.CreateTemp("", "pixiv-cli-json-*.tmp")
-	if err != nil {
-		return nil, err
-	}
-	if _, err := fmt.Fprintf(file, "{\n  %q: [", key); err != nil {
-		discardTemp(file)
-		return nil, err
-	}
-	return &JSONArraySpool{file: file, first: true}, nil
-}
-
-// AppendJSONArray 把一批元素按两空格缩进追加进数组。
-func AppendJSONArray[T any](s *JSONArraySpool, items []T) error {
-	for _, item := range items {
-		if s.first {
-			s.first = false
-		} else if _, err := io.WriteString(s.file, ","); err != nil {
-			return err
-		}
-		encoded, err := json.MarshalIndent(item, "    ", "  ")
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(s.file, "\n    %s", encoded); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Commit 写完文档结尾，并把完整内容复制到 out。
-func (s *JSONArraySpool) Commit(out io.Writer) error {
-	if _, err := io.WriteString(s.file, "\n  ]\n}\n"); err != nil {
-		return err
-	}
-	if _, err := s.file.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	_, err := io.Copy(out, s.file)
-	return err
-}
-
-// Close 关闭并删除临时文件；无论 Commit 是否执行都调用。
-func (s *JSONArraySpool) Close() {
-	if s == nil {
-		return
-	}
-	discardTemp(s.file)
-}
-
-func discardTemp(file *os.File) {
-	name := file.Name()
-	_ = file.Close()
-	_ = os.Remove(name)
-}
-
 // WriteJSONLine 输出一个紧凑 JSON 值并追加换行。
 func WriteJSONLine(out io.Writer, value any) error {
 	body, err := json.Marshal(value)
@@ -134,19 +54,22 @@ func WriteJSONValue(out io.Writer, value any) error {
 	if err != nil {
 		return err
 	}
-	body = append(body, '\n')
-	_, err = out.Write(body)
-	return err
+	spool, err := NewSpool()
+	if err != nil {
+		return err
+	}
+	defer spool.Close()
+	if _, err := spool.Write(append(body, '\n')); err != nil {
+		return err
+	}
+	return spool.Commit(out)
 }
 
-// List 描述一次分页列表的输出方式；Key 为空时使用 JSONKeyIllusts。
+// List 描述一次分页列表的输出方式；JSON 与 NDJSON 共用记录投影。
 type List[T any] struct {
-	Key JSONKey
 	// Print 输出一批文本结果；offset 是本批在整体结果中的起点。
 	Print func(items []T, offset int) error
-	// JSONValue 把一项转成 JSON 文档里的元素。
-	JSONValue func(T) (any, error)
-	// RecordValue 把一项转成 NDJSON 记录。
+	// RecordValue 把一项转成 JSON/NDJSON 共用记录。
 	RecordValue func(T) (any, error)
 }
 
@@ -163,9 +86,6 @@ type writer[T any] struct {
 }
 
 func newWriter[T any](out io.Writer, format Format, position int, list List[T]) *writer[T] {
-	if list.Key == "" {
-		list.Key = JSONKeyIllusts
-	}
 	return &writer[T]{out: out, format: format, list: list, position: position, encoder: json.NewEncoder(out)}
 }
 
@@ -175,12 +95,14 @@ func (w *writer[T]) begin() error {
 		return nil
 	}
 	w.spool.Close()
-	spool, err := NewJSONArraySpool(string(w.list.Key))
+	w.returned = 0
+	spool, err := NewJSONArraySpool()
 	w.spool = spool
 	return err
 }
 
 func (w *writer[T]) consume(items []T) (bool, error) {
+	w.returned += len(items)
 	switch w.format {
 	case FormatNDJSON:
 		committed := false
@@ -198,7 +120,7 @@ func (w *writer[T]) consume(items []T) (bool, error) {
 	case FormatJSON:
 		values := make([]any, 0, len(items))
 		for _, item := range items {
-			value, err := w.list.JSONValue(item)
+			value, err := w.list.RecordValue(item)
 			if err != nil {
 				return false, err
 			}
@@ -213,7 +135,6 @@ func (w *writer[T]) consume(items []T) (bool, error) {
 			return true, err
 		}
 		w.position += len(items)
-		w.returned += len(items)
 		return true, nil
 	}
 }
@@ -221,16 +142,16 @@ func (w *writer[T]) consume(items []T) (bool, error) {
 // closeSpool 延迟求值，保证 begin 在每次重放尝试中新建的临时文档也会被清理。
 func (w *writer[T]) closeSpool() { w.spool.Close() }
 
-func (w *writer[T]) commit() error {
+func (w *writer[T]) commit(plan pagination.PagePlan, result pagination.PageResult) error {
 	if w.format != FormatJSON {
 		return nil
 	}
-	return w.spool.Commit(w.out)
+	result.Returned = w.returned
+	return w.spool.CommitList(w.out, PageMetadata(plan, result))
 }
 
 // ArtworkList 描述一次作品列表读取及输出方式。
 type ArtworkList struct {
-	Key   JSONKey
 	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error)
 	// PostFilter 只在已解析的窗口内本地筛选，不会继续向上游多取数据。
 	PostFilter func([]pixiv.Artwork) []pixiv.Artwork
@@ -253,9 +174,7 @@ type UserList struct {
 // 文档写入 stdout 后提交，文本在第一批可见后提交；因此 429 只会在结果暴露前换账号。
 func RunArtworks(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list ArtworkList) error {
 	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Artwork]{
-		Key:         list.Key,
 		Print:       list.Print,
-		JSONValue:   identityValue[pixiv.Artwork],
 		RecordValue: artworkRecord,
 	}, list.Fetch, list.PostFilter)
 }
@@ -263,9 +182,7 @@ func RunArtworks(ctx context.Context, runner session.Runner, request session.Pro
 // RunNovels 在同一个重放边界内执行一次分页小说读取。
 func RunNovels(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list NovelList) error {
 	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Novel]{
-		Key:         JSONKeyNovels,
 		Print:       func(items []pixiv.Novel, _ int) error { return list.Print(items) },
-		JSONValue:   identityValue[pixiv.Novel],
 		RecordValue: novelRecord,
 	}, list.Fetch, nil)
 }
@@ -273,9 +190,7 @@ func RunNovels(ctx context.Context, runner session.Runner, request session.Proxy
 // RunUsers 执行一次分页用户预览读取。
 func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list UserList) error {
 	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.UserPreview]{
-		Key:         JSONKeyUsers,
 		Print:       func(items []pixiv.UserPreview, _ int) error { return list.Print(items) },
-		JSONValue:   identityValue[pixiv.UserPreview],
 		RecordValue: userPreviewRecord,
 	}, list.Fetch, nil)
 }
@@ -283,7 +198,7 @@ func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyR
 func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
 	w := newWriter(runner.Out, format, plan.Skip, list)
 	defer w.closeSpool()
-	_, err := pagination.TraverseWith(ctx, runner.Execute(request), plan, w.begin,
+	result, err := pagination.TraverseWith(ctx, runner.Execute(request), plan, w.begin,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
 		}, func(items []T) (bool, error) {
@@ -299,12 +214,12 @@ func runPixivList[T any](ctx context.Context, runner session.Runner, request ses
 		_, err := fmt.Fprintln(errOut, "No results.")
 		return err
 	}
-	return w.commit()
+	return w.commit(plan, result)
 }
 
 // RunPages 统一 FANBOX 列表命令的 JSON / NDJSON / 文本输出与分页。JSON 只有完整文档
 // 写入临时文件成功后才交给 stdout。
-func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination.PagePlan, key string, jsonOut, ndjson bool, printText func([]T) error, toJSON func(T) any, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) error {
+func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination.PagePlan, jsonOut, ndjson bool, printText func([]T) error, toJSON func(T) any, fetch func(context.Context, sdk.Cursor) (sdk.Page[T], error)) error {
 	format := FormatText
 	if ndjson {
 		format = FormatNDJSON
@@ -313,16 +228,14 @@ func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination
 	}
 	value := func(item T) (any, error) { return toJSON(item), nil }
 	w := newWriter(out, format, 0, List[T]{
-		Key:         JSONKey(key),
 		Print:       func(items []T, _ int) error { return printText(items) },
-		JSONValue:   value,
 		RecordValue: value,
 	})
 	if err := w.begin(); err != nil {
 		return err
 	}
 	defer w.closeSpool()
-	err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	result, err := pagination.TraversePages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		page, err := fetch(ctx, cursor)
 		return page.Items, page.Next, err
 	}, func(items []T) error {
@@ -336,10 +249,8 @@ func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination
 		_, err := fmt.Fprintln(errOut, "No results.")
 		return err
 	}
-	return w.commit()
+	return w.commit(plan, result)
 }
-
-func identityValue[T any](item T) (any, error) { return item, nil }
 
 func artworkRecord(item pixiv.Artwork) (any, error) { return RecordFromArtwork(item) }
 

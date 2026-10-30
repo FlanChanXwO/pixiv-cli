@@ -15,6 +15,7 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -50,13 +51,13 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "creators",
 		Short: "List supporting or following FANBOX creators",
-		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --kind supporting|following"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --relation supporting|following"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runCreators(cmd, opts, kind)
 		},
 	}
 	environment.BindFanboxListFlags(cmd, &opts.jsonOut, &opts.ndjson, &opts.limit, &opts.page)
-	cmd.Flags().StringVar(&kind, "kind", kind, "creator list kind: supporting or following")
+	cmd.Flags().StringVar(&kind, "relation", kind, "creator relation: supporting or following")
 	a.env.BindNoInput(cmd)
 	return cmd
 }
@@ -64,7 +65,7 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind string) error {
 	kind := fanbox.CreatorListKind(rawKind)
 	if kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
-		return errors.New("kind must be one of: supporting, following")
+		return errors.New("relation must be one of: supporting, following")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -78,7 +79,7 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind str
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
 			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "creators", jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
 			return printCreators(a.env.Out, items)
 		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
@@ -113,7 +114,7 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts options)
 		if err != nil {
 			return err
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, fetch)
 	})
@@ -213,9 +214,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			out = append(out, tagOut{Name: tag.Name, URL: tag.URL})
 		}
 		if jsonOut {
-			return a.env.PrintJSON(struct {
-				Tags []tagOut `json:"tags"`
-			}{Tags: out})
+			return record.WriteJSONValue(a.env.Out, record.NewListOutput(out, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(out)}))
 		}
 		if opts.ndjson {
 			encoder := json.NewEncoder(a.env.Out)
@@ -287,7 +286,7 @@ func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanb
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, bind(client))
 	})

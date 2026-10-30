@@ -90,7 +90,9 @@ flowchart LR
 
 - Pool membership is the database `schedulable` flag; manage it with `pixiv auth pool status|enable|disable`. Writes, authentication and configuration never use the pool.
 - Data commands reject `--uid` and `--refresh-token`.
-- **Records:** visual lists write canonical NDJSON when stdout is non-terminal and no format was chosen. Each line has stable string `id`, `type`, `url`. `download`, `bookmark add/remove` and `follow add/remove` consume compatible records without positional IDs; bookmark records must match the selected `--type` namespace (artwork by default, `novel` with `--type novel`).
+- **JSON lists:** content lists return `{"records": [...], "pagination": {"page", "limit", "returned", "has_more", "next_page"}}`. Elements match NDJSON lines; IDs are strings. Empty lists are `[]`. Omitted limit is `null`; explicit `--limit 0` is `0`. JSON is staged in a private temporary file and committed after every request succeeds. Comments retain optional `total`/`access_control`, and novel series retain `series` beside this envelope.
+- **Recommendations:** `recommended --type all --json` returns `{artworks: {records, pagination}, novels: {records, pagination}, users: {records, pagination}}`. Artworks share one upstream window. Each partition has its own pagination.
+- **Records:** visual lists write canonical NDJSON when stdout is non-terminal and no format was chosen. Each line has stable string `id`, `type`, `url`. Artwork records use `type:"artwork"` and `content_type:"illust"|"manga"|"ugoira"`; unknown upstream content types are preserved. Select manga with `.content_type == "manga"`. `download`, `bookmark add/remove` and `follow add/remove` consume compatible records without positional IDs; bookmark records must match the selected `--type` namespace (artwork by default, `novel` with `--type novel`).
 - **Follow:** explicit targets must be positive numeric user IDs (user URLs rejected locally). `pixiv user follow add/remove` and root `pixiv follow add/remove` share one owner; `add --restrict public|private` defaults to `public`.
 - **Comments:** `create/reply/stamp/delete` take one positive numeric ID and no Record input. Reads keep optional `total`/`access_control`; opaque numeric `comment_access_control` stays under `access_control.comment_access_control` with no inferred booleans. Create/reply/stamp return the upstream positive `comment_id`; delete returns a status. `comment stamps` is read-only and non-paginated. `--json` and explicit `--ndjson` take precedence.
 
@@ -181,7 +183,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `mcp` | `pixiv mcp [--port PORT [--host HOST] [--base-url URL]] [--proxy URL\|--no-proxy]` | Local stdio by default; explicit `--port` enables authenticated HTTP. |
 | `mcp auth init` | `pixiv mcp auth init [--reset]` | Initializes the MCP owner and prints its secret once; reset revokes grants, keeping clients and the selected account. |
 | `fanbox auth` | `pixiv fanbox auth import\|list\|use\|remove\|status` | Local FANBOX sessions; values never printed. Native `--proxy`/`--no-proxy` applies only to the FANBOX command. |
-| `fanbox creators` | `pixiv fanbox creators [--kind supporting\|following] [--page N --limit N]` | Supporting or following creators. |
+| `fanbox creators` | `pixiv fanbox creators [--relation supporting\|following] [--page N --limit N]` | Supporting or following creators. |
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Posts from a creator, tag, post ID or supported FANBOX URL. |
 | `fanbox tags` | `pixiv fanbox tags CREATOR` | Featured tags of a creator. |
 | `fanbox home` / `supporting` | `pixiv fanbox home\|supporting [--page N --limit N]` | Authenticated home or supporting feed. |
@@ -313,7 +315,7 @@ Verified on the authenticated App API for illustration `search` with a tag `--se
 | `detail --type novel` | positive ID | metadata; `--content` → `content_unavailable` without calling the rejected endpoint, no WebView fallback |
 | `detail --type artwork` | positive ID, or HTTPS `pixiv.net`/`www.pixiv.net` `/artworks/{id}` (optional locale segment, query, fragment) | |
 | `detail --type novel\|user` | positive numeric IDs | user/novel URLs are never reinterpreted as artwork URLs; unsupported shapes fail locally |
-| `detail` (stdin records) | `illust`, `manga`, `ugoira`, generic `artwork` → artwork detail; `novel`, `user` → matching detail | `--ndjson` = records, `--json` = one array, omitted + non-TTY = NDJSON; aggregate `search --json` not accepted |
+| `detail` (stdin records) | `artwork` (any `content_type`) → artwork detail; `novel`, `user` → matching detail | `--ndjson` = records, `--json` = one array, omitted + non-TTY = NDJSON; aggregate `search --json` not accepted |
 | `user follow add/remove`, `follow add/remove` | positive numeric user ID or canonical user Record | profile URLs rejected locally; `--restrict` `public` (default) or `private`; success output stays empty |
 | `download` | artwork refs, allowed CDN URLs, `/users/{id}`, `/users/{id}/artworks`, `/users/{id}/bookmarks/artworks` | user/bookmark sources paginate `illust`, `manga`, `ugoira` and dedupe by first appearance; series URLs rejected; App OAuth required, no Web fallback; URL parsing is local (no HTML fetch, no redirects) |
 

@@ -177,3 +177,21 @@ func TestOAuthRejectsMalformedTokenResponses(t *testing.T) {
 		api.Close()
 	}
 }
+
+func TestArtworkPreservesUnknownContentType(t *testing.T) {
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"illust":{"id":101,"type":"future_art","create_date":"2026-01-01T00:00:00Z","user":{"id":7}}}`)
+	}))
+	defer api.Close()
+	httpClient := api.Client()
+	transport := httpClient.Transport.(*http.Transport)
+	transport.TLSClientConfig.ServerName = api.Listener.Addr().(*net.TCPAddr).IP.String()
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
+	}
+	client, err := pixiv.NewWith("access-canary", pixiv.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	artwork, err := client.Artwork(t.Context(), pixiv.ArtworkRequest{ArtworkID: 101})
+	require.NoError(t, err)
+	require.Equal(t, pixiv.ContentType("future_art"), artwork.ContentType)
+}
