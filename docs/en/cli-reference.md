@@ -210,7 +210,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `search` | `--provider` | `reverse_search_provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
 | `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`; artwork search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork: `tag-partial`, `tag-exact`, `title-caption`, `tag-title-caption`; novel: first three. |
-| `search`, `novel search` | `--sort` | `date_desc` | `date_desc` or `date_asc`. |
+| `search`, `novel search` | `--sort` | `date_desc` | Accepted SDK values: `date_desc`, `date_asc`, `popular_desc`. |
 | `search` | `--period` | empty | Artwork: `day`, `week`, `month`, `half-year`, `year`; exclusive with `--start-date`/`--end-date`. |
 | `novel search` | `--period` | empty | `day`, `week`, `month`. |
 | `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD`; start ≤ end. Artwork only. |

@@ -97,7 +97,7 @@ func New(env environment.Env, exec session.Executor, reverseSearch ReverseSearch
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
-	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc, popular_desc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
 	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
 	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")

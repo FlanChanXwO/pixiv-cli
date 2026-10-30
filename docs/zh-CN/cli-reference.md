@@ -210,7 +210,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `search` | `--provider` | `reverse_search_provider`（`saucenao`） | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；仅图片来源。 |
 | `search` | `--content-type` | `all` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；仅作品搜索。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | 作品：`tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；小说：前三个。 |
-| `search`、`novel search` | `--sort` | `date_desc` | `date_desc` 或 `date_asc`。 |
+| `search`、`novel search` | `--sort` | `date_desc` | 接受 SDK 的取值：`date_desc`、`date_asc`、`popular_desc`。 |
 | `search` | `--period` | 空 | 作品：`day`、`week`、`month`、`half-year`、`year`；与 `--start-date`/`--end-date` 互斥。 |
 | `novel search` | `--period` | 空 | `day`、`week`、`month`。 |
 | `search` | `--start-date` / `--end-date` | 空 | 含端点的 `YYYY-MM-DD`；start ≤ end。仅作品。 |
