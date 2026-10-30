@@ -8,7 +8,6 @@ import (
 )
 
 func TestParsePlanKeepsCLIAndMCPRules(t *testing.T) {
-	zero, one, three := 0, 1, 3
 	for _, tc := range []struct {
 		name              string
 		limit, page       int
@@ -36,6 +35,10 @@ func TestParsePlanKeepsCLIAndMCPRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseInputKeepsOptionalValues(t *testing.T) {
+	zero, one, three := 0, 1, 3
 	for _, tc := range []struct {
 		limit, page *int
 		want        pagination.PagePlan
