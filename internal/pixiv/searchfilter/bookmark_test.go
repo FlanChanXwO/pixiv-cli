@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBookmarkFilterContract(t *testing.T) {
+func TestBookmarkRangeContract(t *testing.T) {
 	min, max := 5, 10
 	negative := -1
 	lo, hi := 10, 5
@@ -43,7 +43,9 @@ func TestBookmarkFilterContract(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestBookmarkStrategyContract(t *testing.T) {
 	strategies := []struct {
 		requested  string
 		membership BookmarkMembership
