@@ -50,13 +50,13 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "creators",
 		Short: "List supporting or following FANBOX creators",
-		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --kind supporting|following"),
+		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --relation supporting|following"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runCreators(cmd, opts, kind)
 		},
 	}
 	environment.BindFanboxListFlags(cmd, &opts.jsonOut, &opts.ndjson, &opts.limit, &opts.page)
-	cmd.Flags().StringVar(&kind, "kind", kind, "creator list kind: supporting or following")
+	cmd.Flags().StringVar(&kind, "relation", kind, "creator list kind: supporting or following")
 	a.env.BindNoInput(cmd)
 	return cmd
 }
@@ -78,7 +78,7 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind str
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
 			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "creators", jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
 			return printCreators(a.env.Out, items)
 		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
 	})
@@ -113,7 +113,7 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts options)
 		if err != nil {
 			return err
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, fetch)
 	})
@@ -287,7 +287,7 @@ func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanb
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, "posts", jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
 			return printPosts(a.env.Out, items)
 		}, func(item fanbox.Post) any { return item }, bind(client))
 	})

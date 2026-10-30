@@ -17,15 +17,15 @@ import (
 
 func (t pixivTools) registerTimelineFollowing(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_following", Description: "Browse artworks or novels from followed users.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel)}, "kind"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "restrict": schemas.EnumString("Visibility; omitted defaults to public.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "type": schemas.EnumString("Required entity type.", kindArtwork, kindNovel)}, "type"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineFollowingIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineFollowingHandler(ctx, input)
 	})
 }
 
-// timelineFollowingIn 的 kind 选择作品或小说；输出统一为 records envelope。
+// timelineFollowingIn 的 type 选择作品或小说；输出统一为 records envelope。
 type timelineFollowingIn struct {
-	Kind string `json:"kind"`
+	Type string `json:"type"`
 
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
@@ -41,13 +41,13 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 	if in.Restrict == "" {
 		in.Restrict = string(pixiv.RestrictPublic)
 	}
-	if in.Kind != kindNovel && in.NovelFilter != nil {
-		return outputs.Error(errors.New("novel_filter requires kind=novel"))
+	if in.Type != kindNovel && in.NovelFilter != nil {
+		return outputs.Error(errors.New("novel_filter requires type=novel"))
 	}
-	if in.Kind == kindNovel && in.IllustFilter != nil {
+	if in.Type == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -93,13 +93,13 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 }
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required content type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(contentNovel))}, "content_type"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required entity type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(contentNovel))}, "content_type"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineLatestHandler(ctx, input)
 	})
 }
 
-// timelineLatestIn 的 kind 选择插画、漫画或小说；输出统一为 records envelope。
+// timelineLatestIn 的 type 选择插画、漫画或小说；输出统一为 records envelope。
 type timelineLatestIn struct {
 	ContentType pixiv.SearchContentType `json:"content_type"`
 

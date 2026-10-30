@@ -64,15 +64,15 @@ func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mc
 }
 func (t pixivTools) registerMypixiv(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_mypixiv", Description: "Browse MyPixiv artworks, novels or users for the authenticated account.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "kind": schemas.EnumString("Required content type.", kindArtwork, kindNovel, kindUser)}, "kind"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "user_filter": filters.UserFilterSchema(), "type": schemas.EnumString("Required entity type.", kindArtwork, kindNovel, kindUser)}, "type"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input mypixivIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.mypixivHandler(ctx, input)
 	})
 }
 
-// mypixivIn 的 kind 选择作品、小说或用户列表；输出统一为 records envelope。
+// mypixivIn 的 type 选择作品、小说或用户列表；输出统一为 records envelope。
 type mypixivIn struct {
-	Kind string `json:"kind"`
+	Type string `json:"type"`
 
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
@@ -85,19 +85,19 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.Kind != kindNovel && in.NovelFilter != nil {
-		return outputs.Error(errors.New("novel_filter requires kind=novel"))
+	if in.Type != kindNovel && in.NovelFilter != nil {
+		return outputs.Error(errors.New("novel_filter requires type=novel"))
 	}
-	if in.Kind == kindNovel && in.IllustFilter != nil {
+	if in.Type == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.Kind != kindUser && in.UserFilter != nil {
-		return outputs.Error(errors.New("user_filter requires kind=user"))
+	if in.Type != kindUser && in.UserFilter != nil {
+		return outputs.Error(errors.New("user_filter requires type=user"))
 	}
-	if in.Kind == kindUser && (in.IllustFilter != nil || in.NovelFilter != nil) {
+	if in.Type == kindUser && (in.IllustFilter != nil || in.NovelFilter != nil) {
 		return outputs.Error(errors.New("user records only accept user_filter"))
 	}
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -119,7 +119,7 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
 		return outputs.Result(out), out, nil
 	}
-	if in.Kind == kindUser {
+	if in.Type == kindUser {
 		ctx, err = filters.WithUserFilter(ctx, in.UserFilter)
 		if err != nil {
 			return outputs.Error(err)
@@ -189,7 +189,7 @@ func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	})
 }
 
-// userRelationsIn 的 kind 区分关注者、关注中、相关用户与屏蔽列表。
+// userRelationsIn 的 type 区分关注者、关注中、相关用户与屏蔽列表。
 type userRelationsIn struct {
 	Relation   string              `json:"relation"`
 	UserID     int64               `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`

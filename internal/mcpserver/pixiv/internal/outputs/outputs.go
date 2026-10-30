@@ -61,36 +61,27 @@ func DetailError(err error) (*mcp.CallToolResult, Detail, error) {
 	return RecordResult(out.Records, true, errorMessage(err)), out, nil
 }
 
-// RecommendedPagination 分别保存四条推荐流的分页。请求没有处理的流对应字段为 nil；
-// 处理过但结果为零条时字段非 nil。next_cursor 只对单一的 kind 与筛选组合有效。
-type RecommendedPagination struct {
-	Illust *toolhost.PaginationOut `json:"illust,omitempty"`
-	Manga  *toolhost.PaginationOut `json:"manga,omitempty"`
-	Novel  *toolhost.PaginationOut `json:"novel,omitempty"`
-	User   *toolhost.PaginationOut `json:"user,omitempty"`
-}
-
-// Recommended 承载 recommended 工具的输出。
+// Recommended 按实体命名空间保存已请求的推荐分区，每个分区独立分页。
 type Recommended struct {
-	Records    []record.Record       `json:"records"`
-	Pagination RecommendedPagination `json:"pagination"`
+	Artworks *Records `json:"artworks,omitempty"`
+	Novels   *Records `json:"novels,omitempty"`
+	Users    *Records `json:"users,omitempty"`
 }
 
-// NewRecommended 返回 records 为非 nil 空数组的输出，便于直接序列化。
-func NewRecommended() Recommended {
-	return Recommended{Records: []record.Record{}}
+// RecommendedResult 生成已请求分区的记录摘要。
+func RecommendedResult(out Recommended) *mcp.CallToolResult {
+	records := []record.Record{}
+	for _, section := range []*Records{out.Artworks, out.Novels, out.Users} {
+		if section != nil {
+			records = append(records, section.Records...)
+		}
+	}
+	return RecordResult(records, false, "")
 }
 
-// RecommendedError 返回 isError 的 recommended 结果，分页为空。
+// RecommendedError 返回 isError 的推荐结果。
 func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
-	out := NewRecommended()
-	return RecordResult(out.Records, true, errorMessage(err)), out, nil
-}
-
-// RecommendedPage 把一条推荐流的分页包成指针，供 RecommendedPagination 使用。
-func RecommendedPage(plan pagination.PagePlan, limit *int, returned int, more bool) *toolhost.PaginationOut {
-	value := toolhost.ListPagination(plan, limit, returned, more)
-	return &value
+	return RecordResult(nil, true, errorMessage(err)), Recommended{}, nil
 }
 
 // TrendingTags 承载 trending_tags_illust 工具的输出。

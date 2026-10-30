@@ -16,28 +16,28 @@ import (
 
 func (t pixivTools) registerCommentCreate(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_create", Description: "Create a top-level comment on an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(commentCreateCommentProperties(), []string{"kind", "id", "comment"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(commentCreateCommentProperties(), []string{"type", "id", "comment"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.commentCreateHandler(ctx, input)
 	})
 }
 
-// commentCreateIn 的 kind 决定评论作品还是小说；输出沿用评论 mutation 的 envelope。
+// commentCreateIn 的 type 决定评论作品还是小说；输出沿用评论 mutation 的 envelope。
 type commentCreateIn struct {
-	Kind    string `json:"kind"`
+	Type    string `json:"type"`
 	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
 	Comment string `json:"comment" jsonschema:"comment body"`
 }
 
 func commentCreateCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":    schemas.EnumString("Target content type.", kindArtwork, kindNovel),
+		"type":    schemas.EnumString("Target entity type.", kindArtwork, kindNovel),
 		"id":      schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment": map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
 	}
 }
 
 func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		out := outputs.Mutation{
 			Action:  "create_novel_comment",
 			NovelID: in.ID,
@@ -79,19 +79,19 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 }
 func (t pixivTools) registerCommentDelete(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_delete", Description: "Delete an artwork or novel comment by comment ID.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(map[string]any{"kind": schemas.EnumString("Target content type.", kindArtwork, kindNovel), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"kind", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(map[string]any{"type": schemas.EnumString("Target entity type.", kindArtwork, kindNovel), "comment_id": schemas.PositiveInteger("Positive Pixiv comment ID.")}, []string{"type", "comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.commentDeleteHandler(ctx, input)
 	})
 }
 
-// commentDeleteIn 的 kind 决定删除作品还是小说下的评论。
+// commentDeleteIn 的 type 决定删除作品还是小说下的评论。
 type commentDeleteIn struct {
-	Kind      string `json:"kind"`
+	Type      string `json:"type"`
 	CommentID int64  `json:"comment_id" jsonschema:"positive comment ID"`
 }
 
 func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		out := outputs.Mutation{
 			Action:    "delete_novel_comment",
 			CommentID: in.CommentID,
@@ -117,14 +117,14 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 }
 func (t pixivTools) registerCommentReply(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_reply", Description: "Reply to an artwork or novel comment.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(commentReplyCommentProperties(), []string{"kind", "id", "comment", "parent_comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(commentReplyCommentProperties(), []string{"type", "id", "comment", "parent_comment_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.commentReplyHandler(ctx, input)
 	})
 }
 
-// commentReplyIn 的 kind 决定评论所属的作品或小说，parent_comment_id 为被回复的评论。
+// commentReplyIn 的 type 决定评论所属的作品或小说，parent_comment_id 为被回复的评论。
 type commentReplyIn struct {
-	Kind            string `json:"kind"`
+	Type            string `json:"type"`
 	ID              int64  `json:"id" jsonschema:"positive artwork or novel ID"`
 	Comment         string `json:"comment" jsonschema:"comment body"`
 	ParentCommentID int64  `json:"parent_comment_id" jsonschema:"positive parent comment ID"`
@@ -132,7 +132,7 @@ type commentReplyIn struct {
 
 func commentReplyCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":              schemas.EnumString("Target content type.", kindArtwork, kindNovel),
+		"type":              schemas.EnumString("Target entity type.", kindArtwork, kindNovel),
 		"id":                schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment":           map[string]any{"type": "string", "minLength": 1, "description": "Non-empty comment body."},
 		"parent_comment_id": schemas.PositiveInteger("Positive parent comment ID."),
@@ -140,7 +140,7 @@ func commentReplyCommentProperties() map[string]any {
 }
 
 func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		out := outputs.Mutation{
 			Action:  "reply_novel_comment",
 			NovelID: in.ID,
@@ -184,14 +184,14 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 }
 func (t pixivTools) registerCommentStamp(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_comment_stamp", Description: "Add a stamp comment to an artwork or novel.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: false, OpenWorldHint: new(true)},
-		InputSchema: schemas.ClosedObject(commentStampCommentProperties(), []string{"kind", "id", "stamp_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
+		InputSchema: schemas.ClosedObject(commentStampCommentProperties(), []string{"type", "id", "stamp_id"})}, func(ctx context.Context, request *mcp.CallToolRequest, input commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.commentStampHandler(ctx, input)
 	})
 }
 
-// commentStampIn 的 kind 决定贴图落在作品还是小说下；stamp_id 是 Pixiv 的贴图编号。
+// commentStampIn 的 type 决定贴图落在作品还是小说下；stamp_id 是 Pixiv 的贴图编号。
 type commentStampIn struct {
-	Kind    string `json:"kind"`
+	Type    string `json:"type"`
 	ID      int64  `json:"id" jsonschema:"positive artwork or novel ID"`
 	Comment string `json:"comment" jsonschema:"comment body"`
 	StampID int64  `json:"stamp_id" jsonschema:"positive stamp ID"`
@@ -199,7 +199,7 @@ type commentStampIn struct {
 
 func commentStampCommentProperties() map[string]any {
 	return map[string]any{
-		"kind":     schemas.EnumString("Target content type.", kindArtwork, kindNovel),
+		"type":     schemas.EnumString("Target entity type.", kindArtwork, kindNovel),
 		"id":       schemas.PositiveInteger("Positive Pixiv artwork or novel ID."),
 		"comment":  map[string]any{"type": "string", "description": "Optional comment body; empty is the sticker-only wire form."},
 		"stamp_id": schemas.PositiveInteger("Positive Pixiv stamp ID."),
@@ -207,7 +207,7 @@ func commentStampCommentProperties() map[string]any {
 }
 
 func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) (*mcp.CallToolResult, outputs.Mutation, error) {
-	if in.Kind == kindNovel {
+	if in.Type == kindNovel {
 		out := outputs.Mutation{
 			Action:  "stamp_novel_comment",
 			NovelID: in.ID,
@@ -256,9 +256,9 @@ func (t pixivTools) registerComments(server *mcp.Server) {
 	})
 }
 
-// commentsIn 的 kind 决定读取作品还是小说的评论。
+// commentsIn 的 type 决定读取作品还是小说的评论。
 type commentsIn struct {
-	Kind string `json:"kind"`
+	Type string `json:"type"`
 	ID   int64  `json:"id" jsonschema:"positive artwork or novel ID"`
 	toolrun.ListIn
 }
@@ -277,7 +277,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
-		if in.Kind == kindNovel {
+		if in.Type == kindNovel {
 			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: in.ID, Cursor: cursor})
 		} else {
 			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: in.ID, Cursor: cursor})
@@ -304,8 +304,8 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 
 func commentsInputSchema() map[string]any {
 	schema := schemas.CommentInputSchema()
-	schema["properties"].(map[string]any)["kind"] = schemas.EnumString("Target content type.", kindArtwork, kindNovel)
-	schema["required"] = []string{"kind", "id"}
+	schema["properties"].(map[string]any)["type"] = schemas.EnumString("Target entity type.", kindArtwork, kindNovel)
+	schema["required"] = []string{"type", "id"}
 	return schema
 }
 
