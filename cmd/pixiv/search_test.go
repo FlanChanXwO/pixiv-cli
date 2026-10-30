@@ -33,10 +33,11 @@ func TestSearchOutputContract(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true, IsCA: true,
-		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net"},
+		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
+
 	server := httptest.NewUnstartedServer(http.HandlerFunc(pixivHandler))
 	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	server.StartTLS()
@@ -44,13 +45,14 @@ func TestSearchOutputContract(t *testing.T) {
 	caPath := filepath.Join(t.TempDir(), "fixture-ca.pem")
 	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
 	t.Setenv("SSL_CERT_FILE", caPath)
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		proxyPixiv(w, r, server.Listener.Addr().String())
-	}))
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { proxyPixiv(w, r, server.Listener.Addr().String()) }))
 	t.Cleanup(proxy.Close)
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "artist", false)
 	assertSearchOutput(t, proxy.URL)
+	assertEscapesUpstreamText(t, proxy.URL)
+	assertFanboxPropagatesWriteError(t, proxy.URL)
+	assertAdditionalEscaping(t, proxy.URL)
 }
 
 func assertSearchOutput(t *testing.T, proxyURL string) {
@@ -91,10 +93,34 @@ func proxyPixiv(w http.ResponseWriter, _ *http.Request, address string) {
 }
 
 func pixivHandler(w http.ResponseWriter, r *http.Request) {
+	artwork := `{"id":101,"title":"line\n\u001b[31m","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"line\n\u001b[31m"},"tags":[{"name":"line\n\u001b[31m"}],"caption":"line<br>next"}`
+	novel := `{"x_restrict":0,"text_length":1,"is_original":false,"id":101,"title":"line\n\u001b[31m","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}`
 	switch r.URL.Path {
 	case "/auth/token":
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"12345678","name":"artist"}}`)
+	case "/creator.listFollowing":
+		fmt.Fprint(w, `{"body":{"creators":[{"creatorId":"line\n\u001b[31m"}]}}`)
+	case "/post.listCreator":
+		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
+	case "/v1/illust/detail":
+		fmt.Fprintf(w, `{"illust":%s}`, artwork)
+	case "/v2/novel/series":
+		fmt.Fprintf(w, `{"novel_series_detail":{"id":101,"title":"line\n\u001b[31m","user":{"id":7,"name":"artist"}},"novels":[%s],"next_url":null}`, novel)
+	case "/v2/illust/bookmark/detail":
+		fmt.Fprint(w, `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"is_registered":true,"name":"line\n\u001b[31m"}]}}`)
+	case "/v2/novel/detail":
+		fmt.Fprintf(w, `{"novel":%s}`, novel)
+	case "/v1/search/novel":
+		fmt.Fprintf(w, `{"novels":[%s],"next_url":null}`, novel)
+	case "/v3/illust/comments":
+		fmt.Fprint(w, `{"comments":[{"id":1,"comment":"line\n\u001b[31m","date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"}}],"next_url":null}`)
+	case "/v1/user/bookmark-tags/illust":
+		fmt.Fprint(w, `{"bookmark_tags":[{"name":"line\n\u001b[31m","count":1}],"next_url":null}`)
 	case "/v1/search/illust":
+		if r.URL.Query().Get("word") == "unsafe" {
+			fmt.Fprintf(w, `{"illusts":[%s],"next_url":null}`, artwork)
+			return
+		}
 		fmt.Fprint(w, `{"illusts":[{"id":101,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`)
 	default:
 		http.NotFound(w, r)

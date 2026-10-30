@@ -8,23 +8,10 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// PrintUserPreviews 每个用户预览输出一行，格式为 ID 和用户名。
+// PrintUserPreviews 转义用户名，每个用户预览输出一行。
 func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
-	return printUserPreviews(out, users, false)
-}
-
-// PrintUserPreviewsSafe 转义用户名，供直接回显上游文本的用户命令使用。
-func PrintUserPreviewsSafe(out io.Writer, users []pixiv.UserPreview) error {
-	return printUserPreviews(out, users, true)
-}
-
-func printUserPreviews(out io.Writer, users []pixiv.UserPreview, safe bool) error {
 	for _, item := range users {
-		name := item.User.Name
-		if safe {
-			name = SafeLine(name)
-		}
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, name); err != nil {
+		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, SafeLine(item.User.Name)); err != nil {
 			return err
 		}
 	}

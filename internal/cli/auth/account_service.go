@@ -225,9 +225,7 @@ func (s AccountService) listWithContext(ctx context.Context) (accountListOut, er
 	if err != nil {
 		return accountListOut{}, err
 	}
-	// 保持已发布的 JSON 契约：空账号库序列化为 "accounts": null，与合并 DTO 之前的
-	// 账号列表输出一致。
-	var result accountListOut
+	result := accountListOut{Accounts: make([]accountOut, 0, len(accounts))}
 	for _, account := range accounts {
 		result.Accounts = append(result.Accounts, accountFromPixiv(account))
 		if account.Default {

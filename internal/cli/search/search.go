@@ -97,7 +97,7 @@ func New(env environment.Env, exec session.Executor, reverseSearch ReverseSearch
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
-	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc, popular_desc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
 	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
 	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
@@ -201,6 +201,9 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return a.runTrendingTags(cmd, opts.Options)
 	}
+	if err := validateSort(opts.sortMode); err != nil {
+		return err
+	}
 	entity, err := resolveEntityType(opts.typ)
 	if err != nil {
 		return err
@@ -282,7 +285,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworksSearch(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 type artworkSearchOut struct {
@@ -354,7 +357,7 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, it
 	if _, err := fmt.Fprintf(a.env.Out, "illustrations for %q\n", word); err != nil {
 		return err
 	}
-	return display.PrintArtworksSearch(a.env.Out, items)
+	return display.PrintArtworks(a.env.Out, items)
 }
 
 func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.Options) error {
@@ -596,4 +599,13 @@ func quickDateRange(value string, now time.Time) (startDate, endDate string, ok 
 func validDate(value string) bool {
 	parsed, err := time.Parse("2006-01-02", value)
 	return err == nil && parsed.Format("2006-01-02") == value
+}
+
+func validateSort(value string) error {
+	switch pixiv.SortMode(value) {
+	case "", pixiv.SortModeDateDesc, pixiv.SortModeDateAsc, pixiv.SortModePopularDesc:
+		return nil
+	default:
+		return errors.New("sort must be one of: date_desc, date_asc, popular_desc; see pixiv search --help")
+	}
 }

@@ -1,11 +1,20 @@
 package main_test
 
 import (
+	"bytes"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBrowserProvidersStayRegistered 覆盖 fanbox auth 的 blank import：删掉任一 provider
@@ -19,5 +28,60 @@ func TestBrowserProvidersStayRegistered(t *testing.T) {
 		if err == nil {
 			_ = provider.Close()
 		}
+	}
+}
+
+func assertEscapesUpstreamText(t *testing.T, proxy string) {
+	t.Helper()
+	db, err := database.Open(filepath.Join(os.Getenv("HOME"), paths.AppDataDirName))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	acct := account.New(7, "artist", "artist", []byte("synthetic-session"))
+	acct.ValidatedAt = 1
+	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
+
+	for _, args := range [][]string{
+		{"fanbox", "creators", "--kind", "following"}, {"fanbox", "posts", "artist"},
+		{"detail", "101"}, {"detail", "101", "--type", "novel"},
+		{"search", "unsafe"}, {"search", "unsafe", "--type", "novel"},
+		{"comment", "101", "--type", "artwork"}, {"bookmark", "tags"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runCLI(t, append(args, "--proxy", proxy)...)
+			require.Zero(t, code, stderr)
+			require.NotContains(t, stdout, "\x1b")
+			require.Contains(t, stdout, `line\n\x1b[31m`)
+		})
+	}
+}
+
+func assertFanboxPropagatesWriteError(t *testing.T, proxy string) {
+	t.Helper()
+	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
+		t.Run(args[0], func(t *testing.T) {
+			var stderr bytes.Buffer
+			code := cli.Run(t.Context(), append([]string{"pixiv", "fanbox", "--proxy", proxy}, args...), strings.NewReader(""), failedOutput{}, &stderr)
+			require.Equal(t, 1, code)
+			require.Equal(t, "error: fixture write failed\n", stderr.String())
+		})
+	}
+}
+
+type failedOutput struct{}
+
+func (failedOutput) Write([]byte) (int, error) { return 0, errors.New("fixture write failed") }
+
+func assertAdditionalEscaping(t *testing.T, proxy string) {
+	t.Helper()
+	for _, args := range [][]string{{"series", "101", "--type", "novel"}, {"bookmark", "detail", "101"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runCLI(t, append(args, "--proxy", proxy)...)
+			require.Zero(t, code, stderr)
+			require.NotContains(t, stdout, "\x1b")
+			require.Contains(t, stdout, `line\n\x1b[31m`)
+			if args[0] == "series" {
+				require.Contains(t, stdout, `series 101: line\n\x1b[31m`)
+			}
+		})
 	}
 }

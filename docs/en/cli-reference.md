@@ -210,7 +210,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `search` | `--provider` | `reverse_search_provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
 | `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`; artwork search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork: `tag-partial`, `tag-exact`, `title-caption`, `tag-title-caption`; novel: first three. |
-| `search`, `novel search` | `--sort` | `date_desc` | `date_desc` or `date_asc`. |
+| `search`, `novel search` | `--sort` | `date_desc` | Accepted SDK values: `date_desc`, `date_asc`, `popular_desc`. |
 | `search` | `--period` | empty | Artwork: `day`, `week`, `month`, `half-year`, `year`; exclusive with `--start-date`/`--end-date`. |
 | `novel search` | `--period` | empty | `day`, `week`, `month`. |
 | `search` | `--start-date` / `--end-date` | empty | Inclusive `YYYY-MM-DD`; start ≤ end. Artwork only. |
@@ -412,6 +412,14 @@ flowchart LR
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI; lowercase wins on case-sensitive systems; Windows treats both as one variable. |
 
 Data commands select the explicit/default account (pool off) or an eligible DB account (pool on); they accept no credential-selection flags.
+
+### Text output and failures
+
+Upstream titles, names, comments, tags and descriptions are escaped to a single line in text output; control characters appear as printable escapes. JSON and NDJSON retain the original values. FANBOX creator and post commands return a failure if writing output fails.
+
+With default text logging, a failed command writes one `error: <message>` line to stderr. Missing Pixiv credentials produce `error: not logged in; run "pixiv auth login"`; FANBOX uses `pixiv fanbox auth import`. Invalid arguments, upstream HTTP status, timeouts and cancellation include a suggested next step. Local enum arguments, including `ranking --mode`, are checked before opening an account. SDK error codes and MCP structured errors retain their existing contracts.
+
+An empty `pixiv auth list --json` result contains `"accounts": []`.
 
 ### Removed anonymous web fallback
 

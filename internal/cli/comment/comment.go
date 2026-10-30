@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
@@ -501,7 +502,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			return true, err
 		}
 		for _, item := range comments {
-			if _, err := fmt.Fprintf(a.env.Out, "%d %s: %s\n", item.ID, item.User.Name, item.Comment); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "%d %s: %s\n", item.ID, display.SafeLine(item.User.Name), display.SafeLine(item.Comment)); err != nil {
 				return true, err
 			}
 		}

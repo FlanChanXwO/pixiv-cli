@@ -210,7 +210,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `search` | `--provider` | `reverse_search_provider`（`saucenao`） | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；仅图片来源。 |
 | `search` | `--content-type` | `all` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；仅作品搜索。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | 作品：`tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；小说：前三个。 |
-| `search`、`novel search` | `--sort` | `date_desc` | `date_desc` 或 `date_asc`。 |
+| `search`、`novel search` | `--sort` | `date_desc` | 接受 SDK 的取值：`date_desc`、`date_asc`、`popular_desc`。 |
 | `search` | `--period` | 空 | 作品：`day`、`week`、`month`、`half-year`、`year`；与 `--start-date`/`--end-date` 互斥。 |
 | `novel search` | `--period` | 空 | `day`、`week`、`month`。 |
 | `search` | `--start-date` / `--end-date` | 空 | 含端点的 `YYYY-MM-DD`；start ≤ end。仅作品。 |
@@ -412,6 +412,14 @@ flowchart LR
 | `https_proxy` / `HTTPS_PROXY` | 空 | 代理 URI；区分大小写的系统上小写优先；Windows 把两者视为同一变量。 |
 
 数据命令在账号池关闭时使用显式/默认账号，开启时使用可用的数据库账号；不接受凭据选择参数。
+
+### 文本输出与失败
+
+文本输出将上游标题、用户名、评论、标签与简介转义为单行，控制字符显示为可打印的转义序列。JSON 与 NDJSON 保留原始值。FANBOX 创作者和帖子命令写入输出失败时会返回错误。
+
+默认文本日志下，命令失败向 stderr 输出一行 `error: <message>`。缺少 Pixiv 凭据时输出 `error: not logged in; run "pixiv auth login"`；FANBOX 的登录命令为 `pixiv fanbox auth import`。参数无效、上游 HTTP 状态、超时与取消的错误均给出下一步。本地枚举参数（含 `ranking --mode`）先于打开账号校验。SDK 错误码与 MCP 结构化错误保持现有契约。
+
+`pixiv auth list --json` 的空账号列表输出 `"accounts": []`。
 
 ### 移除的匿名 web fallback
 

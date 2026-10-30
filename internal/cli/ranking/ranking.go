@@ -62,6 +62,15 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	if opts.typ == string(target.ResultKindNovel) && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
+	switch pixiv.RankingMode(opts.mode) {
+	case "", pixiv.RankingModeDay, pixiv.RankingModeDayMale, pixiv.RankingModeDayFemale, pixiv.RankingModeWeek,
+		pixiv.RankingModeWeekOriginal, pixiv.RankingModeWeekRookie, pixiv.RankingModeMonth,
+		pixiv.RankingModeDayManga, pixiv.RankingModeWeekManga, pixiv.RankingModeMonthManga,
+		pixiv.RankingModeWeekRookieManga, pixiv.RankingModeDayR18, pixiv.RankingModeDayMaleR18,
+		pixiv.RankingModeDayFemaleR18, pixiv.RankingModeWeekR18, pixiv.RankingModeWeekR18G:
+	default:
+		return errors.New("mode must be one of: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; see pixiv ranking --help")
+	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err

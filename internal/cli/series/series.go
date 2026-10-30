@@ -171,7 +171,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			}
 			return true, nil
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "series %d: %s\n", metadata.ID, metadata.Title); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, "series %d: %s\n", metadata.ID, display.SafeLine(metadata.Title)); err != nil {
 			return true, err
 		}
 		if err := display.PrintNovels(a.env.Out, novels); err != nil {

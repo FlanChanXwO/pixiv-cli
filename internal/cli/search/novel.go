@@ -54,7 +54,7 @@ func (a commandRunner) newNovelSearchCommand() *cobra.Command {
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
 	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption")
-	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc, popular_desc")
 	flags.StringVar(&opts.period, "period", "", "time range: day, week, month")
 	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	a.env.BindTextValue(cmd, 1, -1, 0)
@@ -63,6 +63,9 @@ func (a commandRunner) newNovelSearchCommand() *cobra.Command {
 }
 
 func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts novelOptions) error {
+	if err := validateSort(opts.sortMode); err != nil {
+		return err
+	}
 	target, err := resolveNovelSearchBy(opts.searchBy)
 	if err != nil {
 		return err
