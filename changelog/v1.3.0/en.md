@@ -126,4 +126,5 @@
   [#265](https://github.com/FlanChanXwO/pixiv-cli/pull/265)
   [#266](https://github.com/FlanChanXwO/pixiv-cli/pull/266)
   [#267](https://github.com/FlanChanXwO/pixiv-cli/pull/267)
+  [#272](https://github.com/FlanChanXwO/pixiv-cli/pull/272)
 -->
