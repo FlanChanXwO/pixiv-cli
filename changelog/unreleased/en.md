@@ -13,7 +13,8 @@
 
 ## Changed
 
-- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. FANBOX downloads keep stdout empty on success and no longer print saved paths. Scripts parsing text should switch to `--json` or `--ndjson`; their output is unchanged.
+- CLI text output uses readable account identities, status labels, single-line lists without headings, and detail cards. Empty results print `No results.` on stderr with exit code 0. For commands that support `--json` or `--ndjson`, scripts parsing text should use those options; their output is unchanged.
+- `pixiv fanbox download` keeps stdout empty on success and no longer prints saved paths. This command has no `--json` or `--ndjson` option.
 
 - JSON logs restore ERROR command-failure records. Debug logs add the SDK error creation site and safe typed network details, including OAuth token exchange failures.
 
