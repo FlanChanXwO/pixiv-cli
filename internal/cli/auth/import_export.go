@@ -80,18 +80,17 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		if opts.jsonOut {
 			return a.env.PrintJSON(result)
 		}
+		list, err := service.listWithContext(cmd.Context())
+		if err != nil {
+			return err
+		}
 		for _, account := range result.Accounts {
 			if _, err := fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(account.Status), display.Identity(account.Username, account.UserID)); err != nil {
 				return err
 			}
 		}
-		for _, account := range result.Accounts {
-			if account.UserID == result.DefaultUserID {
-				_, err := fmt.Fprintf(a.env.Out, "Now using %s\n", display.Identity(account.Username, account.UserID))
-				return err
-			}
-		}
-		return nil
+		_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, result.DefaultUserID))
+		return err
 	}
 	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
 	if err != nil {
