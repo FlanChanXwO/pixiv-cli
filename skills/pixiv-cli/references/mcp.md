@@ -26,7 +26,7 @@ Do not promise fixed network latency or restart a running server merely to apply
 
 ## Credentials and transport capabilities
 
-One MCP server exposes `pixiv_*` and `fanbox_*` tools with independent product credentials. Use discovery for exact names; unprefixed Pixiv aliases do not exist. Stdio exposes `pixiv_download` and `pixiv_download_random_from_recommendation` through the shared CLI download configuration; HTTP never registers filesystem downloads. Gallery, animation subscriptions and owner tools are HTTP-only. `pixiv_novel_bookmark_tags` migrates to `pixiv_bookmark_tags(kind="novel")`.
+One MCP server exposes `pixiv_*` and `fanbox_*` tools with independent product credentials. Use discovery for exact names; unprefixed Pixiv aliases do not exist. Stdio exposes `pixiv_download` and `pixiv_download_random_from_recommendation` through the shared CLI download configuration; HTTP never registers filesystem downloads. Gallery, animation subscriptions and owner tools are HTTP-only. `pixiv_novel_bookmark_tags` migrates to `pixiv_bookmark_tags(type="novel")`.
 
 Standard read-only, destructive, idempotent and open-world annotations are approval hints, not a replacement for the user's authorization. Reverse search uploads the chosen source to third-party providers. MCP paths refer to the server filesystem, and URLs are fetched from the server network; authorize only trusted connectors. HTTP OAuth uses DCR, owner consent and PKCE, with bearer validation on every HTTP MCP request.
 

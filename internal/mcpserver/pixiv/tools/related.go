@@ -189,7 +189,7 @@ func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	})
 }
 
-// userRelationsIn 的 type 区分关注者、关注中、相关用户与屏蔽列表。
+// userRelationsIn 的 relation 区分关注者、关注中与相关用户；屏蔽列表由 pixiv_blocked_users 提供。
 type userRelationsIn struct {
 	Relation   string              `json:"relation"`
 	UserID     int64               `json:"user_id,omitempty" jsonschema:"optional user ID; defaults to authenticated user"`

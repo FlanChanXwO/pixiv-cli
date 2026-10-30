@@ -331,7 +331,7 @@ flowchart LR
 | `pixiv_novel_bookmark_detail` | 必填正整数 `novel_id`；`{bookmarked, restrict, tags}`，保留缺失/未收藏状态；使用候选的小说收藏详情 App API。 |
 | `pixiv_user_relations` | 必填 `relation=followers\|following\|related`；可选 `user_id`、`restrict`、`page`、`limit`；`user_filter` 仅 following/related；省略 ID = 已认证账号；related 接受但忽略 `restrict`。 |
 | `pixiv_blocked_users` | 可选 `user_id`、兼容 `restrict`、`page`、`limit`；省略 ID = 已认证用户。App 失败直接报告，从不改用 Web fallback。 |
-| `pixiv_bookmark_tags` | 可选 `type`（默认 `artwork` 或 `novel`）、`user_id`、`restrict`、`page`、`limit`；`{bookmark_tags, pagination}`。 |
+| `pixiv_bookmark_tags` | 可选 `type`（默认 `artwork`；`novel` 需显式指定）、`user_id`、`restrict`、`page`、`limit`；`{bookmark_tags, pagination}`。 |
 | `pixiv_bookmark_detail` | 必填正整数 `illust_id`；`{bookmarked, restrict, tags}`；无标签时 `tags` 为 `[]`，包括未收藏作品。 |
 
 所有读取使用同一应用/公开 SDK 路径，保留类型化的认证、授权、not-found、上游、取消与响应格式错误——绝不因缺少可选端口或 App 请求失败而伪造空成功。
