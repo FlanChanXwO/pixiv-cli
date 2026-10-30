@@ -43,7 +43,7 @@ func printArtworkLine(out io.Writer, item pixiv.Artwork) error {
 	for _, tag := range item.Tags {
 		tags = append(tags, SafeLine(tag.Name))
 	}
-	_, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, SafeLine(item.Title), SafeLine(item.User.Name), item.TotalBookmarks, item.TotalViews, strings.Join(tags, ","))
+	_, err := fmt.Fprintf(out, "%d %q by %s bookmarks:%d views:%d tags:%s\n", item.ID, item.Title, SafeLine(item.User.Name), item.TotalBookmarks, item.TotalViews, strings.Join(tags, ","))
 	return err
 }
 

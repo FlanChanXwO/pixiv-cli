@@ -8,6 +8,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/stretchr/testify/require"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,14 +31,22 @@ func TestBrowserProvidersStayRegistered(t *testing.T) {
 	}
 }
 
-func TestFanboxEscapesUpstreamText(t *testing.T) {
+func TestEscapesUpstreamText(t *testing.T) {
 	proxy := fixtureProxy(t)
 	seedFanbox(t)
-	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
-		stdout, stderr, code := runCLI(t, append([]string{"fanbox", "--proxy", proxy}, args...)...)
-		require.Zero(t, code, stderr)
-		require.NotContains(t, stdout, "\x1b")
-		require.Contains(t, stdout, `line\n\x1b[31m`)
+	seedPixivAccount(t, os.Getenv("HOME"), "artist", false)
+	for _, args := range [][]string{
+		{"fanbox", "creators", "--kind", "following"}, {"fanbox", "posts", "artist"},
+		{"detail", "101"}, {"detail", "101", "--type", "novel"},
+		{"search", "unsafe"}, {"search", "unsafe", "--type", "novel"},
+		{"comment", "101", "--type", "artwork"}, {"bookmark", "tags"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runCLI(t, append(args, "--proxy", proxy)...)
+			require.Zero(t, code, stderr)
+			require.NotContains(t, stdout, "\x1b")
+			require.Contains(t, stdout, `line\n\x1b[31m`)
+		})
 	}
 }
 
@@ -56,10 +65,12 @@ func TestFanboxPropagatesWriteError(t *testing.T) {
 	proxy := fixtureProxy(t)
 	seedFanbox(t)
 	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
-		var stderr bytes.Buffer
-		code := cli.Run(t.Context(), append([]string{"pixiv", "fanbox", "--proxy", proxy}, args...), strings.NewReader(""), failedOutput{}, &stderr)
-		require.Equal(t, 1, code)
-		require.Equal(t, "error: fixture write failed\n", stderr.String())
+		t.Run(args[0], func(t *testing.T) {
+			var stderr bytes.Buffer
+			code := cli.Run(t.Context(), append([]string{"pixiv", "fanbox", "--proxy", proxy}, args...), strings.NewReader(""), failedOutput{}, &stderr)
+			require.Equal(t, 1, code)
+			require.Equal(t, "error: fixture write failed\n", stderr.String())
+		})
 	}
 }
 

@@ -88,16 +88,30 @@ func proxyPixiv(w http.ResponseWriter, _ *http.Request, address string) {
 }
 
 func pixivHandler(w http.ResponseWriter, r *http.Request) {
+	artwork := `{"id":101,"title":"line\n\u001b[31m","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"line\n\u001b[31m"},"tags":[{"name":"line\n\u001b[31m"}],"caption":"line<br>next"}`
+	novel := `{"x_restrict":0,"text_length":1,"is_original":false,"id":101,"title":"line\n\u001b[31m","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}`
 	switch r.URL.Path {
 	case "/auth/token":
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"12345678","name":"artist"}}`)
 	case "/creator.listFollowing":
 		fmt.Fprint(w, `{"body":{"creators":[{"creatorId":"line\n\u001b[31m"}]}}`)
-	case "/creator.get":
-		fmt.Fprint(w, `{"body":{"creatorId":"artist","user":{"name":"line\n\u001b[31m"}}}`)
 	case "/post.listCreator":
 		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
+	case "/v1/illust/detail":
+		fmt.Fprintf(w, `{"illust":%s}`, artwork)
+	case "/v2/novel/detail":
+		fmt.Fprintf(w, `{"novel":%s}`, novel)
+	case "/v1/search/novel":
+		fmt.Fprintf(w, `{"novels":[%s],"next_url":null}`, novel)
+	case "/v3/illust/comments":
+		fmt.Fprint(w, `{"comments":[{"id":1,"comment":"line\n\u001b[31m","date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"}}],"next_url":null}`)
+	case "/v1/user/bookmark-tags/illust":
+		fmt.Fprint(w, `{"bookmark_tags":[{"name":"line\n\u001b[31m","count":1}],"next_url":null}`)
 	case "/v1/search/illust":
+		if r.URL.Query().Get("word") == "unsafe" {
+			fmt.Fprintf(w, `{"illusts":[%s],"next_url":null}`, artwork)
+			return
+		}
 		fmt.Fprint(w, `{"illusts":[{"id":101,"title":"cat","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}],"next_url":null}`)
 	default:
 		http.NotFound(w, r)
