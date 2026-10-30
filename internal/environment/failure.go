@@ -67,7 +67,6 @@ func ErrorText(err error) (text string) {
 			}
 			return strings.Replace(err.Error(), current.Error(), strings.Join(messages, "; "), 1)
 		}
-
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "request timed out; check your connection and try again"

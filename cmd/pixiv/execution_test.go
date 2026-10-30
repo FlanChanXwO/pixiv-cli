@@ -108,7 +108,7 @@ func TestEnumsBeforeAccount(t *testing.T) {
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			stdout, stderr, code := runCLI(t, args...)
-			require.NotZero(t, code)
+			require.Equal(t, 1, code)
 			require.Empty(t, stdout)
 			require.Contains(t, stderr, "must be")
 			require.NotContains(t, stderr, "not logged in")
@@ -124,6 +124,7 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 	}{
 		{errors.New("first\nsecond\x1b[31m"), `first\nsecond\x1b[31m`},
 		{fmt.Errorf("write: %w", errors.Join(sdk.NewError("pixiv", "Open", sdk.Unauthorized), errors.New("close failed"))), `write: not logged in; run "pixiv auth login"; close failed`},
+		{sdk.NewError("pixiv", "Search", sdk.InvalidArgument), "invalid argument; check the command's --help"},
 		{sdk.NewError("pixiv", "Search", sdk.InvalidArgument, sdk.WithHTTPStatus(400)), "upstream returned HTTP 400 (Bad Request); check service availability and account access before trying again"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
