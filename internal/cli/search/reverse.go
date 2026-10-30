@@ -169,9 +169,9 @@ func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err 
 	}
 	switch ref.Type {
 	case reversesearch.PixivRefUser:
-		return string(target.ResultKindUser), nil
+		return string(target.NamespaceUser), nil
 	case reversesearch.PixivRefArtwork:
-		return string(target.ResultKindArtwork), nil
+		return string(target.NamespaceArtwork), nil
 	default:
 		return "", errors.New("reverse search returned an invalid Pixiv identity")
 	}

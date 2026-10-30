@@ -76,18 +76,18 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	if kind == "" {
 		return "", errors.New("recommended requires KIND or --type")
 	}
-	if cmd.Flags().Changed("type") && kind != string(target.ResultKindArtwork) && kind != string(target.ResultKindNovel) && kind != string(target.ResultKindUser) && kind != recommendationKindAll {
+	if cmd.Flags().Changed("type") && kind != string(target.NamespaceArtwork) && kind != string(target.NamespaceNovel) && kind != string(target.NamespaceUser) && kind != recommendationKindAll {
 		return "", usage(errors.New("type must be one of artwork, novel, user, all"))
 	}
 	if cmd.Flags().Changed("content-type") {
-		if kind != string(target.ResultKindArtwork) {
+		if kind != string(target.NamespaceArtwork) {
 			return "", usage(errors.New("--content-type is only supported when --type artwork"))
 		}
 		if opts.contentType != string(pixiv.SearchContentTypeAll) && opts.contentType != string(pixiv.SearchContentTypeIllust) && opts.contentType != string(pixiv.SearchContentTypeManga) {
 			return "", usage(errors.New("content-type must be one of all, illust, manga"))
 		}
 	}
-	if kind == string(target.ResultKindArtwork) {
+	if kind == string(target.NamespaceArtwork) {
 		if opts.contentType == string(pixiv.SearchContentTypeManga) {
 			return string(pixiv.SearchContentTypeManga), nil
 		}
@@ -141,7 +141,7 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 }
 
 func validKind(kind string) bool {
-	return kind == recommendationKindAll || kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) || kind == string(target.ResultKindNovel) || kind == string(target.ResultKindUser)
+	return kind == recommendationKindAll || kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) || kind == string(target.NamespaceNovel) || kind == string(target.NamespaceUser)
 }
 
 func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
@@ -161,7 +161,7 @@ func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest,
 			return filterRecommendedArtworks(items, artworkFilter)
 		}, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
-	if kind == string(target.ResultKindNovel) {
+	if kind == string(target.NamespaceNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 			if err != nil {
@@ -194,7 +194,7 @@ func filterRecommendedArtworks(items []pixiv.Artwork, filter searchfilter.Filter
 	}
 	filtered := make([]pixiv.Artwork, 0, len(items))
 	for _, item := range items {
-		if filter.Matches(0, string(item.Kind)) {
+		if filter.Matches(0, string(item.ContentType)) {
 			filtered = append(filtered, item)
 		}
 	}

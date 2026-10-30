@@ -126,17 +126,17 @@ func currentUserID(client *pixiv.Client) (int64, error) {
 
 func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options) error {
 	// CLI 的 --type 选择实体，公开名称 artwork 对应 App API 的 illust 子类型。
-	if opts.contentType == string(target.ResultKindArtwork) {
-		opts.contentType = string(target.SubtypeIllust)
+	if opts.contentType == string(target.NamespaceArtwork) {
+		opts.contentType = string(pixiv.ContentTypeIllust)
 	}
 	var userID int64
 	if len(args) == 0 {
-		if opts.contentType != string(target.SubtypeIllust) && opts.contentType != string(target.ResultKindNovel) {
+		if opts.contentType != string(pixiv.ContentTypeIllust) && opts.contentType != string(target.NamespaceNovel) {
 			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
 				sdk.WithDetail("type without USER_ID must be one of: artwork, novel"))
 		}
 	} else {
-		if opts.contentType != string(target.SubtypeIllust) && opts.contentType != string(target.SubtypeManga) && opts.contentType != string(target.ResultKindNovel) {
+		if opts.contentType != string(pixiv.ContentTypeIllust) && opts.contentType != string(pixiv.ContentTypeManga) && opts.contentType != string(target.NamespaceNovel) {
 			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
 				sdk.WithDetail("type with USER_ID must be one of: artwork, manga, novel"))
 		}
@@ -168,7 +168,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if len(args) == 0 {
-		if opts.contentType == string(target.SubtypeIllust) {
+		if opts.contentType == string(pixiv.ContentTypeIllust) {
 			fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
 				if err != nil {
@@ -187,7 +187,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
-	if opts.contentType == string(target.ResultKindNovel) {
+	if opts.contentType == string(target.NamespaceNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
 			if err != nil {
@@ -198,7 +198,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(opts.contentType), Cursor: cursor})
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(opts.contentType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}

@@ -142,7 +142,7 @@ func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (
 		session.Lease.Close()
 		return Session{}, err
 	}
-	if artwork.Kind != pixiv.ArtworkKindUgoira {
+	if artwork.ContentType != pixiv.ContentTypeUgoira {
 		session.Lease.Close()
 		return Session{}, errors.New("artwork is not an animation")
 	}

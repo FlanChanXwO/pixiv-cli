@@ -46,9 +46,11 @@ func PrintArtworkDetail(out io.Writer, item pixiv.Artwork) error {
 	if item.ID > 0 {
 		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", item.ID)
 	}
-	content := string(item.Kind)
-	if item.Kind == pixiv.ArtworkKindIllustration {
-		content = string(pixiv.SearchContentTypeIllust)
+	content := string(item.ContentType)
+	switch item.ContentType {
+	case pixiv.ContentTypeIllust, pixiv.ContentTypeManga, pixiv.ContentTypeUgoira:
+	default:
+		content = "unknown"
 	}
 	lines := []string{fmt.Sprintf("%s — %s", SafeLine(item.Title), Identity(item.User.Name, item.User.ID))}
 	if url != "" {

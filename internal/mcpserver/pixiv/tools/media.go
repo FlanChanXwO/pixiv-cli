@@ -258,7 +258,7 @@ func (t pixivTools) readArtworkMedia(ctx context.Context, client *pixiv.Client, 
 	}
 	out.Title = artwork.Title
 	out.TotalPages = artwork.PageCount
-	if artwork.Kind == pixiv.ArtworkKindUgoira {
+	if artwork.ContentType == pixiv.ContentTypeUgoira {
 		return t.readUgoiraMedia(ctx, client, in, out, requestedQuality)
 	}
 	if in.AnimationFormat != "" {
@@ -609,7 +609,7 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 		return out
 	}
 	out.Records = append(out.Records, rec)
-	if artwork.Kind == pixiv.ArtworkKindUgoira && in.Quality == "original" {
+	if artwork.ContentType == pixiv.ContentTypeUgoira && in.Quality == "original" {
 		return out
 	}
 	media := t.app.SDKPorts().Media

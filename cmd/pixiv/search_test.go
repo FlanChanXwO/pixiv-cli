@@ -50,6 +50,7 @@ func TestSearchOutputContract(t *testing.T) {
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "artist", false)
 	assertSearchOutput(t, proxy.URL)
+	assertUnknownArtwork(t, proxy.URL)
 	assertEscapesUpstreamText(t, proxy.URL)
 	assertFanboxPropagatesWriteError(t, proxy.URL)
 	assertAdditionalEscaping(t, proxy.URL)
@@ -117,6 +118,10 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	case "/v1/user/bookmark-tags/illust":
 		fmt.Fprint(w, `{"bookmark_tags":[{"name":"line\n\u001b[31m","count":1}],"next_url":null}`)
 	case "/v1/search/illust":
+		if r.URL.Query().Get("word") == "unknown" {
+			fmt.Fprint(w, `{"illusts":[{"id":101,"type":"future_art","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7}}],"next_url":null}`)
+			return
+		}
 		if r.URL.Query().Get("word") == "unsafe" {
 			fmt.Fprintf(w, `{"illusts":[%s],"next_url":null}`, artwork)
 			return
@@ -125,4 +130,12 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func assertUnknownArtwork(t *testing.T, proxyURL string) {
+	t.Helper()
+	stdout, stderr, code := runCLI(t, "search", "unknown", "--ndjson", "--proxy", proxyURL)
+	require.Equal(t, 0, code, stderr)
+	require.Contains(t, stdout, `"content_type":"future_art"`)
+	require.Contains(t, stdout, `"type":"artwork"`)
 }

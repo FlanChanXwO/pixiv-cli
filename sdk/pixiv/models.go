@@ -18,18 +18,14 @@ const (
 	RestrictPrivate Restrict = "private"
 )
 
-// ArtworkKind distinguishes the artwork types unified in Artwork.
-type ArtworkKind string
+// ContentType preserves the upstream artwork category, including unknown values.
+type ContentType string
 
-// ArtworkKindIllustration, ArtworkKindManga, and ArtworkKindUgoira are the
-// three upstream types Artwork represents.
+// ContentTypeIllust, ContentTypeManga, and ContentTypeUgoira name known categories.
 const (
-	ArtworkKindIllustration ArtworkKind = "illustration"
-	ArtworkKindManga        ArtworkKind = "manga"
-	ArtworkKindUgoira       ArtworkKind = "ugoira"
-	// ArtworkKindUnknown preserves an upstream kind the SDK does not yet
-	// recognize; Artwork.RawKind carries the original identifier.
-	ArtworkKindUnknown ArtworkKind = "unknown"
+	ContentTypeIllust ContentType = "illust"
+	ContentTypeManga  ContentType = "manga"
+	ContentTypeUgoira ContentType = "ugoira"
 )
 
 // Tag names one artwork or novel tag. TranslatedName is empty when upstream
@@ -83,8 +79,7 @@ type Artwork struct {
 	ID             int64         `json:"id"`
 	Title          string        `json:"title"`
 	Caption        string        `json:"caption"`
-	Kind           ArtworkKind   `json:"kind"`
-	RawKind        string        `json:"raw_kind"`
+	ContentType    ContentType   `json:"content_type"`
 	Tags           []Tag         `json:"tags"`
 	User           User          `json:"user"`
 	PublishedAt    time.Time     `json:"published_at"`

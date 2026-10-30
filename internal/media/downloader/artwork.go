@@ -34,8 +34,8 @@ func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages
 			base = filepath.Join(base, filepath.FromSlash(relative))
 		}
 	}
-	kind := string(artwork.Kind)
-	if directoryTemplate == "" && (artwork.PageCount > 1 || kind == string(pixiv.ArtworkKindUgoira)) {
+	kind := string(artwork.ContentType)
+	if directoryTemplate == "" && (artwork.PageCount > 1 || kind == string(pixiv.ContentTypeUgoira)) {
 		base = filepath.Join(base, filename.Sanitize(fmt.Sprintf("%d - %s", artwork.ID, cmp.Or(artwork.Title, "Untitled"))))
 	}
 	if err := os.MkdirAll(base, 0o755); err != nil {
@@ -49,7 +49,7 @@ func (b *ArtworkDownloader) downloadArtwork(ctx context.Context, id int64, pages
 		Type:     kind,
 	}
 
-	if kind == string(pixiv.ArtworkKindUgoira) {
+	if kind == string(pixiv.ContentTypeUgoira) {
 		// Ugoira 只支持原始 GIF/APNG 流程；派生质量或页选择显式 unsupported。
 		if quality != DownloadQualityOriginal {
 			return DownloadedArtwork{}, nil, fmt.Errorf("ugoira quality %q is unsupported; only original is supported", quality)

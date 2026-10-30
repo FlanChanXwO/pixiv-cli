@@ -41,7 +41,7 @@ type commandRunner struct {
 // New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
 func New(env environment.Env, exec session.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
-	options := Options{typ: string(target.ResultKindArtwork)}
+	options := Options{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
 		Short: "Show one artwork, novel, or user",
@@ -85,7 +85,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 }
 
 func validateContentEntity(content bool, entity string) error {
-	if content && entity != string(target.ResultKindNovel) {
+	if content && entity != string(target.NamespaceNovel) {
 		return errors.New("--content is only supported when --type novel")
 	}
 	if content {
@@ -188,7 +188,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		return err
 	}
 	switch entity {
-	case string(target.ResultKindArtwork):
+	case string(target.NamespaceArtwork):
 		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
 			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
 		})
@@ -206,7 +206,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			return a.env.PrintJSON(result)
 		}
 		return display.PrintArtworkDetail(a.env.Out, result)
-	case string(target.ResultKindNovel):
+	case string(target.NamespaceNovel):
 		if opts.content {
 			result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
 				return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
@@ -243,7 +243,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			return a.env.PrintJSON(result)
 		}
 		return display.PrintNovelDetail(a.env.Out, result)
-	case string(target.ResultKindUser):
+	case string(target.NamespaceUser):
 		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
 			return client.User(ctx, pixiv.UserRequest{UserID: id})
 		})
@@ -293,12 +293,12 @@ func entityForRecord(typ string, explicit bool, requested string) (string, error
 
 func resolveRecordEntity(typ string) (string, error) {
 	switch typ {
-	case string(target.ResultKindArtwork), string(target.SubtypeIllust), string(target.SubtypeManga), string(target.SubtypeUgoira):
-		return string(target.ResultKindArtwork), nil
-	case string(target.ResultKindNovel):
-		return string(target.ResultKindNovel), nil
-	case string(target.ResultKindUser):
-		return string(target.ResultKindUser), nil
+	case string(target.NamespaceArtwork):
+		return string(target.NamespaceArtwork), nil
+	case string(target.NamespaceNovel):
+		return string(target.NamespaceNovel), nil
+	case string(target.NamespaceUser):
+		return string(target.NamespaceUser), nil
 	default:
 		return "", fmt.Errorf("unsupported record type %q", typ)
 	}
@@ -306,9 +306,9 @@ func resolveRecordEntity(typ string) (string, error) {
 
 func resolveEntity(value string) (string, error) {
 	switch value {
-	case string(target.ResultKindArtwork), string(target.SubtypeIllust), string(target.SubtypeManga), string(target.SubtypeUgoira):
-		return string(target.ResultKindArtwork), nil
-	case string(target.ResultKindNovel), string(target.ResultKindUser):
+	case string(target.NamespaceArtwork), string(pixiv.ContentTypeIllust), string(pixiv.ContentTypeManga), string(pixiv.ContentTypeUgoira):
+		return string(target.NamespaceArtwork), nil
+	case string(target.NamespaceNovel), string(target.NamespaceUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -325,9 +325,9 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
 	want := map[string]pixiv.ReferenceKind{
-		string(target.ResultKindArtwork): pixiv.ReferenceKindArtwork,
-		string(target.ResultKindNovel):   pixiv.ReferenceKindNovel,
-		string(target.ResultKindUser):    pixiv.ReferenceKindUser,
+		string(target.NamespaceArtwork): pixiv.ReferenceKindArtwork,
+		string(target.NamespaceNovel):   pixiv.ReferenceKindNovel,
+		string(target.NamespaceUser):    pixiv.ReferenceKindUser,
 	}
 	if ref.Kind != want[entity] {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))

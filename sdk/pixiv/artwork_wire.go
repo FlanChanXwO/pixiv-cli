@@ -123,13 +123,11 @@ func (c *Client) mapArtwork(value artworkWire) (Artwork, error) {
 	if err != nil {
 		return Artwork{}, err
 	}
-	kind, raw := artworkKind(value.Type)
 	result := Artwork{
 		ID:             value.ID,
 		Title:          value.Title,
 		Caption:        value.Caption,
-		Kind:           kind,
-		RawKind:        raw,
+		ContentType:    ContentType(value.Type),
 		Tags:           mapTags(value.Tags),
 		User:           user,
 		PublishedAt:    published,

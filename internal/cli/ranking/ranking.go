@@ -34,7 +34,7 @@ type commandRunner struct {
 // New 构造 `pixiv ranking` 命令，作品和小说排行共用同一套分页与输出。
 func New(env environment.Env, exec session.Executor) *cobra.Command {
 	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
-	options := options{typ: string(target.ResultKindArtwork), mode: string(pixiv.RankingModeDay)}
+	options := options{typ: string(target.NamespaceArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
 		Short: "Show artwork or novel ranking",
@@ -56,10 +56,10 @@ func New(env environment.Env, exec session.Executor) *cobra.Command {
 }
 
 func (a commandRunner) run(cmd *cobra.Command, opts options) error {
-	if opts.typ != string(target.ResultKindArtwork) && opts.typ != string(target.ResultKindNovel) {
+	if opts.typ != string(target.NamespaceArtwork) && opts.typ != string(target.NamespaceNovel) {
 		return errors.New("type must be one of: artwork, novel")
 	}
-	if opts.typ == string(target.ResultKindNovel) && cmd.Flags().Changed("date") {
+	if opts.typ == string(target.NamespaceNovel) && cmd.Flags().Changed("date") {
 		return errors.New("--date is only supported when --type artwork")
 	}
 	switch pixiv.RankingMode(opts.mode) {
@@ -91,7 +91,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	format := record.FormatOf(jsonOut, ndjson)
-	if opts.typ == string(target.ResultKindNovel) {
+	if opts.typ == string(target.NamespaceNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
 			if err != nil {

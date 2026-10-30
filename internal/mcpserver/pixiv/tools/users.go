@@ -48,7 +48,7 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 		return outputs.Error(err)
 	}
 	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(in.Type), Cursor: cursor})
+		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(in.Type), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}

@@ -25,7 +25,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 	if opts.typ == "all" {
 		return a.runAllTags(cmd, args, opts)
 	}
-	if opts.typ != string(target.ResultKindArtwork) && opts.typ != string(target.ResultKindNovel) {
+	if opts.typ != string(target.NamespaceArtwork) && opts.typ != string(target.NamespaceNovel) {
 		return errors.New("bookmark tags type must be one of artwork, novel, all")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
@@ -64,7 +64,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 				}
 			}
 			var result sdk.Page[pixiv.BookmarkTag]
-			if opts.typ == string(target.ResultKindNovel) {
+			if opts.typ == string(target.NamespaceNovel) {
 				result, err = client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			} else {
 				result, err = client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
@@ -203,7 +203,7 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: string(target.ResultKindArtwork), tag: item})
+				items = append(items, bookmarkTagItem{kind: string(target.NamespaceArtwork), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},
@@ -225,7 +225,7 @@ func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkTagItem{kind: string(target.ResultKindNovel), tag: item})
+				items = append(items, bookmarkTagItem{kind: string(target.NamespaceNovel), tag: item})
 			}
 			return items, bookmarkStreamCursor{upstream: result.Next}, nil
 		},

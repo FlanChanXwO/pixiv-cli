@@ -237,7 +237,7 @@ func downloadDirectURLs(ctx context.Context, client DownloadTargetClient, rawURL
 }
 
 func collectUserArtworkJobs(ctx context.Context, client DownloadTargetClient, user pixiv.Reference, appendArtwork func(int64), report *DownloadReport) error {
-	for _, kind := range []pixiv.ArtworkKind{pixiv.ArtworkKindIllustration, pixiv.ArtworkKindManga, pixiv.ArtworkKindUgoira} {
+	for _, kind := range []pixiv.ContentType{pixiv.ContentTypeIllust, pixiv.ContentTypeManga, pixiv.ContentTypeUgoira} {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

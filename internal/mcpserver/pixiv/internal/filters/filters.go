@@ -198,8 +198,8 @@ func match(item any, filters value) (string, bool) {
 		if !MatchesIllust(value, filters.illust) {
 			return "", false
 		}
-		kind := string(value.Kind)
-		if kind == "" || kind == string(pixiv.ArtworkKindIllustration) {
+		kind := string(value.ContentType)
+		if kind == "" || kind == string(pixiv.ContentTypeIllust) {
 			kind = string(pixiv.SearchContentTypeIllust)
 		}
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
@@ -227,11 +227,11 @@ func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 		return false
 	}
 	if filter.Type != "" {
-		kind := string(item.Kind)
+		kind := string(item.ContentType)
 		if kind == "" {
-			kind = string(pixiv.ArtworkKindIllustration)
+			kind = string(pixiv.ContentTypeIllust)
 		}
-		if kind == string(pixiv.ArtworkKindIllustration) {
+		if kind == string(pixiv.ContentTypeIllust) {
 			kind = string(pixiv.SearchContentTypeIllust)
 		}
 		if kind != filter.Type {

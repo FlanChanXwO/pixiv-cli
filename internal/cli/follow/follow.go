@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var userRecordTypes = map[string]struct{}{string(target.ResultKindUser): {}}
+var userRecordTypes = map[string]struct{}{string(target.NamespaceUser): {}}
 
 type options struct {
 	environment.Options
@@ -124,10 +124,10 @@ func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Opt
 func resolveFollowUserID(ctx context.Context, value, operation string) (int64, error) {
 	resolved, err := target.Resolve(ctx, target.Input{Value: value}, target.Contract{
 		Operation:   operation,
-		DefaultType: string(target.ResultKindUser),
+		DefaultType: string(target.NamespaceUser),
 		Types: []target.TypeSpec{{
-			Name:              string(target.ResultKindUser),
-			ResultKind:        target.ResultKindUser,
+			Name:              string(target.NamespaceUser),
+			ResultKind:        target.NamespaceUser,
 			BareReferenceKind: pixiv.ReferenceKindUser,
 		}},
 	})

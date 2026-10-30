@@ -86,7 +86,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
 	switch resolved.ResultKind {
-	case target.ResultKindArtwork:
+	case target.NamespaceArtwork:
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: resolved.ID, Cursor: cursor})
 			if err != nil {
@@ -97,7 +97,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 		return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error {
 			return display.PrintArtworksRanked(a.env.Out, items, start)
 		}})
-	case target.ResultKindNovel:
+	case target.NamespaceNovel:
 		return a.runNovel(cmd, request, resolved.ID, plan, jsonOut, ndjson)
 	default:
 		return errors.New("type must be one of artwork, novel")
@@ -106,7 +106,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 
 func validateSeriesType(value string) error {
 	switch value {
-	case string(target.ResultKindArtwork), string(target.ResultKindNovel):
+	case string(target.NamespaceArtwork), string(target.NamespaceNovel):
 		return nil
 	default:
 		return errors.New("type must be one of artwork, novel")
@@ -117,8 +117,8 @@ func seriesContract() target.Contract {
 	return target.Contract{
 		Operation: "series",
 		Types: []target.TypeSpec{
-			{Name: string(target.ResultKindArtwork), ResultKind: target.ResultKindArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
-			{Name: string(target.ResultKindNovel), ResultKind: target.ResultKindNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: pixiv.ReferenceKindArtworkSeries},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: pixiv.ReferenceKindNovelSeries},
 		},
 		URLKinds: map[pixiv.ReferenceKind]target.URLTypeRelation{
 			pixiv.ReferenceKindArtworkSeries: target.URLTypeMustMatchResult,

@@ -4,8 +4,7 @@
       "id": 101,
       "title": "cat",
       "caption": "",
-      "kind": "illustration",
-      "raw_kind": "illust",
+      "content_type": "illust",
       "tags": [],
       "user": {
         "id": 7,

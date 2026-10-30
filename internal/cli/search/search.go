@@ -73,7 +73,7 @@ func New(env environment.Env, exec session.Executor, reverseSearch ReverseSearch
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
-		typ:         string(target.ResultKindArtwork),
+		typ:         string(target.NamespaceArtwork),
 		contentType: string(pixiv.SearchContentTypeAll),
 		resolution:  string(pixiv.SearchResolutionAll),
 		aspectRatio: string(pixiv.SearchAspectRatioAll),
@@ -211,7 +211,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 	if err := validateEntityFlags(cmd, entity); err != nil {
 		return err
 	}
-	if entity == string(target.ResultKindNovel) {
+	if entity == string(target.NamespaceNovel) {
 		return a.runNovelSearch(cmd, args, novelOptions{
 			Options:  opts.Options,
 			ndjson:   opts.ndjson,
@@ -222,7 +222,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 			period:   opts.period,
 		})
 	}
-	if entity == string(target.ResultKindUser) {
+	if entity == string(target.NamespaceUser) {
 		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
 			Options: opts.Options,
 			NDJSON:  opts.ndjson,
@@ -256,7 +256,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		// 但不能伪造为 upstream 的 rating/x_restrict 请求参数。
 		query.CursorContext = artworkFilter.CursorContext()
 		include = func(item pixiv.Artwork) (bool, error) {
-			return artworkFilter.Matches(item.XRestrict, string(item.Kind)), nil
+			return artworkFilter.Matches(item.XRestrict, string(item.ContentType)), nil
 		}
 	}
 	if params.bookmarkMin != nil || params.bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
@@ -423,7 +423,7 @@ func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 
 func resolveEntityType(value string) (string, error) {
 	switch value {
-	case string(target.ResultKindArtwork), string(target.ResultKindNovel), string(target.ResultKindUser):
+	case string(target.NamespaceArtwork), string(target.NamespaceNovel), string(target.NamespaceUser):
 		return value, nil
 	default:
 		return "", errors.New("type must be one of artwork, novel, user")
@@ -431,7 +431,7 @@ func resolveEntityType(value string) (string, error) {
 }
 
 func validateEntityFlags(cmd *cobra.Command, entity string) error {
-	if entity == string(target.ResultKindArtwork) {
+	if entity == string(target.NamespaceArtwork) {
 		return nil
 	}
 	for _, name := range []string{"content-type", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy"} {
@@ -439,7 +439,7 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 			return fmt.Errorf("--%s is only supported when --type artwork", name)
 		}
 	}
-	if entity == string(target.ResultKindNovel) {
+	if entity == string(target.NamespaceNovel) {
 		for _, name := range []string{"start-date", "end-date", "rating"} {
 			if cmd.Flags().Changed(name) {
 				return fmt.Errorf("--%s is not supported when --type novel", name)
