@@ -413,6 +413,14 @@ flowchart LR
 
 数据命令在账号池关闭时使用显式/默认账号，开启时使用可用的数据库账号；不接受凭据选择参数。
 
+### 文本输出与失败
+
+文本输出将上游标题、用户名、评论、标签与简介转义为单行，控制字符显示为可打印的转义序列。JSON 与 NDJSON 保留原始值。FANBOX 创作者和帖子命令写入输出失败时会返回错误。
+
+默认文本日志下，命令失败向 stderr 输出一行 `error: <message>`。缺少 Pixiv 凭据时输出 `error: not logged in; run "pixiv auth login"`；FANBOX 的登录命令为 `pixiv fanbox auth login`。参数无效、上游 HTTP 状态、超时与取消的错误均给出下一步。本地枚举参数（含 `ranking --mode`）先于打开账号校验。SDK 错误码与 MCP 结构化错误保持现有契约。
+
+`pixiv auth list --json` 的空账号列表输出 `"accounts": []`。
+
 ### 移除的匿名 web fallback
 
 v1 移除了匿名 Web API fallback：内容命令需要已认证账号（`pixiv auth use` 或 `[account_pool]`），否则返回需要认证。残留的 `web_fallback_enabled` 属于未声明键，加载时忽略。无效 token 与 App API 网络/服务端错误返回安全的分类失败。

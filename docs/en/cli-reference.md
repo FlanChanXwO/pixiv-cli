@@ -413,6 +413,14 @@ flowchart LR
 
 Data commands select the explicit/default account (pool off) or an eligible DB account (pool on); they accept no credential-selection flags.
 
+### Text output and failures
+
+Upstream titles, names, comments, tags and descriptions are escaped to a single line in text output; control characters appear as printable escapes. JSON and NDJSON retain the original values. FANBOX creator and post commands return a failure if writing output fails.
+
+With default text logging, a failed command writes one `error: <message>` line to stderr. Missing Pixiv credentials produce `error: not logged in; run "pixiv auth login"`; FANBOX uses `pixiv fanbox auth login`. Invalid arguments, upstream HTTP status, timeouts and cancellation include a suggested next step. Local enum arguments, including `ranking --mode`, are checked before opening an account. SDK error codes and MCP structured errors retain their existing contracts.
+
+An empty `pixiv auth list --json` result contains `"accounts": []`.
+
 ### Removed anonymous web fallback
 
 v1 removed the anonymous Web API fallback: content commands need an authenticated account (`pixiv auth use` or `[account_pool]`), otherwise they return an authentication requirement. A leftover `web_fallback_enabled` is undeclared and ignored. Invalid tokens and App API network/server errors return a safe, classified failure.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"net/http"
 
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
 

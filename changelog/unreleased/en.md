@@ -17,8 +17,13 @@
 
 - CLI logs on stderr use `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]: message key=value` with terminal-aware colors, quoted control characters and indented multiline values; JSON logs include `source`. Default text logging keeps one error line.
 - MCP search filters are preserved when a bookmark lookup partially fails, and the partial result is reported instead of dropping the filters or the successful items. ([#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165))
-- An empty account list is encoded as JSON `null` instead of `[]`, keeping the existing CLI JSON contract. ([#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201))
 
+
+## Fixed
+
+- CLI text output escapes upstream titles, names, comments and tags onto a single line; FANBOX creator and post commands report output write failures.
+- CLI failures explain authentication, invalid arguments, upstream HTTP status, timeout and cancellation with a next step. Local enum arguments are checked before opening an account.
+- `pixiv auth list --json` returns `"accounts": []` when no accounts are saved.
 
 **Full Changelog**: _Added when the next version is tagged._
 

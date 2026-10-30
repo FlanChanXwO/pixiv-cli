@@ -17,8 +17,13 @@
 
 - CLI 写到 stderr 的日志改为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`，按终端着色，转义控制字符并缩进多行值；JSON 日志带 `source`。默认文本日志只保留一行错误。
 - 收藏读取部分失败时，MCP 搜索筛选条件会保留，并报告部分结果，不再丢弃筛选条件或已成功读取的条目。（[#165](https://github.com/FlanChanXwO/pixiv-cli/pull/165)）
-- 账号列表为空时编码为 JSON `null` 而不是 `[]`，保持现有 CLI JSON 契约。（[#201](https://github.com/FlanChanXwO/pixiv-cli/pull/201)）
 
+
+## 修复
+
+- CLI 文本输出将上游标题、用户名、评论与标签转义为单行；FANBOX 创作者和帖子命令会报告输出写入失败。
+- CLI 错误以人读文本说明登录、参数、上游 HTTP 状态、超时与取消，并给出下一步；本地枚举参数先于打开账号校验。
+- 未保存账号时，`pixiv auth list --json` 输出 `"accounts": []`。
 
 **完整变更**：打下一版 tag 时补充。
 
