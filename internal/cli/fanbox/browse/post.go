@@ -353,19 +353,27 @@ func postOutFrom(post fanbox.Post) postOut {
 
 func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 	for _, creator := range creators {
-		fmt.Fprintf(out, "id:%s", display.SafeLine(creator.ID))
-		if creator.Name != "" {
-			fmt.Fprintf(out, " name:%s", display.SafeLine(creator.Name))
+		if _, err := fmt.Fprintf(out, "id:%s", display.SafeLine(creator.ID)); err != nil {
+			return err
 		}
-		fmt.Fprintln(out)
+		if creator.Name != "" {
+			if _, err := fmt.Fprintf(out, " name:%s", display.SafeLine(creator.Name)); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(out); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func printPosts(out io.Writer, posts []fanbox.Post) error {
 	for _, post := range posts {
-		fmt.Fprintf(out, "id:%s title:%s published:%s restricted:%s\n",
-			display.SafeLine(post.ID), display.SafeLine(post.Title), postOutFrom(post).PublishedAt, environment.TextBool(post.IsRestricted))
+		if _, err := fmt.Fprintf(out, "id:%s title:%s published:%s restricted:%s\n",
+			display.SafeLine(post.ID), display.SafeLine(post.Title), postOutFrom(post).PublishedAt, environment.TextBool(post.IsRestricted)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

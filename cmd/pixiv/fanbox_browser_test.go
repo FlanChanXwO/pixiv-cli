@@ -1,12 +1,15 @@
 package main_test
 
 import (
+	"bytes"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/stretchr/testify/require"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
@@ -48,3 +51,18 @@ func seedFanbox(t *testing.T) {
 	acct.ValidatedAt = 1
 	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
 }
+
+func TestFanboxPropagatesWriteError(t *testing.T) {
+	proxy := fixtureProxy(t)
+	seedFanbox(t)
+	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
+		var stderr bytes.Buffer
+		code := cli.Run(t.Context(), append([]string{"pixiv", "fanbox", "--proxy", proxy}, args...), strings.NewReader(""), failedOutput{}, &stderr)
+		require.Equal(t, 1, code)
+		require.Equal(t, "error: fixture write failed\n", stderr.String())
+	}
+}
+
+type failedOutput struct{}
+
+func (failedOutput) Write([]byte) (int, error) { return 0, errors.New("fixture write failed") }
