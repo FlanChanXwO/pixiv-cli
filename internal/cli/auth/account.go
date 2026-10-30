@@ -374,7 +374,7 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID, "default_user_id": defaultUserID})
 	}
 	line := "Removed " + accountIdentity(list, userID)
-	if defaultUserID != 0 {
+	if list.DefaultUserID == userID && defaultUserID != 0 {
 		line += "; now using " + accountIdentity(list, defaultUserID)
 	}
 	_, err = fmt.Fprintln(a.env.Out, line)

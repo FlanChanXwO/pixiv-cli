@@ -43,7 +43,7 @@ func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() 
 	if notice == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(errOut, "update available: %s -> %s\nrun: %s\n", notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
+	_, _ = fmt.Fprintf(errOut, "Update available: %s → %s (run %q)\n", notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
 }
 
 func warning(errOut io.Writer, action string, err error) {

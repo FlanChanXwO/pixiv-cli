@@ -376,11 +376,12 @@ func printPosts(out io.Writer, posts []fanbox.Post) error {
 		if post.IsRestricted {
 			locked = " [locked]"
 		}
-		date := ""
+		parts := []string{display.SafeLine(post.ID)}
 		if !post.PublishedAt.IsZero() {
-			date = post.PublishedAt.Format(time.DateOnly)
+			parts = append(parts, post.PublishedAt.Format(time.DateOnly))
 		}
-		if _, err := fmt.Fprintf(out, "%s  %s  %s%s\n", display.SafeLine(post.ID), date, display.SafeLine(post.Title), locked); err != nil {
+		parts = append(parts, display.SafeLine(post.Title))
+		if _, err := fmt.Fprintln(out, strings.Join(parts, "  ")+locked); err != nil {
 			return err
 		}
 	}

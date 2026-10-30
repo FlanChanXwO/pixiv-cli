@@ -113,7 +113,6 @@ func (a commandRunner) savePostAssets(ctx context.Context, client *fanbox.Client
 		if _, err := client.SaveResource(ctx, asset.Resource.Ref, sdk.SaveOptions{Path: path}); err != nil {
 			return err
 		}
-		fmt.Fprintf(a.env.Out, "saved: %s\n", path)
 	}
 	return nil
 }
