@@ -122,6 +122,7 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 		err  error
 		want string
 	}{
+		{fmt.Errorf("saving account: %w; closing store: %w", sdk.NewError("pixiv", "Open", sdk.Unauthorized), errors.New("close failed")), `saving account: not logged in; run "pixiv auth login"; closing store: close failed`},
 		{errors.New("first\nsecond\x1b[31m"), `first\nsecond\x1b[31m`},
 		{fmt.Errorf("write: %w", errors.Join(sdk.NewError("pixiv", "Open", sdk.Unauthorized), errors.New("close failed"))), `write: not logged in; run "pixiv auth login"; close failed`},
 		{sdk.NewError("pixiv", "Search", sdk.InvalidArgument), "invalid argument; check the command's --help"},

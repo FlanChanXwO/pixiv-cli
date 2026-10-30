@@ -79,6 +79,9 @@ func assertAdditionalEscaping(t *testing.T, proxy string) {
 			require.Zero(t, code, stderr)
 			require.NotContains(t, stdout, "\x1b")
 			require.Contains(t, stdout, `line\n\x1b[31m`)
+			if args[0] == "series" {
+				require.Contains(t, stdout, `series 101: line\n\x1b[31m`)
+			}
 		})
 	}
 }

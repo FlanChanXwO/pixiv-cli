@@ -61,11 +61,13 @@ func ErrorText(err error) (text string) {
 	}()
 	for current := err; current != nil; current = errors.Unwrap(current) {
 		if joined, ok := current.(interface{ Unwrap() []error }); ok {
-			var messages []string
+			var replacements []string
 			for _, cause := range joined.Unwrap() {
-				messages = append(messages, ErrorText(cause))
+				replacements = append(replacements, cause.Error(), ErrorText(cause))
 			}
-			return strings.Replace(err.Error(), current.Error(), strings.Join(messages, "; "), 1)
+			message := strings.NewReplacer(replacements...).Replace(current.Error())
+			message = strings.ReplaceAll(message, "\n", "; ")
+			return strings.Replace(err.Error(), current.Error(), message, 1)
 		}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
