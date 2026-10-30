@@ -82,7 +82,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		}
 		list, err := service.listWithContext(cmd.Context())
 		if err != nil {
-			return err
+			return fmt.Errorf("bundle imported; read resulting account identities: %w", err)
 		}
 		for _, account := range result.Accounts {
 			if _, err := fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(account.Status), display.Identity(account.Username, account.UserID)); err != nil {

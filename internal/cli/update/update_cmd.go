@@ -72,6 +72,18 @@ func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)
 }
 
 func printResult(out io.Writer, result selfupdate.UpdateResult, check bool) error {
+	if result.UpdateAvailable && result.LatestVersion == nil {
+		if !check {
+			_, err := fmt.Fprintln(out, "Switched pixiv Homebrew channel")
+			return err
+		}
+		command := "pixiv update"
+		if result.Source == selfupdate.InstallSourceHomebrewStable {
+			command += " --prerelease"
+		}
+		_, err := fmt.Fprintf(out, "Update available: switch Homebrew channel (run %q)\n", command)
+		return err
+	}
 	if result.UpdateAvailable && result.LatestVersion != nil {
 		if !check {
 			_, err := fmt.Fprintf(out, "Updated pixiv to %s\n", *result.LatestVersion)

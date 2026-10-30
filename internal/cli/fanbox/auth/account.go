@@ -212,20 +212,17 @@ func (a commandRunner) runUse(args []string, opts useOptions) error {
 	if err != nil {
 		return err
 	}
-	identity := ""
-	if !opts.jsonOut {
-		identity, err = fanboxIdentity(service, userID)
-		if err != nil {
-			return err
-		}
-	}
 	if err := service.UseAccount(context.Background(), userID); err != nil {
 		return err
 	}
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]any{"default_user_id": userID, "auto": false})
 	}
-	_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", identity)
+	summary, err := service.Status(context.Background())
+	if err != nil {
+		return fmt.Errorf("default account changed; read selected account identity: %w", err)
+	}
+	_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", display.Identity(summary.DisplayName, summary.UserID))
 	return err
 }
 
