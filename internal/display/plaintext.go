@@ -15,20 +15,7 @@ func SafeLine(value string) string {
 	return quoted[1 : len(quoted)-1]
 }
 
-// safeLines 去掉首尾空白后逐行转义整段多行文本。
-func safeLines(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	lines := strings.Split(value, "\n")
-	for index, line := range lines {
-		lines[index] = SafeLine(strings.TrimSpace(line))
-	}
-	return strings.Join(lines, "\n")
-}
-
-// htmlPlainText 把 HTML 片段转成终端可读的纯文本，并用 safeLines 转义结果。输出 JSON 的
+// htmlPlainText 把 HTML 片段转成终端可读的纯文本，并转义为单行。输出 JSON 的
 // 调用方保留原始标记，只在展示层压平。
 func htmlPlainText(raw string) string {
 	if raw == "" {
@@ -36,7 +23,7 @@ func htmlPlainText(raw string) string {
 	}
 	document, err := html.Parse(strings.NewReader(raw))
 	if err != nil {
-		return safeLines(raw)
+		return SafeLine(strings.TrimSpace(raw))
 	}
 	var out strings.Builder
 	var walk func(*html.Node)
@@ -65,7 +52,7 @@ func htmlPlainText(raw string) string {
 		}
 	}
 	walk(document)
-	return safeLines(out.String())
+	return SafeLine(strings.TrimSpace(out.String()))
 }
 
 func appendLineBreak(out *strings.Builder) {

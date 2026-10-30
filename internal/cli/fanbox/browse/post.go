@@ -13,6 +13,7 @@ import (
 	"time"
 
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -226,7 +227,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			return nil
 		}
 		for _, tag := range out {
-			fmt.Fprintf(a.env.Out, "tag:%s\n", tag.Name)
+			fmt.Fprintf(a.env.Out, "tag:%s\n", display.SafeLine(tag.Name))
 		}
 		return nil
 	})
@@ -352,9 +353,9 @@ func postOutFrom(post fanbox.Post) postOut {
 
 func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 	for _, creator := range creators {
-		fmt.Fprintf(out, "id:%s", creator.ID)
+		fmt.Fprintf(out, "id:%s", display.SafeLine(creator.ID))
 		if creator.Name != "" {
-			fmt.Fprintf(out, " name:%s", creator.Name)
+			fmt.Fprintf(out, " name:%s", display.SafeLine(creator.Name))
 		}
 		fmt.Fprintln(out)
 	}
@@ -364,7 +365,7 @@ func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 func printPosts(out io.Writer, posts []fanbox.Post) error {
 	for _, post := range posts {
 		fmt.Fprintf(out, "id:%s title:%s published:%s restricted:%s\n",
-			post.ID, post.Title, postOutFrom(post).PublishedAt, environment.TextBool(post.IsRestricted))
+			display.SafeLine(post.ID), display.SafeLine(post.Title), postOutFrom(post).PublishedAt, environment.TextBool(post.IsRestricted))
 	}
 	return nil
 }

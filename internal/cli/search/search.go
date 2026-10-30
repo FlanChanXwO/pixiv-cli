@@ -285,7 +285,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworksSearch(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("illustrations for %q", params.word)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 type artworkSearchOut struct {
@@ -357,7 +357,7 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, word string, it
 	if _, err := fmt.Fprintf(a.env.Out, "illustrations for %q\n", word); err != nil {
 		return err
 	}
-	return display.PrintArtworksSearch(a.env.Out, items)
+	return display.PrintArtworks(a.env.Out, items)
 }
 
 func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.Options) error {

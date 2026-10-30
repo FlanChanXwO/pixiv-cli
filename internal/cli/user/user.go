@@ -398,7 +398,7 @@ func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listO
 	}
 	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string {
 		return fmt.Sprintf("artworks by %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworksSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -430,7 +430,7 @@ func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts list
 	}
 	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string {
 		return fmt.Sprintf("bookmarks by %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworksSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }
 
 // runFollowing 保持既有输出模式：该命令不参与自动 NDJSON 判定。
@@ -463,7 +463,7 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, args []string, opts list
 	}
 	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string {
 		return fmt.Sprintf("users followed by %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviewsSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func (a commandRunner) runNovels(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -490,7 +490,7 @@ func (a commandRunner) runNovels(cmd *cobra.Command, args []string, opts listOpt
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: fmt.Sprintf("novels by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovelsSafe(a.env.Out, items) }})
+	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: fmt.Sprintf("novels by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 }
 
 func (a commandRunner) runFollowers(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -522,7 +522,7 @@ func (a commandRunner) runFollowers(cmd *cobra.Command, args []string, opts list
 	}
 	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string {
 		return fmt.Sprintf("followers of %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviewsSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func (a commandRunner) runRelated(cmd *cobra.Command, arg string, opts listOptions) error {
@@ -543,7 +543,7 @@ func (a commandRunner) runRelated(cmd *cobra.Command, arg string, opts listOptio
 	}
 	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string {
 		return fmt.Sprintf("users related to %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviewsSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func (a commandRunner) runBlocked(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -572,5 +572,5 @@ func (a commandRunner) runBlocked(cmd *cobra.Command, args []string, opts listOp
 	}
 	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.UserList{Heading: func() string {
 		return fmt.Sprintf("blocked users of %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviewsSafe(a.env.Out, items) }})
+	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
