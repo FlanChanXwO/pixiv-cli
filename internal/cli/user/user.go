@@ -339,7 +339,7 @@ func (a commandRunner) runSearch(cmd *cobra.Command, args []string, opts listOpt
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserSearchPreviews(a.env.Out, items) }})
+	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environment.Options) error {

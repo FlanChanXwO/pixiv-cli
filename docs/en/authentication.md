@@ -122,7 +122,7 @@ flowchart TD
 | stdin parsing | one opaque line; only one final LF/CRLF removed | strict decode; malformed bundle is an error, not a token attempt |
 | `--proxy` / `--no-proxy` | allowed (not together) | rejected |
 | Effect | stores rotated token | atomic merge by UID: existing replaced, new added; current default kept; bundle default adopted only if no local default |
-| Text output | `added uid:UID` / `updated uid:UID` (+ `username:NAME`) | each added/updated UID in bundle order + resulting default |
+| Text output | `Imported Name (UID)` / `Updated Name (UID)` | one result per account in bundle order, followed by `Now using Name (UID)` |
 | `--json` | `{"user_id":12345678,"username":"display name","status":"added"}` | `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}` |
 
 `status` is `added` or `updated`. Neither form exposes default state, token presence, the input token or the rotated token. A positional token can leak via process listings, shell history, wrappers and audit tooling.

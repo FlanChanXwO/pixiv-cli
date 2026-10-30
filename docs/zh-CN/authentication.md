@@ -122,7 +122,7 @@ flowchart TD
 | stdin 解析 | 一行 opaque 内容；只去掉最后一个 LF/CRLF | 严格解码；格式错误的 bundle 是错误，不会当作 token 尝试 |
 | `--proxy` / `--no-proxy` | 允许（不能同时用） | 拒绝 |
 | 效果 | 保存轮换后的 token | 按 UID 原子合并：已有替换、新增添加；保留当前默认；仅本地无默认时采用 bundle 默认 |
-| 文本输出 | `added uid:UID` / `updated uid:UID`（可用时加 `username:NAME`） | 按 bundle 顺序列出每个 added/updated UID 与最终默认 |
+| 文本输出 | `Imported Name (UID)` / `Updated Name (UID)` | 按 bundle 顺序每个账号一行，最后输出 `Now using Name (UID)` |
 | `--json` | `{"user_id":12345678,"username":"display name","status":"added"}` | `{"accounts":[{"user_id":12345678,"username":"display name","status":"added"}],"default_user_id":12345678}` |
 
 `status` 为 `added` 或 `updated`。两种形式都不暴露默认状态、token 是否存在、输入 token 或轮换后的 token。位置参数 token 可能经进程列表、shell history、包装器与审计工具泄露。

@@ -22,6 +22,8 @@ flowchart LR
 | Proxy URIs | `http`, `https`, `socks5`, `socks5h` |
 | Reverse search | `pixiv search SOURCE` with an HTTP(S) URL or existing regular file; independent of the Pixiv account; may upload the source to a third party — review the [SauceNAO privacy and terms](https://saucenao.com/legal.html) (uploads may be retained briefly; URL queries may be cached longer) |
 
+Text lists have no headings and show one item per line. Empty results leave stdout empty, write `No results.` to stderr, and exit successfully. Identities use `Name (UID)` (UID alone when the name is unknown); true flags appear as labels. Detail commands show multi-line cards. Scripts should use `--json` or `--ndjson` instead of parsing text.
+
 ## CLI usage
 
 ```bash
@@ -149,8 +151,8 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | --- | --- | --- |
 | `auth import` | `pixiv auth import [REFRESH_TOKEN] [--json] [--proxy URL\|--no-proxy]` | Direct input validates and stores the rotated token; no-argument TTY input is hidden and non-TTY input auto-detects an opaque token or strict offline bundle. Explicit values are always tokens; bundle mode conflicts with proxy flags. |
 | `auth login` | `pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL --relay-listen-addr ADDR] [--relay-tls-cert-file PATH --relay-tls-key-file PATH] [--proxy URL\|--no-proxy]` | Ordinary loopback OAuth. With a complete relay server configuration, prints a one-time hand-off URL that directly starts an installed desktop CLI handler. Saves by Pixiv UID; never prints the refresh token. |
-| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints tokens. Text uses `*` for the default and `✓`/`-` for stored/missing local token — local-state markers, not an online validity claim. |
-| `auth pool` | `pixiv auth pool status [--json]`; `pixiv auth pool enable UID... [--all]`; `pixiv auth pool disable UID... [--all]` | Shows/changes non-secret scheduling state. `status` reports `enabled`, `strategy`, `schedulable`, `frozen_until` and current `eligible`; enable/disable validates every UID before committing the batch. |
+| `auth list` | `pixiv auth list [--json]` | Lists local accounts; never prints tokens. Text shows `Name (UID)`, `*` for the default, and cached `Premium`, `pool`, and `frozen until <RFC3339>` labels when applicable. |
+| `auth pool` | `pixiv auth pool status [--json]`; `pixiv auth pool enable UID... [--all]`; `pixiv auth pool disable UID... [--all]` | Shows/changes non-secret scheduling state. Text `status` shows `Account pool: enabled (round_robin)` (or `disabled`) and the same account rows as `auth list`; JSON retains scheduling fields; enable/disable validates every UID before committing the batch. |
 | `auth export` | `pixiv auth export [UID] [--all] [--output PATH] [--force]` | Local export of default/exact/all accounts. Without `--output`: one account = raw token stdout, `--all` = bundle stdout. With `--output`: private bundle + safe summary. `--force` requires `--output`. |
 | `auth use` | `pixiv auth use [UID] [--json]` | Sets the default account; interactive selection on a TTY. |
 | `auth remove` | `pixiv auth remove [UID] [--yes] [--json]` | Removes an account; confirms on a TTY by default. Removing the default selects the first remaining account. |

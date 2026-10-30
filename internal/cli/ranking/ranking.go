@@ -4,6 +4,7 @@ package ranking
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
@@ -98,9 +99,21 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
+		position := plan.Skip
 		return record.RunNovels(cmd.Context(), a.runner, request, plan, format, a.env.Err, record.NovelList{
 			Fetch: fetch,
-			Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) },
+			Print: func(items []pixiv.Novel) error {
+				for _, item := range items {
+					position++
+					if _, err := fmt.Fprintf(a.env.Out, "#%d ", position); err != nil {
+						return err
+					}
+					if err := display.PrintNovels(a.env.Out, []pixiv.Novel{item}); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
 		})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {

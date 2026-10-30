@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"io"
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/spf13/cobra"
 )

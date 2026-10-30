@@ -13,6 +13,8 @@
 
 ## 变更
 
+- CLI 文本输出统一使用账号身份、状态标签、无标题的单行列表与详情卡片；空结果在 stderr 输出 `No results.`，退出码为 0。解析文本的脚本请改用 `--json` 或 `--ndjson`，这两种输出保持原样。
+
 - JSON 日志恢复 ERROR 命令失败记录；debug 日志增加 SDK 错误创建位置和安全的 typed 网络细节，覆盖 OAuth 换 token 失败。
 
 - CLI 写到 stderr 的日志改为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`，按终端着色，转义控制字符并缩进多行值；JSON 日志带 `source`。默认文本日志只保留一行错误。

@@ -19,12 +19,6 @@ func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
 	return nil
 }
 
-// PrintUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制
-// 字节破坏终端的逐行协议。
-func PrintUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
-	return PrintUserPreviews(out, items)
-}
-
 // PrintUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK DTO。
 func PrintUserDetail(out io.Writer, result pixiv.UserDetail) error {

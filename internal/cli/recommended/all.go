@@ -3,8 +3,8 @@ package recommended
 import (
 	"context"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"

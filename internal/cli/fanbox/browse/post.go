@@ -226,8 +226,14 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			}
 			return nil
 		}
+		if len(out) == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return err
+		}
 		for _, tag := range out {
-			fmt.Fprintf(a.env.Out, "tag:%s\n", display.SafeLine(tag.Name))
+			if _, err := fmt.Fprintln(a.env.Out, display.SafeLine(tag.Name)); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -372,7 +378,7 @@ func printPosts(out io.Writer, posts []fanbox.Post) error {
 		}
 		date := ""
 		if !post.PublishedAt.IsZero() {
-			date = post.PublishedAt.Format("2006-01-02")
+			date = post.PublishedAt.Format(time.DateOnly)
 		}
 		if _, err := fmt.Fprintf(out, "%s  %s  %s%s\n", display.SafeLine(post.ID), date, display.SafeLine(post.Title), locked); err != nil {
 			return err

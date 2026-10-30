@@ -46,10 +46,14 @@ func PrintArtworkDetail(out io.Writer, item pixiv.Artwork) error {
 	if item.ID > 0 {
 		url = fmt.Sprintf("https://www.pixiv.net/artworks/%d", item.ID)
 	}
+	content := string(item.Kind)
+	if item.Kind == pixiv.ArtworkKindIllustration {
+		content = string(pixiv.SearchContentTypeIllust)
+	}
 	for _, line := range []string{
 		fmt.Sprintf("%s — %s", SafeLine(item.Title), Identity(item.User.Name, item.User.ID)),
 		url,
-		fmt.Sprintf("%s · %d pages · %d bookmarks · %d views", SafeLine(string(item.Kind)), item.PageCount, item.TotalBookmarks, item.TotalViews),
+		fmt.Sprintf("%s · %d pages · %d bookmarks · %d views", SafeLine(content), item.PageCount, item.TotalBookmarks, item.TotalViews),
 		"Tags: " + strings.Join(tags, ", "),
 	} {
 		if _, err := fmt.Fprintln(out, line); err != nil {
