@@ -16,7 +16,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -26,28 +25,34 @@ import (
 // TestSearchOutputContract 固定 search 的文本、JSON 与 NDJSON 契约。请求经本地
 // CONNECT 代理与 TLS 夹具，账号与 token 轮换使用真实 SQLite 与 SDK。
 func TestSearchOutputContract(t *testing.T) {
-	proxy := fixtureProxy(t)
-	home := isolatedHome(t)
-	seedPixivAccount(t, home, "artist", false)
-	assertSearchOutput(t, proxy)
-}
-
-func fixtureProxy(t *testing.T) string {
-	t.Helper()
-	certificate, err := fixtureCertificate()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "app-api.pixiv.net"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true, IsCA: true,
+		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
 	server := httptest.NewUnstartedServer(http.HandlerFunc(pixivHandler))
-	server.TLS = &tls.Config{Certificates: []tls.Certificate{certificate}}
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	server.StartTLS()
 	t.Cleanup(server.Close)
 	caPath := filepath.Join(t.TempDir(), "fixture-ca.pem")
-	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Certificate[0]}), 0o600))
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
 	t.Setenv("SSL_CERT_FILE", caPath)
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		proxyPixiv(w, r, server.Listener.Addr().String())
-	}))
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { proxyPixiv(w, r, server.Listener.Addr().String()) }))
 	t.Cleanup(proxy.Close)
-	return proxy.URL
+	home := isolatedHome(t)
+	seedPixivAccount(t, home, "artist", false)
+	assertSearchOutput(t, proxy.URL)
+	assertEscapesUpstreamText(t, proxy.URL)
+	assertFanboxPropagatesWriteError(t, proxy.URL)
+	assertAdditionalEscaping(t, proxy.URL)
 }
 
 func assertSearchOutput(t *testing.T, proxyURL string) {
@@ -99,6 +104,10 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
 	case "/v1/illust/detail":
 		fmt.Fprintf(w, `{"illust":%s}`, artwork)
+	case "/v2/novel/series":
+		fmt.Fprintf(w, `{"novel_series_detail":{"id":101,"title":"line\n\u001b[31m","user":{"id":7,"name":"artist"}},"novels":[%s],"next_url":null}`, novel)
+	case "/v2/illust/bookmark/detail":
+		fmt.Fprint(w, `{"bookmark_detail":{"is_bookmarked":true,"restrict":"public","tags":[{"is_registered":true,"name":"line\n\u001b[31m"}]}}`)
 	case "/v2/novel/detail":
 		fmt.Fprintf(w, `{"novel":%s}`, novel)
 	case "/v1/search/novel":
@@ -117,24 +126,3 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}
 }
-
-var fixtureCertificate = sync.OnceValues(func() (tls.Certificate, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "app-api.pixiv.net"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true, IsCA: true,
-		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc"},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}, nil
-})

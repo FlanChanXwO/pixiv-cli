@@ -3,6 +3,9 @@ package main_test
 import (
 	"bytes"
 	"errors"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,10 +31,15 @@ func TestBrowserProvidersStayRegistered(t *testing.T) {
 	}
 }
 
-func TestEscapesUpstreamText(t *testing.T) {
-	proxy := fixtureProxy(t)
-	seedFanbox(t)
-	seedPixivAccount(t, os.Getenv("HOME"), "artist", false)
+func assertEscapesUpstreamText(t *testing.T, proxy string) {
+	t.Helper()
+	db, err := database.Open(filepath.Join(os.Getenv("HOME"), paths.AppDataDirName))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	acct := account.New(7, "artist", "artist", []byte("synthetic-session"))
+	acct.ValidatedAt = 1
+	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
+
 	for _, args := range [][]string{
 		{"fanbox", "creators", "--kind", "following"}, {"fanbox", "posts", "artist"},
 		{"detail", "101"}, {"detail", "101", "--type", "novel"},
@@ -50,20 +55,8 @@ func TestEscapesUpstreamText(t *testing.T) {
 	}
 }
 
-func seedFanbox(t *testing.T) {
+func assertFanboxPropagatesWriteError(t *testing.T, proxy string) {
 	t.Helper()
-	home := isolatedHome(t)
-	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	acct := account.New(7, "artist", "artist", []byte("synthetic-session"))
-	acct.ValidatedAt = 1
-	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
-}
-
-func TestFanboxPropagatesWriteError(t *testing.T) {
-	proxy := fixtureProxy(t)
-	seedFanbox(t)
 	for _, args := range [][]string{{"creators", "--kind", "following"}, {"posts", "artist"}} {
 		t.Run(args[0], func(t *testing.T) {
 			var stderr bytes.Buffer
@@ -77,3 +70,15 @@ func TestFanboxPropagatesWriteError(t *testing.T) {
 type failedOutput struct{}
 
 func (failedOutput) Write([]byte) (int, error) { return 0, errors.New("fixture write failed") }
+
+func assertAdditionalEscaping(t *testing.T, proxy string) {
+	t.Helper()
+	for _, args := range [][]string{{"series", "101", "--type", "novel"}, {"bookmark", "detail", "101"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			stdout, stderr, code := runCLI(t, append(args, "--proxy", proxy)...)
+			require.Zero(t, code, stderr)
+			require.NotContains(t, stdout, "\x1b")
+			require.Contains(t, stdout, `line\n\x1b[31m`)
+		})
+	}
+}

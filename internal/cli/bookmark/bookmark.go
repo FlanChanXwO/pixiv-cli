@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -210,6 +211,9 @@ func (a commandRunner) newDetail() *cobra.Command {
 			}
 			if _, err := fmt.Fprintf(a.env.Out, "bookmarked: yes\nrestrict: %s\n", restrict); err != nil {
 				return err
+			}
+			for i, tag := range tags {
+				tags[i] = display.SafeLine(tag)
 			}
 			_, err = fmt.Fprintf(a.env.Out, "tags: %s\n", strings.Join(tags, ","))
 			return err
