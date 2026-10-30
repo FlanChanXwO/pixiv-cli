@@ -4,7 +4,6 @@ package mypixiv
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
@@ -114,9 +113,7 @@ func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunUsers(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.UserList{Heading: func() string {
-		return fmt.Sprintf("MyPixiv users for %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return record.RunUsers(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, opts.ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
 }
 
 func currentUserID(client *pixiv.Client) (int64, error) {
@@ -179,7 +176,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 				}
 				return result.Items, result.Next, nil
 			}
-			return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading("MyPixiv artworks"), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+			return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 		}
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 			result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
@@ -188,7 +185,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: "MyPixiv novels", Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	if opts.contentType == string(target.ResultKindNovel) {
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
@@ -198,7 +195,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: fmt.Sprintf("novels by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
 	}
 	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ArtworkKind(opts.contentType), Cursor: cursor})
@@ -207,5 +204,5 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: record.StaticHeading(fmt.Sprintf("artworks by %d", userID)), Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 }

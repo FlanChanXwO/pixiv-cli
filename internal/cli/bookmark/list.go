@@ -211,9 +211,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string {
-		return fmt.Sprintf("bookmarks by %d", userID)
-	}, Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
+	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
 		return display.PrintArtworks(a.env.Out, items)
 	}})
 }
@@ -259,7 +257,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		}
 		return result.Items, result.Next, nil
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.NovelList{Heading: fmt.Sprintf("novel bookmarks by %d", userID), Fetch: fetch, Print: func(items []pixiv.Novel) error {
+	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error {
 		return display.PrintNovels(a.env.Out, items)
 	}})
 }

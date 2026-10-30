@@ -49,14 +49,6 @@ func (s *spool) section(key string) error {
 	return err
 }
 
-func (s *spool) heading(text string) error {
-	if s.jsonOut {
-		return nil
-	}
-	_, err := fmt.Fprintln(s.file, text)
-	return err
-}
-
 func (s *spool) write(value any) error {
 	if !s.jsonOut {
 		switch typed := value.(type) {

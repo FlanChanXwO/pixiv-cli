@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -11,7 +12,7 @@ import (
 // PrintUserPreviews 转义用户名，每个用户预览输出一行。
 func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
 	for _, item := range users {
-		if _, err := fmt.Fprintf(out, "%d %s\n", item.User.ID, SafeLine(item.User.Name)); err != nil {
+		if _, err := fmt.Fprintln(out, Identity(item.User.Name, item.User.ID)); err != nil {
 			return err
 		}
 	}
@@ -21,68 +22,50 @@ func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
 // PrintUserSearchPreviews 展示搜索结果里的账号与简介，逐行转义上游文本，避免控制
 // 字节破坏终端的逐行协议。
 func PrintUserSearchPreviews(out io.Writer, items []pixiv.UserPreview) error {
-	for _, item := range items {
-		line := fmt.Sprintf("%d %s", item.User.ID, SafeLine(item.User.Name))
-		if item.User.Account != "" {
-			line += " (@" + SafeLine(item.User.Account) + ")"
-		}
-		if item.User.Comment != "" {
-			line += " — " + SafeLine(item.User.Comment)
-		}
-		if _, err := fmt.Fprintln(out, line); err != nil {
-			return err
-		}
-	}
-	return nil
+	return PrintUserPreviews(out, items)
 }
 
 // PrintUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK DTO。
 func PrintUserDetail(out io.Writer, result pixiv.UserDetail) error {
-	lines := []string{fmt.Sprintf("user id: %d", result.User.ID)}
-	if result.User.Name != "" {
-		lines = append(lines, fmt.Sprintf("name: %s", SafeLine(result.User.Name)))
-	}
+	identity := Identity(result.User.Name, result.User.ID)
 	if result.User.Account != "" {
-		lines = append(lines, fmt.Sprintf("account: %s", SafeLine(result.User.Account)))
+		identity = fmt.Sprintf("%s (@%s, %d)", SafeLine(result.User.Name), SafeLine(result.User.Account), result.User.ID)
 	}
+	lines := []string{identity}
 	if result.User.Comment != "" {
-		lines = append(lines, fmt.Sprintf("comment: %s", SafeLine(result.User.Comment)))
+		lines = append(lines, SafeLine(result.User.Comment))
 	}
+	lines = append(lines, fmt.Sprintf("%d artworks · %d manga · %d novels · %d following", result.Profile.TotalIllusts, result.Profile.TotalManga, result.Profile.TotalNovels, result.Profile.TotalFollowUsers))
+	var profile []string
 	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
-		lines = append(lines, fmt.Sprintf("webpage: %s", SafeLine(webpage)))
+		profile = append(profile, SafeLine(webpage))
 	}
-	if result.Profile.Region != "" {
-		lines = append(lines, fmt.Sprintf("region: %s", SafeLine(result.Profile.Region)))
+	for _, value := range []string{result.Profile.Region, result.Profile.CountryCode, result.Profile.Job} {
+		if value != "" {
+			profile = append(profile, SafeLine(value))
+		}
 	}
-	if result.Profile.CountryCode != "" {
-		lines = append(lines, fmt.Sprintf("country: %s", SafeLine(result.Profile.CountryCode)))
+	if len(profile) > 0 {
+		lines = append(lines, strings.Join(profile, " · "))
 	}
-	if result.Profile.Job != "" {
-		lines = append(lines, fmt.Sprintf("job: %s", SafeLine(result.Profile.Job)))
-	}
-	lines = append(lines,
-		fmt.Sprintf("artworks: %d", result.Profile.TotalIllusts),
-		fmt.Sprintf("manga: %d", result.Profile.TotalManga),
-		fmt.Sprintf("novels: %d", result.Profile.TotalNovels),
-		fmt.Sprintf("following: %d", result.Profile.TotalFollowUsers),
-	)
+
 	for _, field := range []struct {
 		name  string
 		value string
 	}{
-		{"workspace pc", result.Workspace.PC},
-		{"workspace monitor", result.Workspace.Monitor},
-		{"workspace tool", result.Workspace.Tool},
-		{"workspace scanner", result.Workspace.Scanner},
-		{"workspace tablet", result.Workspace.Tablet},
-		{"workspace mouse", result.Workspace.Mouse},
-		{"workspace printer", result.Workspace.Printer},
-		{"workspace desktop", result.Workspace.Desktop},
-		{"workspace music", result.Workspace.Music},
-		{"workspace desk", result.Workspace.Desk},
-		{"workspace chair", result.Workspace.Chair},
-		{"workspace comment", result.Workspace.Comment},
+		{"pc", result.Workspace.PC},
+		{"monitor", result.Workspace.Monitor},
+		{"tool", result.Workspace.Tool},
+		{"scanner", result.Workspace.Scanner},
+		{"tablet", result.Workspace.Tablet},
+		{"mouse", result.Workspace.Mouse},
+		{"printer", result.Workspace.Printer},
+		{"desktop", result.Workspace.Desktop},
+		{"music", result.Workspace.Music},
+		{"desk", result.Workspace.Desk},
+		{"chair", result.Workspace.Chair},
+		{"comment", result.Workspace.Comment},
 	} {
 		if field.value != "" {
 			lines = append(lines, fmt.Sprintf("%s: %s", field.name, SafeLine(field.value)))

@@ -94,7 +94,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), record.ArtworkList{Heading: func() string { return fmt.Sprintf("artworks in series %d", resolved.ID) }, Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error {
+		return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error {
 			return display.PrintArtworksRanked(a.env.Out, items, start)
 		}})
 	case target.ResultKindNovel:
@@ -171,11 +171,17 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			}
 			return true, nil
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "series %d: %s\n", metadata.ID, display.SafeLine(metadata.Title)); err != nil {
-			return true, err
+		if len(novels) == 0 {
+			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			return false, err
 		}
-		if err := display.PrintNovels(a.env.Out, novels); err != nil {
-			return true, err
+		for index, novel := range novels {
+			if _, err := fmt.Fprintf(a.env.Out, "#%d ", plan.Skip+index+1); err != nil {
+				return true, err
+			}
+			if err := display.PrintNovels(a.env.Out, []pixiv.Novel{novel}); err != nil {
+				return true, err
+			}
 		}
 		return true, nil
 	})
