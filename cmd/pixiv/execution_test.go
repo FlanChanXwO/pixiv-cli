@@ -69,3 +69,10 @@ func TestAuthUIDFailureDoesNotEchoCredentials(t *testing.T) {
 	require.Contains(t, diagnostics.String(), "invalid uid")
 	require.NotContains(t, diagnostics.String(), "refresh-token-canary")
 }
+
+func TestEmptyAuthAccountsArray(t *testing.T) {
+	isolatedHome(t)
+	stdout, stderr, code := runCLI(t, "auth", "list", "--json")
+	require.Zero(t, code, stderr)
+	require.Contains(t, stdout, `"accounts": []`)
+}
