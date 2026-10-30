@@ -2,6 +2,9 @@ package main_test
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"strings"
 	"testing"
 
@@ -112,3 +115,26 @@ func TestEnumsBeforeAccount(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorTextFailureOneLine(t *testing.T) {
+	isolatedHome(t)
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{errors.New("first\nsecond\x1b[31m"), `first\nsecond\x1b[31m`},
+		{fmt.Errorf("write: %w", errors.Join(sdk.NewError("pixiv", "Open", sdk.Unauthorized), errors.New("close failed"))), `write: not logged in; run "pixiv auth login"; close failed`},
+		{sdk.NewError("pixiv", "Search", sdk.InvalidArgument, sdk.WithHTTPStatus(400)), "upstream returned HTTP 400 (Bad Request); check service availability and account access before trying again"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			var stderr bytes.Buffer
+			code := cli.Run(t.Context(), []string{"pixiv", "auth", "list", "--json"}, strings.NewReader(""), failedErrorOutput{tc.err}, &stderr)
+			require.Equal(t, 1, code)
+			require.Equal(t, "error: "+tc.want+"\n", stderr.String())
+		})
+	}
+}
+
+type failedErrorOutput struct{ err error }
+
+func (f failedErrorOutput) Write([]byte) (int, error) { return 0, f.err }

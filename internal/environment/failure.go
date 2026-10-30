@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
@@ -51,15 +53,22 @@ func WritesNDJSON(cmd *cobra.Command) bool {
 }
 
 // ErrorText 在 CLI 边界解释常见 SDK 错误，保留原始错误值供结构化调用方使用。
-func ErrorText(err error) string {
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		var messages []string
-		for _, cause := range joined.Unwrap() {
-			messages = append(messages, ErrorText(cause))
+func ErrorText(err error) (text string) {
+	defer func() {
+		if strings.IndexFunc(text, unicode.IsControl) >= 0 {
+			text = display.SafeLine(text)
 		}
-		return strings.Join(messages, "; ")
-	}
+	}()
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if joined, ok := current.(interface{ Unwrap() []error }); ok {
+			var messages []string
+			for _, cause := range joined.Unwrap() {
+				messages = append(messages, ErrorText(cause))
+			}
+			return strings.Replace(err.Error(), current.Error(), strings.Join(messages, "; "), 1)
+		}
 
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "request timed out; check your connection and try again"
 	}
@@ -78,7 +87,12 @@ func ErrorText(err error) string {
 		}
 		return fmt.Sprintf("not logged in; run %q", login)
 	case sdk.InvalidArgument, sdk.InvalidCursor:
-		return "invalid argument: " + failure.Detail + "; check the command's --help"
+		if failure.HTTPStatus == 0 {
+			if failure.Detail == "" {
+				return "invalid argument; check the command's --help"
+			}
+			return "invalid argument: " + failure.Detail + "; check the command's --help"
+		}
 	}
 	if failure.HTTPStatus != 0 {
 		return fmt.Sprintf("upstream returned HTTP %d (%s); check service availability and account access before trying again", failure.HTTPStatus, http.StatusText(failure.HTTPStatus))
