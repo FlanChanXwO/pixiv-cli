@@ -306,7 +306,7 @@ func recommendedInputSchema() map[string]any {
 	}
 }
 
-func validateKindFilters(in recommendedIn) error {
+func validateRecommendedFilters(in recommendedIn) error {
 	switch in.Type {
 	case kindAll:
 		return nil
@@ -318,7 +318,7 @@ func validateKindFilters(in recommendedIn) error {
 			return errors.New("user_filter conflicts with type")
 		}
 		if in.IllustFilter != nil && in.IllustFilter.Type != "" && in.ContentType != "" && in.ContentType != kindAll && in.IllustFilter.Type != in.ContentType {
-			return errors.New("illust_filter.type conflicts with type")
+			return errors.New("illust_filter.type conflicts with content_type")
 		}
 	case kindNovel:
 		if in.IllustFilter != nil {
@@ -338,7 +338,7 @@ func validateKindFilters(in recommendedIn) error {
 	return nil
 }
 
-func artworkFilterForKind(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
+func artworkFilterForContentType(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
 	if kind != string(pixiv.SearchContentTypeIllust) && kind != string(pixiv.SearchContentTypeManga) {
 		return filter
 	}
@@ -407,7 +407,7 @@ func parseRecommendedRequest(in recommendedIn) (pagination.PagePlan, error) {
 			return pagination.PagePlan{}, errors.New("content_type must be all, illust, or manga")
 		}
 	}
-	if err := validateKindFilters(in); err != nil {
+	if err := validateRecommendedFilters(in); err != nil {
 		return pagination.PagePlan{}, err
 	}
 	return plan, nil
@@ -428,33 +428,25 @@ func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.C
 }
 
 func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
-	var visualItems []pixiv.Artwork
-	var visualMore bool
-	var visualNext sdk.Cursor
 	if in.Type != kindAll && in.Type != kindArtwork {
 		return nil
 	}
-	{
-		rawArtworkCtx, err := filters.WithIllustFilter(ctx, nil)
-		if err != nil {
-			return err
-		}
-		visualItems, visualMore, visualNext, err = toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			r, e := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: c})
-			if e != nil {
-				return nil, sdk.Cursor{}, e
-			}
-			return r.Items, r.Next, nil
-		})
-		if err != nil {
-			return err
-		}
+	rawArtworkCtx, err := filters.WithIllustFilter(ctx, nil)
+	if err != nil {
+		return err
 	}
-	return appendRecommendedArtworks(ctx, out, plan, in, kindArtwork, visualItems, visualMore, visualNext)
+	items, more, next, err := toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+		page, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
+		return page.Items, page.Next, err
+	})
+	if err != nil {
+		return err
+	}
+	return appendRecommendedArtworks(ctx, out, plan, in, kindArtwork, items, more, next)
 }
 
 func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan pagination.PagePlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
-	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForKind(in.ContentType, in.IllustFilter))
+	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForContentType(in.ContentType, in.IllustFilter))
 	if err != nil {
 		return err
 	}
@@ -529,7 +521,7 @@ func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Cli
 	return err
 }
 
-// streamInput 只携带客户端所选 kind 的续读参数。
+// streamInput 只携带客户端所选实体类型的续读参数。
 func streamInput(in recommendedIn, kind string) recommendedIn {
 	in.Type = kind
 	in.Cursor = nil

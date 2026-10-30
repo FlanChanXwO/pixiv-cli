@@ -108,6 +108,7 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	case "/post.listCreator":
 		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
 	case "/images/202.jpg":
+		w.Header().Set("Content-Type", "image/jpeg")
 		fmt.Fprint(w, "fixture-image")
 	case "/v1/illust/detail":
 		if r.URL.Query().Get("illust_id") == "202" {

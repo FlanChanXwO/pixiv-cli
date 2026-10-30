@@ -15,6 +15,7 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -56,7 +57,7 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 		},
 	}
 	environment.BindFanboxListFlags(cmd, &opts.jsonOut, &opts.ndjson, &opts.limit, &opts.page)
-	cmd.Flags().StringVar(&kind, "relation", kind, "creator list kind: supporting or following")
+	cmd.Flags().StringVar(&kind, "relation", kind, "creator relation: supporting or following")
 	a.env.BindNoInput(cmd)
 	return cmd
 }
@@ -64,7 +65,7 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind string) error {
 	kind := fanbox.CreatorListKind(rawKind)
 	if kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
-		return errors.New("kind must be one of: supporting, following")
+		return errors.New("relation must be one of: supporting, following")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -213,9 +214,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			out = append(out, tagOut{Name: tag.Name, URL: tag.URL})
 		}
 		if jsonOut {
-			return a.env.PrintJSON(struct {
-				Tags []tagOut `json:"tags"`
-			}{Tags: out})
+			return record.WriteJSONValue(a.env.Out, record.NewListOutput(out, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(out)}))
 		}
 		if opts.ndjson {
 			encoder := json.NewEncoder(a.env.Out)

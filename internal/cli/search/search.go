@@ -289,8 +289,8 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 }
 
 type artworkSearchOut struct {
-	Illusts []pixiv.Artwork     `json:"illusts"`
-	Filter  *bookmarkFilterJSON `json:"filter,omitempty"`
+	record.ListOutput[record.Record]
+	Filter *bookmarkFilterJSON `json:"filter,omitempty"`
 }
 
 type bookmarkFilterJSON struct {
@@ -314,7 +314,7 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.P
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, outcome.Filter)
+	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, outcome.Filter)
 }
 
 func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
@@ -326,10 +326,11 @@ func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.Pr
 	if err != nil {
 		return err
 	}
-	return a.writeArtworkResults(jsonOut, ndjson, outcome.Page.Items, nil)
+	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, nil)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, items []pixiv.Artwork, bookmark *searchfilter.BookmarkOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[pixiv.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
+	items := page.Items
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
 		for _, item := range items {
@@ -352,7 +353,11 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, items []pixiv.A
 				Completeness: bookmark.Completeness,
 			}
 		}
-		return a.env.PrintJSON(artworkSearchOut{Illusts: artworkDTOs(items), Filter: filter})
+		records, err := record.FromArtworks(items)
+		if err != nil {
+			return err
+		}
+		return record.WriteJSONValue(a.env.Out, artworkSearchOut{ListOutput: record.NewListOutput(records, plan, pagination.PageResult{Returned: len(records), HasMore: !page.Next.IsZero()}), Filter: filter})
 	}
 	if len(items) == 0 {
 		_, err := fmt.Fprintln(a.env.Err, "No results.")
@@ -378,13 +383,7 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 		return err
 	}
 	if jsonOut {
-		dtos := make([]pixiv.TrendingTag, 0, len(tags))
-		for _, tag := range tags {
-			dtos = append(dtos, tag)
-		}
-		return a.env.PrintJSON(struct {
-			Tags []pixiv.TrendingTag `json:"tags"`
-		}{Tags: dtos})
+		return record.WriteJSONValue(a.env.Out, record.NewListOutput(tags, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(tags)}))
 	}
 	for _, tag := range tags {
 		line := display.SafeLine(tag.Tag)
@@ -396,14 +395,6 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 		}
 	}
 	return nil
-}
-
-func artworkDTOs(items []pixiv.Artwork) []pixiv.Artwork {
-	out := make([]pixiv.Artwork, 0, len(items))
-	for _, item := range items {
-		out = append(out, item)
-	}
-	return out
 }
 
 func resolveSearchBy(value string) (pixiv.SearchTarget, error) {

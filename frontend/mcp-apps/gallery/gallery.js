@@ -979,12 +979,12 @@
           avatar.src = url;
         }).catch(failed);
       }
-      if (artwork.type === "ugoira") ratingBadge(artwork, info);
+      if (artwork.content_type === "ugoira") ratingBadge(artwork, info);
       tagChips(artwork.tags, info, true);
       if (artwork.caption) artworkCaption(artwork.caption, info, epoch);
       const {updateDimensions, updateStats} = artworkMetadata(artwork, info);
       const detailControls = document.createElement("div"); detailControls.className = "detail-controls";
-      if (artwork.type === "ugoira") {
+      if (artwork.content_type === "ugoira") {
         animationControls(id, artwork, mediaColumn, epoch);
       } else {
         const total = artwork.page_count;
@@ -1141,7 +1141,7 @@
     const mutate = async restrict => {
       if (busy || !state || epoch !== view || (restrict && !["public", "private"].includes(restrict))) return;
       busy = true; enable();
-      const args = {kind: "artwork", id};
+      const args = {type: "artwork", id};
       if (restrict) { args.restrict = restrict; args.tags = state.tags; }
       let success = false;
       try {
@@ -1290,7 +1290,7 @@
       // 静态媒体复用完整详情页，动画保留内嵌播放视图。
       if (serverTools && pages.length && !pages.some(page => Number.isSafeInteger(page?.preview_content_index))) {
         if (Number.isSafeInteger(pages[0]?.page) && pages[0].page > 0) remember("page:" + id, pages[0].page, 8);
-        openDetail({id: String(id), type: "illust", title});
+        openDetail({id: String(id), type: "artwork", title});
       } else renderMedia(result, epoch);
       return;
     }
@@ -1298,9 +1298,9 @@
     if (!Array.isArray(records)) { status.textContent = "No structured records; use the tool result in chat."; return; }
     // 单件作品直接进入详情；没有 tool 调用或有效 ID 时详情无法加载，因此保留卡片。
     const only = records.length === 1 ? records[0] : undefined;
-    if (serverTools && ["illust", "manga", "ugoira"].includes(only?.type) && Number.isSafeInteger(Number(only.id)) && Number(only.id) > 0) { openDetail(only); return; }
+    if (serverTools && only?.type === "artwork" && Number.isSafeInteger(Number(only.id)) && Number(only.id) > 0) { openDetail(only); return; }
     status.textContent = result.isError ? "Tool failed or returned partial results." : records.length ? "" : "No results.";
-    if (records.length === 1 && ["illust", "manga", "ugoira"].includes(records[0]?.type)) cards.className = "single-artwork";
+    if (records.length === 1 && records[0]?.type === "artwork") cards.className = "single-artwork";
     if (records.length > 1) { cards.className = "gallery-results"; cards.setAttribute("tabindex", "0"); }
     if (result.isError) status.className = "sr-only";
     if (typeof IntersectionObserver === "function") {
@@ -1313,7 +1313,7 @@
     }
     let thumbnails;
     // 历史 URL 会过期或在校验 key 变更后失效，每次视图只获取一次当前 capability。
-    const currentThumbnails = serverTools ? () => thumbnails ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:records.filter(record => record && ["illust", "manga", "ugoira"].includes(record.type) && Number.isSafeInteger(Number(record.id)) && Number(record.id) > 0).map(record => Number(record.id)),page:1,quality:"thumbnail"}}, epoch) : result;
+    const currentThumbnails = serverTools ? () => thumbnails ??= request("tools/call", {name:"pixiv_show_gallery", arguments:{illust_ids:records.filter(record => record && record.type === "artwork" && Number.isSafeInteger(Number(record.id)) && Number(record.id) > 0).map(record => Number(record.id)),page:1,quality:"thumbnail"}}, epoch) : result;
     // 失败通常同因（capability 过期），一次重试批量续订所有失败卡片。
     const thumbs = [];
     const retryFailed = () => {
@@ -1327,7 +1327,7 @@
       const card = document.createElement("article"); card.className = "artwork-card";
       cards.append(card);
       if (!record || typeof record !== "object" || Array.isArray(record)) { text("p", "Invalid record — inspect the tool result in chat.", card, "error"); continue; }
-      if (["illust", "manga", "ugoira"].includes(record.type)) {
+      if (record.type === "artwork") {
         const media = proxyImage(record, card, currentThumbnails, epoch, 1, "thumbnail", () => openDetail(record, result), undefined, undefined, retryFailed);
         thumbs.push({id: Number(record.id), media});
         card.loadPreview = media.load;

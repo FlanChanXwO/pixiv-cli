@@ -30,18 +30,14 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 		if _, err := io.WriteString(spool, `{"artworks":`); err != nil {
 			return false, err
 		}
-	}
-	if jsonOut {
 		if err := record.RunArtworks(ctx, runner, session.ProxyRequest{}, plan, format, io.Discard, record.ArtworkList{
 			Fetch: func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 				return fetchRecommendedArtworks(client, searchfilter.Filter{})(ctx, cursor)
 			},
-			Print: func(items []pixiv.Artwork, _ int) error { return nil },
 		}); err != nil {
 			return false, err
 		}
-	}
-	if !jsonOut {
+	} else {
 		items, _, err := pagination.CollectPagesFrom(ctx, plan, sdk.Cursor{}, fetchRecommendedArtworks(client, searchfilter.Filter{}))
 		if err != nil {
 			return false, err
