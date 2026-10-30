@@ -1,6 +1,6 @@
 // Package detail 提供 pixiv detail 命令，输出作品、小说、用户等实体的详情。
 //
-// 包的组成：[New] 组装命令树，[Options] 记录实体类型与输出选择；JSON 暂存在 output.go。
+// 包的组成：[New] 组装命令树，[Options] 记录实体类型与输出选择；JSON 暂存由 internal/record 持有。
 package detail
 
 import (
@@ -110,13 +110,13 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 	humanOutput := !ndjson && !jsonOut
 	var humanBuffer bytes.Buffer
 	firstHuman := true
-	var spool *jsonArraySpool
+	var spool *record.JSONArraySpool
 	if jsonOut && !ndjson {
-		spool, err = newJSONArraySpool()
+		spool, err = record.NewJSONArraySpool()
 		if err != nil {
 			return err
 		}
-		defer spool.close()
+		defer spool.Close()
 		worker.env.Out = spool
 	}
 	reader := opts.input.Reader(a.env.In)
@@ -160,7 +160,7 @@ func (a commandRunner) runRecords(cmd *cobra.Command, opts Options) error {
 		return err
 	}
 	if spool != nil {
-		return spool.commit(a.env.Out)
+		return spool.Commit(a.env.Out)
 	}
 	return nil
 }

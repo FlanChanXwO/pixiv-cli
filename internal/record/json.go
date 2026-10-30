@@ -144,3 +144,26 @@ func validateStringField(fields map[string]any, name string) error {
 	}
 	return nil
 }
+
+// ListValues 把非实体列表投影为 JSON 对象；有 id 时归一为字符串，保留其余字段。
+func ListValues[T any](items []T) ([]map[string]any, error) {
+	values := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		body, err := json.Marshal(item)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := decodeRecordObject(body)
+		if err != nil {
+			return nil, err
+		}
+		if id, exists := fields["id"]; exists {
+			fields["id"], err = normalizeRecordID(id, true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		values = append(values, fields)
+	}
+	return values, nil
+}

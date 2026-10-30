@@ -129,7 +129,7 @@ func seriesContract() target.Contract {
 
 type novelSeriesOut struct {
 	Series pixiv.NovelSeries `json:"series"`
-	Novels []pixiv.Novel     `json:"novels"`
+	record.ListOutput[record.Record]
 }
 
 func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
@@ -146,10 +146,11 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			}
 			return result.Novels.Items, result.Novels.Next, nil
 		}
-		if err := pagination.PageItems(ctx, plan, fetch, func(items []pixiv.Novel) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []pixiv.Novel) error {
 			novels = append(novels, items...)
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return false, err
 		}
 		if ndjson {
@@ -166,7 +167,11 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			return len(novels) > 0, nil
 		}
 		if jsonOut {
-			if err := a.env.PrintJSON(novelSeriesOut{Series: metadata, Novels: novels}); err != nil {
+			records, err := record.FromNovels(novels)
+			if err != nil {
+				return false, err
+			}
+			if err := record.WriteJSONValue(a.env.Out, novelSeriesOut{Series: metadata, ListOutput: record.NewListOutput(records, plan, page)}); err != nil {
 				return true, err
 			}
 			return true, nil

@@ -59,7 +59,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 			bookmarkArtworkStream(client, attemptUserID, opts),
 			bookmarkNovelStream(client, attemptUserID, opts),
 		}
-		items, _, _, err := pagination.CollectStreams(ctx, plan, streams)
+		items, _, page, err := pagination.CollectStreams(ctx, plan, streams)
 		if err != nil {
 			return false, err
 		}
@@ -84,9 +84,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				}
 				records = append(records, value)
 			}
-			if err := record.WriteJSONValue(&staged, struct {
-				Records []record.Record `json:"records"`
-			}{Records: records}); err != nil {
+			if err := record.WriteJSONValue(&staged, record.NewListOutput(records, plan, page)); err != nil {
 				return false, err
 			}
 		} else {

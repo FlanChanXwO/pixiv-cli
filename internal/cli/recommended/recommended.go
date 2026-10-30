@@ -146,10 +146,6 @@ func validKind(kind string) bool {
 
 func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	if kind == string(pixiv.SearchContentTypeIllust) || kind == string(pixiv.SearchContentTypeManga) {
-		jsonKey := string(record.JSONKeyIllusts)
-		if kind == string(pixiv.SearchContentTypeManga) {
-			jsonKey = string(record.JSONKeyManga)
-		}
 		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
 			result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
 			if err != nil {
@@ -157,7 +153,7 @@ func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest,
 			}
 			return result.Items, result.Next, nil
 		}
-		return record.RunArtworks(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Key: record.JSONKey(jsonKey), Fetch: fetch, PostFilter: func(items []pixiv.Artwork) []pixiv.Artwork {
+		return record.RunArtworks(ctx, a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, PostFilter: func(items []pixiv.Artwork) []pixiv.Artwork {
 			return filterRecommendedArtworks(items, artworkFilter)
 		}, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
 	}
@@ -236,11 +232,10 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 	}); err != nil {
 		return committed, err
 	}
-	for _, filter := range []searchfilter.Filter{{ContentType: searchfilter.ContentTypeIllust}, {ContentType: searchfilter.ContentTypeManga}} {
-		if err := writeArtworks(filterRecommendedArtworks(visualItems, filter)); err != nil {
-			return committed, err
-		}
+	if err := writeArtworks(visualItems); err != nil {
+		return committed, err
 	}
+
 	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
 		if err != nil {

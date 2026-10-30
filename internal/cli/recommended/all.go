@@ -3,68 +3,89 @@ package recommended
 import (
 	"context"
 	"fmt"
+	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// runAll 按既有类别顺序把四个推荐分区写入一份私有临时文档，只有全部读取成功后才
-// 把完整文档交给 stdout。因此中途失败不会让用户看到半份结果。
+// runAll 在同一次账号尝试内暂存全部分区，完成后才提交；文本保留插画、漫画的顺序。
 func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pagination.PagePlan, jsonOut bool) (bool, error) {
-	spool, err := newSpool(jsonOut)
+	spool, err := record.NewSpool()
 	if err != nil {
 		return false, err
 	}
 	defer spool.Close()
-
-	var visualItems []pixiv.Artwork
-	if err := pagination.PageItems(ctx, plan, fetchRecommendedArtworks(client, searchfilter.Filter{}), func(items []pixiv.Artwork) error {
-		visualItems = append(visualItems, items...)
-		return nil
+	runner := session.NewRunner(spool, func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		_, err := attempt(ctx, client)
+		return err
+	})
+	format := record.FormatOf(jsonOut, false)
+	if jsonOut {
+		if _, err := io.WriteString(spool, `{"artworks":`); err != nil {
+			return false, err
+		}
+	}
+	if jsonOut {
+		if err := record.RunArtworks(ctx, runner, session.ProxyRequest{}, plan, format, io.Discard, record.ArtworkList{
+			Fetch: func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+				return fetchRecommendedArtworks(client, searchfilter.Filter{})(ctx, cursor)
+			},
+			Print: func(items []pixiv.Artwork, _ int) error { return nil },
+		}); err != nil {
+			return false, err
+		}
+	}
+	if !jsonOut {
+		items, _, err := pagination.CollectPagesFrom(ctx, plan, sdk.Cursor{}, fetchRecommendedArtworks(client, searchfilter.Filter{}))
+		if err != nil {
+			return false, err
+		}
+		for _, contentType := range []searchfilter.ContentType{searchfilter.ContentTypeIllust, searchfilter.ContentTypeManga} {
+			if err := display.PrintArtworks(spool, filterRecommendedArtworks(items, searchfilter.Filter{ContentType: contentType})); err != nil {
+				return false, err
+			}
+		}
+	}
+	if jsonOut {
+		if _, err := io.WriteString(spool, `,"novels":`); err != nil {
+			return false, err
+		}
+	}
+	if err := record.RunNovels(ctx, runner, session.ProxyRequest{}, plan, format, io.Discard, record.NovelList{
+		Fetch: func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+			page, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
+			return page.Items, page.Next, err
+		},
+		Print: func(items []pixiv.Novel) error { return display.PrintNovels(spool, items) },
 	}); err != nil {
 		return false, err
 	}
-
-	for _, section := range []struct {
-		key    string
-		filter searchfilter.Filter
-	}{{key: string(record.JSONKeyIllusts), filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeIllust}}, {key: string(record.JSONKeyManga), filter: searchfilter.Filter{ContentType: searchfilter.ContentTypeManga}}} {
-		if err := spool.section(section.key); err != nil {
-			return false, err
-		}
-		if err := spool.artworks(filterRecommendedArtworks(visualItems, section.filter)); err != nil {
+	if jsonOut {
+		if _, err := io.WriteString(spool, `,"users":`); err != nil {
 			return false, err
 		}
 	}
-	if err := spool.section("novels"); err != nil {
+	if err := record.RunUsers(ctx, runner, session.ProxyRequest{}, plan, format, io.Discard, record.UserList{
+		Fetch: func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+			page, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
+			return page.Items, page.Next, err
+		},
+		Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(spool, items) },
+	}); err != nil {
 		return false, err
 	}
-	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
+	if jsonOut {
+		if _, err := io.WriteString(spool, "}\n"); err != nil {
+			return false, err
 		}
-		return result.Items, result.Next, nil
-	}, spool.novels); err != nil {
-		return false, err
-	}
-	if err := spool.section("user_previews"); err != nil {
-		return false, err
-	}
-	if err := pagination.PageItems(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	}, spool.users); err != nil {
-		return false, err
-	}
-	if !jsonOut {
-		info, err := spool.file.Stat()
+	} else {
+		info, err := spool.Stat()
 		if err != nil {
 			return false, err
 		}
@@ -73,6 +94,5 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 			return false, err
 		}
 	}
-	// 最终 io.Copy 可能已交付部分 stdout；在尝试前关闭账号池重放窗口。
 	return true, spool.Commit(a.env.Out)
 }

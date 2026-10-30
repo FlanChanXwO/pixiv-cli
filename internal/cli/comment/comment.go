@@ -339,8 +339,12 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 	if err != nil {
 		return err
 	}
+	values, err := record.ListValues(stamps)
+	if err != nil {
+		return err
+	}
 	if ndjson {
-		for _, item := range stamps {
+		for _, item := range values {
 			if err := record.WriteJSONLine(a.env.Out, item); err != nil {
 				return err
 			}
@@ -348,9 +352,7 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		return nil
 	}
 	if jsonOut {
-		return a.env.PrintJSON(struct {
-			Stamps []pixiv.Stamp `json:"stamps"`
-		}{Stamps: stamps})
+		return record.WriteJSONValue(a.env.Out, record.NewListOutput(values, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(stamps)}))
 	}
 	if len(stamps) == 0 {
 		_, err := fmt.Fprintln(a.env.Err, "No results.")
@@ -418,7 +420,7 @@ func (a commandRunner) writeDeleteResult(jsonOut bool, commentID int64) error {
 }
 
 type commentOut struct {
-	Comments      []pixiv.Comment             `json:"comments"`
+	record.ListOutput[map[string]any]
 	Total         *int64                      `json:"total,omitempty"`
 	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
 }
@@ -477,14 +479,19 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			metadata.set(page)
 			return page.Page.Items, page.Page.Next, nil
 		}
-		if err := pagination.PageItems(ctx, plan, fetch, func(items []pixiv.Comment) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []pixiv.Comment) error {
 			comments = append(comments, items...)
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
+			return false, err
+		}
+		values, err := record.ListValues(comments)
+		if err != nil {
 			return false, err
 		}
 		if ndjson {
-			for _, item := range comments {
+			for _, item := range values {
 				if err := record.WriteJSONLine(a.env.Out, item); err != nil {
 					return true, err
 				}
@@ -497,7 +504,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 				dto := *metadata.access
 				accessControl = &dto
 			}
-			if err := a.env.PrintJSON(commentOut{Comments: comments, Total: metadata.total, AccessControl: accessControl}); err != nil {
+			if err := record.WriteJSONValue(a.env.Out, commentOut{ListOutput: record.NewListOutput(values, plan, page), Total: metadata.total, AccessControl: accessControl}); err != nil {
 				return true, err
 			}
 			return true, nil
