@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/spf13/cobra"
 )
 

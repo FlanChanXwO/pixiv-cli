@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 // nilClient 表示账号叶服务成功返回了 nil client。

@@ -6,8 +6,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // PixivOptions 把运行时配置与请求的代理覆盖翻译成公开 SDK 选项，并返回只读会话

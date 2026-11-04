@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"golang.org/x/term"
 )
 

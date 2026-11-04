@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // kindAll 表示推荐与作品列表共用的聚合选择值。

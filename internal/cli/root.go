@@ -37,6 +37,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
@@ -49,7 +50,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 

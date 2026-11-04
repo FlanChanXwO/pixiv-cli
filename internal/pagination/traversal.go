@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 )
 
 // ErrExecuteNotConfigured 表示调用方没有提供可重放的 execute 函数。

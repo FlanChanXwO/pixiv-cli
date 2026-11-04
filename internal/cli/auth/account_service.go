@@ -13,9 +13,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // accountOut 定义所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。

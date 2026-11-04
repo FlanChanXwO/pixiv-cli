@@ -5,10 +5,10 @@ import (
 	"errors"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // ProxyRequest 保存一次 Pixiv 数据执行的账号与代理覆盖。代理到 SDK Options 的翻译

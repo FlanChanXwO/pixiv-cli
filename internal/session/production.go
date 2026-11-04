@@ -10,12 +10,12 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PixivSettings 保存一次请求翻译得到的 SDK 选项与只读会话缓存键。
