@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func (b *ArtworkDownloader) downloadUgoira(ctx context.Context, artwork pixiv.Artwork, base string, format UgoiraFormat) (outputPath string, warning *DownloadWarning, returnErr error) {

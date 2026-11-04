@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // DownloadClient 定义下载实现从 public SDK operation snapshot 使用的最小能力集。

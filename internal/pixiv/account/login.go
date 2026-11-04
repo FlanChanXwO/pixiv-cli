@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // LoginService 将浏览器交互同 public SDK 的一次性 LoginSession 连接起来。应用层不再

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // RecordFromArtwork 将 public artwork 映射为管道记录。

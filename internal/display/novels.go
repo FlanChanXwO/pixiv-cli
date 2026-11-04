@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // PrintNovels 转义小说标题和作者，每本小说输出一行。

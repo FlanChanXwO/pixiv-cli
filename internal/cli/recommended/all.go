@@ -6,12 +6,12 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // runAll 在同一次账号尝试内暂存全部分区，完成后才提交；文本保留插画、漫画的顺序。

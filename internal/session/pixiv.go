@@ -13,10 +13,10 @@ import (
 	"context"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 var (

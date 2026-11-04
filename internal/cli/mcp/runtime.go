@@ -11,6 +11,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
 	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -23,8 +25,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Runtime 是组合根交给 MCP 命令的生产依赖。

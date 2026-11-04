@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 )
 
 // Service 提供 FANBOX 账号导入、列出、选择、移除与 client 打开。

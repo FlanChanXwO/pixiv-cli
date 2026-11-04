@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 func retryAfterFor(err error, now time.Time) (time.Duration, bool) {

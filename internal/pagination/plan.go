@@ -5,7 +5,7 @@ import (
 	"errors"
 	"math"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 )
 
 // 校验失败的原因；调用方按自己的输出契约翻译其中需要改写的文本。

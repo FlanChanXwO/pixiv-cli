@@ -15,10 +15,10 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 

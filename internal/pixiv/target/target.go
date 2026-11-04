@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Namespace 指定输入身份或操作内容的命名空间；URL 专属身份由 ReferenceKind 保留。

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // Rating 给出产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。

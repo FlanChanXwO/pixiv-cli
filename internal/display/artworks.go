@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
 // PrintArtworks 每项输出一行标题、作者和收藏数，并转义上游文本。
