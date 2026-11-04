@@ -26,9 +26,9 @@ func CaptureErrorOrigin() ErrorOrigin {
 			return ErrorOrigin{}
 		}
 		frame, _ := runtime.CallersFrames(pcs[:]).Next()
-		if frame.Function == modulePrefix+"sdk.NewError" ||
+		if frame.Function == modulePrefix+"internal/legacy/sdk.NewError" ||
 			(strings.HasSuffix(frame.File, "/errors.go") &&
-				(strings.HasPrefix(frame.Function, modulePrefix+"sdk/pixiv.") || strings.HasPrefix(frame.Function, modulePrefix+"sdk/fanbox."))) {
+				(strings.HasPrefix(frame.Function, modulePrefix+"internal/legacy/sdk/pixiv.") || strings.HasPrefix(frame.Function, modulePrefix+"internal/legacy/sdk/fanbox."))) {
 			continue
 		}
 		return ErrorOrigin{pc: pcs[0]}
