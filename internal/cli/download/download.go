@@ -5,7 +5,7 @@
 package download
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -25,12 +25,12 @@ func New(env environment.Env, exec session.Executor, runtime func() (Runtime, er
 }
 
 // RuntimeFrom 把运行时配置投影成下载命令使用的路径与命名模板。
-func RuntimeFrom(load func() (settings.RuntimeConfig, error)) func() (Runtime, error) {
+func RuntimeFrom(load func() (config.Config, error)) func() (Runtime, error) {
 	return func() (Runtime, error) {
 		runtime, err := load()
 		if err != nil {
 			return Runtime{}, err
 		}
-		return Runtime{DownloadPath: runtime.DownloadPath, FilenameTemplate: runtime.FilenameTemplate, DirectoryTemplate: runtime.DirectoryTemplate}, nil
+		return Runtime{DownloadPath: runtime.Download.Path, FilenameTemplate: runtime.Download.FilenameTemplate, DirectoryTemplate: runtime.Download.DirectoryTemplate}, nil
 	}
 }

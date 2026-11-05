@@ -13,8 +13,8 @@ loopback bridge has priority; otherwise only `pixiv://account/login` can reach
 a current one-time remote hand-off, while other `pixiv://` URLs are delegated to
 the previous handler. Do not invoke hidden protocol-handler helpers directly.
 
-For a cross-machine login, configure `login_relay_public_url` and
-`login_relay_listen_addr` on the account-hosting server. `pixiv auth login`
+For a cross-machine login, configure `login.relay_public_url` and
+`login.relay_listen_addr` on the account-hosting server. `pixiv auth login`
 prints a one-login hand-off URL rather than an authorization URL. Opening it
 redirects directly to `pixiv://account/remote-login`; the local installed CLI
 claims that one session, starts OAuth, and returns the callback to the
@@ -27,16 +27,16 @@ flow.
 
 The relay can use HTTP or HTTPS. `login_relay_secret` and
 `login_relay_target_url` are silently ignored. `pixiv auth devices` has been removed.
-`pixiv config` manages account-pool enabled/strategy, download path, filename
-template, and HTTPS proxy;
-advanced relay settings belong in the private `config.toml`.
+`pixiv config get/set/unset` manages declared TOML paths, including
+`login.relay_public_url` and `login.relay_listen_addr`; the same fields can be
+edited directly in private `config.toml`.
 
 ## Account-pool scheduling
 
 The account pool applies only to safe, non-mutating Pixiv reads and downloads.
-Set `account_pool_enabled=true` and optionally `account_pool_strategy=random`
-through `pixiv config`, then use the database-backed commands below to manage
-which local Pixiv accounts participate:
+Run `pixiv config set account_pool.enabled true` and optionally
+`pixiv config set account_pool.strategy random`, then use the database-backed
+commands below to manage which local Pixiv accounts participate:
 
 ```text
 pixiv auth pool status --json

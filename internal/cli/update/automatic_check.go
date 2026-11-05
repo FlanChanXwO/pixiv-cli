@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -13,7 +13,7 @@ import (
 
 // RunAutomaticCheck 在业务命令成功后展示稳定版更新提示。所有错误只写
 // stderr，不改变已成功命令的退出码，也不进入 stdout/MCP JSON-RPC。
-func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() (settings.RuntimeConfig, error)) {
+func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() (config.Config, error)) {
 	if !shouldCheck(cmd) {
 		return
 	}
@@ -22,7 +22,7 @@ func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() 
 		warning(errOut, "load automatic update configuration", err)
 		return
 	}
-	if !runtimeConfig.UpdateCheckEnabled {
+	if !runtimeConfig.Update.CheckEnabled {
 		return
 	}
 	proxy, err := automaticProxy(cmd, runtimeConfig)
@@ -75,11 +75,11 @@ func shouldCheck(cmd *cobra.Command) bool {
 	return true
 }
 
-func automaticProxy(cmd *cobra.Command, runtimeConfig settings.RuntimeConfig) (string, error) {
+func automaticProxy(cmd *cobra.Command, runtimeConfig config.Config) (string, error) {
 	proxyFlag := cmd.Flags().Lookup("proxy")
 	noProxyFlag := cmd.Flags().Lookup("no-proxy")
 	if proxyFlag == nil && noProxyFlag == nil {
-		return runtimeConfig.HTTPSProxy, nil
+		return runtimeConfig.Network.HTTPSProxy, nil
 	}
 	if proxyFlag != nil && proxyFlag.Changed && noProxyFlag != nil && noProxyFlag.Changed {
 		return "", fmt.Errorf("use either --proxy or --no-proxy, not both")
@@ -94,5 +94,5 @@ func automaticProxy(cmd *cobra.Command, runtimeConfig settings.RuntimeConfig) (s
 		}
 		return proxy, nil
 	}
-	return runtimeConfig.HTTPSProxy, nil
+	return runtimeConfig.Network.HTTPSProxy, nil
 }

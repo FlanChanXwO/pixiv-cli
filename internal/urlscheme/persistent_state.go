@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
@@ -26,7 +26,7 @@ type handlerManifest struct {
 }
 
 func handlerManifestPath() (string, error) {
-	dir, err := paths.UserDataSubdir(paths.AppDataDirName)
+	dir, err := config.UserDataSubdir(config.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
@@ -64,7 +64,7 @@ func saveHandlerManifest(manifest handlerManifest) error {
 	if err != nil {
 		return err
 	}
-	return secretfile.WritePrivateFile(path, body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(path, body, config.PrivateFileMode)
 }
 
 func removeHandlerManifest() error {

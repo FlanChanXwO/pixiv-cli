@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
@@ -26,7 +26,7 @@ const CallbackCommand = "_callback"
 // callbackEndpointPath 返回系统协议 handler 与当前登录进程共享的私有状态路径；
 // 文件只保存 loopback bridge 地址，永远不保存 authorization code 或 refresh token。
 func callbackEndpointPath() (string, error) {
-	dir, err := paths.UserDataSubdir(paths.AppDataDirName)
+	dir, err := config.UserDataSubdir(config.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +44,7 @@ func writeCallbackEndpoint(callbackRelayURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := secretfile.WritePrivateFile(path, []byte(endpoint+"\n"), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(path, []byte(endpoint+"\n"), config.PrivateFileMode); err != nil {
 		return "", err
 	}
 	return path, nil

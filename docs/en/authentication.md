@@ -60,7 +60,7 @@ The tunnel reaches only the server's loopback listener and makes the manual page
 
 ### Cross-machine one-time hand-off
 
-Configure the server with `login_relay_public_url` and `login_relay_listen_addr`; `pixiv auth login` then prints one remote hand-off URL.
+Configure the server with `login.relay_public_url` and `login.relay_listen_addr`; `pixiv auth login` then prints one remote hand-off URL.
 
 ```mermaid
 sequenceDiagram
@@ -79,12 +79,12 @@ sequenceDiagram
 
 - No pixiv-cli session, confirmation or callback-copy page is rendered. A new hand-off replaces the prior local one; a client without the desktop handler cannot complete the flow.
 - Relay over HTTP or HTTPS: a certificate/key pair for direct TLS, or a same-host reverse proxy with the relay on loopback.
-- Legacy `login_relay_secret` / `login_relay_target_url` are silently ignored; `pixiv auth devices` is removed. Advanced relay settings stay in private `config.toml` (`pixiv config` manages download path, filename/directory templates, request interval and proxy).
+- Legacy `login_relay_secret` / `login_relay_target_url` are silently ignored; `pixiv auth devices` is removed. Relay settings can be edited with TOML paths such as `pixiv config set login.relay_public_url URL` or directly in private `config.toml`.
 
 **Proxy for login** — the browser's system proxy is not passed to the Go CLI:
 
 ```bash
-pixiv config set https_proxy http://127.0.0.1:7890     # persistent
+pixiv config set network.https_proxy http://127.0.0.1:7890     # persistent
 pixiv auth login --proxy http://127.0.0.1:7890         # this command only
 ```
 

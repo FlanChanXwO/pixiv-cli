@@ -1,7 +1,4 @@
-// Package paths 定义本机私有状态的路径命名空间与最小权限要求。
-//
-// 本包只解析本机路径与权限，不包含 Pixiv 协议、MCP 传输或业务配置解析。
-package paths
+package config
 
 import (
 	"os"
@@ -41,8 +38,7 @@ func UserDataFile(appName, filename string) (string, error) {
 	return filepath.Join(dir, filename), nil
 }
 
-// ConfigFilePath 返回 config.toml 的应用管理路径。配置 schema 由
-// internal/config/settings 拥有；本机路径与权限只由本包解析。
+// ConfigFilePath 返回 config.toml 的应用管理路径。
 func ConfigFilePath() (string, error) {
 	directory, err := AppDataDir()
 	if err != nil {

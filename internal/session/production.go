@@ -7,8 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
@@ -16,6 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 // PixivSettings 保存一次请求翻译得到的 SDK 选项与只读会话缓存键。
@@ -90,7 +90,7 @@ func NewLocal(
 }
 
 func (l *Local) openDatabase() (*database.DB, error) {
-	directory, err := paths.AppDataDir()
+	directory, err := config.AppDataDir()
 	if err != nil {
 		return nil, fmt.Errorf("determine home directory: %w", err)
 	}
@@ -111,7 +111,7 @@ func (l *Local) PixivAccounts() (*account.Service, account.LoginService, error) 
 		if err != nil {
 			return nil, account.LoginService{}, err
 		}
-		l.accounts = account.NewService(db, settings.DefaultStore())
+		l.accounts = account.NewService(db, config.Store{Files: secretfile.ConfigFiles{}})
 		l.login = account.LoginService{Pixiv: l.accounts}
 	}
 	return l.accounts, l.login, nil
@@ -132,7 +132,7 @@ func (l *Local) FanboxAccounts() (*fanboxaccount.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return fanboxaccount.NewService(db, settings.DefaultStore(), l.loadFanbox), nil
+	return fanboxaccount.NewService(db, config.Store{Files: secretfile.ConfigFiles{}}, l.loadFanbox), nil
 }
 
 // Fanbox 延迟构造命令组共用的 FANBOX 会话。
@@ -178,16 +178,16 @@ func (l *Local) ports() (*pixivPorts, error) {
 			l.pixivErr = err
 			return
 		}
-		service := account.NewService(db, settings.DefaultStore())
+		service := account.NewService(db, config.Store{Files: secretfile.ConfigFiles{}})
 		gate := pool.NewGate()
 		reads := account.NewReadSessions(service, gate)
 		l.closeState.Add(reads.Close)
 		l.pixiv = &pixivPorts{
 			database: db,
 			reads:    reads,
-			facade: NewPixiv(service, gate, l.loadPoolConfig, func(config PoolConfig) (PoolExecutor, error) {
+			facade: NewPixiv(service, gate, l.loadPoolConfig, func(poolConfig PoolConfig) (PoolExecutor, error) {
 				return pool.Scheduler{
-					Config: settings.AccountPoolConfig{Enabled: config.Enabled, Strategy: settings.AccountPoolStrategy(config.Strategy)},
+					Config: config.AccountPoolConfig{Enabled: poolConfig.Enabled, Strategy: config.AccountPoolStrategy(poolConfig.Strategy)},
 					State:  db,
 					Now:    time.Now,
 				}, nil
@@ -278,7 +278,7 @@ func (l *Local) LocalAccounts(ctx context.Context) (LocalAccounts, error) {
 	if err != nil {
 		return LocalAccounts{}, err
 	}
-	defaultID, explicit, err := settings.DefaultStore().ReadPixivDefaultUserID()
+	defaultID, explicit, err := (config.Store{Files: secretfile.ConfigFiles{}}).ReadPixivDefaultUserID()
 	if err != nil {
 		return LocalAccounts{}, err
 	}

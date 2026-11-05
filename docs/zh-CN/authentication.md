@@ -60,7 +60,7 @@ ssh -N -L 41871:127.0.0.1:41871 USER@SERVER          # 本地机器上
 
 ### 跨机器一次性 hand-off
 
-在服务器配置 `login_relay_public_url` 与 `login_relay_listen_addr`，`pixiv auth login` 即会打印一个远程 hand-off URL。
+在服务器配置 `login.relay_public_url` 与 `login.relay_listen_addr`，`pixiv auth login` 即会打印一个远程 hand-off URL。
 
 ```mermaid
 sequenceDiagram
@@ -79,12 +79,12 @@ sequenceDiagram
 
 - 不渲染任何 pixiv-cli 会话、确认或复制回调页面。新的 hand-off 会替换本地旧的；没有桌面 handler 的客户端无法完成该流程。
 - relay 可用 HTTP 或 HTTPS：直接 TLS 使用证书/私钥对，或让 relay 监听 loopback 并置于同机反向代理之后。
-- 旧的 `login_relay_secret` / `login_relay_target_url` 会被静默忽略；`pixiv auth devices` 已移除。高级 relay 设置保留在私有 `config.toml`（`pixiv config` 管理下载路径、文件名/目录模板、请求间隔与代理）。
+- 旧的 `login_relay_secret` / `login_relay_target_url` 会被静默忽略；`pixiv auth devices` 已移除。relay 设置可通过 TOML 路径（例如 `pixiv config set login.relay_public_url URL`）或直接编辑私有 `config.toml` 来修改。
 
 **登录代理** —— 浏览器的系统代理不会自动传给 Go CLI：
 
 ```bash
-pixiv config set https_proxy http://127.0.0.1:7890     # 持久配置
+pixiv config set network.https_proxy http://127.0.0.1:7890     # 持久配置
 pixiv auth login --proxy http://127.0.0.1:7890         # 仅本次命令
 ```
 

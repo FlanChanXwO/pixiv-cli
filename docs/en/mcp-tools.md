@@ -180,7 +180,7 @@ Artwork records use `type:"artwork"` and `content_type` for the original upstrea
 | `file_id` | Non-empty, descriptive only, never a download address |
 | `provider` | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; omitted → startup config (default `saucenao`) |
 
-- `reverse_search_pixiv_only`, proxy, API key and transport settings are captured at startup; a call cannot change them.
+- `reverse_search.pixiv_only`, proxy, API key and transport settings are captured at startup; a call cannot change them.
 - Network surfaces (startup): standard source/SauceNAO client (global proxy route); ascii2d browser client (`[reverse_search.network].proxy_url` if present, explicit empty = direct; `user_agent` ascii2d-only with matching `Sec-CH-UA*` hints for Chromium, omitted otherwise); FlareSolverr JSON control client (`[reverse_search.flaresolverr].proxy_url` is only the browser upstream in `sessions.create`; control traffic inherits neither native route).
 
 > [!WARNING]

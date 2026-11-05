@@ -35,9 +35,9 @@ pixiv auth refresh
 pixiv whoami
 pixiv whoami --json
 pixiv config path
-pixiv config get download_path
-pixiv config set download_path ~/Downloads/pixiv
-pixiv config unset https_proxy
+pixiv config get download.path
+pixiv config set download.path ~/Downloads/pixiv
+pixiv config unset network.https_proxy
 pixiv --version
 pixiv update --check [--json]
 
@@ -74,7 +74,7 @@ pixiv download 123456 789012 --output ./downloads
 | Location | `~/.pixiv-cli` (macOS/Linux), `%USERPROFILE%\.pixiv-cli` (Windows) |
 | Contents | `pixiv-cli.db` (accounts keyed by UID), `config.toml`, callback-bridge state, Release-check cache, macOS callback helper |
 | Permissions | Unix `0700` dirs / `0600` files; Windows inherits parent ACL on creation, keeps target ACL on replacement, no DACL claims |
-| `config.toml` creation | Created with common download/output/login/update settings on the first ordinary command; never overwritten. Advanced settings (proxy, login timeout, Premium-status cache) omitted until set. Help, root `--version`, secret export and the internal OAuth callback do not create it |
+| `config.toml` creation | Created from a template with English comments and defaults on the first ordinary command; existing files are preserved. Optional service overrides and default accounts appear as commented examples. Help, root `--version`, secret export and the internal OAuth callback do not create it |
 
 Options may appear before or after positional arguments (Cobra/pflag): `pixiv auth check 12345678 --json` and `pixiv search "初音ミク" --json` are both supported. `auth export` deliberately has no `--json`.
 
@@ -123,7 +123,7 @@ flowchart TD
 | `ascii2d-color`, `ascii2d-bovw` | JPEG, PNG, WEBP; ascii2d-specific 10 MB upload limit |
 | `all` | fixed order SauceNAO → ascii2d color → ascii2d bovw; may be partial |
 
-`reverse_search_pixiv_only` (default `true`, config only) controls whether non-Pixiv matches stay in `results`. There is no reverse-search-wide 1 MiB compressed-upload rule; `gzip, deflate, br` is response negotiation.
+`reverse_search.pixiv_only` (default `true`, config only) controls whether non-Pixiv matches stay in `results`. There is no reverse-search-wide 1 MiB compressed-upload rule; `gzip, deflate, br` is response negotiation.
 
 | Network surface | Proxy | User-Agent |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `whoami` | `pixiv whoami [--json]` | Shows the current local account without network access or token rotation: text `username (UID)`, `username (UID) · Premium` for a cached Premium account, or only `UID` when the username is unknown. `--json` returns one object with the same fields as an `auth list --json` account. Without a local account, stdout stays empty and the command exits 1 with `error: not logged in; run "pixiv auth login"`. |
 | `config path` | `pixiv config path` | Prints the `config.toml` path, creating the baseline if missing. |
 | `config get` | `pixiv config get KEY` | Prints one effective value. |
-| `config set` | `pixiv config set KEY [VALUE]` | Writes one known key (see [config aliases](#cli-managed-config-aliases)); `saucenao_api_key` is stdin-only. |
+| `config set` | `pixiv config set KEY VALUE` | Writes one declared TOML path (see [configuration paths](#configuration-toml-paths)); a missing value can come from stdin. |
 | `config unset` | `pixiv config unset KEY` | Deletes one known key from `config.toml`. |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | Checks for or performs an update matching the install source; `--json` only with `--check`. |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | Entity search or automatic reverse-image search. `--trending-tags` is the no-word artwork tag-list mode; no filters or pagination. |
@@ -211,7 +211,7 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | Command | Flag | Default | Description |
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | Entity: `artwork`, `novel`, `user`. Subtype is `--content-type`; `illust` is not an entity value. |
-| `search` | `--provider` | `reverse_search_provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
+| `search` | `--provider` | `reverse_search.provider` (`saucenao`) | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`; image sources only. |
 | `search` | `--content-type` | `all` | `all`, `illust-and-ugoira`, `illust`, `manga`, `ugoira`; artwork search only. |
 | `search`, `novel search` | `--search-by` | `tag-partial` | Artwork: `tag-partial`, `tag-exact`, `title-caption`, `tag-title-caption`; novel: first three. |
 | `search`, `novel search` | `--sort` | `date_desc` | Accepted SDK values: `date_desc`, `date_asc`, `popular_desc`. |
@@ -330,37 +330,60 @@ Verified on the authenticated App API for illustration `search` with a tag `--se
 | `--proxy URL` | network commands and `mcp` | `https_proxy`/`HTTPS_PROXY`, `config.toml`, or empty | `http`/`https`/`socks5`/`socks5h` for this command only; forbidden with bundle-form `auth import`. |
 | `--no-proxy` | same as `--proxy` | empty | Clears the proxy for this command; not with `--proxy` or bundle restore. |
 
-### CLI-managed `config` aliases
+### Configuration TOML paths
 
-`pixiv config get/set/unset` accepts only these aliases; all other settings are hand-maintained in private `config.toml` (no generic editor).
+`pixiv config get/set/unset KEY` uses the TOML leaf paths below. Replace old command aliases such as `download_path` with `download.path`; existing `config.toml` paths stay the same. Each subcommand's `--help` lists the available keys. Unknown paths and invalid values are rejected before writing.
 
 | KEY | Type | Default | Description |
 | --- | --- | --- | --- |
-| `account_pool_enabled` | boolean | `false` | Database-backed pool selection for safe reads/downloads. |
-| `account_pool_strategy` | string | `round_robin` | `round_robin` or `random`. |
-| `download_path` | string | `./downloads` | Download directory. |
-| `filename_template` | string | `{author} - {title}_{id}` | Filename template. |
-| `directory_template` | string | empty | Relative download directory template. |
-| `request_interval` | duration | `0` | Minimum interval between request starts; also `PIXIV_REQUEST_INTERVAL` or `[network].request_interval`. |
-| `https_proxy` | string | empty | Global proxy URI; the lowercase `https_proxy` env var takes precedence. |
-| `log_level` | string | `info` | `debug`, `info`, `warn`, or `error`; `info` keeps routine work quiet. Written as `[logging].level`. |
-| `log_format` | string | `text` | `text` or one JSON log record per line. Written as `[logging].format`. |
-| `reverse_search_provider` | string | `saucenao` | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, `all`. |
-| `reverse_search_pixiv_only` | boolean | `true` | Keep only identified Pixiv artwork/user matches in the canonical set; external evidence can remain in `results` when disabled. |
-| `saucenao_api_key` | sensitive string | unset | `config get` always prints `<redacted>`; `config set` reads only non-TTY stdin, never an argument. |
-| `mcp_gallery_*` | — | — | Gallery settings, see [MCP HTTP server](#mcp-http-server). |
+| `account_pool.enabled` | boolean | `false` | Enable database-backed pool selection for safe reads/downloads. |
+| `account_pool.strategy` | string | `round_robin` | `round_robin` or `random`. |
+| `download.path` | string | `./downloads` | Download directory. |
+| `download.filename_template` | string | `{author} - {title}_{id}` | Filename template. |
+| `download.directory_template` | string | empty | Relative download directory template. |
+| `network.request_interval` | duration string | `0s` | Non-negative Go duration; minimum interval between Pixiv request starts. |
+| `network.https_proxy` | string | empty | Global proxy URI. |
+| `logging.level` | string | `info` | `debug`, `info`, `warn`, or `error`. |
+| `logging.format` | string | `text` | `text` or `json`. |
+| `output.json` | boolean | `false` | Default JSON output where the command supports it. |
+| `update.check_enabled` | boolean | `true` | Enable automatic update checks after ordinary commands. |
+| `login.open_browser` | boolean | `true` | Open the browser for OAuth login. |
+| `login.use_after_login` | boolean | `false` | Select the account after login. |
+| `login.relay_public_url` | string | empty | Public URL for cross-machine login. |
+| `login.relay_listen_addr` | string | empty | Login relay listener address. |
+| `login.relay_tls_cert_file` | string | empty | Certificate file for direct relay TLS. |
+| `login.relay_tls_key_file` | string | empty | Private-key file for direct relay TLS. |
+| `pixiv.auth.default_user_id` | integer | unset | Positive default Pixiv UID, also managed by `pixiv auth use`. |
+| `fanbox.auth.default_user_id` | integer | unset | Positive default FANBOX UID, also managed by `pixiv fanbox auth use`. |
+| `pixiv.network.proxy_url` | string | unset | Pixiv proxy override; an empty value selects direct access. |
+| `fanbox.network.proxy_url` | string | unset | FANBOX proxy override; an empty value selects direct access. |
+| `fanbox.network.user_agent` | string | unset | Native FANBOX User-Agent. |
+| `fanbox.flaresolverr.url` | string | unset | Non-empty solver control URL when FANBOX FlareSolverr is configured. |
+| `fanbox.flaresolverr.proxy_url` | string | unset | Upstream proxy for the solver browser. |
+| `reverse_search.provider` | string | `saucenao` | `saucenao`, `ascii2d-color`, `ascii2d-bovw`, or `all`. |
+| `reverse_search.pixiv_only` | boolean | `true` | Keep only Pixiv matches in `results` when enabled. |
+| `reverse_search.saucenao_api_key` | string | empty | SauceNAO API key; `config get` prints it directly. |
+| `reverse_search.network.proxy_url` | string | unset | ascii2d proxy override; an empty value selects direct access. |
+| `reverse_search.network.user_agent` | string | unset | ascii2d browser User-Agent. |
+| `reverse_search.flaresolverr.url` | string | unset | Non-empty solver control URL when ascii2d FlareSolverr is configured. |
+| `reverse_search.flaresolverr.proxy_url` | string | unset | Upstream proxy for the solver browser. |
+| `mcp.gallery_animation_temp_capacity_mib` | integer | `1024` | Positive animation temporary-storage budget in MiB. |
+| `mcp.gallery_cache_capacity_mib` | integer | `256` | Gallery memory budget in MiB, ≥ 0; `0` disables caching. |
 
-- The first command needing config creates a compact baseline from the current schema (core download, output, login, update, logging defaults); advanced keys such as `directory_template` and `request_interval` stay omitted until set. Existing files are never overwritten. Config is read at command start — changes apply on the next invocation.
+The first command needing config writes the embedded template with English comments and defaults when `config.toml` is missing. Existing files are preserved. The template includes commented examples for service overrides, FlareSolverr and default accounts; those optional values remain unset. Config is read at command start, so changes apply on the next invocation; restart MCP to apply changes there.
 
-```bash
-read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
-unset SAUCENAO_KEY
-pixiv config get saucenao_api_key    # always prints <redacted>
+Known fields use their declared TOML types: booleans and integers are unquoted, and durations are strings such as `"250ms"`. Unknown file keys, including obsolete settings, are ignored while reading and retained when another key is edited. `config set` validates the target field, preserves its comments and other keys, and atomically replaces the file. `config unset` restores the default or removes an optional value. An absent optional value prints `<unset>` and exits non-zero; an empty string prints a blank line. A configured FlareSolverr group requires a non-empty `url`. Solver edits enforce this before writing: set `url` before `proxy_url`, and unset `proxy_url` before `url`.
+
+```text
+pixiv config set download.path ./archive
+pixiv config get download.path
+pixiv config set reverse_search.saucenao_api_key YOUR_API_KEY
+pixiv config get reverse_search.saucenao_api_key
 ```
 
-`SAUCENAO_API_KEY` overrides the file value without displaying it. Never put the key in shell history, diagnostics, JSON, MCP input or a checked-in TOML file.
+`config set` accepts a value argument or fills the missing value from non-TTY stdin. `config get` prints the effective value directly, including API keys and values supplied by environment variables. `SAUCENAO_API_KEY` overrides the stored API key. Account-token redaction in other commands is unchanged.
 
-**Advanced TOML sections:** `[account_pool]`, `[network]`, `[pixiv.network]`, `[fanbox.network]`, `[fanbox.flaresolverr]`, `[reverse_search]`, `[reverse_search.network]`, `[reverse_search.flaresolverr]`, `[mcp]`, `[login]`, `[update]`.
+**Service network example:**
 
 ```toml
 [network]
@@ -396,9 +419,9 @@ flowchart LR
 ```
 
 - Service proxy keys preserve absent vs explicit empty. Pixiv and FANBOX keep their own boundaries. CLI overrides are never persisted.
-- Reverse search: the command override wins for standard and ascii2d traffic; otherwise the service value affects only ascii2d, while SauceNAO/standard keep the global route. The `user_agent` affects only ascii2d (paired with client hints). FlareSolverr is optional, challenge-only, JSON (not image multipart), and independent from both native routes. The default generator omits service proxies and FlareSolverr tables but may emit baseline `[reverse_search]` values.
+- Reverse search: the command override wins for standard and ascii2d traffic; otherwise the service value affects only ascii2d, while SauceNAO/standard keep the global route. The `user_agent` affects only ascii2d (paired with client hints). FlareSolverr is optional, challenge-only, JSON (not image multipart), and independent from both native routes. The template keeps service overrides and FlareSolverr as commented examples and includes the default `[reverse_search]` values.
 - Update checks use only the general network fallback; they never consume FANBOX service or solver settings.
-- `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze and marker state live in `pixiv-cli.db`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool_accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
+- `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze and marker state live in `pixiv-cli.db`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool.accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
 - `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Logs are stderr-only, omit query strings, headers, cookies, tokens, response bodies and signed URLs, and never create log files. `debug` adds request and decision records. Text records render as `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]: message key=value`; the operation bracket is omitted outside a bound call. JSON records include `source`. Failures keep the `error: <message>` stderr line. JSON logs also emit an ERROR `Command failed` record; text logs emit it at DEBUG only. The record includes `operation`, `call_id`, `error`, and the SDK error creation site as `origin=parent/file:line` when available. DEBUG `Request failed` records include typed network `op`, `net`, remote `address` (host:port), and known `errno` names, including OAuth token exchange failures. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
 - v1 does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Migrate explicitly: old version `pixiv auth export --all --output <private bundle>`, then v1 `pixiv auth import < bundle.json`.
 
@@ -412,7 +435,7 @@ flowchart LR
 | `PIXIV_REQUEST_INTERVAL` | empty | Minimum interval between request starts. |
 | `PIXIV_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`; overrides `[logging].level`. |
 | `PIXIV_LOG_FORMAT` | `text` | `text` or `json`; overrides `[logging].format`. |
-| `SAUCENAO_API_KEY` | empty | Overrides the private config value; never printed. |
+| `SAUCENAO_API_KEY` | empty | Overrides `reverse_search.saucenao_api_key`; `config get` prints the effective value. |
 | `https_proxy` / `HTTPS_PROXY` | empty | Proxy URI; lowercase wins on case-sensitive systems; Windows treats both as one variable. |
 
 Data commands select the explicit/default account (pool off) or an eligible DB account (pool on); they accept no credential-selection flags.
@@ -466,10 +489,10 @@ flowchart TD
 
 **Gallery settings** (via `pixiv config get/set/unset`; restart MCP after changes):
 
-| Alias | TOML key under `[mcp]` | Default | Validation |
+| TOML path | TOML key under `[mcp]` | Default | Validation |
 | --- | --- | --- | --- |
-| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | Positive integer; checked MiB conversion; private animation temporary storage |
-| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | Integer ≥ 0; checked MiB conversion; `0` disables caching |
+| `mcp.gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | Positive integer; checked MiB conversion; private animation temporary storage |
+| `mcp.gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | Integer ≥ 0; checked MiB conversion; `0` disables caching |
 
 Missing keys and `config unset` restore defaults; no extra flags or environment variables. The cache lifetime (15 minutes) and the independent metadata and image read limits (4 each) are fixed; the former `mcp_gallery_cache_ttl` and `mcp_gallery_concurrency` settings were removed — leftover values are undeclared and ignored. The process-local LRU budget covers metadata payloads and image filling buffers; oversized images stream in full uncached. Expiry = earliest of the 15-minute TTL, issuing authorization expiry and upstream read-session expiry, so artwork info may lag within that window while bookmark state and writes stay live. Every hit rechecks authorization and account/credential/network generation; revocation denies further reads; restart clears the cache. HTTP responses are `private, no-store` with no disk or public CDN cache.
 

@@ -4,7 +4,7 @@ Downloads write to disk — always run the checklist first.
 
 ## Pre-download checklist
 
-1. Run `pixiv config get download_path` and confirm the target directory with
+1. Run `pixiv config get download.path` and confirm the target directory with
    the user. The default `./downloads` is resolved against the current working
    directory, so state that directory when confirming it.
 2. Confirm the exact targets and item scope immediately before each

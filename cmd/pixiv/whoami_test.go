@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -50,7 +50,7 @@ func TestWhoamiJSONMatchesAuthList(t *testing.T) {
 func TestWhoamiJSONMatchesAuthListAfterExpiredFreeze(t *testing.T) {
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "alice", true)
-	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
+	db, err := database.Open(filepath.Join(home, config.AppDataDirName))
 	require.NoError(t, err)
 	defer func() { require.NoError(t, db.Close()) }()
 	expired := int64(1)
@@ -123,7 +123,7 @@ func isolatedHome(t *testing.T) string {
 
 func seedPixivAccount(t *testing.T, home, username string, premium bool) {
 	t.Helper()
-	db, err := database.Open(filepath.Join(home, paths.AppDataDirName))
+	db, err := database.Open(filepath.Join(home, config.AppDataDirName))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	account := account.New(12345678, username, []byte("synthetic-refresh-token"))

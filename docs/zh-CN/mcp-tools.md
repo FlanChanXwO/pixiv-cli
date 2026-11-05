@@ -180,7 +180,7 @@ flowchart LR
 | `file_id` | 非空，仅作描述，从不作为下载地址 |
 | `provider` | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；省略 → 启动配置（默认 `saucenao`） |
 
-- `reverse_search_pixiv_only`、代理、API key 与传输设置在启动时捕获；调用无法修改。
+- `reverse_search.pixiv_only`、代理、API key 与传输设置在启动时捕获；调用无法修改。
 - 网络面（启动时）：标准来源/SauceNAO client（全局代理路由）；ascii2d 浏览器 client（存在时用 `[reverse_search.network].proxy_url`，显式空 = 直连；`user_agent` 仅 ascii2d，Chromium UA 附带匹配的 `Sec-CH-UA*` hints，其他省略）；FlareSolverr JSON 控制 client（`[reverse_search.flaresolverr].proxy_url` 只作为 `sessions.create` 中的浏览器上游；控制流量不继承任何原生路由）。
 
 > [!WARNING]
