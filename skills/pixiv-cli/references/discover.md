@@ -72,8 +72,8 @@ pixiv search https://your-image-url.example/image.png --provider all --ndjson
   select image mode only when they resolve to an existing regular file; other
   text remains a keyword.
 - Providers are `saucenao`, `ascii2d-color`, `ascii2d-bovw`, and `all`.
-  `reverse_search_provider` defaults to `saucenao`; `--provider` is a one-call
-  override. `reverse_search_pixiv_only` defaults to true and controls whether
+  `reverse_search.provider` defaults to `saucenao`; `--provider` is a one-call
+  override. `reverse_search.pixiv_only` defaults to true and controls whether
   non-Pixiv evidence stays in `results`.
 - Image mode accepts provider/output/proxy flags only. Do not add keyword
   filters, `--type`, `--limit`, `--page`, or `--trending-tags`.
@@ -84,10 +84,11 @@ pixiv search https://your-image-url.example/image.png --provider all --ndjson
   source once and returns only its kind/hash, so use an image and URL that the
   user is authorized to share. Provider retention/caching follows provider
   policy; ascii2d accepts JPEG/PNG/WEBP and has a provider-specific 10 MB limit.
-- Advanced reverse-search TOML is hand-maintained: `[reverse_search.network]`
-  can select a dedicated ascii2d proxy and User-Agent, while
-  `[reverse_search.flaresolverr]` enables challenge-only JSON recovery. The
-  solver's upstream proxy is separate from solver control traffic and never
+- Use TOML paths such as `reverse_search.network.proxy_url` and
+  `reverse_search.network.user_agent` with `pixiv config set` for a dedicated
+  ascii2d proxy and User-Agent. `reverse_search.flaresolverr.url` enables
+  challenge-only JSON recovery. The solver's upstream proxy is separate from
+  solver control traffic and never
   receives the native ascii2d multipart image upload.
 - JSON returns `input`, provider summaries, raw provider evidence, canonical
   `records`, provider errors, and `partial`. Piped/explicit NDJSON emits only

@@ -35,9 +35,9 @@ pixiv auth refresh
 pixiv whoami
 pixiv whoami --json
 pixiv config path
-pixiv config get download_path
-pixiv config set download_path ~/Downloads/pixiv
-pixiv config unset https_proxy
+pixiv config get download.path
+pixiv config set download.path ~/Downloads/pixiv
+pixiv config unset network.https_proxy
 pixiv --version
 pixiv update --check [--json]
 
@@ -74,7 +74,7 @@ pixiv download 123456 789012 --output ./downloads
 | 位置 | `~/.pixiv-cli`（macOS/Linux）、`%USERPROFILE%\.pixiv-cli`（Windows） |
 | 内容 | `pixiv-cli.db`（账号按 UID 存储）、`config.toml`、callback bridge 状态、Release 检查缓存、macOS callback helper |
 | 权限 | Unix 目录 `0700` / 文件 `0600`；Windows 首次创建继承父目录 ACL、替换时保留目标 ACL，不声称修改 DACL |
-| `config.toml` 创建 | 首次普通命令时生成，含常用下载/输出/登录/更新设置；从不覆盖已有文件。高级设置（代理、登录超时、Premium 状态缓存）在显式配置前不写入。help、根 `--version`、secret 导出与内部 OAuth 回调不会创建它 |
+| `config.toml` 创建 | 首次普通命令时按带英文注释和默认值的模板生成，已有文件保持原样。可选服务覆盖和默认账号以注释示例提供。help、根 `--version`、secret 导出与内部 OAuth 回调不会创建它 |
 
 选项可出现在位置参数前后（Cobra/pflag）：`pixiv auth check 12345678 --json` 与 `pixiv search "初音ミク" --json` 都受支持。`auth export` 有意不提供 `--json`。
 
@@ -123,7 +123,7 @@ flowchart TD
 | `ascii2d-color`、`ascii2d-bovw` | JPEG、PNG、WEBP；ascii2d 专属 10 MB 上传上限 |
 | `all` | 固定顺序 SauceNAO → ascii2d color → ascii2d bovw；可能部分成功 |
 
-`reverse_search_pixiv_only`（默认 `true`，仅配置项）决定非 Pixiv 匹配是否保留在 `results`。不存在反向搜图通用的 1 MiB 压缩上传规则；`gzip, deflate, br` 只是响应协商。
+`reverse_search.pixiv_only`（默认 `true`，仅配置项）决定非 Pixiv 匹配是否保留在 `results`。不存在反向搜图通用的 1 MiB 压缩上传规则；`gzip, deflate, br` 只是响应协商。
 
 | 网络面 | 代理 | User-Agent |
 | --- | --- | --- |
@@ -163,7 +163,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `whoami` | `pixiv whoami [--json]` | 显示当前本地账号，不联网，也不轮换 token：有用户名时输出 `用户名 (UID)`，缓存显示为会员时追加 ` · Premium`，用户名未知时只输出 UID。`--json` 返回单个对象，字段与 `auth list --json` 中的账号项相同。没有本地账号时 stdout 为空，退出码 1，stderr 输出 `error: not logged in; run "pixiv auth login"`。 |
 | `config path` | `pixiv config path` | 打印 `config.toml` 路径，缺失时创建基线文件。 |
 | `config get` | `pixiv config get KEY` | 打印一个生效值。 |
-| `config set` | `pixiv config set KEY [VALUE]` | 写入一个已知键（见[配置别名](#cli-可管理的-config-别名)）；`saucenao_api_key` 只从 stdin 读取。 |
+| `config set` | `pixiv config set KEY VALUE` | 写入一个已声明的 TOML 路径（见[配置路径](#配置-toml-路径)）；缺失的值可从 stdin 补齐。 |
 | `config unset` | `pixiv config unset KEY` | 从 `config.toml` 删除一个已知键。 |
 | `update` | `pixiv update [--check] [--prerelease] [--proxy URL]` | 按安装来源检查或执行更新；`--json` 只能配合 `--check`。 |
 | `search` | `pixiv search [WORD\|IMAGE_PATH_OR_URL] [-t artwork\|novel\|user] [options]` | 实体搜索或自动反向搜图。`--trending-tags` 是无关键词的作品标签列表模式；不接受筛选或分页。 |
@@ -211,7 +211,7 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | 命令 | 参数 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `search` | `--type` / `-t` | `artwork` | 实体：`artwork`、`novel`、`user`。子类型用 `--content-type`；`illust` 不是实体值。 |
-| `search` | `--provider` | `reverse_search_provider`（`saucenao`） | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；仅图片来源。 |
+| `search` | `--provider` | `reverse_search.provider`（`saucenao`） | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`；仅图片来源。 |
 | `search` | `--content-type` | `all` | `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；仅作品搜索。 |
 | `search`、`novel search` | `--search-by` | `tag-partial` | 作品：`tag-partial`、`tag-exact`、`title-caption`、`tag-title-caption`；小说：前三个。 |
 | `search`、`novel search` | `--sort` | `date_desc` | 接受 SDK 的取值：`date_desc`、`date_asc`、`popular_desc`。 |
@@ -330,37 +330,60 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 | `--proxy URL` | 网络命令与 `mcp` | `https_proxy`/`HTTPS_PROXY`、`config.toml` 或空 | 仅本次命令使用的 `http`/`https`/`socks5`/`socks5h`；bundle 形式的 `auth import` 禁用。 |
 | `--no-proxy` | 同 `--proxy` | 空 | 清除本次命令的代理；不能与 `--proxy` 或 bundle 恢复同用。 |
 
-### CLI 可管理的 `config` 别名
+### 配置 TOML 路径
 
-`pixiv config get/set/unset` 只接受这些别名；其他设置在私有 `config.toml` 中手工维护（没有通用编辑器）。
+`pixiv config get/set/unset KEY` 使用下表中的 TOML 叶子路径。命令中的旧别名（例如 `download_path`）改为 `download.path`，现有 `config.toml` 路径保持一致。各子命令的 `--help` 会列出可用键；未知路径与无效值会在写入前被拒绝。
 
 | KEY | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `account_pool_enabled` | boolean | `false` | 为安全读取/下载启用数据库账号池选择。 |
-| `account_pool_strategy` | string | `round_robin` | `round_robin` 或 `random`。 |
-| `download_path` | string | `./downloads` | 下载目录。 |
-| `filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
-| `directory_template` | string | 空 | 相对下载目录模板。 |
-| `request_interval` | duration | `0` | 网络请求起始最小间隔；也可用 `PIXIV_REQUEST_INTERVAL` 或 `[network].request_interval`。 |
-| `https_proxy` | string | 空 | 全局代理 URI；小写 `https_proxy` 环境变量优先。 |
-| `log_level` | string | `info` | `debug`、`info`、`warn` 或 `error`；`info` 保持常规操作安静。写为 `[logging].level`。 |
-| `log_format` | string | `text` | `text` 或每行一条 JSON 日志。写为 `[logging].format`。 |
-| `reverse_search_provider` | string | `saucenao` | `saucenao`、`ascii2d-color`、`ascii2d-bovw`、`all`。 |
-| `reverse_search_pixiv_only` | boolean | `true` | canonical 结果只保留已识别的 Pixiv 作品/用户匹配；关闭时外部证据可留在 `results`。 |
-| `saucenao_api_key` | 敏感 string | 未设置 | `config get` 始终打印 `<redacted>`；`config set` 只读非 TTY stdin，从不接受参数。 |
-| `mcp_gallery_*` | — | — | Gallery 设置，见 [MCP HTTP server](#mcp-http-server)。 |
+| `account_pool.enabled` | boolean | `false` | 为安全读取/下载启用数据库账号池选择。 |
+| `account_pool.strategy` | string | `round_robin` | `round_robin` 或 `random`。 |
+| `download.path` | string | `./downloads` | 下载目录。 |
+| `download.filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
+| `download.directory_template` | string | 空 | 相对下载目录模板。 |
+| `network.request_interval` | duration 字符串 | `0s` | 非负 Go duration 字符串；Pixiv 请求起始最小间隔。 |
+| `network.https_proxy` | string | 空 | 全局代理 URI。 |
+| `logging.level` | string | `info` | `debug`、`info`、`warn` 或 `error`。 |
+| `logging.format` | string | `text` | `text` 或 `json`。 |
+| `output.json` | boolean | `false` | 命令支持时默认使用 JSON 输出。 |
+| `update.check_enabled` | boolean | `true` | 普通命令完成后自动检查更新。 |
+| `login.open_browser` | boolean | `true` | OAuth 登录时打开浏览器。 |
+| `login.use_after_login` | boolean | `false` | 登录完成后选择该账号。 |
+| `login.relay_public_url` | string | 空 | 跨机器登录的公开 URL。 |
+| `login.relay_listen_addr` | string | 空 | 登录 relay 监听地址。 |
+| `login.relay_tls_cert_file` | string | 空 | relay 直接提供 TLS 时的证书文件。 |
+| `login.relay_tls_key_file` | string | 空 | relay 直接提供 TLS 时的私钥文件。 |
+| `pixiv.auth.default_user_id` | integer | 未设置 | 默认 Pixiv UID，须为正整数；也可用 `pixiv auth use` 管理。 |
+| `fanbox.auth.default_user_id` | integer | 未设置 | 默认 FANBOX UID，须为正整数；也可用 `pixiv fanbox auth use` 管理。 |
+| `pixiv.network.proxy_url` | string | 未设置 | Pixiv 代理覆盖；空值表示直连。 |
+| `fanbox.network.proxy_url` | string | 未设置 | FANBOX 代理覆盖；空值表示直连。 |
+| `fanbox.network.user_agent` | string | 未设置 | 原生 FANBOX User-Agent。 |
+| `fanbox.flaresolverr.url` | string | 未设置 | 启用 FANBOX FlareSolverr 时须设置的非空控制 URL。 |
+| `fanbox.flaresolverr.proxy_url` | string | 未设置 | solver 浏览器使用的上游代理。 |
+| `reverse_search.provider` | string | `saucenao` | `saucenao`、`ascii2d-color`、`ascii2d-bovw` 或 `all`。 |
+| `reverse_search.pixiv_only` | boolean | `true` | 开启时 `results` 只保留 Pixiv 匹配。 |
+| `reverse_search.saucenao_api_key` | string | 空 | SauceNAO API key；`config get` 直接输出。 |
+| `reverse_search.network.proxy_url` | string | 未设置 | ascii2d 代理覆盖；空值表示直连。 |
+| `reverse_search.network.user_agent` | string | 未设置 | ascii2d 浏览器 User-Agent。 |
+| `reverse_search.flaresolverr.url` | string | 未设置 | 启用 ascii2d FlareSolverr 时须设置的非空控制 URL。 |
+| `reverse_search.flaresolverr.proxy_url` | string | 未设置 | solver 浏览器使用的上游代理。 |
+| `mcp.gallery_animation_temp_capacity_mib` | integer | `1024` | 动画临时存储预算，单位 MiB，须为正整数。 |
+| `mcp.gallery_cache_capacity_mib` | integer | `256` | Gallery 内存预算，单位 MiB，须 ≥ 0；`0` 关闭缓存。 |
 
-- 首个需要配置的命令按当前 schema 生成紧凑基线（核心下载、输出、登录、更新、日志默认值）；`directory_template`、`request_interval` 等高级键在显式设置前不写入。从不覆盖已有文件。配置在命令启动时读取——修改在下一次调用生效。
+首个需要配置的命令会在 `config.toml` 缺失时写出带英文注释和默认值的内嵌模板，已有文件保持原样。模板为服务覆盖、FlareSolverr 和默认账号提供了注释示例，这些可选值仍处于未设置状态。配置在命令启动时读取，修改在下一次调用生效；MCP 需重启以应用变更。
 
-```bash
-read -rs SAUCENAO_KEY && printf '%s\n' "$SAUCENAO_KEY" | pixiv config set saucenao_api_key
-unset SAUCENAO_KEY
-pixiv config get saucenao_api_key    # 始终打印 <redacted>
+已知字段使用声明的 TOML 类型：布尔值和整数省略引号，duration 使用 `"250ms"` 这样的字符串。读取时忽略文件中的未知键（包括废弃设置），编辑其他键时仍保留它们。`config set` 校验目标字段，保留该键的注释和其他键，并原子替换文件。`config unset` 恢复默认值或移除可选值。缺失的可选值输出 `<unset>` 并以非零状态退出，空字符串输出空行。配置 FlareSolverr 组后，运行时要求其 `url` 非空。
+
+```text
+pixiv config set download.path ./archive
+pixiv config get download.path
+pixiv config set reverse_search.saucenao_api_key YOUR_API_KEY
+pixiv config get reverse_search.saucenao_api_key
 ```
 
-`SAUCENAO_API_KEY` 会覆盖文件值且不显示内容。不要把 key 放进 shell history、诊断、JSON、MCP 输入或提交到仓库的 TOML。
+`config set` 接受值参数，也可从非 TTY stdin 补齐缺失的值。`config get` 直接输出生效值，包括 API key 与环境变量提供的值。`SAUCENAO_API_KEY` 会覆盖已保存的 API key。其他命令中的账号 token 脱敏行为保持一致。
 
-**高级 TOML 段：** `[account_pool]`、`[network]`、`[pixiv.network]`、`[fanbox.network]`、`[fanbox.flaresolverr]`、`[reverse_search]`、`[reverse_search.network]`、`[reverse_search.flaresolverr]`、`[mcp]`、`[login]`、`[update]`。
+**服务网络示例：**
 
 ```toml
 [network]
@@ -396,9 +419,9 @@ flowchart LR
 ```
 
 - 服务代理键区分"缺失"与"显式为空"。Pixiv 与 FANBOX 各自保持服务边界。CLI 覆盖从不持久化。
-- 反向搜图：命令级覆盖对标准与 ascii2d 流量都生效；否则服务值只影响 ascii2d，SauceNAO/标准 client 走全局路由。`user_agent` 只影响 ascii2d（与 client hints 配对）。FlareSolverr 可选、仅用于 challenge、使用 JSON（不是图片 multipart），与两条原生路由都独立。默认生成器省略服务代理与 FlareSolverr 表，但可能写入基线 `[reverse_search]` 值。
+- 反向搜图：命令级覆盖对标准与 ascii2d 流量都生效；否则服务值只影响 ascii2d，SauceNAO/标准 client 走全局路由。`user_agent` 只影响 ascii2d（与 client hints 配对）。FlareSolverr 可选、仅用于 challenge、使用 JSON（不是图片 multipart），与两条原生路由都独立。模板将服务覆盖与 FlareSolverr 保留为注释示例，并包含默认 `[reverse_search]` 值。
 - 更新检查只使用通用网络 fallback；从不读取 FANBOX 服务或 solver 设置。
-- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结与标记状态在 `pixiv-cli.db`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool_accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
+- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结与标记状态在 `pixiv-cli.db`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool.accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
 - `[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。日志只写 stderr，省略 query string、header、Cookie、token、响应体与签名 URL，从不创建日志文件。`debug` 增加请求与决策记录。文本记录格式为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`；没有调用上下文时省略 operation 方括号。JSON 记录带 `source`。失败保留 stderr 的 `error: <message>` 行。JSON 日志额外写 ERROR 级别的 `Command failed`；文本日志仅在 DEBUG 级别写该记录。记录带 `operation`、`call_id`、`error`，存在 SDK 错误时还带真正创建位置 `origin=上级目录/文件:行号`。DEBUG 的 `Request failed` 记录提供 typed cause 中的网络 `op`、`net`、远端 `address`（host:port）与已知 `errno` 名称，覆盖 OAuth 换 token 失败。`config` 管理与 secret 导出保持安静。MCP JSON-RPC 在 stdio 模式用 stdout，`--port` 时用 HTTP。
 - v1 不读取也不迁移旧的 `~/.pixiv-cli/auth.json`。显式迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，再用 v1 执行 `pixiv auth import < bundle.json`。
 
@@ -412,7 +435,7 @@ flowchart LR
 | `PIXIV_REQUEST_INTERVAL` | 空 | 网络请求起始最小间隔。 |
 | `PIXIV_LOG_LEVEL` | `info` | `debug`、`info`、`warn` 或 `error`；覆盖 `[logging].level`。 |
 | `PIXIV_LOG_FORMAT` | `text` | `text` 或 `json`；覆盖 `[logging].format`。 |
-| `SAUCENAO_API_KEY` | 空 | 覆盖私有配置值；从不打印。 |
+| `SAUCENAO_API_KEY` | 空 | 覆盖 `reverse_search.saucenao_api_key`；`config get` 输出其生效值。 |
 | `https_proxy` / `HTTPS_PROXY` | 空 | 代理 URI；区分大小写的系统上小写优先；Windows 把两者视为同一变量。 |
 
 数据命令在账号池关闭时使用显式/默认账号，开启时使用可用的数据库账号；不接受凭据选择参数。
@@ -466,10 +489,10 @@ flowchart TD
 
 **Gallery 设置**（通过 `pixiv config get/set/unset`；修改后需重启 MCP）：
 
-| 别名 | `[mcp]` 下的 TOML 键 | 默认值 | 校验 |
+| TOML 路径 | `[mcp]` 下的 TOML 键 | 默认值 | 校验 |
 | --- | --- | --- | --- |
-| `mcp_gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数；带检查的 MiB 换算；私有动画临时存储 |
-| `mcp_gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 整数 ≥ 0；带检查的 MiB 换算；`0` 关闭缓存 |
+| `mcp.gallery_animation_temp_capacity_mib` | `gallery_animation_temp_capacity_mib` | `1024` | 正整数；带检查的 MiB 换算；私有动画临时存储 |
+| `mcp.gallery_cache_capacity_mib` | `gallery_cache_capacity_mib` | `256` | 整数 ≥ 0；带检查的 MiB 换算；`0` 关闭缓存 |
 
 缺失键与 `config unset` 恢复默认；没有额外参数或环境变量。缓存有效期（15 分钟）以及元数据与图片各自的读取并发上限（各 4）为固定值；原 `mcp_gallery_cache_ttl` 与 `mcp_gallery_concurrency` 设置已删除——配置中残留时属于未声明键，加载时忽略。进程内 LRU 预算覆盖元数据载荷与图片填充缓冲；超大图片完整流式传输但不缓存。过期时间 = 15 分钟 TTL、签发授权过期、上游读取会话过期三者中最早者，因此作品信息在窗口内可能滞后，收藏状态与写操作保持实时。每次命中都重新检查授权与账号/凭据/网络代际；撤销后拒绝后续读取；重启清空缓存。HTTP 响应为 `private, no-store`，无磁盘或公共 CDN 缓存。
 

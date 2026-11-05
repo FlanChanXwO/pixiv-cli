@@ -26,11 +26,11 @@ These rules apply to new code only (since 2026-10-26). Existing names are not re
 
 - No `Kind`, `Type` (as a catch-all discriminator), `Item`, `Object`, or `Misc` as a name or suffix. Use the specific role: `Phase`, `Mode`, `Source`, `Status`, `Registry`, `Store`. Keep upstream wire field names, such as Pixiv `type`, unchanged at the mapping layer.
 - No abbreviations: write `Config`, `Manager`, `Service`, `Message`, `Request`, `Response`, `Temporary`, `Value`. Short names remain fine for locals used within a few lines (`ctx`, `err`, `ok`, `i`, `n`, `req`) and for one- or two-letter receivers. Keep initialisms such as `ID`, `URL`, and `HTTP` in full capitals.
-- Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem, with the one exception below.
+- Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem, with the exceptions below.
 
 Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api` and `account`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`).
 
-Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivaccount` and `fanboxaccount`. Currently only the `internal/cli` composition root and `internal/storage/database` do this. Otherwise add no import alias, and never one that repeats the package name.
+Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivaccount` and `fanboxaccount`. The `internal/cli` composition root and `internal/storage/database` do this. The CLI root also imports its `internal/cli/config` command package as `configcmd` alongside the configuration owner `internal/config`. Otherwise add no import alias, and never one that repeats the package name.
 
 ## Declaration placement and file names
 
@@ -61,24 +61,23 @@ Identifiers with business meaning use named constants instead of inline string l
 
 | Category | Form | Placement |
 | --- | --- | --- |
-| Configuration key (alias) | `settings.Key` constant, for example `settings.KeyLogLevel` | `internal/config/settings/keys.go` |
-| Enum value (log level, output format, restrict, content type, …) | named type plus constants, for example `settings.LogLevelDebug`, `pixiv.RestrictPublic` | same file as the type |
+| Enum value (log level, output format, restrict, content type, …) | named type plus constants, for example `config.LogLevelDebug`, `pixiv.RestrictPublic` | same file as the type |
 | Upstream API path, query/form parameter, header name | exported constant, for example `api.PathUserFollower`, `api.ParamUserID`; the package is under `internal/`, so module users cannot import it | `internal/pixiv/api/api.go`, `internal/fanbox/api/api.go` |
 | MCP tool name | unexported constant, for example `toolUserDetail` | same file as the tool registration |
 | Database column referenced from Go | unexported constant, for example `colCredentialRevision` | `internal/storage/database/rows.go`, beside the row struct |
 | JSON output key outside a struct tag, for example `illusts` | unexported constant | same file as the output code |
-| Environment variable name | still declared by the `env` tag; define a constant when code must reference it separately | `keys.go` |
 
 Meaningful values — lengths, limits, timeouts, intervals, exit codes, file names, addresses, service names — are named constants too. A contract-defined value lives in the package that enforces it. Define each value once; reference the constant or derive from it (`strconv.Itoa`) elsewhere. Values such as `0` and `1` with no business meaning, and arguments required by a standard-library contract such as `net.Dial("tcp", ...)`, need no name. The rule covers new and touched code; cleaning up every existing literal is separate work.
 
 Literals remain acceptable for:
 
 - struct tags, which Go requires to be literals;
+- TOML paths in `internal/config` field mapping/validation and environment names in its explicit overrides; configuration defaults are initialized in `Default()`;
 - log messages, error text, and format strings;
 - SQL migration files and SQL bodies in `Raw` queries;
 - test inputs; an assertion on an identifier still references the production constant.
 
-Configuration keys: the `alias` tags on `RuntimeConfig` fields remain the source of truth, and the constants in `keys.go` match them one to one. A table-driven test walks every `Key` constant through `SettingSpecByAlias`, because a typo otherwise becomes a runtime "unknown setting". Program code reads `RuntimeConfig` fields, such as `cfg.LogLevel`, and never alias strings. `Store.Get`, `Set`, and `Unset` serve the `config get/set/unset` commands, where the alias comes from the user.
+Configuration uses native `toml` tags on nested `config.Config` fields. `values.go` maps CLI TOML paths to those fields; keep that mapping and the command help aligned with the fields. Environment overrides are explicit assignments in `environment.go`, with presence and order preserved. Program code reads fields such as `c.Logging.Level` and `c.AccountPool`; `Store.Get`, `Set` and `Unset` handle user-supplied TOML paths. The default template must decode to `Default()`. See [Native TOML configuration](architecture.md#native-toml-configuration).
 
 ```go
 // internal/pixiv/api/api.go
@@ -268,7 +267,7 @@ Permanent code and behavior tests cover only these long-lived contracts, with on
 | A rotated token is persisted before the client is returned | `internal/pixiv/account` or `internal/session` |
 | Malformed upstream responses return errors; cancellation propagates | `sdk/pixiv`, `sdk/fanbox` |
 | Public snapshots: one full MCP `tools/list` golden; one CLI command's text, JSON, and NDJSON; usage-error exit code; stdio stdout carries only JSON-RPC; HTTP requires bearer | `internal/mcpserver`, `internal/cli` |
-| Environment over file over default, including explicit empty values | `internal/config/settings` |
+| Environment over file over default, including explicit empty values | `internal/config` |
 | A failed update verification preserves the installed binary | `internal/selfupdate` |
 
 Retain tests for credential privacy, data integrity and persistence, public CLI/MCP/SDK output, cancellation and error propagation, and release-artifact correctness such as checksums and archive names. Assert each contract at its owning public boundary, and prefer checks that execute the behavior over string-only checks.

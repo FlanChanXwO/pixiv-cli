@@ -90,7 +90,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 > [!WARNING]
 > 新版本从不读取或删除旧的 `auth.json`。迁移方式：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`。
 
-**配置** —— `pixiv config path/get/set/unset` 管理 `account_pool_enabled`、`account_pool_strategy`、`download_path`、`filename_template`、`directory_template`、`request_interval`、`https_proxy`、`log_level`、`log_format`、`reverse_search_provider`、`reverse_search_pixiv_only`、`saucenao_api_key`。其他 TOML（如 `[reverse_search.network]`、`[reverse_search.flaresolverr]`）手工维护，不在基线中，作为启动快照读取。基线由 `internal/config/settings` 中的**结构体字段标签**驱动，用 `tomledit` 生成，紧凑（只含 `example:"true"`），从不覆盖。新增普通设置：(1) 在 `internal/config/settings/config.go` 添加字段与声明，(2) 按清单核对现有优先级/空值测试，(3) 文档——见[标签契约](architecture.md#配置声明结构体字段标签是唯一事实来源)。
+**配置** —— `pixiv config get/set/unset` 使用已声明的 TOML 叶子路径，例如 `download.path`、`logging.level`、`account_pool.enabled`、`reverse_search.network.proxy_url`；`--help` 列出可用键。`config get` 直接输出值（含 API key）。`internal/config` 先取 `Default()` 再原生解码 TOML，忽略未知文件键，并显式应用环境覆盖。首次创建时原样写出带英文注释的内嵌 `default.toml`，已有文件保持原样。新增设置时同步 Config 字段、默认值、字段映射/校验、模板与双语文档；遵循[配置契约](architecture.md#原生-toml-配置)和测试准入规则。
 
 > [!NOTE]
 > 残留的 `[web] fallback_enabled` 属于未声明键，加载时忽略。`[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。
@@ -101,7 +101,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 - Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixiviapi-internalfanboxapi)。
 - `internal/cli/root.go` 经 `internal/logging` 创建 stderr logger；`internal/session/options.go` 与 `internal/cli/mcp/runtime.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。CLI 共用机制位于模块级 owner（`internal/environment`、`internal/pagination`、`internal/record`、`internal/session`、`internal/display`），`internal/cli` 只保留命令目录与根包组合文件。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
-- 本地排查使用 `pixiv config set log_level debug`，需要结构化字段时再设置 `pixiv config set log_format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
+- 本地排查使用 `pixiv config set logging.level debug`，需要结构化字段时再设置 `pixiv config set logging.format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
 
 ## 开发中的凭据
 
@@ -109,7 +109,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 - 浏览器 Cookie（`refresh_token=...`、`PHPSESSID`、`device_token`）**不是** Pixiv App OAuth refresh token；CLI、MCP、环境变量、SDK 与已存账号都会拒绝。
 - 远程 hand-off 不提供手动回填回调或移动端路径；`pixiv auth devices` 已移除，现有的 `remote-devices.json` 被静默忽略；旧的 `login_relay_secret` / `login_relay_target_url` 被忽略。relay 支持 HTTP/HTTPS、直接 TLS 或同机 TLS 代理。
-- 代理覆盖（`--proxy socks5h://127.0.0.1:7890`、`--no-proxy`）适用于直接 token 的 `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 与 `mcp` 启动。bundle 形式的 `auth import` 拒绝；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受。请求节流：`PIXIV_REQUEST_INTERVAL` / `[network].request_interval`。调试：`pixiv config set log_level debug`（+ `log_format json`），只写 stderr，在启动时生效。
+- 代理覆盖（`--proxy socks5h://127.0.0.1:7890`、`--no-proxy`）适用于直接 token 的 `auth import`、`auth login`、`auth check`、`search`、`timeline`、`detail`、`ranking`、`recommended`、`download` 与 `mcp` 启动。bundle 形式的 `auth import` 拒绝；`auth export/list/use/remove` 与 `config path/get/set/unset` 不接受。请求节流：`PIXIV_REQUEST_INTERVAL` / `[network].request_interval`。调试：`pixiv config set logging.level debug`（+ `logging.format json`），只写 stderr，在启动时生效。
 
 > [!WARNING]
 > 只有不带 `--output` 的显式 `pixiv auth export` 可以把 token 写到 stdout。bundle 是未加密、含 secret 的时间点备份，不是实时同步。恢复结果 `committed` / `unknown` 绝不算成功回滚。

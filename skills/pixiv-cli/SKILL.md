@@ -46,7 +46,7 @@ Do not ask for an undisclosed token in chat or launch a hidden prompt in an agen
 | `auth login` | Explicit request and a user present for browser OAuth; follow the documented desktop/remote handoff |
 | `mcp` | Explicit server-start request; starts the unified long-lived server (stdio by default; HTTP with explicit `--port`), not a preflight probe |
 
-`config path` can create baseline configuration if missing. A successful read-looking command is not necessarily filesystem-side-effect-free. `update --check --json` checks only; actual installation does not emit JSON and requires authorization.
+`config path` can create the default configuration with English comments if missing. `config get/set/unset` uses TOML paths; inspect the command help for available keys. `config get` prints values directly, including API keys. A successful read-looking command is not necessarily filesystem-side-effect-free. `update --check --json` checks only; actual installation does not emit JSON and requires authorization.
 
 ## Output and complete results
 
@@ -94,7 +94,7 @@ Create/reply/stamp return the upstream comment ID. Delete returns a success stat
 
 Reverse-search image sources are existing regular files or explicit HTTP(S) URLs; an invalid explicit URL is an error, never a keyword fallback. Binary image bytes on stdin do not select image mode. Provider/output/proxy flags apply; keyword filters, entity type, and pagination do not.
 
-Providers are SauceNAO, ascii2d color/BoVW, and `all`. `reverse_search_pixiv_only` controls canonical Pixiv identities. Configure `saucenao_api_key` only through non-TTY stdin or `SAUCENAO_API_KEY`; reads redact it. Upload only authorized images and preserve provider privacy boundaries. One successful provider plus another failure can be a successful **partial** result with a warning; single/all-provider failure is nonzero. Generic reverse-search `type=artwork` records do not prove a Pixiv subtype.
+Providers are SauceNAO, ascii2d color/BoVW, and `all`. `reverse_search.pixiv_only` controls canonical Pixiv identities. Use `pixiv config set reverse_search.saucenao_api_key VALUE` or `SAUCENAO_API_KEY`; `pixiv config get reverse_search.saucenao_api_key` prints the effective key directly. Upload only authorized images and preserve provider privacy boundaries. One successful provider plus another failure can be a successful **partial** result with a warning; single/all-provider failure is nonzero. Generic reverse-search `type=artwork` records do not prove a Pixiv subtype.
 
 `--proxy` and `--no-proxy` are mutually exclusive invocation overrides. Pixiv, FANBOX, reverse-search transport, and solver-browser settings have distinct scopes; the browser's proxy is not automatically inherited. Do not assume a private maintainer's loopback proxy exists. Read `troubleshooting.md` before changing persistent settings or solver configuration.
 

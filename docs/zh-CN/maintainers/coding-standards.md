@@ -26,11 +26,11 @@
 
 - 新类型和字段不用 `Kind`、`Type`（作为万能区分字段时）、`Item`、`Object`、`Misc` 做名字或后缀，改用说明具体角色的词：`Phase`、`Mode`、`Source`、`Status`、`Registry`、`Store`。上游协议本身的字段名，例如 Pixiv 的 `type`，在映射层保持原样。
 - 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（`ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
-- 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题，唯一例外见下。
+- 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题，例外见下。
 
 只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`、`account`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`）。
 
-例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivaccount`、`fanboxaccount`。目前只有 `internal/cli` 组合根与 `internal/storage/database` 属于这种情况。其他情况不加 import 别名，也不写与包名相同的多余别名。
+例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivaccount`、`fanboxaccount`。`internal/cli` 组合根与 `internal/storage/database` 属于这种情况。CLI 组合根还将命令包 `internal/cli/config` 导入为 `configcmd`，与配置 owner `internal/config` 同时使用。其他情况不加 import 别名，也不写与包名相同的多余别名。
 
 ## 声明放置与文件命名
 
@@ -61,24 +61,23 @@
 
 | 类别 | 形式 | 放置位置 |
 | --- | --- | --- |
-| 配置键（别名） | `settings.Key` 常量，例如 `settings.KeyLogLevel` | `internal/config/settings/keys.go` |
-| 枚举取值（日志级别、输出格式、restrict、作品类型等） | 具名类型 + 常量，例如 `settings.LogLevelDebug`、`pixiv.RestrictPublic` | 与该类型放在同一文件 |
+| 枚举取值（日志级别、输出格式、restrict、作品类型等） | 具名类型 + 常量，例如 `config.LogLevelDebug`、`pixiv.RestrictPublic` | 与该类型放在同一文件 |
 | 上游 API 路径、query/form 参数名、请求头名 | 导出常量，例如 `api.PathUserFollower`、`api.ParamUserID`；包位于 `internal/` 下，模块外部无法引用 | `internal/pixiv/api/api.go`、`internal/fanbox/api/api.go` |
 | MCP tool 名称 | 未导出常量，例如 `toolUserDetail` | 与该 tool 的注册代码放在同一文件 |
 | Go 代码中引用的数据库列名 | 未导出常量，例如 `colCredentialRevision` | `internal/storage/database/rows.go`，紧挨行结构 |
 | JSON 输出键（struct tag 以外），例如 `illusts` | 未导出常量 | 与使用它的输出代码放在同一文件 |
-| 环境变量名 | 仍由 `env` 标签声明；代码中需要单独引用时定义常量 | `keys.go` |
 
 长度、上限、超时、间隔、退出码、文件名、地址和服务名等有含义的值同样写成命名常量。契约规定的值放在负责执行它的包里。同一个值只定义一次，别处引用常量或从它推导（例如字符串形式用 `strconv.Itoa` 生成）。没有业务含义的 `0`、`1` 等值，以及标准库契约要求的参数（如 `net.Dial("tcp", ...)`）不用命名。这条规则约束新增和触及的代码，现有字面量的统一清理属于独立工作。
 
 可以直接写字面量的场景：
 
 - struct tag：Go 语法要求它必须是字面量。
+- `internal/config` 字段映射/校验中的 TOML 路径，以及显式环境覆盖中的变量名；配置默认值集中在 `Default()` 中初始化。
 - 日志消息、错误文本、格式化串。
 - SQL migration 文件，以及 `Raw` 查询中的 SQL 正文。
 - 测试中的输入数据。测试断言标识符时，仍然引用生产代码的常量。
 
-配置键：配置键的声明来源仍然是 `RuntimeConfig` 字段上的 `alias` 标签，`keys.go` 中的常量必须与之一一对应。由一个表驱动测试遍历全部 `Key` 常量，确认每个都能通过 `SettingSpecByAlias` 解析；常量拼错时，程序运行时会找不到配置项。程序内部通过 `RuntimeConfig` 的字段读取配置（例如 `cfg.LogLevel`），不经过别名字符串。按别名读写的 `Store.Get/Set/Unset` 只用于 `config get/set/unset` 命令，别名来自用户输入。
+配置通过嵌套 `config.Config` 字段上的原生 `toml` 标签声明。`values.go` 将 CLI 的 TOML 路径映射到这些字段，修改时保持字段映射与命令帮助一致。环境覆盖在 `environment.go` 中显式赋值，保留存在性与顺序。程序内部读取 `c.Logging.Level`、`c.AccountPool` 等字段；`Store.Get`、`Set`、`Unset` 处理用户输入的 TOML 路径。默认模板解码后须与 `Default()` 相等。见[原生 TOML 配置](architecture.md#原生-toml-配置)。
 
 ```go
 // internal/pixiv/api/api.go
@@ -268,7 +267,7 @@ type Budget struct {
 | 凭据轮换后新 token 在返回 client 前写入存储 | `internal/pixiv/account` 或 `internal/session` |
 | 上游响应异常时返回错误；取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
 | 对外契约快照：MCP `tools/list` 一份 golden；一个 CLI 命令的 text、JSON、NDJSON；用法错误的退出码；stdio stdout 只有 JSON-RPC；HTTP 必须带 bearer | `internal/mcpserver`、`internal/cli` |
-| 环境变量优先于文件、文件优先于默认值，包括显式空值 | `internal/config/settings` |
+| 环境变量优先于文件、文件优先于默认值，包括显式空值 | `internal/config` |
 | 自更新校验失败时保留已有二进制 | `internal/selfupdate` |
 
 保留凭据隐私、数据完整性与持久化、CLI/MCP/SDK 对外输出、取消与错误传播，以及发布产物校验（例如 checksum 和归档命名）测试。每项契约都在所属的对外边界断言；能实际执行行为时，优先于只检查字符串。

@@ -24,7 +24,7 @@ Use the relevant checked-in maintenance skill for the workflow and its linked ha
 
 ## Hard constraints
 
-- Keep credentials and other secrets out of logs, errors, fixtures, pull requests, and artifacts; never inspect the SQLite account store as a debugging shortcut. Only an explicitly requested `pixiv auth export [UID]`, `pixiv auth export --all`, or local `pixiv mcp auth init [--reset]` may emit its documented secret to stdout; otherwise use the documented private-output or transfer path.
+- Keep credentials and other secrets out of logs, errors, fixtures, pull requests, and artifacts; never inspect the SQLite account store as a debugging shortcut. An explicitly requested `pixiv auth export [UID]`, `pixiv auth export --all`, or local `pixiv mcp auth init [--reset]` may emit its documented secret to stdout. `pixiv config get` prints configuration values directly, including API keys and their environment overrides. Other credential exports use the documented private-output or transfer path.
 - Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser-credential access, image uploads, and account writes require explicit scope and authorization.
 - Obtain approval before adding a dependency or installing a tool.
 - Keep production builds permanently CGO-free and use only pure-Go dependencies. Race instrumentation follows the development guide's C-toolchain requirement.

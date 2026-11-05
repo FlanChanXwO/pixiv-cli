@@ -30,7 +30,7 @@ flowchart LR
 | What a package may or may not do | [Package responsibilities](#package-responsibilities) |
 | MCP server, OAuth, media proxy, Gallery jobs | [MCP server architecture](architecture-mcp.md) |
 | Release trust root and signing | [Release assets and trust boundary](#release-assets-and-trust-boundary) |
-| Local state, config, path permissions | [internal/config/paths](#internalconfigpaths), [internal/storage](#internalstorageatomicfilefilelocksecretfile) |
+| Local state, config, path permissions | [internal/config](#internalconfig), [internal/storage](#internalstorageatomicfilefilelocksecretfile) |
 | Hard constraint list | [Known constraints](#known-constraints) |
 
 ## Overall flow
@@ -155,7 +155,7 @@ SDK business methods only register `sdk_operation` in context through `logging.W
 - `internal/session` owns both account-bound SDK sessions: `session.Pixiv` aggregates `pixiv/account` (local accounts, login completion, default, credential identity/rotation, management) and `pixiv/account/pool` (selection, freezing, Gate, safe replay, error semantics); `session.Fanbox` aggregates `fanbox/account` and client lifecycle. The two live in `pixiv.go` and `fanbox.go` of one package; FANBOX sessions share no type or lifecycle with Pixiv refresh tokens and have no pool strategy.
 - Sessions depend only on leaf-module Ports, the config snapshot, protocol-agnostic shared modules and the public SDK — not on `internal/storage/database` concretely; the SDK never imports them. No CLI/MCP filters, records, schemas or output adaptation inside sessions.
 - An explicit nonzero `Request.UserID` pins reads and writes to that account even with the pool on; open/business errors never switch accounts; requests without a UID keep pool scheduling; the CLI default is unchanged.
-- Config schema, `config.toml` path/get/set/unset, baseline and the immutable per-execution `Snapshot` live in `internal/config/settings`; month truncation in `internal/pixiv/searchfilter`. CLI/MCP use the sessions via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` is deleted with no aliases.
+- Native TOML `Config`, `config.toml` path/get/set/unset, the default template and app-managed paths live in `internal/config`; month truncation in `internal/pixiv/searchfilter`. CLI/MCP use the sessions via owner-local Seams and MCP runtime `SDKPorts`. `internal/account` is deleted with no aliases.
 
 **Login relay** — `internal/loginrelay` owns both the pure renderer, which consumes `frontend` templates/CSS without a CLI, store, browser or listener dependency, and the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
 
@@ -207,61 +207,50 @@ flowchart LR
 - **Lock:** owners coordinate initialization, short account/pool transactions and complete snapshot reads through the private `pixiv-cli.db.lock` sidecar (no credentials, no account data change; never covers OAuth or content requests; external SQL writers and older processes don't participate). Non-cancellable contexts keep native waiting; cancellable ones poll the same non-blocking lock every 10 ms and wake immediately on cancellation, closing the handle. No overall deadline or transaction replay. The account owner cancels its lifecycle before taking the session mutex so lock waits during watcher validation don't block shutdown.
 - Migration from old CLIs: old version `pixiv auth export --all --output <private bundle>`, new version `pixiv auth import < bundle.json`; failures return the reason; the old file is not auto-deleted.
 
-### `internal/config/settings`
+### `internal/config`
 
 | Store | Holds |
 | --- | --- |
-| `pixiv-cli.db` | account identity and credentials (`pixiv_account` / `fanbox_account`), file `0600` |
-| `config.toml` | global keys incl. `[pixiv.auth].default_user_id`, `[fanbox.auth].default_user_id`; Unix `0600`. Without a default, the first account by `sort_order` is selected |
+| `pixiv-cli.db` | Account identity and credentials (`pixiv_account` / `fanbox_account`), file `0600` |
+| `config.toml` | Global keys including `pixiv.auth.default_user_id` and `fanbox.auth.default_user_id`; Unix `0600`. Without a default, the account owner selects the first by `sort_order` |
 
-Runtime settings parse `config.toml` with `go-toml/v2` and capture public environment variables once per snapshot; `config set/unset` writes back sparsely with `tomledit`, preserving comments, order and layout where possible. The compact first-run baseline writes only `example:"true"` entries.
+#### Native TOML configuration
 
-#### Configuration declaration: struct field tags are the single source of truth
+`Config` uses nested structs with native `toml` tags. `Store.Current` starts with `Default()`, decodes the file with `go-toml/v2`, applies explicit environment overrides and validates the result. Missing fields retain defaults; unknown file keys are ignored. Each read returns its own configuration values. File values follow the declared TOML types; the decoder reports type errors before environment overrides are applied.
 
-Exported fields of `RuntimeConfig` (incl. nested account-pool, network and FlareSolverr groups) declare all static facts; binding, CLI metadata and baseline generation reuse that one declaration.
+- `environment.go` assigns the supported variables explicitly. Presence selects a value, including an empty string; lowercase `https_proxy` precedes `HTTPS_PROXY`. The public list is in [Environment variables](../cli-reference.md#environment-variables).
+- Service proxy and User-Agent pointers distinguish absence from an explicit empty value. An absent service proxy inherits the global route; an empty one selects direct access. A FlareSolverr group requires a non-empty URL when either field is configured.
+- `values.go` maps TOML leaf paths to `Config` field pointers and owns field validation. `Keys()` supplies the CLI help list. `config get/set/unset` accepts these paths, including service and default-account settings. `get` prints the effective value directly, including API keys; `set` accepts a value argument or stdin and validates the target field.
+- `document.go` uses `tomledit` to edit the target value, preserving its comments and other keys, including obsolete keys. It handles ordinary sections, dotted keys and inline tables, then checks TOML semantics before writing. `unset` retains section comments even when a section becomes empty.
+- `default.toml` is embedded with `go:embed` and written unchanged on first creation. Its English comments include optional service/solver/account examples. The template-decoding test compares it with `Default()`.
+- Default-account read/write methods remain here. Standalone readers validate the selected UID without validating unrelated settings; `Config` represents the optional UID fields as `*int64`. `AccountPool` contains only `Enabled` and `Strategy`; schedulable membership, freeze state and the scheduling marker stay with the account/database owner.
+- `paths.go` owns app-managed paths, `AppDataDirName` and Unix private permission constants. `HTTPClient` creates an independent transport for the selected proxy, with an empty value selecting direct access. Config parsing has no storage-package dependency: the composition root injects `secretfile.ConfigFiles` through `FileStore`, reusing the existing private-file write protocol.
 
-| Tag | Meaning |
-|---|---|
-| `config` | TOML path relative to its containing group; `"-"` excludes the field and its entire subtree |
-| `alias` | The public name used by `config get/set/unset`; omitted on groups and private advanced leaves |
-| `env` | Environment variables that may be read, in declaration order (that order is the precedence; presence counts as a hit and an empty value does not fall through) |
-| `default` | Value used when absent, interpreted by field type (distinguished by tag **presence**, not by whether the string is empty) |
-| `example` | Whether the entry enters the first-run compact config; only `"true"` does, and it requires a `default` |
-| `cli` | Whether `config get/set/unset` manages it |
-| `secret` | Whether it must be hidden from public output and kept out of the example config (a `secret:"true"` + `example:"true"` pair is a schema error) |
-
-- Groups declare only a `config` prefix; leaves declare relative paths; one group type can be reused under different prefixes. `OptionalString` is a leaf. Optional pointer groups are inspected as types without allocation.
-- Declaration errors: duplicate expanded paths, duplicate non-empty aliases, empty path segments, cyclic groups, unsupported leaf types, leaf-only attributes on groups. Private leaves cannot enable CLI management, examples or env bindings without a public alias. `cli`, `secret`, `example` accept only `"true"`/`"false"` (user value parsing unchanged).
-- The private schema caches field index chains and Go types, never instances. Scalar binding uses the same source selection as `Effective`; ordinary binding allocates no pointer groups. Advanced readers locate compiled paths by field ownership without new aliases or allocating solver groups before the domain enablement check. Account-pool defaults come from declarations; strict file types and strategy validation stay domain rules.
-- Default-account selection has a separate private scope: `int64` UID leaves with no alias or default; positive-integer parsing stays in on-demand auth methods; never part of ordinary binding or early Snapshot validation.
-- `SettingSpec` is the **public derived view** the CLI consumes, not a hand-written table. `keys.go` declares the typed `Key` constants for every alias; keep them aligned when changing declarations. `LogLevel` and `LogFormat` are named types with constants.
-- **Adding an ordinary setting** = field + tags + a `Key` constant, matching docs; use the existing precedence/empty-value test when it covers a gap under the [test submission rules](coding-standards.md#test-submission-rules). No registry, env `switch`, per-field assignment, baseline list or alias list.
+To add a setting, update its `Config` field and native tag, `Default()`, the CLI field mapping and relevant validation, the embedded template and both public locale references. Add explicit environment assignments only for supported variables. Use the existing precedence/empty-value test where applicable under the [test submission rules](coding-standards.md#test-submission-rules).
 
 | File | Responsibility |
 | --- | --- |
-| `config.go` | types, field tags, field contracts |
-| `keys.go` | typed `Key` constants for the public aliases |
-| `schema.go` | tag-derived metadata, declaration validation, lookup, public `SettingSpec` view |
-| `snapshot.go` | file/env snapshot, source selection, runtime binding (service networks, FlareSolverr, pool domain rules) |
-| `values.go` | type parsing, normalization, domain validation |
+| `config.go` | Configuration types, native tags and defaults |
+| `store.go` | File port, embedded template creation and effective config loading |
+| `environment.go` | Explicit environment assignments and override detection |
+| `values.go` | CLI field paths, formatting, normalization and value rules |
 | `document.go` | TOML targeting and sparse mutation |
-| `defaults.go` | baseline document generation |
-| `store.go` | `Store` operations (path, read, sparse write-back) |
-| `auth.go` | default-account read/write (deliberately **not** ordinary binding) |
-| `paths.go` | `FileStore` port and default file adapter |
+| `auth.go` | Default-account read/write |
+| `paths.go` | App-managed paths and private permission constants |
+| `http.go` | HTTP transport construction for a configured proxy |
 
-**Atomic writes** (`FileStore`, injected from `internal/storage/{atomicfile,filelock,secretfile}`):
+**Atomic writes** (`FileStore`, implemented by `internal/storage/secretfile.ConfigFiles`):
 
 ```mermaid
 flowchart LR
-    T["random-name temp in target dir<br/>(no credentials)"] --> W["write all"] --> S["file Sync"] --> C["close"] --> R["replace target"] --> D["sync target dir<br/>+ new dirs leaf→root"]
+    T["random-name temp in target dir"] --> W["write all"] --> S["file Sync"] --> C["close"] --> R["replace target"] --> D["sync target dir<br/>+ new dirs leaf→root"]
 ```
 
 - Unix tightens parent/file to `0700`/`0600`. If this call created directories, after commit the target directory and each new directory's parent are synced leaf→root so both file and directory entries are durable; existing directories sync only the target dir.
 - Failures: before replacement (write/Sync/close) the old target stays; normal replacement and recoverable partial failures keep/restore the old target and clean the temp. A failed directory sync still tries the rest and merges errors — the replacement is committed, so the old file may be gone. If recovery after partial completion fails, the caller gets a combined error, the target may be temporarily missing, and both the same-dir recovery backup and the new-content temp are kept for manual recovery ("no temp residual" does not apply). Other temp-cleanup failures are returned with the main error.
 - Windows: Sync and close before replacement; existing target → `ReplaceFileW` with a same-dir unique backup; first creation → `MoveFileEx` without overwrite. `ERROR_UNABLE_TO_MOVE_REPLACEMENT` keeps target/source names; `ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` tries to restore the moved-to-backup target, else keeps backup/source. Backup cleanup failure after success is a committed error. New files inherit the parent ACL, replacements keep the target ACL; no ACL tightening or POSIX-mode/directory-fsync equivalence is claimed.
 
-`update_check_enabled` = `[update] check_enabled` (default `true`), only for the automatic check, never user-run `pixiv update`. `log_level` / `log_format` = `[logging].level` / `.format`; `info`/`text` default, `debug` adds request and decision records and `json` selects JSON records; env values override per invocation.
+`update.check_enabled` (default `true`), only for the automatic check, never user-run `pixiv update`. `logging.level` / `logging.format`; `info`/`text` default, `debug` adds request and decision records and `json` selects JSON records; env values override per invocation.
 
 ### `internal/browsercookies`
 
@@ -356,13 +345,9 @@ flowchart LR
 
 Detailed gates: [Release](release.md).
 
-### `internal/config/paths`
-
-Sole owner of app-managed paths, `AppDataDirName` and Unix private dir/file permission constants; reads no business config, writes no files. No generic constants package: Pixiv protocol values, MCP delivery values and config keys/defaults stay in their domains. `internal/logging` owns the slog handler, context call information and shared attribute keys configured by `[logging]` — not a persistent log. MCP JSON-RPC uses clean stdio or authenticated HTTP; errors still flow through CLI, MCP or SDK interfaces.
-
 ### `internal/storage/{atomicfile,filelock,secretfile}`
 
-Three leaves: atomic write/replace, file lock, secret file writer. Depend only on `config/paths` conventions; no config schema, account state or Pixiv semantics.
+Atomic write/replace, file locking and private-file writes live in these packages. Path/permission consumers depend on `internal/config`; `secretfile.ConfigFiles` implements its file port. Configuration parsing stays in `internal/config`, which imports none of these storage packages.
 
 ### Test and helper owners
 
@@ -373,7 +358,7 @@ Protocol-free helpers live with their callers: positive-integer parsing and stdi
 | filename cleaning, template expansion | `internal/media/filename` |
 | ID dedup, media MIME types | `internal/media/downloader` |
 | refresh-token validation | `internal/pixiv/api/oauth` |
-| paths, permissions | `internal/config/paths` |
+| paths, permissions | `internal/config` |
 | atomic write and replace | `internal/storage/atomicfile` |
 | file lock | `internal/storage/filelock` |
 | secret export writer | `internal/storage/secretfile` |

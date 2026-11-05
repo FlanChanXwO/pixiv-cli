@@ -24,7 +24,7 @@ usually the answer. Never mask an error with retries or silent fallbacks.
 | A restricted-content operation requires authentication | No authenticated local account selected | Select an account with `pixiv auth use UID` (or import credentials) before retrying; never add a Cookie workaround |
 | `--draw-tool` is rejected | Value is absent from this version's catalog | Choose an exact catalog value; a unique one-edit spelling mistake includes a suggestion |
 | Bookmark-count search is incomplete or rejected | The selected strategy controls whether candidate bounds are filtered locally; `server` is evidence-gated | Inspect the returned `filter.strategy` and `filter.completeness`. `auto`/`local` use local candidate filtering, `best_effort` is explicitly partial, and `server` returns an explicit unsupported error. Premium is not a local hard gate; only run `pixiv auth refresh [UID]` for an explicit account-maintenance request |
-| Reverse search reports `missing_credential` | SauceNAO is selected without a key | Set `saucenao_api_key` through non-TTY stdin or provide `SAUCENAO_API_KEY`; `config get` is redacted. ascii2d-only providers do not require the SauceNAO key |
+| Reverse search reports `missing_credential` | SauceNAO is selected without a key | Use `pixiv config set reverse_search.saucenao_api_key VALUE` or `SAUCENAO_API_KEY`; `config get reverse_search.saucenao_api_key` prints the effective key directly. ascii2d-only providers do not require the SauceNAO key |
 | Reverse search reports `partial=true` | At least one provider succeeded and another failed | Inspect the safe `provider_errors` entries and retry only when the user explicitly wants another upstream request; do not hide the partial result or invent a fallback |
 | A reverse-search input was treated as a keyword | The value was not an explicit HTTP(S) source and did not resolve to a regular file | Check the exact path and provider/output flags. Explicit `http:`/`https:` values never fall back to keyword search, even when the URL is invalid |
 | Reverse search reports `challenge_required`, `solver_unavailable`, `solver_failed`, or `malformed_solver_response` | ascii2d challenge recovery is unavailable, failed, or returned an invalid JSON response | Check the optional `[reverse_search.flaresolverr]` URL and service logs. Its `proxy_url` is only the browser upstream proxy; it does not replace the native reverse-search proxy or carry the image upload |
@@ -95,8 +95,8 @@ safe metadata output does not make raw token or bundle stdout safe to display.
   protocol-clean.
 - Go SDK calls return typed errors to the caller. MCP tool failures return their
   structured result with `isError=true`.
-- Set `pixiv config set log_level debug` (or `PIXIV_LOG_LEVEL=debug`) to enable
-  safe request and decision logging on stderr. `log_format=json` (or
+- Set `pixiv config set logging.level debug` (or `PIXIV_LOG_LEVEL=debug`) to enable
+  safe request and decision logging on stderr. `logging.format=json` (or
   `PIXIV_LOG_FORMAT=json`) emits one JSON record per stderr line. Logs are
   startup-scoped, omit query strings, headers, cookies, tokens, response bodies,
   and signed URLs, and never mix with MCP stdio or HTTP JSON-RPC output.

@@ -30,7 +30,7 @@ flowchart LR
 | 某个包能做/不能做什么 | [包职责](#包职责) |
 | MCP server、OAuth、媒体代理、Gallery 任务 | [MCP server 架构](architecture-mcp.md) |
 | Release 信任根与签名 | [Release assets 与信任边界](#release-assets-与信任边界) |
-| 本地状态、配置、路径权限 | [internal/config/paths](#internalconfigpaths)、[internal/storage](#internalstorageatomicfilefilelocksecretfile) |
+| 本地状态、配置、路径权限 | [internal/config](#internalconfig)、[internal/storage](#internalstorageatomicfilefilelocksecretfile) |
 | 硬约束清单 | [已知约束](#已知约束) |
 
 ## 总体流程
@@ -155,7 +155,7 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 - `internal/session` 同时拥有两个按账号打开 SDK 会话的对象：`session.Pixiv` 聚合 `pixiv/account`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixiv/account/pool`（选择、冻结、Gate、安全重放、相关错误语义）；`session.Fanbox` 聚合 `fanbox/account` 与 client 生命周期。两者位于同一个包的 `pixiv.go` 与 `fanbox.go`；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
 - 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的筛选、record、schema 或输出适配。
 - 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
-- 配置 schema、`config.toml` 的 path/get/set/unset、基线与单次执行的不可变 `Snapshot` 位于 `internal/config/settings`；按月截断位于 `internal/pixiv/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
+- 原生 TOML `Config`、`config.toml` 的 path/get/set/unset、默认模板与应用管理路径位于 `internal/config`；按月截断位于 `internal/pixiv/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
 
 **登录 relay** —— `internal/loginrelay` 同时负责纯渲染器（消费 `frontend` 模板/CSS，不依赖 CLI、账号库、浏览器或 listener）与可复用的 HTTP handler/session：接收 OAuth 会话校验器并交付一次回调；从不监听、交换或持久化。CLI 保留 listener/TLS/终端编排。宿主 mux 可剥离前缀后挂载；生产 MCP 将其挂在 canonical base + `/pixiv-login/`，位于相同的 Host/Origin 检查之后，但以 hand-off 证明而非 MCP bearer 认证。转义前缀在 URL 与分发中保留。已取消的 relay 会话返回 HTTP 410，并在接受已校验回调前再次检查取消。回调 allowlist、启动响应 wire 类型与结果 URL header 位于 `loginrelay`，由 CLI relay 与桌面 helper 复用。
 
@@ -207,61 +207,50 @@ flowchart LR
 - **锁：** owner 通过私有 `pixiv-cli.db.lock` sidecar 协调初始化、短账号/账号池事务与完整快照读取（不含凭据、不改账号数据；从不覆盖 OAuth 或内容请求；外部 SQL 写入者与旧进程不参与）。不可取消的 context 保持原生等待；可取消的 context 每 10 ms 轮询同一非阻塞锁接口，取消时立即唤醒并关闭等待中的文件句柄。没有整体截止时间或事务重放。账号 owner 在获取会话互斥锁前先取消生命周期，因此 watcher 校验期间的 DB 锁等待不会阻塞关闭。
 - 从旧 CLI 迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`；失败直接返回原因；不自动删除旧文件。
 
-### `internal/config/settings`
+### `internal/config`
 
 | 存储 | 保存 |
 | --- | --- |
 | `pixiv-cli.db` | 账号身份与凭据（`pixiv_account` / `fanbox_account`），文件 `0600` |
-| `config.toml` | 全局键，含 `[pixiv.auth].default_user_id`、`[fanbox.auth].default_user_id`；Unix `0600`。无默认账号时按 `sort_order` 选第一个 |
+| `config.toml` | 全局键，含 `pixiv.auth.default_user_id`、`fanbox.auth.default_user_id`；Unix `0600`。无默认账号时由账号 owner 按 `sort_order` 选第一个 |
 
-运行时设置用 `go-toml/v2` 解析 `config.toml`，并在每个快照中一次性捕获公开环境变量；`config set/unset` 用 `tomledit` 稀疏回写，尽量保留注释、顺序与排版。首次运行的紧凑基线只写入 `example:"true"` 条目。
+#### 原生 TOML 配置
 
-#### 配置声明：结构体字段标签是唯一事实来源
+`Config` 使用嵌套结构体与原生 `toml` 标签。`Store.Current` 先取 `Default()`，用 `go-toml/v2` 解码文件，再显式应用环境变量并校验结果。缺失字段保留默认值，未知文件键被忽略，每次读取返回独立的配置值。文件值遵循声明的 TOML 类型；解码器在应用环境变量覆盖前报告类型错误。
 
-`RuntimeConfig` 的导出字段（含嵌套的账号池、网络与 FlareSolverr 组）声明全部静态事实；运行时绑定、CLI 元数据与基线生成复用同一份声明。
+- `environment.go` 显式赋值支持的变量；存在即生效，包括空字符串。小写 `https_proxy` 优先于 `HTTPS_PROXY`。公开列表见[环境变量](../cli-reference.md#环境变量)。
+- 服务代理与 User-Agent 指针区分缺失和显式空值。服务代理缺失时沿用全局路由，空值表示直连。FlareSolverr 组任一字段出现时，URL 须为非空值。
+- `values.go` 将 TOML 叶子路径映射到 `Config` 字段指针，并负责字段校验；`Keys()` 提供 CLI 帮助列表。`config get/set/unset` 接受这些路径，包括服务和默认账号设置。`get` 直接输出生效值（含 API key）；`set` 接受值参数或 stdin，并校验目标字段。
+- `document.go` 通过 `tomledit` 编辑目标值，保留该键的注释及其他键（含废弃键）；支持普通段、点分键与 inline table，写入前检查 TOML 语义。`unset` 在 section 清空后仍保留其注释。
+- `default.toml` 通过 `go:embed` 内嵌，首次创建时原样写出。英文注释包含可选服务、solver 与账号示例；模板解码测试与 `Default()` 对比。
+- 默认账号读写方法保留在此。独立读取方法只校验所选 UID，跳过无关设置的校验；`Config` 中的可选 UID 字段使用 `*int64`。`AccountPool` 仅含 `Enabled` 与 `Strategy`，可调度成员、冻结与调度标记保留在账号/数据库 owner。
+- `paths.go` 负责应用管理路径、`AppDataDirName` 与 Unix 私有权限常量。`HTTPClient` 按所选代理构造独立 transport，空值表示直连。配置解析与 storage 包通过端口连接：组合根将 `secretfile.ConfigFiles` 注入 `FileStore`，复用已有私有文件写入协议。
 
-| 标签 | 含义 |
-|---|---|
-| `config` | 相对于所属组的 TOML 路径；`"-"` 排除该字段及其整个子树 |
-| `alias` | `config get/set/unset` 使用的公开名称；组与私有高级叶子省略 |
-| `env` | 可读取的环境变量，按声明顺序（即优先级；存在即命中，空值不会继续向下） |
-| `default` | 缺失时使用的值，按字段类型解释（以标签**是否存在**区分，而非字符串是否为空） |
-| `example` | 是否进入首次运行的紧凑配置；只有 `"true"` 进入，且要求有 `default` |
-| `cli` | 是否由 `config get/set/unset` 管理 |
-| `secret` | 是否必须在公开输出中隐藏并排除出示例配置（`secret:"true"` + `example:"true"` 是 schema 错误） |
-
-- 组只声明 `config` 前缀；叶子声明相对路径；同一组类型可在不同前缀下复用。`OptionalString` 是叶子。可选指针组按类型检查，不分配实例。
-- 声明错误：展开后路径重复、非空别名重复、空路径段、循环组、不支持的叶子类型、组上出现仅限叶子的属性。私有叶子没有公开别名就不能启用 CLI 管理、示例或环境变量绑定。`cli`、`secret`、`example` 只接受 `"true"`/`"false"`（不影响用户配置值的解析）。
-- 私有 schema 缓存字段索引链与 Go 类型，从不缓存实例。标量绑定与 `Effective` 使用相同的来源选择；普通绑定不分配指针组。高级读取器按字段归属定位已编译路径，不新增别名，也不会在领域启用检查前分配 solver 组。账号池默认值来自声明；严格文件类型与策略校验仍是领域规则。
-- 默认账号选择有单独的私有声明范围：`int64` UID 叶子无别名、无默认值；正整数解析留在按需的 auth 读写方法中；从不进入普通绑定或 Snapshot 早期校验。
-- `SettingSpec` 是 CLI 消费的**公开派生视图**，不是手写事实表。`keys.go` 为每个别名声明具名 `Key` 常量，变更声明时同步保持一致。`LogLevel` 与 `LogFormat` 是带常量的具名类型。
-- **新增普通设置** = 字段 + 标签 + `Key` 常量、对应文档；按[测试提交规则](coding-standards.md#测试提交规则)确认现有优先级/空值测试是否需要补缺口。没有注册表、环境变量 `switch`、逐字段赋值、基线列表或别名列表需要同步。
+新增设置时，同步更新 `Config` 字段与原生标签、`Default()`、CLI 字段映射及相关校验、内嵌模板与双语公开参考。仅为支持的变量增加显式环境赋值；按[测试提交规则](coding-standards.md#测试提交规则)复用适用的优先级/空值测试。
 
 | 文件 | 职责 |
 | --- | --- |
-| `config.go` | 类型、字段标签、字段契约 |
-| `keys.go` | 公开别名对应的具名 `Key` 常量 |
-| `schema.go` | 标签派生元数据、声明校验、查找、公开 `SettingSpec` 视图 |
-| `snapshot.go` | 文件/环境快照、来源选择、运行时绑定（服务网络、FlareSolverr、账号池领域规则） |
-| `values.go` | 类型解析、规范化、领域校验 |
+| `config.go` | 配置类型、原生标签与默认值 |
+| `store.go` | 文件端口、内嵌模板创建与有效配置读取 |
+| `environment.go` | 显式环境赋值与覆盖检测 |
+| `values.go` | CLI 字段路径、格式化、规范化与取值规则 |
 | `document.go` | TOML 定位与稀疏修改 |
-| `defaults.go` | 基线配置文档生成 |
-| `store.go` | `Store` 操作（路径、读取、稀疏回写） |
-| `auth.go` | 默认账号读写（有意**不属于**普通绑定） |
-| `paths.go` | `FileStore` 端口与默认文件适配器 |
+| `auth.go` | 默认账号读写 |
+| `paths.go` | 应用管理路径与私有权限常量 |
+| `http.go` | 按配置的代理构造 HTTP transport |
 
-**原子写入**（`FileStore`，由 `internal/storage/{atomicfile,filelock,secretfile}` 注入）：
+**原子写入**（`FileStore`，由 `internal/storage/secretfile.ConfigFiles` 实现）：
 
 ```mermaid
 flowchart LR
-    T["目标目录中随机名临时文件<br/>（不含凭据）"] --> W["写入全部内容"] --> S["文件 Sync"] --> C["关闭"] --> R["替换目标"] --> D["同步目标目录<br/>+ 新建目录 叶→根"]
+    T["目标目录中随机名临时文件"] --> W["写入全部内容"] --> S["文件 Sync"] --> C["关闭"] --> R["替换目标"] --> D["同步目标目录<br/>+ 新建目录 叶→根"]
 ```
 
 - Unix 主动把父目录/文件收紧为 `0700`/`0600`。若本次调用新建了目录，提交后按叶→根顺序同步目标目录与每个新目录的外层父目录，使文件条目与新目录条目都落入持久化边界；已有目录只同步目标目录。
 - 失败：替换前（写入/Sync/关闭）失败时保留旧目标；普通替换失败与可恢复的部分完成失败会保留/恢复旧目标并清理临时文件。目录同步失败仍会尝试其余目录并合并错误——替换已提交，旧文件可能已不存在。部分完成后的恢复本身失败时，调用方收到合并错误，目标可能暂时缺失，同目录的旧内容恢复备份与新内容临时文件都保留以便人工恢复（此时"无临时残留"不适用）。其他临时文件清理失败与主错误一起返回。
 - Windows：替换前同样 Sync 并关闭；目标存在 → 使用带同目录唯一恢复备份的 `ReplaceFileW`；首次创建 → 不覆盖的 `MoveFileEx`。`ERROR_UNABLE_TO_MOVE_REPLACEMENT` 保持目标/源的原名；`ERROR_UNABLE_TO_MOVE_REPLACEMENT_2` 尝试恢复已移到备份的旧目标，失败则保留备份/源。成功替换后备份清理失败属于已提交错误。新文件继承父目录 ACL，替换保留目标 ACL；不声称收紧 ACL，也不提供与 POSIX mode 或目录 fsync 等价的保证。
 
-`update_check_enabled` = `[update] check_enabled`（默认 `true`），只控制自动检查，不影响用户主动执行的 `pixiv update`。`log_level` / `log_format` = `[logging].level` / `.format`；默认 `info`/`text`，`debug` 增加请求与决策记录，`json` 选择 JSON 记录；环境变量按次覆盖。
+`update.check_enabled`（默认 `true`），只控制自动检查，不影响用户主动执行的 `pixiv update`。`logging.level` / `logging.format`；默认 `info`/`text`，`debug` 增加请求与决策记录，`json` 选择 JSON 记录；环境变量按次覆盖。
 
 ### `internal/browsercookies`
 
@@ -356,13 +345,9 @@ flowchart LR
 
 详细门禁见[发布](release.md)。
 
-### `internal/config/paths`
-
-应用管理路径、`AppDataDirName` 与 Unix 私有目录/文件权限常量的唯一 owner；不读业务配置，不写文件。没有通用常量包：Pixiv 协议值、MCP 交付值与配置键/默认值留在各自领域。`internal/logging` 负责由 `[logging]` 配置的 slog handler、ctx 调用信息与共享属性键——不是持久化日志。MCP JSON-RPC 使用干净的 stdio 或认证 HTTP；错误仍通过 CLI、MCP 或 SDK 接口返回。
-
 ### `internal/storage/{atomicfile,filelock,secretfile}`
 
-三个叶子包：原子写入/替换、文件锁、secret 文件写入。只依赖 `config/paths` 约定；不负责配置 schema、账号状态或 Pixiv 语义。
+这些包负责原子写入/替换、文件锁与私有文件写入。路径/权限使用方依赖 `internal/config`，`secretfile.ConfigFiles` 实现其文件端口。配置解析由 `internal/config` 负责，该包的实现仅通过端口使用 storage。
 
 ### 测试与 helper owner
 
@@ -373,7 +358,7 @@ flowchart LR
 | 文件名清理、模板展开 | `internal/media/filename` |
 | ID 去重、媒体 MIME 类型 | `internal/media/downloader` |
 | refresh token 校验 | `internal/pixiv/api/oauth` |
-| 路径、权限 | `internal/config/paths` |
+| 路径、权限 | `internal/config` |
 | 原子写入、替换 | `internal/storage/atomicfile` |
 | 文件锁 | `internal/storage/filelock` |
 | secret 导出写入 | `internal/storage/secretfile` |
