@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 )
 
 const defaultWindowsURLHandlerRegistryKey = `HKCU\Software\Classes\pixiv`
@@ -115,7 +115,7 @@ func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL strin
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(backupDir, paths.PrivateDirMode); err != nil {
+	if err := os.Chmod(backupDir, config.PrivateDirMode); err != nil {
 		_ = os.RemoveAll(backupDir)
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL strin
 			_ = os.RemoveAll(backupDir)
 			return nil, err
 		}
-		if err := os.Chmod(backupPath, paths.PrivateFileMode); err != nil {
+		if err := os.Chmod(backupPath, config.PrivateFileMode); err != nil {
 			_ = os.RemoveAll(backupDir)
 			return nil, err
 		}

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 )
 
@@ -44,7 +44,7 @@ func NewAutomaticChecker(proxy string) (*selfupdate.AutomaticUpdateChecker, erro
 
 // newReleaseClient 只有在没有显式代理时才启用公共 release 镜像源。
 func newReleaseClient(proxy string) (*http.Client, selfupdate.ReleaseChecker, error) {
-	httpClient, err := httpclient.HTTPClient(proxy)
+	httpClient, err := config.HTTPClient(proxy)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse update proxy URL: %w", err)
 	}

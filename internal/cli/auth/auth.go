@@ -6,7 +6,7 @@
 package auth
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/spf13/cobra"
@@ -25,14 +25,14 @@ type Support struct {
 	// Login 延迟打开登录服务，避免构造命令树时打开数据库。
 	Login func() (account.LoginService, error)
 	// LoadRuntime 每次调用读取最新的运行时配置。
-	LoadRuntime func() (settings.RuntimeConfig, error)
+	LoadRuntime func() (config.Config, error)
 	// WriteBundle 写出含凭据的 bundle；force 为 false 时不得覆盖已有文件。
 	WriteBundle func(string, []byte, bool) error
 }
 
 // SupportFor 构造生产 Support：账号与登录服务延迟打开，配置按调用读取，bundle 写入
 // 复用 secretfile 的私有文件语义。
-func SupportFor(accounts func() (*account.Service, account.LoginService, error), loadRuntime func() (settings.RuntimeConfig, error), writeBundle func(string, []byte, bool) error) Support {
+func SupportFor(accounts func() (*account.Service, account.LoginService, error), loadRuntime func() (config.Config, error), writeBundle func(string, []byte, bool) error) Support {
 	return Support{
 		Account: func() (*account.Service, error) {
 			service, _, err := accounts()

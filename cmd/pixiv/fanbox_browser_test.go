@@ -3,7 +3,7 @@ package main_test
 import (
 	"bytes"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"os"
@@ -33,7 +33,7 @@ func TestBrowserProvidersStayRegistered(t *testing.T) {
 
 func assertEscapesUpstreamText(t *testing.T, proxy string) {
 	t.Helper()
-	db, err := database.Open(filepath.Join(os.Getenv("HOME"), paths.AppDataDirName))
+	db, err := database.Open(filepath.Join(os.Getenv("HOME"), config.AppDataDirName))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	acct := account.New(7, "artist", "artist", []byte("synthetic-session"))

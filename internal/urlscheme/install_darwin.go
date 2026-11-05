@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
@@ -168,7 +168,7 @@ func (i urlHandlerInstaller) install(ctx context.Context, callbackRelayURL strin
 
 // pixivURLHandlerAppPath 返回当前用户私有 app 数据目录下 helper app 的位置。
 func pixivURLHandlerAppPath() (string, error) {
-	appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
+	appDataDir, err := config.UserDataSubdir(config.AppDataDirName)
 	if err != nil {
 		return "", err
 	}
@@ -186,7 +186,7 @@ func saveHandlerBundleManifest(appPath string, manifest handlerManifest) error {
 	if err != nil {
 		return err
 	}
-	return secretfile.WritePrivateFile(handlerBundleManifestPath(appPath), body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(handlerBundleManifestPath(appPath), body, config.PrivateFileMode)
 }
 
 // ensureApp 编译并安装当前用户的 macOS pixiv:// helper app。
@@ -197,7 +197,7 @@ func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) erro
 	if fileExists(executablePath) && fileExists(infoPath) && handlerSourceVersionMatches(versionPath) {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(executablePath), paths.PrivateDirMode); err != nil {
+	if err := os.MkdirAll(filepath.Dir(executablePath), config.PrivateDirMode); err != nil {
 		return err
 	}
 	// Swift 源码可能包含后续敏感回调逻辑；私有随机目录和独占创建共同避免固定路径的 symlink 覆盖及并发竞态。
@@ -206,7 +206,7 @@ func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) erro
 		return err
 	}
 	defer os.RemoveAll(sourceDir)
-	if err := os.Chmod(sourceDir, paths.PrivateDirMode); err != nil {
+	if err := os.Chmod(sourceDir, config.PrivateDirMode); err != nil {
 		return err
 	}
 	source, err := os.CreateTemp(sourceDir, "url-handler-*.swift")
@@ -214,7 +214,7 @@ func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) erro
 		return err
 	}
 	sourcePath := source.Name()
-	if err := source.Chmod(paths.PrivateFileMode); err != nil {
+	if err := source.Chmod(config.PrivateFileMode); err != nil {
 		_ = source.Close()
 		return err
 	}
@@ -228,10 +228,10 @@ func (i urlHandlerInstaller) ensureApp(ctx context.Context, appPath string) erro
 	if out, err := i.compile(ctx, sourcePath, executablePath); err != nil {
 		return fmt.Errorf("compile pixiv:// callback helper: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), paths.PrivateFileMode); err != nil {
+	if err := os.WriteFile(infoPath, []byte(pixivURLHandlerInfoPlist), config.PrivateFileMode); err != nil {
 		return err
 	}
-	if err := secretfile.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), paths.PrivateFileMode); err != nil {
+	if err := secretfile.WritePrivateFile(versionPath, []byte(pixivURLHandlerSourceVersion+"\n"), config.PrivateFileMode); err != nil {
 		return err
 	}
 	return nil

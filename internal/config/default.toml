@@ -1,0 +1,71 @@
+# pixiv-cli configuration. Use TOML paths with: pixiv config set KEY VALUE.
+
+# Download directory and naming templates.
+[download]
+path = "./downloads"
+filename_template = "{author} - {title}_{id}"
+directory_template = ""
+
+# Global proxy and minimum time between Pixiv requests.
+[network]
+https_proxy = ""
+request_interval = "0s"
+
+# Diagnostics: info/debug/warn/error, and text/json.
+[logging]
+level = "info"
+format = "text"
+
+[output]
+json = false
+
+# Automatically check for updates after normal commands.
+[update]
+check_enabled = true
+
+# Browser login and optional cross-machine relay listener.
+[login]
+open_browser = true
+use_after_login = false
+relay_public_url = ""
+relay_listen_addr = ""
+relay_tls_cert_file = ""
+relay_tls_key_file = ""
+
+# Reverse image search. The API key is printed by config get.
+[reverse_search]
+provider = "saucenao"
+pixiv_only = true
+saucenao_api_key = ""
+
+# Database account scheduling: round_robin or random.
+[account_pool]
+enabled = false
+strategy = "round_robin"
+
+# Gallery memory cache and separate animation temporary storage, in MiB.
+[mcp]
+gallery_cache_capacity_mib = 256
+gallery_animation_temp_capacity_mib = 1024
+
+# Optional service overrides (uncomment to enable).
+# An empty proxy_url selects a direct connection instead of the global proxy.
+# [pixiv.network]
+# proxy_url = ""
+# [fanbox.network]
+# proxy_url = ""
+# user_agent = ""
+# [reverse_search.network]
+# proxy_url = ""
+# user_agent = ""
+# [fanbox.flaresolverr]
+# url = "http://localhost:8191"
+# proxy_url = ""
+# [reverse_search.flaresolverr]
+# url = "http://localhost:8191"
+# proxy_url = ""
+# Default account IDs are written by auth use.
+# [pixiv.auth]
+# default_user_id = 123
+# [fanbox.auth]
+# default_user_id = 123

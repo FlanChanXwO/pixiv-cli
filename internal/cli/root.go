@@ -17,7 +17,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
+	configcmd "github.com/FlanChanXwO/pixiv-cli/internal/cli/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/detail"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/download"
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
@@ -35,7 +35,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
@@ -94,7 +94,7 @@ func (a *app) newRootCommand() *cobra.Command {
 				}
 			}
 			if requirement.EnsureConfig {
-				if err := settings.DefaultStore().EnsureDefaultConfigFile(); err != nil {
+				if err := (config.Store{Files: secretfile.ConfigFiles{}}).EnsureDefaultConfigFile(); err != nil {
 					return err
 				}
 				if err := a.startLogging(cmd, requirement); err != nil {
@@ -119,7 +119,7 @@ func (a *app) newRootCommand() *cobra.Command {
 	env, exec := a.commandEnv(), a.local.Execute
 	cmd.AddCommand(a.newAuthCommand())
 	cmd.AddCommand(whoami.New(env, a.local.CurrentUser))
-	cmd.AddCommand(config.New(env, settings.DefaultStore()))
+	cmd.AddCommand(configcmd.New(env, config.Store{Files: secretfile.ConfigFiles{}}))
 	cmd.AddCommand(a.pixivCommands(env, exec)...)
 	cmd.AddCommand(download.New(env, exec, download.RuntimeFrom(a.runtimeConfig), downloader.NewService))
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
@@ -146,12 +146,8 @@ func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra
 	}
 }
 
-func (a *app) runtimeConfig() (settings.RuntimeConfig, error) {
-	snapshot, err := settings.DefaultStore().Current()
-	if err != nil {
-		return settings.RuntimeConfig{}, err
-	}
-	return snapshot.Runtime()
+func (a *app) runtimeConfig() (config.Config, error) {
+	return (config.Store{Files: secretfile.ConfigFiles{}}).Current()
 }
 
 // Run 执行一条 CLI 命令并返回进程退出码，阶段顺序固定：
@@ -233,7 +229,7 @@ func (a *app) startLogging(cmd *cobra.Command, requirement environment.Execution
 	if err != nil {
 		return err
 	}
-	call, err := logging.Start(cmd.Context(), a.errOut, cmd.CommandPath(), string(runtime.LogLevel), string(runtime.LogFormat))
+	call, err := logging.Start(cmd.Context(), a.errOut, cmd.CommandPath(), string(runtime.Logging.Level), string(runtime.Logging.Format))
 	if err != nil {
 		return err
 	}
@@ -257,7 +253,7 @@ func (a *app) commandEnv() environment.Env {
 		if err != nil {
 			return false, err
 		}
-		return runtime.OutputJSON, nil
+		return runtime.Output.JSON, nil
 	})
 }
 
@@ -271,7 +267,7 @@ func (a *app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
 		fanboxauth.New(env, a.local.FanboxAccounts, fanboxauth.SystemBrowserProvider{}),
 		fanboxdownload.New(env, a.local.Fanbox, func() (string, error) {
 			runtime, err := a.runtimeConfig()
-			return runtime.DownloadPath, err
+			return runtime.Download.Path, err
 		}),
 	}
 	return fanboxcli.NewCommand(env, append(children, browse.Commands(env, a.local.Fanbox)...))
@@ -327,39 +323,46 @@ func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 }
 
 // newReverseSearcher 固定 standard/ascii2d 两个代理网络面、凭据和 solver 配置。
-func newReverseSearcher(runtime settings.RuntimeConfig, proxyOverride *string) (reversesearch.Searcher, error) {
-	standardProxy, ascii2dProxy := runtime.HTTPSProxy, runtime.HTTPSProxy
-	if runtime.ReverseSearchNetwork.ProxyURL.Present {
-		ascii2dProxy = runtime.ReverseSearchNetwork.ProxyURL.Value
+func newReverseSearcher(runtime config.Config, proxyOverride *string) (reversesearch.Searcher, error) {
+	standardProxy, ascii2dProxy := runtime.Network.HTTPSProxy, runtime.Network.HTTPSProxy
+	if runtime.ReverseSearch.Network.ProxyURL != nil {
+		ascii2dProxy = *runtime.ReverseSearch.Network.ProxyURL
 	}
 	if proxyOverride != nil {
 		standardProxy, ascii2dProxy = *proxyOverride, *proxyOverride
 	}
 	var flareSolverr *assembly.FlareSolverrOptions
-	if runtime.ReverseSearchFlareSolverr != nil {
-		flareSolverr = &assembly.FlareSolverrOptions{URL: runtime.ReverseSearchFlareSolverr.URL, ProxyURL: runtime.ReverseSearchFlareSolverr.ProxyURL}
+	if runtime.ReverseSearch.FlareSolverr.URL != nil {
+		flareSolverr = &assembly.FlareSolverrOptions{URL: *runtime.ReverseSearch.FlareSolverr.URL}
+	}
+	if flareSolverr != nil && runtime.ReverseSearch.FlareSolverr.ProxyURL != nil {
+		flareSolverr.ProxyURL = *runtime.ReverseSearch.FlareSolverr.ProxyURL
+	}
+	userAgent := ""
+	if runtime.ReverseSearch.Network.UserAgent != nil {
+		userAgent = *runtime.ReverseSearch.Network.UserAgent
 	}
 	return assembly.New(assembly.Options{
 		Proxy:        standardProxy,
 		ASCII2DProxy: &ascii2dProxy,
-		UserAgent:    runtime.ReverseSearchNetwork.UserAgent.Value,
-		SauceNAOKey:  runtime.SauceNAOAPIKey,
+		UserAgent:    userAgent,
+		SauceNAOKey:  runtime.ReverseSearch.SauceNAOAPIKey,
 		FlareSolverr: flareSolverr,
 	})
 }
 
 // newMCPReverseSearchPorts 在 MCP 启动时创建一次反向搜图 Facade，并固定 provider 与
 // 两个代理网络面；后续 tool input 只能覆盖 provider，不能改变传输或凭据依赖。
-func newMCPReverseSearchPorts(runtime settings.RuntimeConfig, request mcp.Request) (pixiv.ReverseSearchPorts, error) {
+func newMCPReverseSearchPorts(runtime config.Config, request mcp.Request) (pixiv.ReverseSearchPorts, error) {
 	searcher, err := newReverseSearcher(runtime, request.HTTPSProxyOverride)
 	if err != nil {
 		return pixiv.ReverseSearchPorts{}, err
 	}
-	provider := reversesearch.Provider(runtime.ReverseSearchProvider)
+	provider := reversesearch.Provider(runtime.ReverseSearch.Provider)
 	if provider == "" {
 		provider = reversesearch.ProviderSauceNAO
 	}
-	return pixiv.ReverseSearchPorts{Searcher: searcher, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly}, nil
+	return pixiv.ReverseSearchPorts{Searcher: searcher, Provider: provider, PixivOnly: runtime.ReverseSearch.PixivOnly}, nil
 }
 
 // reverseSearchPort 为每次命令树构造反向搜图端口；每次调用按当前配置重新读取 provider 和代理。
@@ -369,7 +372,7 @@ func (a *app) reverseSearchPort() search.ReverseSearchPort {
 		if err != nil {
 			return reversesearch.Response{}, err
 		}
-		provider := reversesearch.Provider(runtime.ReverseSearchProvider)
+		provider := reversesearch.Provider(runtime.ReverseSearch.Provider)
 		if request.Provider != "" {
 			provider = request.Provider
 		}
@@ -380,6 +383,6 @@ func (a *app) reverseSearchPort() search.ReverseSearchPort {
 		if closer, ok := searcher.(reversesearch.Closer); ok {
 			a.closeState.Add(closer.Close)
 		}
-		return searcher.Search(ctx, reversesearch.Request{Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearchPixivOnly})
+		return searcher.Search(ctx, reversesearch.Request{Source: request.Source, Provider: provider, PixivOnly: runtime.ReverseSearch.PixivOnly})
 	}
 }

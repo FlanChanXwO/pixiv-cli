@@ -11,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
-	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
@@ -56,7 +55,7 @@ type accountPoolStatusOut struct {
 // 账号领域服务不读取 CLI 配置；代理和运行时开关只在这里转换为 SDK options。
 type AccountService struct {
 	Pixiv       accountPort
-	LoadRuntime func() (settings.RuntimeConfig, error)
+	LoadRuntime func() (config.Config, error)
 }
 
 // accountPort 定义 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
@@ -127,15 +126,15 @@ func (s AccountService) sdkOptions(ctx context.Context, proxyOverride *string) (
 		if err != nil {
 			return pixiv.Options{}, err
 		}
-		if runtime.PixivNetwork.ProxyURL.Present {
-			value := runtime.PixivNetwork.ProxyURL.Value
+		if runtime.Pixiv.Network.ProxyURL != nil {
+			value := *runtime.Pixiv.Network.ProxyURL
 			proxy = &value
 		} else {
-			value := runtime.HTTPSProxy
+			value := runtime.Network.HTTPSProxy
 			proxy = &value
 		}
 	}
-	client, err := httpclient.HTTPClient(*proxy)
+	client, err := config.HTTPClient(*proxy)
 	if err != nil {
 		return pixiv.Options{}, err
 	}
@@ -146,7 +145,7 @@ func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
 	if proxyOverride == nil {
 		return pixiv.LoginOptions{}, nil
 	}
-	client, err := httpclient.HTTPClient(*proxyOverride)
+	client, err := config.HTTPClient(*proxyOverride)
 	if err != nil {
 		return pixiv.LoginOptions{}, err
 	}

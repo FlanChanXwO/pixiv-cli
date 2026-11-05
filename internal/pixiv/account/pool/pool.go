@@ -14,7 +14,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
@@ -32,7 +32,7 @@ type PoolState interface {
 
 // Scheduler 负责账号池 strategy、attempt exclusion、freeze 与安全 replay。
 type Scheduler struct {
-	Config settings.AccountPoolConfig
+	Config config.AccountPoolConfig
 	State  PoolState
 	Now    func() time.Time
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/installer"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 )
@@ -51,7 +51,7 @@ var ReleaseSigningPublicKey = installer.ReleaseSigningPublicKey
 // 使用安装器提供的文件 cache 并落在应用数据目录。
 func NewGitHubReleaseClient(options ReleaseClientOptions) (*release.GitHubReleaseClient, error) {
 	if options.Cache == nil {
-		appDataDir, err := paths.UserDataSubdir(paths.AppDataDirName)
+		appDataDir, err := config.UserDataSubdir(config.AppDataDirName)
 		if err != nil {
 			return nil, fmt.Errorf("determine application data directory: %w", err)
 		}

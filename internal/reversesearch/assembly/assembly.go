@@ -8,7 +8,7 @@
 package assembly
 
 import (
-	"github.com/FlanChanXwO/pixiv-cli/internal/httpclient"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/ascii2d"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/saucenao"
@@ -34,7 +34,7 @@ type Options struct {
 // New 用标准 HTTP client 构造 source 载入器与 SauceNAO；ascii2d 只收到代理与
 // User-Agent，自行建立浏览器传输，不改变其他 provider。
 func New(options Options) (reversesearch.Searcher, error) {
-	client, err := httpclient.HTTPClient(options.Proxy)
+	client, err := config.HTTPClient(options.Proxy)
 	if err != nil {
 		return nil, err
 	}

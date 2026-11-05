@@ -98,10 +98,10 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 		return err
 	}
 	if !cmd.Flags().Changed("no-open") {
-		opts.noOpen = !cfg.LoginOpenBrowser
+		opts.noOpen = !cfg.Login.OpenBrowser
 	}
 	if !cmd.Flags().Changed("use") {
-		opts.useAfterLogin = cfg.LoginUseAfterLogin
+		opts.useAfterLogin = cfg.Login.UseAfterLogin
 	}
 	relayOptions, useRelay, err := configuredRelayServerOptions(cmd.Flags(), opts, cfg)
 	if err != nil {

@@ -18,7 +18,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
@@ -263,7 +263,7 @@ func hasSingleNonEmptyQueryValue(values url.Values, key string) bool {
 
 // activeRemoteLoginPath 返回当前 remote handoff 私有状态文件路径。
 func activeRemoteLoginPath() (string, error) {
-	return paths.UserDataFile(paths.AppDataDirName, activeHandoffFilename)
+	return config.UserDataFile(config.AppDataDirName, activeHandoffFilename)
 }
 
 // saveActiveRemoteLogin 在私有锁保护下写入当前 remote handoff 状态。
@@ -282,7 +282,7 @@ func saveActiveRemoteLoginAt(statePath string, session activeRemoteLogin) error 
 	if err != nil {
 		return err
 	}
-	return secretfile.WritePrivateFile(statePath, body, paths.PrivateFileMode)
+	return secretfile.WritePrivateFile(statePath, body, config.PrivateFileMode)
 }
 
 // loadActiveRemoteLogin 读取当前 remote handoff 状态；没有活动 handoff 时返回

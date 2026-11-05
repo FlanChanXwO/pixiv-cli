@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/settings"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
@@ -19,7 +19,7 @@ type commandOptions struct {
 }
 
 // New 构造 update 命令；loadRuntime 提供配置中的默认代理。
-func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)) *cobra.Command {
+func New(env environment.Env, loadRuntime func() (config.Config, error)) *cobra.Command {
 	var opts commandOptions
 	cmd := &cobra.Command{
 		Use:     "update",
@@ -39,7 +39,7 @@ func New(env environment.Env, loadRuntime func() (settings.RuntimeConfig, error)
 			if err != nil {
 				return fmt.Errorf("load update configuration: %w", err)
 			}
-			proxy := runtimeConfig.HTTPSProxy
+			proxy := runtimeConfig.Network.HTTPSProxy
 			if cmd.Flags().Changed("proxy") {
 				proxy = opts.proxy
 			}

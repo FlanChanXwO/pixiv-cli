@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/config/paths"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +22,7 @@ func TestEnsurePixivURLHandlerAppDoesNotFollowLegacyTemporarySourceSymlink(t *te
 
 	canaryPath := filepath.Join(tempDir, "canary")
 	legacySourcePath := filepath.Join(tempDir, "pixiv-cli-url-handler.swift")
-	require.NoError(t, os.WriteFile(canaryPath, []byte("do not overwrite"), paths.PrivateFileMode))
+	require.NoError(t, os.WriteFile(canaryPath, []byte("do not overwrite"), config.PrivateFileMode))
 	require.NoError(t, os.Symlink(canaryPath, legacySourcePath))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -42,7 +42,7 @@ func TestPixivURLHandlerAppPathUsesApplicationDataDirectory(t *testing.T) {
 
 	path, err := pixivURLHandlerAppPath()
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(home, paths.AppDataDirName, "url-handler", "PixivCLIURLHandler.app"), path)
+	require.Equal(t, filepath.Join(home, config.AppDataDirName, "url-handler", "PixivCLIURLHandler.app"), path)
 }
 
 func TestDelegateToPreviousUsesRecordedBundle(t *testing.T) {
@@ -80,17 +80,17 @@ func TestEnsurePixivURLHandlerAppCompilesPrivateRandomSourceAndCleansIt(t *testi
 		dirInfo, err := os.Stat(filepath.Dir(actualSourcePath))
 		require.NoError(t, err)
 		require.True(t, dirInfo.IsDir())
-		require.Equal(t, os.FileMode(paths.PrivateDirMode), dirInfo.Mode().Perm())
+		require.Equal(t, os.FileMode(config.PrivateDirMode), dirInfo.Mode().Perm())
 
 		sourceInfo, err := os.Lstat(actualSourcePath)
 		require.NoError(t, err)
 		require.True(t, sourceInfo.Mode().IsRegular())
-		require.Equal(t, os.FileMode(paths.PrivateFileMode), sourceInfo.Mode().Perm())
+		require.Equal(t, os.FileMode(config.PrivateFileMode), sourceInfo.Mode().Perm())
 		content, err := os.ReadFile(actualSourcePath)
 		require.NoError(t, err)
 		require.Equal(t, pixivURLHandlerSwiftSource, string(content))
 
-		require.NoError(t, os.WriteFile(executablePath, []byte("compiled"), paths.PrivateFileMode))
+		require.NoError(t, os.WriteFile(executablePath, []byte("compiled"), config.PrivateFileMode))
 		return nil, nil
 	}
 
@@ -107,15 +107,15 @@ func TestEnsurePixivURLHandlerAppRebuildsHelperWithoutCurrentSourceVersion(t *te
 	appPath := filepath.Join(t.TempDir(), "PixivCLIURLHandler.app")
 	executablePath := filepath.Join(appPath, "Contents", "MacOS", "PixivCLIURLHandler")
 	infoPath := filepath.Join(appPath, "Contents", "Info.plist")
-	require.NoError(t, os.MkdirAll(filepath.Dir(executablePath), paths.PrivateDirMode))
-	require.NoError(t, os.WriteFile(executablePath, []byte("old helper"), paths.PrivateFileMode))
-	require.NoError(t, os.WriteFile(infoPath, []byte("old metadata"), paths.PrivateFileMode))
+	require.NoError(t, os.MkdirAll(filepath.Dir(executablePath), config.PrivateDirMode))
+	require.NoError(t, os.WriteFile(executablePath, []byte("old helper"), config.PrivateFileMode))
+	require.NoError(t, os.WriteFile(infoPath, []byte("old metadata"), config.PrivateFileMode))
 
 	compiled := false
 	installer := newURLHandlerInstaller()
 	installer.compile = func(_ context.Context, _ string, executable string) ([]byte, error) {
 		compiled = true
-		require.NoError(t, os.WriteFile(executable, []byte("new helper"), paths.PrivateFileMode))
+		require.NoError(t, os.WriteFile(executable, []byte("new helper"), config.PrivateFileMode))
 		return nil, nil
 	}
 
@@ -133,10 +133,10 @@ func TestPixivURLHandlerReadsPrivateManifest(t *testing.T) {
 
 	manifest, err := handlerManifestPath()
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(home, paths.AppDataDirName, "url-handler", handlerManifestFilename), manifest)
+	require.Equal(t, filepath.Join(home, config.AppDataDirName, "url-handler", handlerManifestFilename), manifest)
 	require.Contains(t, pixivURLHandlerSwiftSource, "Bundle.main.resourceURL")
 	require.NotContains(t, pixivURLHandlerSwiftSource, "NSHomeDirectory()")
-	require.NotContains(t, pixivURLHandlerSwiftSource, paths.AppDataDirName+"/url-handler/"+handlerManifestFilename)
+	require.NotContains(t, pixivURLHandlerSwiftSource, config.AppDataDirName+"/url-handler/"+handlerManifestFilename)
 }
 
 func TestPixivURLHandlerStoresLaunchManifestInItsOwnBundle(t *testing.T) {
@@ -152,7 +152,7 @@ func TestPixivURLHandlerStoresLaunchManifestInItsOwnBundle(t *testing.T) {
 	require.Equal(t, manifest, got)
 	info, err := os.Stat(filepath.Join(appPath, "Contents", "Resources", handlerManifestFilename))
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(paths.PrivateFileMode), info.Mode().Perm())
+	require.Equal(t, os.FileMode(config.PrivateFileMode), info.Mode().Perm())
 
 	// LaunchServices 启动 helper 时不会继承调用 CLI 的 HOME；它必须优先
 	// 从自己被注册的 bundle 获取本次启动目标，才可支持隔离环境。
@@ -171,7 +171,7 @@ func TestPixivURLHandlerSwiftSourceCompiles(t *testing.T) {
 	tempDir := t.TempDir()
 	sourcePath := filepath.Join(tempDir, "url-handler.swift")
 	executablePath := filepath.Join(tempDir, "PixivCLIURLHandler")
-	require.NoError(t, os.WriteFile(sourcePath, []byte(pixivURLHandlerSwiftSource), paths.PrivateFileMode))
+	require.NoError(t, os.WriteFile(sourcePath, []byte(pixivURLHandlerSwiftSource), config.PrivateFileMode))
 
 	out, err := exec.Command("swiftc", sourcePath, "-o", executablePath).CombinedOutput()
 	require.NoErrorf(t, err, "compile embedded macOS URL helper: %s", strings.TrimSpace(string(out)))
