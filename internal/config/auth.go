@@ -38,8 +38,10 @@ func (s Store) readDefaultUserID(product string) (int64, bool, error) {
 	if err := toml.Unmarshal(body, &file); err != nil {
 		return 0, false, err
 	}
-	section, _ := file[product].(map[string]any)
-	auth, _ := section["auth"].(map[string]any)
+	auth, err := lookupTable(file, product, "auth")
+	if err != nil {
+		return 0, false, err
+	}
 	raw, present := auth["default_user_id"]
 	if !present {
 		return 0, false, nil

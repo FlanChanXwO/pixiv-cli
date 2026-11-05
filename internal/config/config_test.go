@@ -54,7 +54,16 @@ func TestDefaultTemplate(t *testing.T) {
 	require.NoError(t, err)
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
+	template, err := os.ReadFile("default.toml")
+	require.NoError(t, err)
+	require.Equal(t, template, body)
 	var decoded config.Config
 	require.NoError(t, toml.Unmarshal(body, &decoded))
 	require.Equal(t, config.Default(), decoded)
+	existing := append([]byte("# existing user configuration\n"), body...)
+	require.NoError(t, os.WriteFile(path, existing, 0o600))
+	require.NoError(t, store.EnsureDefaultConfigFile())
+	body, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, existing, body)
 }

@@ -176,13 +176,19 @@ func validate(c *Config) error {
 		{"fanbox.flaresolverr", c.Fanbox.FlareSolverr},
 		{"reverse_search.flaresolverr", c.ReverseSearch.FlareSolverr},
 	} {
-		key, solver := entry.key, entry.solver
-		if solver.URL == nil && solver.ProxyURL == nil {
-			continue
+		if err := validateSolver(entry.key, entry.solver); err != nil {
+			return err
 		}
-		if solver.URL == nil || strings.TrimSpace(*solver.URL) == "" {
-			return fmt.Errorf("%s.url must be set when %s is configured", key, key)
-		}
+	}
+	return nil
+}
+
+func validateSolver(key string, solver FlareSolverrConfig) error {
+	if solver.URL == nil && solver.ProxyURL == nil {
+		return nil
+	}
+	if solver.URL == nil || strings.TrimSpace(*solver.URL) == "" {
+		return fmt.Errorf("%s.url must be set when %s is configured", key, key)
 	}
 	return nil
 }

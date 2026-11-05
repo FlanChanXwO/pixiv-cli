@@ -372,7 +372,7 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 
 首个需要配置的命令会在 `config.toml` 缺失时写出带英文注释和默认值的内嵌模板，已有文件保持原样。模板为服务覆盖、FlareSolverr 和默认账号提供了注释示例，这些可选值仍处于未设置状态。配置在命令启动时读取，修改在下一次调用生效；MCP 需重启以应用变更。
 
-已知字段使用声明的 TOML 类型：布尔值和整数省略引号，duration 使用 `"250ms"` 这样的字符串。读取时忽略文件中的未知键（包括废弃设置），编辑其他键时仍保留它们。`config set` 校验目标字段，保留该键的注释和其他键，并原子替换文件。`config unset` 恢复默认值或移除可选值。缺失的可选值输出 `<unset>` 并以非零状态退出，空字符串输出空行。配置 FlareSolverr 组后，运行时要求其 `url` 非空。
+已知字段使用声明的 TOML 类型：布尔值和整数省略引号，duration 使用 `"250ms"` 这样的字符串。读取时忽略文件中的未知键（包括废弃设置），编辑其他键时仍保留它们。`config set` 校验目标字段，保留该键的注释和其他键，并原子替换文件。`config unset` 恢复默认值或移除可选值。缺失的可选值输出 `<unset>` 并以非零状态退出，空字符串输出空行。配置 FlareSolverr 组后，要求其 `url` 非空。编辑该组时会在写入前校验：先设置 `url` 再设置 `proxy_url`；删除时先移除 `proxy_url` 再移除 `url`。
 
 ```text
 pixiv config set download.path ./archive

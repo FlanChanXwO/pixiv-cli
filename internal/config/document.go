@@ -111,6 +111,24 @@ func (s Store) edit(key string, value *parser.Value) error {
 	if err := toml.Unmarshal(out.Bytes(), &decoded); err != nil {
 		return err
 	}
+	// 只校验被编辑的 solver 组，让其他配置错误仍可逐项修复。
+	if parts[1] == "flaresolverr" {
+		table, err := lookupTable(decoded, parts[:2]...)
+		if err != nil {
+			return err
+		}
+		encoded, err := toml.Marshal(table)
+		if err != nil {
+			return err
+		}
+		var solver FlareSolverrConfig
+		if err := toml.Unmarshal(encoded, &solver); err != nil {
+			return err
+		}
+		if err := validateSolver(strings.Join(parts[:2], "."), solver); err != nil {
+			return err
+		}
+	}
 	path, err := s.Path()
 	if err != nil {
 		return err
@@ -141,4 +159,19 @@ func insert(doc *tomledit.Document, path []string, value parser.Value) error {
 	}
 	transform.InsertMapping(doc.Global, &parser.KeyValue{Name: parser.Key(path), Value: value}, false)
 	return nil
+}
+
+func lookupTable(file map[string]any, path ...string) (map[string]any, error) {
+	for index, key := range path {
+		raw, present := file[key]
+		if !present {
+			return nil, nil
+		}
+		var ok bool
+		file, ok = raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("config: %s must be a table", strings.Join(path[:index+1], "."))
+		}
+	}
+	return file, nil
 }
