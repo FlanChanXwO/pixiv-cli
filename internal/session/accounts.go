@@ -225,8 +225,7 @@ type RestoreAccountInput struct {
 	IsBundleDefault bool
 }
 
-// RestoreAccountsResult 汇总一次原子 bundle 恢复的结果。ResultingDefault 为最终
-// 选中默认账号；IsDefaultReplacement 区分本次写入是否替换了已有凭据。
+// RestoreAccountsResult 汇总一次原子 bundle 恢复的结果与最终选中的默认账号。
 type RestoreAccountsResult struct {
 	Accounts         []RestoreAccountOutcome
 	ResultingDefault int64
@@ -252,7 +251,6 @@ func (s *Accounts) RestoreAccounts(ctx context.Context, inputs []RestoreAccountI
 			return RestoreAccountsResult{}, errors.New("pixiv refresh token is required")
 		}
 		account := account.Pixiv{UserID: input.Account.UserID, Username: input.Account.Username, Credential: credential.New([]byte(refreshToken))}
-		account.CredentialRevision = 1
 		account.PremiumStatus = input.Account.Premium
 		stored = append(stored, account)
 	}
@@ -355,8 +353,7 @@ func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
 	return 0, sdk.NewError("pixiv", "auth", sdk.Unauthorized, sdk.WithDetail("no pixiv account is authenticated"))
 }
 
-// defaultUserID 返回当前默认账号：优先显式配置，否则回退到 显示顺序 最小的
-// 首个入库账号。
+// defaultUserID 优先返回显式配置，否则按文件顺序选择首个账号。
 func (s *Accounts) defaultUserID(ctx context.Context) (int64, bool, error) {
 	if userID, ok, err := s.defaults.ReadPixivDefaultUserID(); err != nil {
 		return 0, false, err

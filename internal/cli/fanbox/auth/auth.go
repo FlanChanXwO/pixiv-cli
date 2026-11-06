@@ -11,15 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type accountStore interface {
-	ImportSession(context.Context, string, bool, *string) (session.FanboxAccountSummary, error)
-	ListAccounts(context.Context) ([]session.FanboxAccountSummary, error)
-	Status(context.Context) (*session.FanboxAccountSummary, error)
-	UseAccount(context.Context, int64) error
-	UseAuto() error
-	RemoveAccount(context.Context, int64) error
-}
-
 type commandRunner struct {
 	env      environment.Env
 	accounts func() (*session.FanboxAccounts, error)

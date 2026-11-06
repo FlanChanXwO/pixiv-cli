@@ -7,13 +7,13 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
-// LoginService 将浏览器交互同 public SDK 的一次性 LoginSession 连接起来。应用层不再
+// LoginService 将浏览器交互同旧 SDK 的一次性 LoginSession 连接起来。应用层不再
 // 自行生成 PKCE、直连 OAuth 或写入 auth store。
 type LoginService struct {
 	Pixiv *Store
 }
 
-// LoginRequest 保存 login 的本地请求值；连接策略由调用方转换为 public SDK
+// LoginRequest 保存 login 的本地请求值；连接策略由调用方转换为旧 SDK
 // 的 LoginOptions，业务服务不读取配置或创建 proxy transport。
 type LoginRequest struct {
 	Options pixiv.LoginOptions
@@ -41,7 +41,7 @@ func (s LoginService) Start(request LoginRequest) (LoginStart, error) {
 }
 
 // AcceptsCallbackURL 在不消耗 session 的前提下校验浏览器、loopback 与手工 URL；它把
-// state/verifier 保持在 public SDK 的不透明 LoginSession 内，调用方只能得到布尔结果。
+// state/verifier 保持在旧 SDK 的不透明 LoginSession 内，调用方只能得到布尔结果。
 func (s LoginStart) AcceptsCallbackURL(rawURL string) bool {
 	return s.session != nil && s.session.AcceptsCallbackURL(rawURL)
 }

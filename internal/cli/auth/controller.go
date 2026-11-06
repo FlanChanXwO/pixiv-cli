@@ -15,7 +15,7 @@ func newController(env environment.Env, support Support) controller {
 	return controller{env: env, support: support}
 }
 
-// accountService 给单个 auth 叶子打开账号适配层；构造命令树时不调用，避免提前打开数据库。
+// accountService 给单个 auth 叶子打开账号适配层；构造命令树时不调用，避免提前打开账号文件。
 // 运行时配置只经 Support.LoadRuntime 注入，适配层不另持有来源。
 func (a controller) accountService() (AccountService, error) {
 	service, err := a.support.Account()

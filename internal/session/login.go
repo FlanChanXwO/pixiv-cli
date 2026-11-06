@@ -6,8 +6,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 )
 
-// LoginService 将浏览器交互同 public SDK 的一次性 LoginSession 连接起来。应用层不再
-// 自行生成 PKCE、直连 OAuth 或写入 auth store。
+// LoginService 在账号 owner 完成一次性登录后，编排调用方的默认账号选择。
 type LoginService struct {
 	Pixiv *Accounts
 }
@@ -25,8 +24,7 @@ func (s LoginService) Start(request account.LoginRequest) (account.LoginStart, e
 }
 
 // Complete 用回调 URL 或授权码兑换凭据并保存账号，随后释放该登录 session 的 HTTP
-// 传输。PreserveDefault 下保存已成功但读取摘要失败时，错误与已持久化的身份一起返回；
-// 其他失败不返回账号。
+// 传输。保存后读取失败时，错误与已持久化的身份一起返回。
 func (s LoginService) Complete(ctx context.Context, start account.LoginStart, request LoginCompleteRequest) (AccountSummary, error) {
 	saved, err := (account.LoginService{Pixiv: s.Pixiv.store}).Complete(ctx, start, account.LoginCompleteRequest{CallbackOrCode: request.CallbackOrCode})
 	if err != nil {

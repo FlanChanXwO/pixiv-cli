@@ -22,7 +22,7 @@ func New(env environment.Env, support Support) *cobra.Command {
 type Support struct {
 	// Account 延迟打开账号服务；只在执行账号子命令时调用。
 	Account func() (*session.Accounts, error)
-	// Login 延迟打开登录服务，避免构造命令树时打开数据库。
+	// Login 延迟打开登录服务，避免构造命令树时打开账号文件。
 	Login func() (session.LoginService, error)
 	// LoadRuntime 每次调用读取最新的运行时配置。
 	LoadRuntime func() (config.Config, error)
