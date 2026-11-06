@@ -17,6 +17,7 @@ type Pixiv struct {
 	CredentialRevision int64             `json:"revision"`
 	PremiumStatus      *bool             `json:"premium"`
 	PremiumCheckedAt   *time.Time        `json:"premium_checked_at"`
+	PoolLastSelected   bool              `json:"-"` // 从文件顶层的上次选择 UID 推导，不重复保存。
 	Pool               Membership        `json:"pool"`
 	CreatedAt          time.Time         `json:"created_at"`
 	UpdatedAt          time.Time         `json:"updated_at"`

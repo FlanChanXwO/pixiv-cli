@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,11 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -144,7 +145,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	}
 	defer cleanupLoginServer()
 
-	result, err := login.Complete(ctx, loginFlow, account.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
+	result, err := login.Complete(ctx, loginFlow, session.LoginCompleteRequest{CallbackOrCode: callbackOrCode, UseAfterLogin: opts.useAfterLogin})
 	if err != nil {
 		// OAuth 真正失败后才向浏览器回最终失败页；页面不回显敏感原因。
 		notifyFinal(false)

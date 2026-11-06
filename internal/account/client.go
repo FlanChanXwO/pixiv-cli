@@ -82,7 +82,7 @@ func (s *Store) savePixivLogin(ctx context.Context, credentials pixiv.Credential
 func (s *Store) OpenFanboxClient(ctx context.Context, userID int64, options fanbox.Options) (*fanbox.Client, error) {
 	a, err := s.GetFanbox(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("select fanbox account: %w", err)
 	}
 	return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: a.Credential.Value()}, options)
 }

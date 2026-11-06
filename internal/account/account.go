@@ -72,7 +72,14 @@ func (s *Store) read(ctx context.Context) (document, error) {
 // ListPixiv 返回文件顺序的独立账号快照；每次调用都会观察其他进程已提交的修改。
 func (s *Store) ListPixiv(ctx context.Context) ([]Pixiv, error) {
 	var result []Pixiv
-	err := s.withLock(ctx, func() error { doc, err := s.read(ctx); result = doc.Pixiv; return err })
+	err := s.withLock(ctx, func() error {
+		doc, err := s.read(ctx)
+		result = doc.Pixiv
+		for i := range result {
+			result[i].PoolLastSelected = result[i].UserID == doc.LastUserID
+		}
+		return err
+	})
 	return result, err
 }
 
