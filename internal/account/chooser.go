@@ -9,12 +9,6 @@ import (
 // choose 只根据快照轮流或随机选择；Store 会在提交前再次验证
 // 返回 UID 属于候选快照。
 func choose(snapshot PoolSnapshot, strategy Strategy) (int64, error) {
-	if len(snapshot.Candidates) == 0 {
-		return 0, &PoolSelectionError{
-			Kind:                PoolSelectionExhausted,
-			EarliestFrozenUntil: snapshot.EarliestFrozenUntil,
-		}
-	}
 	switch strategy {
 	case StrategyRoundRobin:
 		if snapshot.MarkerSortOrder != nil {

@@ -88,8 +88,8 @@ func (s *Accounts) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 	return out, nil
 }
 
-func poolStatusByUserID(status account.PoolStatus, userID int64) account.PoolCandidate {
-	for _, account := range status.Accounts {
+func poolStatusByUserID(status []account.PoolCandidate, userID int64) account.PoolCandidate {
+	for _, account := range status {
 		if account.UserID == userID {
 			return account
 		}

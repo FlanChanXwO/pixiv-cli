@@ -47,19 +47,12 @@ type PoolCandidate struct {
 // PoolSnapshot 向纯选择函数提供候选与上次选择位置。
 type PoolSnapshot struct {
 	Candidates          []PoolCandidate
-	MarkerUserID        *int64
 	MarkerSortOrder     *int64
 	EarliestFrozenUntil *int64
 }
 
 // Chooser 在持锁的快照内选择一个候选 UID，不执行 I/O。
 type Chooser func(PoolSnapshot) (int64, error)
-
-// PoolStatus 包含所有账号的池状态；时间使用 Unix 秒以保持现有命令输出。
-type PoolStatus struct {
-	Accounts            []PoolCandidate
-	EarliestFrozenUntil *int64
-}
 
 // PoolSelectionKind 区分候选不足的实际原因。
 type PoolSelectionKind string
@@ -122,8 +115,8 @@ func (s *Store) SetAllPixivSchedulable(ctx context.Context, enabled bool) error 
 	})
 }
 
-func (d *document) poolStatus(now int64) PoolStatus {
-	status := PoolStatus{Accounts: make([]PoolCandidate, 0, len(d.Pixiv))}
+func (d *document) poolStatus(now int64) []PoolCandidate {
+	status := make([]PoolCandidate, 0, len(d.Pixiv))
 	for i := range d.Pixiv {
 		a := &d.Pixiv[i]
 		if a.Pool.FrozenUntil != nil && a.Pool.FrozenUntil.Unix() <= now {
@@ -133,18 +126,15 @@ func (d *document) poolStatus(now int64) PoolStatus {
 		if a.Pool.FrozenUntil != nil {
 			value := a.Pool.FrozenUntil.Unix()
 			candidate.PoolFrozenUntil = &value
-			if status.EarliestFrozenUntil == nil || value < *status.EarliestFrozenUntil {
-				status.EarliestFrozenUntil = &value
-			}
 		}
-		status.Accounts = append(status.Accounts, candidate)
+		status = append(status, candidate)
 	}
 	return status
 }
 
 // ListPixivPoolStatus 在同一事务内清理过期冻结并返回完整调度状态。
-func (s *Store) ListPixivPoolStatus(ctx context.Context, now int64) (PoolStatus, error) {
-	var status PoolStatus
+func (s *Store) ListPixivPoolStatus(ctx context.Context, now int64) ([]PoolCandidate, error) {
+	var status []PoolCandidate
 	err := s.update(ctx, func(doc *document) error { status = doc.poolStatus(now); return nil })
 	return status, err
 }
@@ -159,10 +149,9 @@ func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, c
 		status := doc.poolStatus(now)
 		snapshot := PoolSnapshot{Candidates: []PoolCandidate{}}
 		enabled, eligible := 0, 0
-		for _, a := range status.Accounts {
+		for _, a := range status {
 			if a.PoolLastSelected {
-				id, order := a.UserID, a.SortOrder
-				snapshot.MarkerUserID = &id
+				order := a.SortOrder
 				snapshot.MarkerSortOrder = &order
 			}
 			if !a.Schedulable {
