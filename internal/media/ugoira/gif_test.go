@@ -57,6 +57,27 @@ func TestGIFReplay(t *testing.T) {
 	}
 }
 
+func TestGIFHiddenRGB(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 3, 1))
+	src.SetNRGBA(0, 0, color.NRGBA{R: 200, G: 200, B: 200})
+	src.SetNRGBA(1, 0, color.NRGBA{R: 128, G: 128, B: 128, A: 255})
+	src.SetNRGBA(2, 0, color.NRGBA{R: 160, G: 160, B: 160, A: 255})
+	input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, src)}}), Frames: []Frame{{"a.png", 40}}}
+	var out bytes.Buffer
+	if err := encodeGIF(t.Context(), &out, input); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := gif.DecodeAll(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for x := 1; x < 3; x++ {
+		if got := color.NRGBAModel.Convert(decoded.Image[0].At(x, 0)); got != src.NRGBAAt(x, 0) {
+			t.Fatalf("visible pixel %d: got %v, want %v", x, got, src.NRGBAAt(x, 0))
+		}
+	}
+}
+
 func TestGIFDelayAndDimensions(t *testing.T) {
 	for _, tc := range []struct{ ms, ticks int }{{1, 1}, {9, 1}, {10, 1}, {11, 2}, {655341, 65535}, {655350, 65535}} {
 		got, err := gifDelay(tc.ms, "a.png")

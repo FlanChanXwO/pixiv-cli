@@ -144,9 +144,13 @@ func (w *apngWriter) frame(img, previous *image.NRGBA, region image.Rectangle, n
 		return err
 	}
 	var encoded bytes.Buffer
-	// 所有帧保持 RGBA8，避免不透明帧被 PNG 编码器改为 RGB。
-	frame := apngRGBA{img.SubImage(region).(*image.NRGBA)}
-	if err := png.Encode(animationWriter{ctx: w.ctx, output: &encoded}, frame); err != nil {
+	frame := img.SubImage(region).(*image.NRGBA)
+	var source image.Image = frame
+	// 仅不透明帧需要强制 RGBA8；透明帧保留标准库 NRGBA 像素快路径。
+	if frame.Opaque() {
+		source = apngRGBA{frame}
+	}
+	if err := png.Encode(animationWriter{ctx: w.ctx, output: &encoded}, source); err != nil {
 		return err
 	}
 	data := apngFrameData{writer: w, first: previous == nil}
@@ -163,6 +167,7 @@ func (w *apngWriter) frame(img, previous *image.NRGBA, region image.Rectangle, n
 	return w.ctx.Err()
 }
 
+// shortcut: 不透明帧包装会触发逐像素分配；标准库提供强制 RGBA8 的快路径后替换。
 type apngRGBA struct{ *image.NRGBA }
 
 func (apngRGBA) Opaque() bool { return false }

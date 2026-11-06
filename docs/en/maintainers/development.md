@@ -64,7 +64,9 @@ The decode estimate rounds each dimension up to 32 pixels and charges 24 bytes p
 
 **Encoding and memory** — GIF reads the ZIP twice: a global RGB Wu histogram produces one palette, then serpentine Floyd–Steinberg dithering produces full indexed frames for `gif.EncodeAll`. All indexed frames remain in memory until output, about frame count × width × height bytes plus metadata; color frames are decoded one at a time. APNG encodes each changed rectangle as RGBA8 using `png.Encode`, buffers that frame's compressed PNG, then forwards its IDAT data into animation chunks with Source blending and None disposal. Per-frame budgets apply alongside these retained animation buffers.
 
-Nearest-color matching scans up to 256 palette entries per pixel. Large GIF frames therefore spend more CPU time in quantization and hold the shared encoding slot longer; cancellation is checked between rows.
+Nearest-color matching scans up to 256 palette entries per pixel. Large GIF frames therefore spend more CPU time in quantization and hold the shared encoding slot longer; cancellation is checked between rows. Fully transparent pixels keep index zero and discard incoming dithering error, so hidden RGB does not alter adjacent visible colors.
+
+Transparent APNG rectangles use the standard encoder's direct NRGBA path. Opaque rectangles use an image wrapper to force RGBA8; this invokes the encoder's generic path and allocates per pixel. Both paths preserve transparent pixels and their hidden RGB in APNG output.
 
 `Input.MaxEdge` keeps aspect ratio with bilinear resizing; zero preserves the original dimensions. The downloader, MCP tool and MCP media proxy currently leave it at zero. Multi-frame GIF and APNG loop indefinitely; standard-library single-frame GIF output omits the loop extension. JPEG rounding, GIF palette/dithering and resized pixels may differ slightly from earlier output, and file sizes may change. Validate complete rendered canvases, dimensions, timing and loops when comparing encoders.
 

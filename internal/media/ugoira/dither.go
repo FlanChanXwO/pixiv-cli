@@ -58,6 +58,10 @@ func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]by
 		}
 		for x := start; x != end; x += step {
 			p := row[x*4:][:4]
+			// 透明索引默认为 0；丢弃该像素的误差，避免隐藏 RGB 污染可见边缘。
+			if q.hasTransparency && p[3] == 0 {
+				continue
+			}
 			c := [3]float32{float32(p[0]), float32(p[1]), float32(p[2])}
 			for channel := range c {
 				c[channel] += current[x+1][channel]
@@ -72,13 +76,8 @@ func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]by
 				down[channel] += float32((5.0 / 16) * error)
 				downForward[channel] += float32((1.0 / 16) * error)
 			}
-			// 隐藏 RGB 仍参与误差扩散；只有输出索引受 alpha=0 影响。
 			if q.hasTransparency {
-				if p[3] == 0 {
-					index = 0
-				} else {
-					index++
-				}
+				index++
 			}
 			indices[y*width+x] = index
 		}
