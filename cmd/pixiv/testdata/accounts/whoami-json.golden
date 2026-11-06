@@ -1,0 +1,7 @@
+{
+  "user_id": 42,
+  "username": "fixture-artist",
+  "default": true,
+  "premium_status": true,
+  "schedulable": true
+}

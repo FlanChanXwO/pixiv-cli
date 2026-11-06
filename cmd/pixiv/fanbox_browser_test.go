@@ -3,17 +3,18 @@ package main_test
 import (
 	"bytes"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/auth"
+	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,11 +34,10 @@ func TestBrowserProvidersStayRegistered(t *testing.T) {
 
 func assertEscapesUpstreamText(t *testing.T, proxy string) {
 	t.Helper()
-	db, err := database.Open(filepath.Join(os.Getenv("HOME"), config.AppDataDirName))
+	db, err := account.Open(t.Context(), filepath.Join(os.Getenv("HOME"), config.AppDataDirName))
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	acct := account.New(7, "artist", "artist", []byte("synthetic-session"))
-	acct.ValidatedAt = 1
+	acct := account.Fanbox{UserID: 7, DisplayName: "artist", CreatorID: "artist", Credential: credential.New([]byte("synthetic-session"))}
+	acct.ValidatedAt = time.Unix(1, 0).UTC()
 	require.NoError(t, db.SaveFanboxCredential(t.Context(), acct))
 
 	for _, args := range [][]string{

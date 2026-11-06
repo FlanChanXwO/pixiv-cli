@@ -10,7 +10,7 @@ import (
 
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -324,7 +324,7 @@ func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool
 	return a.printSummary(*summary, jsonOut)
 }
 
-func (a commandRunner) printSummary(summary account.AccountSummary, jsonOut bool) error {
+func (a commandRunner) printSummary(summary session.FanboxAccountSummary, jsonOut bool) error {
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}
@@ -344,7 +344,7 @@ func parseUID(raw string) (int64, error) {
 	return userID, nil
 }
 
-func fanboxIdentity(service *account.Service, userID int64) (string, error) {
+func fanboxIdentity(service *session.FanboxAccounts, userID int64) (string, error) {
 	accounts, err := service.ListAccounts(context.Background())
 	if err != nil {
 		return "", err

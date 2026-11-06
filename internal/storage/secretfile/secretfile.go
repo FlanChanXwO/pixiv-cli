@@ -1,7 +1,8 @@
 // Package secretfile 以私有权限创建、读取和原子替换本机状态文件。
 //
 // 包的组成：[ReadJSON] 与 [WriteJSON] 处理 JSON 状态，[WriteSecretFile] 面向含凭据的文件，
-// [WritePrivateFile] 提供通用的原子替换，[EnsurePrivateDir] 与 [EnsurePrivateFile]
+// [ReadPrivateFile] 收紧权限后读取原文，[WritePrivateFile] 提供通用的原子替换；
+// [EnsurePrivateDir] 与 [EnsurePrivateFile]
 // 建立目录和首次文件。
 package secretfile
 
@@ -14,6 +15,14 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 )
+
+// ReadPrivateFile 在读取前收紧文件权限，保留原始内容与修改时间。
+func ReadPrivateFile(path string) ([]byte, error) {
+	if err := os.Chmod(path, config.PrivateFileMode); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
+}
 
 // EnsurePrivateDir 创建目录并把权限收紧到本项目约定的私有目录模式。
 // 该 API 不负责清理或覆盖目录之外的内容。

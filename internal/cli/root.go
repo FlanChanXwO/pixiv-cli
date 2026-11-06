@@ -2,7 +2,7 @@
 //
 // 包的组成：[Run] 是唯一的执行入口，负责退出码与资源关闭；本文件同时装配命令树、
 // 生产依赖、配置到 SDK 选项的翻译与反向搜图端口。MCP runtime 在 internal/cli/mcp。
-// 打开的数据库与 SDK 资源登记到本次执行的 [lifecycle.CloseState]，由 [Run] 按逆序关闭。
+// 打开的 SDK 与其他需关闭的资源登记到本次执行的 [lifecycle.CloseState]，由 [Run] 按逆序关闭。
 package cli
 
 import (
@@ -154,7 +154,7 @@ func (a *app) runtimeConfig() (config.Config, error) {
 //
 // 1. 只用输入输出流和资源登记表构造 app，不打开资源；
 // 2. 装配命令树并绑定流与参数；
-// 3. 执行命令，资源在命令真正请求时才创建，help、version 不会提前打开数据库或网络 client；
+// 3. 执行命令，资源在命令真正请求时才创建，help、version 不会提前打开账号文件或网络 client；
 // 4. 无论成功与否都按登记逆序关闭资源，关闭错误并入退出原因；
 // 5. 记录失败并映射退出码。
 //
@@ -257,7 +257,7 @@ func (a *app) commandEnv() environment.Env {
 	})
 }
 
-// newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开数据库。
+// newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开账号文件。
 func (a *app) newAuthCommand() *cobra.Command {
 	return auth.New(a.commandEnv(), auth.SupportFor(a.local.PixivAccounts, a.runtimeConfig, secretfile.WriteSecretFile))
 }

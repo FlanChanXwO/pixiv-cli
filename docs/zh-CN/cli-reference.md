@@ -72,7 +72,7 @@ pixiv download 123456 789012 --output ./downloads
 | 本地状态 | |
 | --- | --- |
 | 位置 | `~/.pixiv-cli`（macOS/Linux）、`%USERPROFILE%\.pixiv-cli`（Windows） |
-| 内容 | `pixiv-cli.db`（账号按 UID 存储）、`config.toml`、callback bridge 状态、Release 检查缓存、macOS callback helper |
+| 内容 | `auth.json`（各产品按 UID 保存的有序 Pixiv/FANBOX 账号）、`config.toml`、callback bridge 状态、Release 检查缓存、macOS callback helper |
 | 权限 | Unix 目录 `0700` / 文件 `0600`；Windows 首次创建继承父目录 ACL、替换时保留目标 ACL，不声称修改 DACL |
 | `config.toml` 创建 | 首次普通命令时按带英文注释和默认值的模板生成，已有文件保持原样。可选服务覆盖和默认账号以注释示例提供。help、根 `--version`、secret 导出与内部 OAuth 回调不会创建它 |
 
@@ -336,7 +336,7 @@ STRATA · Sculptris · modo · AnimationMaster · VistaPro · Sunny3D · 3D-Coat
 
 | KEY | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `account_pool.enabled` | boolean | `false` | 为安全读取/下载启用数据库账号池选择。 |
+| `account_pool.enabled` | boolean | `false` | 为安全读取/下载启用本地账号池选择。 |
 | `account_pool.strategy` | string | `round_robin` | `round_robin` 或 `random`。 |
 | `download.path` | string | `./downloads` | 下载目录。 |
 | `download.filename_template` | string | `{author} - {title}_{id}` | 文件名模板。 |
@@ -421,9 +421,9 @@ flowchart LR
 - 服务代理键区分"缺失"与"显式为空"。Pixiv 与 FANBOX 各自保持服务边界。CLI 覆盖从不持久化。
 - 反向搜图：命令级覆盖对标准与 ascii2d 流量都生效；否则服务值只影响 ascii2d，SauceNAO/标准 client 走全局路由。`user_agent` 只影响 ascii2d（与 client hints 配对）。FlareSolverr 可选、仅用于 challenge、使用 JSON（不是图片 multipart），与两条原生路由都独立。模板将服务覆盖与 FlareSolverr 保留为注释示例，并包含默认 `[reverse_search]` 值。
 - 更新检查只使用通用网络 fallback；从不读取 FANBOX 服务或 solver 设置。
-- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的 `schedulable`、冻结与标记状态在 `pixiv-cli.db`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool.accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
+- `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的成员资格（`pool.enabled`）、冻结与上次选择状态在 `auth.json`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool.accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
 - `[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。日志只写 stderr，省略 query string、header、Cookie、token、响应体与签名 URL，从不创建日志文件。`debug` 增加请求与决策记录。文本记录格式为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`；没有调用上下文时省略 operation 方括号。JSON 记录带 `source`。失败保留 stderr 的 `error: <message>` 行。JSON 日志额外写 ERROR 级别的 `Command failed`；文本日志仅在 DEBUG 级别写该记录。记录带 `operation`、`call_id`、`error`，存在 SDK 错误时还带真正创建位置 `origin=上级目录/文件:行号`。DEBUG 的 `Request failed` 记录提供 typed cause 中的网络 `op`、`net`、远端 `address`（host:port）与已知 `errno` 名称，覆盖 OAuth 换 token 失败。`config` 管理与 secret 导出保持安静。MCP JSON-RPC 在 stdio 模式用 stdout，`--port` 时用 HTTP。
-- v1 不读取也不迁移旧的 `~/.pixiv-cli/auth.json`。显式迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，再用 v1 执行 `pixiv auth import < bundle.json`。
+- 首次访问账号时，缺失的 `auth.json` 或 schema 缺失/不同的合法 JSON 会被 `pixiv-cli.db` 的只读导入结果替换；无旧库时生成空账号文件。旧数据库保持原样。非法 JSON、损坏的 `pixiv-cli.auth` 数据与更新版本均报错并保留原文。
 
 ### 环境变量
 

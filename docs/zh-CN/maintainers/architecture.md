@@ -30,7 +30,7 @@ flowchart LR
 | 某个包能做/不能做什么 | [包职责](#包职责) |
 | MCP server、OAuth、媒体代理、Gallery 任务 | [MCP server 架构](architecture-mcp.md) |
 | Release 信任根与签名 | [Release assets 与信任边界](#release-assets-与信任边界) |
-| 本地状态、配置、路径权限 | [internal/config](#internalconfig)、[internal/storage](#internalstorageatomicfilefilelocksecretfile) |
+| 本地状态、配置、路径权限 | [internal/account](#internalaccount)、[internal/config](#internalconfig)、[internal/storage](#internalstorageatomicfilefilelocksecretfile) |
 | 硬约束清单 | [已知约束](#已知约束) |
 
 ## 总体流程
@@ -45,12 +45,12 @@ flowchart TD
     H -->|fanbox| FB["FANBOX 模式"]
     H -->|mcp| MCP["统一 stdio（默认）/<br/>Streamable HTTP（--port）"]
     CMD & FB & MCP --> RES["按 owner 构造生产资源"]
-    RES --> DB["~/.pixiv-cli/pixiv-cli.db<br/>（SQLite 账号）"]
+    RES --> DB["~/.pixiv-cli/auth.json<br/>（本地账号）"]
     RES --> CFG["~/.pixiv-cli/config.toml<br/>+ 公开环境变量覆盖"]
 ```
 
 - `auth import` 处理直接导入 token 或恢复 bundle；`auth export` 处理本地 secret 快照。`pixiv fanbox mcp` 已移除。
-- Windows 路径为 `%USERPROFILE%\.pixiv-cli\`。旧 `auth.json` 从不自动读取——用户需显式导出/导入 bundle。
+- Windows 路径为 `%USERPROFILE%\.pixiv-cli\`。首次访问账号时创建 `auth.json`；存在本地 `pixiv-cli.db` 时自动导入，旧数据库保持原样。
 - 没有匿名 Web fallback：内容需要已认证的本地账号或显式凭据；残留的 `web_fallback_enabled` 属于未声明键，加载时忽略。
 
 ## 前端源码与页面嵌入
@@ -115,8 +115,8 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 | HTTP client、代理、重试、Retry-After、请求间隔 | `internal/pixiv/api`、`internal/fanbox/api` | 构造时传入一次 | 一个 transport 字段 |
 | 签名 URL 缓存、资源域名白名单 | `pixiv/api` 资源传输层 | 同上 | 无字段 |
 | 资源释放（`Close`、`CloseIdleConnections`） | 创建者；`lifecycle` 包提供 `Lease` | 构造函数返回关闭函数或 `Lease` | 无额外字段 |
-| 数据库连接、文件锁、事务 | `internal/storage/database` | 方法内部 `withLock` | 业务只看到 repository 接口 |
-| 本地凭据轮换的持久化 | `internal/pixiv/account` | `session.Pixiv.Open` / `Use` 经账号端口调用 | CLI/MCP 回调在持久化成功后取得 client |
+| 账号快照、文件锁、原子更新 | `internal/account` | `Store` 方法持锁重读 `auth.json` | 一个 store 依赖 |
+| 本地凭据轮换的持久化 | `internal/account` | `session.Pixiv.Open` / `Use` 经 `Store` 调用 | CLI/MCP 回调在持久化成功后取得 client |
 | 配置 | 组合根读取一次 | 以具名字段的值传入构造函数 | 值字段，不持有 `settings.Store` |
 | stdout 输出（文本/JSON/NDJSON） | CLI 命令层 | 命令持有 writer | 业务返回数据 |
 
@@ -152,10 +152,10 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 
 ### 业务会话、账号与账号池
 
-- `internal/session` 同时拥有两个按账号打开 SDK 会话的对象：`session.Pixiv` 聚合 `pixiv/account`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixiv/account/pool`（选择、冻结、Gate、安全重放、相关错误语义）；`session.Fanbox` 聚合 `fanbox/account` 与 client 生命周期。两者位于同一个包的 `pixiv.go` 与 `fanbox.go`；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
-- 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的筛选、record、schema 或输出适配。
-- 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
-- 原生 TOML `Config`、`config.toml` 的 path/get/set/unset、默认模板与应用管理路径位于 `internal/config`；按月截断位于 `internal/pixiv/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
+- `internal/account` 拥有 Pixiv/FANBOX 有序账号快照、凭据持久化、登录完成、轮换门、读会话缓存，以及 Pixiv 账号池的选择/冻结/安全重放。目录、网络选项与池策略由调用方传入；默认账号配置由 `internal/session` 管理。
+- `session.Local` 装配共享 store、`Accounts`、`FanboxAccounts`、`Pixiv`、`Fanbox` 与读会话。`Accounts`/`FanboxAccounts` 将本地快照与 `internal/config` 默认账号组合，提供命令使用的摘要、导入/导出与恢复编排。当前交出 `internal/legacy/sdk` 的 client；FANBOX 的凭据与生命周期独立于 Pixiv，没有账号池策略。
+- `Request.Selection` 使用带正数 UID 的 `SelectionFixed` 或 `SelectionPool`。固定账号的读写保持该身份；安全且尚未提交的读取可经池重放。调用方从 `internal/config` 读取 `enabled`/`strategy`；`account` 无 config 导入，默认账号由 session 解析。账号池关闭时，session 选择配置的默认账号或存储中的第一个账号。
+- CLI/MCP 经 owner-local port 与 MCP runtime `SDKPorts` 使用会话；筛选、record、schema 与输出渲染留在各适配器。SDK 的依赖图保持独立于本地账号存储。
 
 **登录 relay** —— `internal/loginrelay` 同时负责纯渲染器（消费 `frontend` 模板/CSS，不依赖 CLI、账号库、浏览器或 listener）与可复用的 HTTP handler/session：接收 OAuth 会话校验器并交付一次回调；从不监听、交换或持久化。CLI 保留 listener/TLS/终端编排。宿主 mux 可剥离前缀后挂载；生产 MCP 将其挂在 canonical base + `/pixiv-login/`，位于相同的 Host/Origin 检查之后，但以 hand-off 证明而非 MCP bearer 认证。转义前缀在 URL 与分发中保留。已取消的 relay 会话返回 HTTP 410，并在接受已校验回调前再次检查取消。回调 allowlist、启动响应 wire 类型与结果 URL header 位于 `loginrelay`，由 CLI relay 与桌面 helper 复用。
 
@@ -198,21 +198,22 @@ flowchart LR
 - 它把普通文件或 HTTP(S) 来源加载为一个私有快照、计算哈希，并在完成后删除。来源策略有意允许任意可读普通文件与私有、loopback、link-local URL；单 owner OAuth 下只授权可信 connector——路径指 MCP server 文件系统，URL 使用 server 网络。只有来源类型/哈希、安全的 provider 摘要/错误、领域证据与 canonical `artwork`/`user` record 可以发布。
 - 三个网络面：标准来源/SauceNAO client、专用 ascii2d 浏览器 client、FlareSolverr JSON 控制 client。服务代理只能覆盖 ascii2d；命令级覆盖同时作用于两个原生 client；否则标准 client 走全局路由。ascii2d UA 与 `Chrome_146` TLS profile 及匹配的 Chromium hints 配对（非 Chromium UA 省略 hints）。FlareSolverr 上游代理只用于浏览器 `sessions.create`；控制流量保持独立；图片始终使用原生 ascii2d multipart。solver 状态限于进程/client，不持久化。
 
-### `internal/storage/database`
+### `internal/account`
 
-- 使用 GORM、`github.com/ncruces/go-sqlite3` 及其 `gormlite` 驱动；继续使用 SQL 文件迁移与 ledger。禁止 `AutoMigrate`、`gorm.Model`、软删除和隐式时间戳。SQL 连接池只有一个连接：执行下一条查询前，关闭每个 `Rows`，对每个 `QueryRow` 执行 `Scan`。SQL 日志保持关闭，保护凭据。
-- 本地账号状态的 SQLite 权威：`pixiv-cli.db` 的 schema、迁移账本与 repository；身份/凭据按 `user_id`；Pixiv 轮换与 FANBOX 会话替换使用 `credential_revision` compare-and-swap。
-- 只前进的迁移到 schema v3；旧 v1 数据库通过 v2/v3 变更升级；本树初始 schema 中已有的最终列会被识别，不重放 DDL。旧 `auth.json` 与 `account_pool.accounts` 不在启动迁移路径中。
-- 私有 DB/journal 权限（Unix `0700`/`0600`）。auth export 只读取默认、指定 UID 或全部账号——不读环境 token、不刷新、不联网、不修改。
-- **锁：** owner 通过私有 `pixiv-cli.db.lock` sidecar 协调初始化、短账号/账号池事务与完整快照读取（不含凭据、不改账号数据；从不覆盖 OAuth 或内容请求；外部 SQL 写入者与旧进程不参与）。不可取消的 context 保持原生等待；可取消的 context 每 10 ms 轮询同一非阻塞锁接口，取消时立即唤醒并关闭等待中的文件句柄。没有整体截止时间或事务重放。账号 owner 在获取会话互斥锁前先取消生命周期，因此 watcher 校验期间的 DB 锁等待不会阻塞关闭。
-- 从旧 CLI 迁移：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`；失败直接返回原因；不自动删除旧文件。
+- `Store` 拥有 `auth.json`，标识为 `schema: "pixiv-cli.auth"`、`version: 1`。有序 `pixiv`/`fanbox` 数组保存各产品的 UID 身份、明文凭据与正数 `revision`。数组顺序即显示顺序；新账号追加，更新保留原位置。Pixiv `premium` 可为空，时间均为 UTC；`pixiv_pool_last_user_id` 记录唯一的上次池选择（0 表示无历史选择）。
+- 首次访问缺失文件或 schema 缺失/不同的合法 JSON 时执行迁移 1：存在 `pixiv-cli.db` 则导入，否则写空账号文件。非法 JSON、自有 schema 损坏、更新的版本均返回错误并保留原文。有效的当前格式文件成为后续读取的权威。
+- 迁移仅通过 `database/sql` 与已有 `ncruces/go-sqlite3` 驱动只读导入，检查 `application_id=0x50495843`、schema 版本 1–3，以及连续且与 `user_version` 一致的迁移账本。导入保留账号顺序、UID、名称、revision、会员与池状态；旧库内容和修改时间保持原样，文件保留原位。
+- 每次读取和更新均持有 `auth.json.lock` 并重读文件。更新校验完整新快照，再经 `storage/secretfile` 原子替换私有文件。迁移额外持有 `pixiv-cli.db.lock`，顺序始终为 JSON 锁在先。锁覆盖本地快照与写入；OAuth 和内容请求在锁外执行。可取消的锁等待沿用 `storage/filelock` 的取消语义。
+- 凭据轮换先在锁外执行 OAuth，再比较存储中的 revision，将新 token 与递增的 revision 原子保存。冲突时丢弃本次 client，使用最新已保存的凭据重新打开；持久化失败时直接返回错误；交出 client 以保存成功为前提。
+- `ReadSessions` 在缓存复用前、轮换 client 发布前、每次内容请求前检查 revision。发现凭据替换/删除时作废对应代际；仅元数据变化保留原代际。账号缓存通过这些读取保持一致，无文件系统 watcher。
+- Unix 账号目录/文件权限为 `0700`/`0600`；Windows 原子替换沿用共享存储 ACL 策略。普通 JSON、fmt、slog 中的凭据值保持脱敏，仅在文件编码和显式凭据流程展开。auth export 本地读取已保存凭据，保持 token 与配置原值。
 
 ### `internal/config`
 
 | 存储 | 保存 |
 | --- | --- |
-| `pixiv-cli.db` | 账号身份与凭据（`pixiv_account` / `fanbox_account`），文件 `0600` |
-| `config.toml` | 全局键，含 `pixiv.auth.default_user_id`、`fanbox.auth.default_user_id`；Unix `0600`。无默认账号时由账号 owner 按 `sort_order` 选第一个 |
+| `auth.json` | 有序 Pixiv/FANBOX 账号身份、凭据、revision 与池状态；Unix `0600` |
+| `config.toml` | 全局键，含 `pixiv.auth.default_user_id`、`fanbox.auth.default_user_id`；Unix `0600`。无默认账号时由 session 按数组顺序选第一个账号 |
 
 #### 原生 TOML 配置
 
@@ -223,7 +224,7 @@ flowchart LR
 - `values.go` 将 TOML 叶子路径映射到 `Config` 字段指针，并负责字段校验；`Keys()` 提供 CLI 帮助列表。`config get/set/unset` 接受这些路径，包括服务和默认账号设置。`get` 直接输出生效值（含 API key）；`set` 接受值参数或 stdin，并校验目标字段。
 - `document.go` 通过 `tomledit` 编辑目标值，保留该键的注释及其他键（含废弃键）；支持普通段、点分键与 inline table，写入前检查 TOML 语义与被编辑的 solver 组，保留逐项修复其他配置错误的能力。`unset` 在 section 清空后仍保留其注释。
 - `default.toml` 通过 `go:embed` 内嵌，首次创建时原样写出。英文注释包含可选服务、solver 与账号示例；模板解码测试与 `Default()` 对比。
-- 默认账号读写方法保留在此。独立读取方法只校验所选 UID，跳过无关设置的校验；`Config` 中的可选 UID 字段使用 `*int64`。`AccountPool` 仅含 `Enabled` 与 `Strategy`，可调度成员、冻结与调度标记保留在账号/数据库 owner。
+- 默认账号读写方法保留在此。独立读取方法只校验所选 UID，跳过无关设置的校验；`Config` 中的可选 UID 字段使用 `*int64`。`AccountPool` 仅含 `Enabled` 与 `Strategy`，可调度成员、冻结与调度标记保留在 `internal/account`。
 - `paths.go` 负责应用管理路径、`AppDataDirName` 与 Unix 私有权限常量。`HTTPClient` 按所选代理构造独立 transport，空值表示直连。配置解析与 storage 包通过端口连接：组合根将 `secretfile.ConfigFiles` 注入 `FileStore`，复用已有私有文件写入协议。
 
 新增设置时，同步更新 `Config` 字段与原生标签、`Default()`、CLI 字段映射及相关校验、内嵌模板与双语公开参考。仅为支持的变量增加显式环境赋值；按[测试提交规则](coding-standards.md#测试提交规则)复用适用的优先级/空值测试。
@@ -371,5 +372,5 @@ flowchart LR
 - `internal/pixiv/api`、其 `oauth` 子包与资源传输使用调用方/SDK 注入的 HTTP client；默认 client 专属于当前 SDK client，没有固定的整请求超时；取消/截止时间经 context 传播；显式 client 保留调用方策略。
 - `pixiv mcp` 默认 stdio；显式 `--port` 启用 HTTP 并要求 owner 状态已初始化；单独运行 `pixiv` 显示 help。用 `--port`、`--host`、`--base-url` 配置 HTTP，而不是已移除的地址设置（[启动](../cli-reference.md#mcp-http-server)）。
 - 没有持久化账号导入/导出的 MCP 工具；会话范围的 MCP auth 工具与 wire 契约不变。
-- 凭据以未加密 BLOB 存于 SQLite `pixiv-cli.db`；Unix DB/journal `0600`。拥有当前用户文件访问权限的人仍可读取；禁止自动备份。
+- 凭据以明文存于 `auth.json`；Unix 账号文件权限为 `0600`。拥有当前用户文件访问权限的人仍可读取；禁止自动备份。保留的旧数据库同样含有明文凭据。
 - `config.toml` 首次创建时写出包含默认值的内嵌注释模板；后续编辑只修改目标键。
