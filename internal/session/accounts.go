@@ -345,7 +345,10 @@ func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
 		return 0, err
 	} else if ok {
 		if _, err := s.store.GetPixiv(ctx, userID); err != nil {
-			return 0, fmt.Errorf("configured default pixiv account %d is missing", userID)
+			if errors.Is(err, account.ErrPixivNotFound) {
+				return 0, fmt.Errorf("configured default pixiv account %d is missing", userID)
+			}
+			return 0, err
 		}
 		return userID, nil
 	}

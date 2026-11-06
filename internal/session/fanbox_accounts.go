@@ -160,7 +160,10 @@ func (s *FanboxAccounts) selectedUserID(ctx context.Context) (int64, error) {
 		return 0, err
 	} else if ok {
 		if _, err := s.store.GetFanbox(ctx, userID); err != nil {
-			return 0, fmt.Errorf("configured default fanbox account %d is missing", userID)
+			if errors.Is(err, account.ErrFanboxNotFound) {
+				return 0, fmt.Errorf("configured default fanbox account %d is missing", userID)
+			}
+			return 0, err
 		}
 		return userID, nil
 	}
