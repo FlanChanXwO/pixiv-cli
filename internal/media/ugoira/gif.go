@@ -1,15 +1,14 @@
 package ugoira
 
 import (
-	"compress/lzw"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
+	"image/gif"
 	"io"
 	"math"
-	"math/bits"
 )
 
 func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
@@ -21,7 +20,7 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	statistics := newColorStatistics()
 	var size image.Point
 	var current *image.NRGBA
-	// 两遍读取同一 ZIP：先采样全局颜色，再逐帧量化，不累计解码帧。
+	// 两遍读取同一 ZIP：先统计全局颜色，再逐帧量化，复用彩色解码缓冲。
 	for i, frame := range input.Frames {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -57,11 +56,15 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	if err != nil {
 		return err
 	}
-	w := gifWriter{ctx: ctx, output: output}
-	if err := w.header(size, palette, hasTransparency); err != nil {
-		return err
+	colors := make(color.Palette, 0, 256)
+	if hasTransparency {
+		colors = append(colors, color.NRGBA{})
 	}
-	var indices, previous []byte
+	for _, c := range palette {
+		colors = append(colors, color.NRGBA{R: c[0], G: c[1], B: c[2], A: 255})
+	}
+	animation := gif.GIF{LoopCount: 0, Config: image.Config{ColorModel: colors, Width: size.X, Height: size.Y}}
+	// 标准库 EncodeAll 接收全部索引帧；彩色解码缓冲仍逐帧复用。
 	for _, frame := range input.Frames {
 		current, err = archive.decodeInto(ctx, frame, current)
 		if err != nil {
@@ -71,7 +74,7 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 		if err != nil {
 			return err
 		}
-		indices, err = quantizer.quantizeInto(ctx, current, indices)
+		indices, err := quantizer.quantize(ctx, current)
 		if err != nil {
 			return err
 		}
@@ -79,21 +82,15 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 		if err != nil {
 			return err
 		}
-		region := image.Rectangle{Max: size}
-		if previous != nil {
-			region, err = changedIndexRegion(ctx, previous, indices, size)
-			if err != nil {
-				return err
-			}
+		animation.Image = append(animation.Image, &image.Paletted{Pix: indices, Stride: size.X, Rect: image.Rectangle{Max: size}, Palette: colors})
+		animation.Delay = append(animation.Delay, int(delay))
+		disposal := byte(gif.DisposalNone)
+		if hasTransparency {
+			disposal = gif.DisposalBackground
 		}
-		if err := w.frame(region, size.X, indices, delay, hasTransparency); err != nil {
-			return fmt.Errorf("encode GIF frame %q: %w", frame.File, err)
-		}
-		if !hasTransparency {
-			previous = append(previous[:0], indices...)
-		}
+		animation.Disposal = append(animation.Disposal, disposal)
 	}
-	return writeAnimation(w.ctx, w.output, []byte{0x3b})
+	return errors.Join(gif.EncodeAll(animationWriter{ctx: ctx, output: output}, &animation), ctx.Err())
 }
 
 func gifDelay(delay int, file string) (uint16, error) {
@@ -106,149 +103,4 @@ func gifDelay(delay int, file string) (uint16, error) {
 		return 0, fmt.Errorf("frame %q delay %d ms exceeds GIF uint16 range", file, delay)
 	}
 	return uint16(ticks), nil
-}
-
-type gifWriter struct {
-	ctx        context.Context
-	output     io.Writer
-	compressor lzw.Writer
-}
-
-func (w *gifWriter) header(size image.Point, palette []rgb, transparent bool) error {
-	var table [256 * 3]byte
-	count := 0
-	if transparent {
-		count = 1 // 透明索引 0 的 RGB 固定为黑色。
-	}
-	for _, c := range palette {
-		copy(table[count*3:], c[:])
-		count++
-	}
-	tableBits := max(1, bits.Len(uint(count-1)))
-	var header [13]byte
-	copy(header[:], "GIF89a")
-	binary.LittleEndian.PutUint16(header[6:8], uint16(size.X))
-	binary.LittleEndian.PutUint16(header[8:10], uint16(size.Y))
-	header[10] = 0x80 | byte(tableBits-1)*0x11
-	if err := writeAnimation(w.ctx, w.output, header[:]); err != nil {
-		return err
-	}
-	if err := writeAnimation(w.ctx, w.output, table[:3*(1<<tableBits)]); err != nil {
-		return err
-	}
-	return writeAnimation(w.ctx, w.output, []byte("\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"))
-}
-
-func (w *gifWriter) frame(region image.Rectangle, stride int, indices []byte, delay uint16, transparent bool) error {
-	control := [8]byte{0x21, 0xf9, 4, 2 << 2, 0, 0, 0, 0} // Background disposal。
-	if transparent {
-		control[3] |= 1
-	} else {
-		control[3] = 1 << 2
-	}
-	binary.LittleEndian.PutUint16(control[4:6], delay)
-	if err := writeAnimation(w.ctx, w.output, control[:]); err != nil {
-		return err
-	}
-	descriptor := [10]byte{0x2c}
-	binary.LittleEndian.PutUint16(descriptor[1:3], uint16(region.Min.X))
-	binary.LittleEndian.PutUint16(descriptor[3:5], uint16(region.Min.Y))
-	binary.LittleEndian.PutUint16(descriptor[5:7], uint16(region.Dx()))
-	binary.LittleEndian.PutUint16(descriptor[7:9], uint16(region.Dy()))
-	if err := writeAnimation(w.ctx, w.output, descriptor[:]); err != nil {
-		return err
-	}
-	var highest byte
-	for y := region.Min.Y; y < region.Max.Y; y++ {
-		row := y*stride + region.Min.X
-		if err := w.ctx.Err(); err != nil {
-			return err
-		}
-		for _, index := range indices[row : row+region.Dx()] {
-			highest = max(highest, index)
-		}
-		if highest > 127 {
-			break
-		}
-	}
-	codeSize := max(2, bits.Len8(highest))
-	if err := writeAnimation(w.ctx, w.output, []byte{byte(codeSize)}); err != nil {
-		return err
-	}
-	blocks := gifBlocks{writer: w}
-	compressor := &w.compressor
-	compressor.Reset(&blocks, lzw.LSB, codeSize)
-	for y := region.Min.Y; y < region.Max.Y; y++ {
-		row := y*stride + region.Min.X
-		if err := w.ctx.Err(); err != nil {
-			return err
-		}
-		if _, err := compressor.Write(indices[row : row+region.Dx()]); err != nil {
-			return errors.Join(err, w.ctx.Err())
-		}
-	}
-	if err := compressor.Close(); err != nil {
-		return errors.Join(err, w.ctx.Err())
-	}
-	return writeAnimation(w.ctx, w.output, []byte{0})
-}
-
-// GIF 子块最多 255 字节；直接接收 LZW 字节，避免缓存整帧压缩结果。
-type gifBlocks struct {
-	writer *gifWriter
-	buffer [256]byte
-	used   int
-}
-
-func (b *gifBlocks) WriteByte(value byte) error {
-	b.used++
-	b.buffer[b.used] = value
-	if b.used == 255 {
-		return b.Flush()
-	}
-	return nil
-}
-
-func (b *gifBlocks) Write(data []byte) (int, error) {
-	for i, value := range data {
-		if err := b.WriteByte(value); err != nil {
-			return i, err
-		}
-	}
-	return len(data), nil
-}
-
-func (b *gifBlocks) Flush() error {
-	if b.used == 0 {
-		return nil
-	}
-	b.buffer[0] = byte(b.used)
-	if err := writeAnimation(b.writer.ctx, b.writer.output, b.buffer[:b.used+1]); err != nil {
-		return err
-	}
-	b.used = 0
-	return nil
-}
-
-func changedIndexRegion(ctx context.Context, previous, current []byte, size image.Point) (image.Rectangle, error) {
-	region := image.Rectangle{Min: size}
-	for y := 0; y < size.Y; y++ {
-		if err := ctx.Err(); err != nil {
-			return image.Rectangle{}, err
-		}
-		for x := 0; x < size.X; x++ {
-			i := y*size.X + x
-			if previous[i] == current[i] {
-				continue
-			}
-			region.Min.X = min(region.Min.X, x)
-			region.Min.Y = min(region.Min.Y, y)
-			region.Max.X = max(region.Max.X, x+1)
-			region.Max.Y = max(region.Max.Y, y+1)
-		}
-	}
-	if region.Empty() {
-		return image.Rect(0, 0, 1, 1), nil
-	}
-	return region, nil
 }

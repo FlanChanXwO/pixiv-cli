@@ -47,7 +47,7 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 		if err != nil {
 			return err
 		}
-		// profile 中默认 4 KiB 缓冲让 APNG 过半 CPU 花在文件写入；合并小 chunk，不缓存整帧。
+		// 合并容器的小块写入，减少文件写入次数。
 		var destination io.Writer = file
 		if input.MaxOutputBytes != nil || input.ReserveOutput != nil {
 			limit := ^uint64(0)
@@ -70,14 +70,8 @@ func (encoder) Encode(ctx context.Context, input Input) error {
 }
 
 func writeAnimation(ctx context.Context, output io.Writer, data []byte) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	n, err := output.Write(data)
-	if n != len(data) && err == nil {
-		err = io.ErrShortWrite
-	}
-	return errors.Join(err, ctx.Err())
+	_, err := (animationWriter{ctx: ctx, output: output}).Write(data)
+	return err
 }
 
 // 预算位于缓冲器下游，在每次实际落盘前预留容量；普通调用不受限。
@@ -108,4 +102,21 @@ func reserveOutput(reserve func(uint64) error, size uint64) (err error) {
 		}
 	}()
 	return reserve(size)
+}
+
+// 标准库编码期间的写入继续传播取消、原始错误和短写。
+type animationWriter struct {
+	ctx    context.Context
+	output io.Writer
+}
+
+func (w animationWriter) Write(data []byte) (int, error) {
+	if err := w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := w.output.Write(data)
+	if n != len(data) && err == nil {
+		err = io.ErrShortWrite
+	}
+	return n, errors.Join(err, w.ctx.Err())
 }

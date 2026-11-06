@@ -1,15 +1,14 @@
 package ugoira
 
 import (
-	"bufio"
 	"bytes"
-	"compress/zlib"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"image"
+	"image/png"
 	"io"
 	"math"
 )
@@ -109,11 +108,9 @@ func changedRegion(ctx context.Context, previous, current *image.NRGBA) (image.R
 }
 
 type apngWriter struct {
-	ctx         context.Context
-	output      io.Writer
-	sequence    uint64
-	compressor  *zlib.Writer
-	chunkBuffer *bufio.Writer
+	ctx      context.Context
+	output   io.Writer
+	sequence uint64
 }
 
 func (w *apngWriter) header(size image.Point, count uint32) error {
@@ -133,10 +130,6 @@ func (w *apngWriter) header(size image.Point, count uint32) error {
 }
 
 func (w *apngWriter) frame(img, previous *image.NRGBA, region image.Rectangle, numerator, denominator uint16) error {
-	over, err := apngOverRegion(w.ctx, previous, img, region)
-	if err != nil {
-		return err
-	}
 	sequence, err := w.nextSequence()
 	if err != nil {
 		return err
@@ -147,65 +140,32 @@ func (w *apngWriter) frame(img, previous *image.NRGBA, region image.Rectangle, n
 	}
 	binary.BigEndian.PutUint16(control[20:22], numerator)
 	binary.BigEndian.PutUint16(control[22:24], denominator)
-	// 只有不透明变化允许 Over；透明变化仍以 Source 精确替换。
-	if over {
-		control[25] = 1
-	}
 	if err := w.chunk("fcTL", control[:]); err != nil {
 		return err
 	}
-	data := apngFrameData{writer: w, first: previous == nil}
-	if w.chunkBuffer == nil {
-		// 与标准库 PNG 一样合并为32KiB写入，避免每次 flate 小刷新都分配一个 chunk。
-		w.chunkBuffer = bufio.NewWriterSize(data, 1<<15)
-	} else {
-		w.chunkBuffer.Reset(data)
-	}
-	if w.compressor == nil {
-		// Go 1.27 快速档的高纹理样本超出原10%体积门槛，改用level 7的完整匹配。
-		w.compressor, err = zlib.NewWriterLevel(w.chunkBuffer, 7)
-		if err != nil {
-			return err
-		}
-	} else {
-		// 每帧独立的 zlib 流；Reset 只复用压缩器内存，不带入上一帧字典。
-		w.compressor.Reset(w.chunkBuffer)
-	}
-	rowBytes := region.Dx() * 4
-	filtered := make([]byte, rowBytes+1)
-	var delta []byte
-	if over {
-		delta = make([]byte, rowBytes)
-	}
-	for y := region.Min.Y; y < region.Max.Y; y++ {
-		if err := w.ctx.Err(); err != nil {
-			return err
-		}
-		row := img.Pix[img.PixOffset(region.Min.X, y):][:rowBytes]
-		if over {
-			prior := previous.Pix[previous.PixOffset(region.Min.X, y):][:rowBytes]
-			for i := 0; i < rowBytes; i += 4 {
-				if bytes.Equal(row[i:i+4], prior[i:i+4]) {
-					clear(delta[i : i+4])
-				} else {
-					copy(delta[i:i+4], row[i:i+4])
-				}
-			}
-			row = delta
-		}
-		filterAPNGRow(row, filtered)
-		if _, err := w.compressor.Write(filtered); err != nil {
-			return errors.Join(err, w.ctx.Err())
-		}
-	}
-	if err := w.ctx.Err(); err != nil {
+	var encoded bytes.Buffer
+	// 所有帧保持 RGBA8，避免不透明帧被 PNG 编码器改为 RGB。
+	frame := apngRGBA{img.SubImage(region).(*image.NRGBA)}
+	if err := png.Encode(animationWriter{ctx: w.ctx, output: &encoded}, frame); err != nil {
 		return err
 	}
-	if err := w.compressor.Close(); err != nil {
-		return errors.Join(err, w.ctx.Err())
+	data := apngFrameData{writer: w, first: previous == nil}
+	// 数据由标准库生成，只转发 IDAT；容器的 IHDR、fcTL 和序号由本包写入。
+	for body := encoded.Bytes()[8:]; len(body) > 0; {
+		length := int(binary.BigEndian.Uint32(body[:4]))
+		if string(body[4:8]) == "IDAT" {
+			if _, err := data.Write(body[8 : 8+length]); err != nil {
+				return err
+			}
+		}
+		body = body[length+12:]
 	}
-	return errors.Join(w.chunkBuffer.Flush(), w.ctx.Err())
+	return w.ctx.Err()
 }
+
+type apngRGBA struct{ *image.NRGBA }
+
+func (apngRGBA) Opaque() bool { return false }
 
 func (w *apngWriter) nextSequence() (uint32, error) {
 	if w.sequence > math.MaxUint32 {
@@ -267,37 +227,4 @@ func (d apngFrameData) Write(data []byte) (int, error) {
 		return 0, err
 	}
 	return len(data), nil
-}
-
-func apngOverRegion(ctx context.Context, previous, current *image.NRGBA, region image.Rectangle) (bool, error) {
-	if previous == nil {
-		return false, nil
-	}
-	// Sub 的非零残差位置越少越易压缩；避免透明差分打碎原本连续的色块。
-	var sourceRuns, deltaRuns uint64
-	for y := region.Min.Y; y < region.Max.Y; y++ {
-		if err := ctx.Err(); err != nil {
-			return false, err
-		}
-		old := previous.Pix[previous.PixOffset(region.Min.X, y):][:region.Dx()*4]
-		row := current.Pix[current.PixOffset(region.Min.X, y):][:region.Dx()*4]
-		var sourceLeft, deltaLeft uint32
-		for i := 0; i < len(row); i += 4 {
-			pixel := binary.LittleEndian.Uint32(row[i:])
-			delta := pixel
-			if pixel == binary.LittleEndian.Uint32(old[i:]) {
-				delta = 0
-			} else if row[i+3] != 255 {
-				return false, nil
-			}
-			if pixel != sourceLeft {
-				sourceRuns++
-			}
-			if delta != deltaLeft {
-				deltaRuns++
-			}
-			sourceLeft, deltaLeft = pixel, delta
-		}
-	}
-	return deltaRuns < sourceRuns, nil
 }

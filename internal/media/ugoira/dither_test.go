@@ -1,6 +1,7 @@
 package ugoira
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"image"
@@ -16,10 +17,6 @@ func quantizeFrame(ctx context.Context, frame *image.NRGBA, palette []rgb, hasTr
 		return nil, err
 	}
 	return q.quantize(ctx, frame)
-}
-
-func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]byte, error) {
-	return q.quantizeInto(ctx, frame, nil)
 }
 
 func TestDitherCancellationAndPaletteSize(t *testing.T) {
@@ -38,5 +35,19 @@ func TestDitherCancellationAndPaletteSize(t *testing.T) {
 		if _, err := quantizeFrame(t.Context(), frame, make([]rgb, tc.size), tc.transparency); err == nil {
 			t.Fatalf("accepted %d colors, transparent=%t", tc.size, tc.transparency)
 		}
+	}
+}
+
+func TestFloydSteinbergDiffusesError(t *testing.T) {
+	frame := image.NewNRGBA(image.Rect(0, 0, 4, 1))
+	for i := range frame.Pix {
+		frame.Pix[i] = 128
+	}
+	got, err := quantizeFrame(t.Context(), frame, []rgb{{0, 0, 0}, {255, 255, 255}}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, []byte{1, 0, 1, 0}) {
+		t.Fatalf("diffusion indices: %v", got)
 	}
 }
