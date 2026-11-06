@@ -12,7 +12,7 @@ import (
 
 // 样本由 v1.2.1 初始化，账号 42 和 refresh token 均为合成数据。
 func TestOpenDatabaseCreatedByV121(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join("testdata", "v1.2.1.db"))
+	body, err := os.ReadFile(filepath.Join("..", "..", "account", "testdata", "v1.2.1.db"))
 	require.NoError(t, err)
 	directory := t.TempDir()
 	require.NoError(t, os.WriteFile(database.DatabasePath(directory), body, 0o600))
