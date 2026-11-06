@@ -130,3 +130,37 @@ func TestPersistenceFailureDoesNotReturnClient(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, client)
 }
+
+func TestReadCacheReusesAndReloadsByRevision(t *testing.T) {
+	store, err := account.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("initial"))}))
+	var requests atomic.Int32
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 2 && r.FormValue("refresh_token") != "external" {
+			t.Error("cache reload used stale credential")
+		}
+		fmt.Fprint(w, `{"access_token":"access","refresh_token":"fresh","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
+	}))
+	defer api.Close()
+	reads := account.NewReadSessions(store, account.NewGate())
+	defer reads.Close()
+	options := pixiv.Options{HTTPClient: oauthClient(api)}
+	first, err := reads.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	cached, err := reads.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.Equal(t, first.Version, cached.Version)
+	require.EqualValues(t, 1, requests.Load())
+	require.NoError(t, store.RotatePixivCredentials(t.Context(), 42, 2, []byte("external")))
+	latest, err := reads.Open(t.Context(), 42, "network", options)
+	require.NoError(t, err)
+	require.NotEqual(t, first.Version, latest.Version)
+	require.EqualValues(t, 4, latest.Revision)
+	require.EqualValues(t, 2, requests.Load())
+	select {
+	case <-first.Invalidated:
+	default:
+		t.Error("replaced generation was not cancelled")
+	}
+}
