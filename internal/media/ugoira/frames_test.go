@@ -22,8 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
 func (a *frameArchive) decode(ctx context.Context, frame Frame) (*image.NRGBA, error) {
@@ -36,9 +34,8 @@ func readFrameSource(ctx context.Context, r io.Reader, file string, declaredSize
 }
 
 func decodeFrameSource(ctx context.Context, source []byte) (*image.NRGBA, error) {
-	var decoder jpeg.Decoder
 	var header bufio.Reader
-	return decodeFrameSourceInto(ctx, source, nil, &decoder, &header)
+	return decodeFrameSourceInto(ctx, source, nil, &header)
 }
 
 func frameNRGBA(ctx context.Context, src image.Image) (*image.NRGBA, error) {
@@ -143,7 +140,7 @@ func TestFrameArchiveRejectsCRCAndLengthCorruption(t *testing.T) {
 			case "long":
 				binary.LittleEndian.PutUint32(data[central+24:], uint32(len(body)+1))
 			case "oversized":
-				binary.LittleEndian.PutUint32(data[central+24:], frameAllocationLimit+1)
+				binary.LittleEndian.PutUint32(data[central+24:], maxFrameSourceBytes+1)
 			}
 			if err := os.WriteFile(path, data, 0o600); err != nil {
 				t.Fatal(err)
@@ -218,17 +215,16 @@ func TestReadFrameSource(t *testing.T) {
 func TestDecodedFrameLimits(t *testing.T) {
 	for _, tc := range []struct {
 		width, height int
-		bpp           uint64
 		valid         bool
 	}{
-		{1, 1, 4, true}, {1 << 17, 1 << 12, 1, true}, {1 << 17, (1 << 12) + 1, 1, false},
-		{1 << 13, 1 << 13, 8, true}, {(1 << 13) + 1, 1 << 13, 8, false},
-		{0, 1, 4, false}, {1, -1, 4, false}, {math.MaxInt, math.MaxInt, 4, false},
-		{math.MaxInt / 4, 2, 1, false}, {1, 1, 0, false},
+		{1, 1, true}, {4096, 4096, true}, {8192, 8192, false},
+		{1, maxFrameDecodedBytes / decodedPixelBytes / decodedBlockEdge / decodedBlockEdge * decodedBlockEdge, true},
+		{1, maxFrameDecodedBytes/decodedPixelBytes/decodedBlockEdge/decodedBlockEdge*decodedBlockEdge + 1, false},
+		{0, 1, false}, {1, -1, false}, {math.MaxInt, math.MaxInt, false},
 	} {
-		err := validateDecodedSize(tc.width, tc.height, tc.bpp)
+		err := validateDecodedSize(tc.width, tc.height)
 		if (err == nil) != tc.valid {
-			t.Errorf("%dx%d/%d: err=%v, valid=%v", tc.width, tc.height, tc.bpp, err, tc.valid)
+			t.Errorf("%dx%d: err=%v, valid=%v", tc.width, tc.height, err, tc.valid)
 		}
 	}
 	body := framePNG(t, image.NewGray(image.Rect(0, 0, 1, 1)))
@@ -290,29 +286,54 @@ func TestDecodeFrameFormats(t *testing.T) {
 	}
 }
 
+func TestJPEGFramesUseStandardDecoder(t *testing.T) {
+	for _, name := range []string{"jpeg-444.jpg", "jpeg-progressive.jpg", "jpeg-gray.jpg", "jpeg-restart.jpg"} {
+		t.Run(name, func(t *testing.T) {
+			body, err := os.ReadFile(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := stdjpeg.Decode(bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := decodeFrameSource(t.Context(), body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Bounds() != want.Bounds() {
+				t.Fatalf("bounds: %v, want %v", got.Bounds(), want.Bounds())
+			}
+			for y := 0; y < got.Rect.Dy(); y++ {
+				for x := 0; x < got.Rect.Dx(); x++ {
+					if got.NRGBAAt(x, y) != color.NRGBAModel.Convert(want.At(x, y)) {
+						t.Fatalf("pixel (%d,%d) differs from standard decoder", x, y)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestDecodePNGColorTypes(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		depth, kind byte
 		row, trns   []byte
-		bpp         uint64
 		want        []byte
 	}{
-		{"gray1", 1, 0, []byte{0x80}, nil, 1, []byte{255, 255, 255, 255}},
-		{"gray8 transparent", 8, 0, []byte{31}, []byte{0, 31}, 2, []byte{31, 31, 31, 0}},
-		{"gray16 transparent", 16, 0, []byte{0, 129}, []byte{0, 129}, 4, []byte{1, 1, 1, 0}},
-		{"gray alpha8", 8, 4, []byte{71, 129}, nil, 2, []byte{71, 71, 71, 129}},
-		{"gray alpha16", 16, 4, []byte{0, 129, 0x80, 0}, nil, 4, []byte{1, 1, 1, 128}},
-		{"rgb8", 8, 2, []byte{17, 31, 71}, nil, 3, []byte{17, 31, 71, 255}},
-		{"rgb8 transparent", 8, 2, []byte{17, 31, 71}, []byte{0, 17, 0, 31, 0, 71}, 4, []byte{17, 31, 71, 0}},
-		{"rgb16", 16, 2, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, nil, 6, []byte{1, 128, 254, 255}},
-		{"rgb16 transparent", 16, 2, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, 8, []byte{1, 128, 254, 0}},
+		{"gray1", 1, 0, []byte{0x80}, nil, []byte{255, 255, 255, 255}},
+		{"gray8 transparent", 8, 0, []byte{31}, []byte{0, 31}, []byte{31, 31, 31, 0}},
+		{"gray16 transparent", 16, 0, []byte{0, 129}, []byte{0, 129}, []byte{1, 1, 1, 0}},
+		{"gray alpha8", 8, 4, []byte{71, 129}, nil, []byte{71, 71, 71, 129}},
+		{"gray alpha16", 16, 4, []byte{0, 129, 0x80, 0}, nil, []byte{1, 1, 1, 128}},
+		{"rgb8", 8, 2, []byte{17, 31, 71}, nil, []byte{17, 31, 71, 255}},
+		{"rgb8 transparent", 8, 2, []byte{17, 31, 71}, []byte{0, 17, 0, 31, 0, 71}, []byte{17, 31, 71, 0}},
+		{"rgb16", 16, 2, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, nil, []byte{1, 128, 254, 255}},
+		{"rgb16 transparent", 16, 2, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, []byte{0, 129, 0x80, 0, 0xff, 0x7e}, []byte{1, 128, 254, 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := frameRawPNG(t, tc.depth, tc.kind, tc.row, tc.trns)
-			if bpp, err := pngDecodedPixelBytes(body); err != nil || bpp != tc.bpp {
-				t.Fatalf("decoded pixel size %d, err=%v; want %d", bpp, err, tc.bpp)
-			}
 			got, err := decodeFrameSource(t.Context(), body)
 			if err != nil || !bytes.Equal(got.Pix, tc.want) {
 				t.Fatalf("got %v, err=%v; want %v", got, err, tc.want)
