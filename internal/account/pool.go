@@ -199,6 +199,7 @@ func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, c
 			if doc.Pixiv[i].UserID == id {
 				doc.Pixiv[i].UpdatedAt = time.Unix(now, 0).UTC()
 				selected = doc.Pixiv[i]
+				selected.PoolLastSelected = true
 				doc.LastUserID = id
 				break
 			}
