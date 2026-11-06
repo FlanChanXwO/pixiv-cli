@@ -37,7 +37,7 @@ sequenceDiagram
 | 浏览器 | macOS/Windows：普通启动即准备当前用户的 `pixiv://` handler；桌面 Linux 在交互登录时初始化 XDG handler。打开默认浏览器；`--no-open` 打印登录 URL 与本地页面地址 |
 | 回调 | 本轮 loopback 回调、一次性桌面 hand-off、终端粘贴或本地页面表单。helper hand-off 后，OAuth 交换完成时浏览器打开一次最终本地页面 |
 | 校验 | loopback 回调必须匹配本轮 state；Pixiv 未返回 state 时，官方回调 URL 与 `pixiv://account/login` 作为显式 fallback |
-| 保存 | 从不打印 token；refresh token 按 UID 存入本地 SQLite。Unix：目录 `0700`、文件 `0600`。Windows：首次创建继承父目录 ACL，替换时保留目标 ACL；不声称收紧或放宽 DACL |
+| 保存 | 从不打印 token；refresh token 按 UID 存入本地 `auth.json`。Unix：目录 `0700`、文件 `0600`。Windows：首次创建继承父目录 ACL，替换时保留目标 ACL；不声称收紧或放宽 DACL |
 
 **`pixiv://` handler 路由** —— 持久存在，但只在系统打开 `pixiv://` 时运行（macOS `PixivCLIURLHandler.app`、Windows 当前用户协议关联、桌面 Linux XDG 条目）；会私下记录之前的 handler。
 
@@ -143,7 +143,7 @@ pixiv auth export --all --output accounts.pxauth [--force]
 | `--all`，无 `--output` | 仅版本化 JSON bundle | 无 |
 | 任意选择 + `--output PATH` | 输出路径 + 账号数（从不含 secret） | — |
 
-- 严格本地：只读 SQLite 账号库；不刷新、不联系 Pixiv；不修改 auth/config；跳过启动时的待更新清理与自动更新检查。
+- 严格本地：读取已保存凭据，保持 token 与配置原值，跳过启动时的待更新清理与自动更新检查。首次访问账号时可通过[本地迁移](cli-reference.md#配置-toml-路径)初始化 `auth.json`。
 - `--all` 不能与 UID 同用；`--force` 需要 `--output`；没有 JSON/代理参数。
 - `--output` 默认拒绝已存在的目标，除非 `--force`。Unix：文件 `0600`，不改父目录权限/属主。Windows：设置 owner 与受保护 DACL，只授予当前用户、LocalSystem 与内置 Administrators 完全控制（有 CI 测试；不声称本版本已在真实 Windows 文件系统验证）。
 - bundle 是**未加密的时间点 secret 备份**，不是实时同步；token 轮换会让旧副本失效。

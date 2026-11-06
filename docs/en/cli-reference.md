@@ -72,7 +72,7 @@ pixiv download 123456 789012 --output ./downloads
 | Local state | |
 | --- | --- |
 | Location | `~/.pixiv-cli` (macOS/Linux), `%USERPROFILE%\.pixiv-cli` (Windows) |
-| Contents | `pixiv-cli.db` (accounts keyed by UID), `config.toml`, callback-bridge state, Release-check cache, macOS callback helper |
+| Contents | `auth.json` (ordered Pixiv/FANBOX accounts keyed by UID), `config.toml`, callback-bridge state, Release-check cache, macOS callback helper |
 | Permissions | Unix `0700` dirs / `0600` files; Windows inherits parent ACL on creation, keeps target ACL on replacement, no DACL claims |
 | `config.toml` creation | Created from a template with English comments and defaults on the first ordinary command; existing files are preserved. Optional service overrides and default accounts appear as commented examples. Help, root `--version`, secret export and the internal OAuth callback do not create it |
 
@@ -336,7 +336,7 @@ Verified on the authenticated App API for illustration `search` with a tag `--se
 
 | KEY | Type | Default | Description |
 | --- | --- | --- | --- |
-| `account_pool.enabled` | boolean | `false` | Enable database-backed pool selection for safe reads/downloads. |
+| `account_pool.enabled` | boolean | `false` | Enable local account-pool selection for safe reads/downloads. |
 | `account_pool.strategy` | string | `round_robin` | `round_robin` or `random`. |
 | `download.path` | string | `./downloads` | Download directory. |
 | `download.filename_template` | string | `{author} - {title}_{id}` | Filename template. |
@@ -421,9 +421,9 @@ flowchart LR
 - Service proxy keys preserve absent vs explicit empty. Pixiv and FANBOX keep their own boundaries. CLI overrides are never persisted.
 - Reverse search: the command override wins for standard and ascii2d traffic; otherwise the service value affects only ascii2d, while SauceNAO/standard keep the global route. The `user_agent` affects only ascii2d (paired with client hints). FlareSolverr is optional, challenge-only, JSON (not image multipart), and independent from both native routes. The template keeps service overrides and FlareSolverr as commented examples and includes the default `[reverse_search]` values.
 - Update checks use only the general network fallback; they never consume FANBOX service or solver settings.
-- `[account_pool]` stores only `enabled` and `strategy`; per-account `schedulable`, freeze and marker state live in `pixiv-cli.db`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool.accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
+- `[account_pool]` stores only `enabled` and `strategy`; per-account membership (`pool.enabled`), freeze and last-selection state live in `auth.json`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool.accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
 - `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Logs are stderr-only, omit query strings, headers, cookies, tokens, response bodies and signed URLs, and never create log files. `debug` adds request and decision records. Text records render as `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]: message key=value`; the operation bracket is omitted outside a bound call. JSON records include `source`. Failures keep the `error: <message>` stderr line. JSON logs also emit an ERROR `Command failed` record; text logs emit it at DEBUG only. The record includes `operation`, `call_id`, `error`, and the SDK error creation site as `origin=parent/file:line` when available. DEBUG `Request failed` records include typed network `op`, `net`, remote `address` (host:port), and known `errno` names, including OAuth token exchange failures. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
-- v1 does not read or migrate a legacy `~/.pixiv-cli/auth.json`. Migrate explicitly: old version `pixiv auth export --all --output <private bundle>`, then v1 `pixiv auth import < bundle.json`.
+- On first account access, a missing `auth.json` or valid JSON with a different/missing schema is replaced by a read-only import of `pixiv-cli.db`, or an empty account file when no old database exists. The old database stays unchanged. Invalid JSON, damaged `pixiv-cli.auth` data and newer versions report errors while preserving the file content.
 
 ### Environment variables
 

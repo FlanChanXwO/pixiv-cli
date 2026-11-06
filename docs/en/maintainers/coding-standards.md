@@ -28,15 +28,15 @@ These rules apply to new code only (since 2026-10-26). Existing names are not re
 - No abbreviations: write `Config`, `Manager`, `Service`, `Message`, `Request`, `Response`, `Temporary`, `Value`. Short names remain fine for locals used within a few lines (`ctx`, `err`, `ok`, `i`, `n`, `req`) and for one- or two-letter receivers. Keep initialisms such as `ID`, `URL`, and `HTTP` in full capitals.
 - Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem, with the exceptions below.
 
-Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api` and `account`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`).
+Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`, `account`).
 
-Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivaccount` and `fanboxaccount`. The `internal/cli` composition root and `internal/storage/database` do this. The CLI root also imports its `internal/cli/config` command package as `configcmd` alongside the configuration owner `internal/config`. Otherwise add no import alias, and never one that repeats the package name.
+Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivapi` and `fanboxapi`. The `internal/cli` composition root uses `fanboxauth` alongside Pixiv `auth`. The CLI root also imports its `internal/cli/config` command package as `configcmd` alongside the configuration owner `internal/config`. Otherwise add no import alias, and never one that repeats the package name.
 
 ## Declaration placement and file names
 
 | Scope of the declaration | Placement | Example |
 | --- | --- | --- |
-| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/models.go` (public entities), `sdk/pixiv/artwork_wire.go` (artwork response shape), `sdk/pixiv/response.go` (response shapes shared across domains), `internal/storage/database/rows.go` (row structs), `errors.go` (error codes) |
+| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/models.go` (public entities), `sdk/pixiv/artwork_wire.go` (artwork response shape), `sdk/pixiv/response.go` (response shapes shared across domains), `errors.go` (error codes) |
 | Serves one behavior | Beside the function that uses it, above it | `internal/mcpserver/pixiv/tools/users.go`: `userArtworksIn`; `internal/record/list.go`: `ArtworkList` |
 | Methods of a type (`String`, `Valid`, `MarshalJSON`, …) | Same file as the type | `sdk/resource.go`: `Resource.MarshalJSON` |
 
@@ -64,7 +64,7 @@ Identifiers with business meaning use named constants instead of inline string l
 | Enum value (log level, output format, restrict, content type, …) | named type plus constants, for example `config.LogLevelDebug`, `pixiv.RestrictPublic` | same file as the type |
 | Upstream API path, query/form parameter, header name | exported constant, for example `api.PathUserFollower`, `api.ParamUserID`; the package is under `internal/`, so module users cannot import it | `internal/pixiv/api/api.go`, `internal/fanbox/api/api.go` |
 | MCP tool name | unexported constant, for example `toolUserDetail` | same file as the tool registration |
-| Database column referenced from Go | unexported constant, for example `colCredentialRevision` | `internal/storage/database/rows.go`, beside the row struct |
+| Database column referenced from Go | unexported constant, for example `legacySchedulableColumn` | `internal/account/migrate.go`, beside the importer |
 | JSON output key outside a struct tag, for example `illusts` | unexported constant | same file as the output code |
 
 Meaningful values — lengths, limits, timeouts, intervals, exit codes, file names, addresses, service names — are named constants too. A contract-defined value lives in the package that enforces it. Define each value once; reference the constant or derive from it (`strconv.Itoa`) elsewhere. Values such as `0` and `1` with no business meaning, and arguments required by a standard-library contract such as `net.Dial("tcp", ...)`, need no name. The rule covers new and touched code; cleaning up every existing literal is separate work.
@@ -263,8 +263,8 @@ Permanent code and behavior tests cover only these long-lived contracts, with on
 | Contract | Owning boundary |
 | --- | --- |
 | Credential privacy: account and Cookie values stay private under `%v`, `%+v`, `%#v`, and slog; logs omit query, token, Cookie, and signed URL; MCP output omits signed URLs and Cookie | Account and Cookie types, request logging, MCP output |
-| Account storage: revision conflicts, transaction rollback, opening a v1.2.x database, file permissions; atomic replacement and file locking | `internal/storage/*` |
-| A rotated token is persisted before the client is returned | `internal/pixiv/account` or `internal/session` |
+| Account storage: revision conflicts, transaction rollback, read-only import of a v1.2.x database, file permissions; atomic replacement and file locking | `internal/account`, `internal/storage/*` |
+| A rotated token is persisted before the client is returned | `internal/account` |
 | Malformed upstream responses return errors; cancellation propagates | `sdk/pixiv`, `sdk/fanbox` |
 | Public snapshots: one full MCP `tools/list` golden; one CLI command's text, JSON, and NDJSON; usage-error exit code; stdio stdout carries only JSON-RPC; HTTP requires bearer | `internal/mcpserver`, `internal/cli` |
 | Environment over file over default, including explicit empty values | `internal/config` |
@@ -284,7 +284,7 @@ Retain tests for credential privacy, data integrity and persistence, public CLI/
 - Use `httptest`, temporary directories, and real stores. Do not add test helper packages, fixture constructors, mock hierarchies, or production exports that exist for tests.
 - Keep each assertion at its owning boundary; a CLI or MCP output test exercises presentation, not SDK mapping again.
 - Keep CI workflows and steps unchanged during test cleanup. Preserve workflow-selected CI tests verbatim with their supporting code and fixtures; they are exempt from the file/function/case caps and `testdata` restriction. Broad `go test ./...` selectors do not exempt the whole repository. In a mixed file, keep the selected test, its comments, and required declarations exactly; other tests still follow this checklist. Recheck selectors before rewriting tests; report a selector with no matching test instead of claiming a pass.
-- Preserve the CI-selected inventory exactly: whole packages `scripts/citest` (platform-smoke, container-smoke, and release runs), `scripts/release` (release workflow), `internal/urlscheme`, and `internal/media/ugoira/...`; named tests `cmd/pixiv/TestPixivBinaryPackagedSmoke` and `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`. Recheck the names and package paths against current workflow selectors before test cleanup.
+- Preserve the CI-selected inventory exactly: whole packages `scripts/citest` (platform-smoke, container-smoke, and release runs), `scripts/release` (release workflow), `internal/urlscheme`, and `internal/media/ugoira/...`; named tests `cmd/pixiv/TestPixivBinaryPackagedSmoke` and `internal/account/TestOpenOnWindowsAcceptsForwardSlashFileURI`. Recheck the names and package paths against current workflow selectors before test cleanup.
 - Remove duplicate assertions, getter and pure-forwarding tests, tests of test helpers or test harnesses, and completed migration comparison/feature tests. Remove their orphan helpers, fixtures, and test-only production seams with them; preserve v1.2.x database-opening evidence. Real-environment tests are manual, not permanent tracked tests.
 - Keep out-of-checklist investigations in ignored `tmp/test/_probe/`; run that package explicitly and keep probe output there so ordinary `go test ./...` discovery excludes it. Use synthetic credentials; do not add permanent live-test files or opt-in live harnesses.
 - A behavior change observes a failing test first, then passes, then keeps the regression. An import or toolchain failure is not Red. Pure restructuring uses before and after characterization.

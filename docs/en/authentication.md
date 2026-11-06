@@ -37,7 +37,7 @@ sequenceDiagram
 | Browser | macOS/Windows: normal startup prepares the current-user `pixiv://` handler; desktop Linux initializes its XDG handler for interactive login. Opens the default browser; `--no-open` prints the login URL and local page address |
 | Callback | This round's loopback callback, a one-time desktop hand-off, a terminal paste, or the local page form. After a helper hand-off the browser opens the final local page once exchange completes |
 | Validation | Loopback callback must match this round's state; Pixiv's official callback URL and `pixiv://account/login` are an explicit fallback when Pixiv returns no state |
-| Save | Tokens never printed; refresh token saved to local SQLite keyed by UID. Unix: `0700` dirs, `0600` files. Windows: first creation inherits the parent ACL, replacement keeps the target ACL; no DACL tightening/loosening is claimed |
+| Save | Tokens never printed; refresh token saved to local `auth.json` keyed by UID. Unix: `0700` dirs, `0600` files. Windows: first creation inherits the parent ACL, replacement keeps the target ACL; no DACL tightening/loosening is claimed |
 
 **`pixiv://` handler routing** — persistent but runs only when the OS opens `pixiv://` (macOS `PixivCLIURLHandler.app`, Windows current-user protocol association, desktop Linux XDG entry); it records the prior handler privately.
 
@@ -143,7 +143,7 @@ pixiv auth export --all --output accounts.pxauth [--force]
 | `--all`, no `--output` | versioned JSON bundle only | none |
 | any selection + `--output PATH` | output path + account count (never secrets) | — |
 
-- Strictly local: reads the SQLite store; never refreshes or contacts Pixiv; never mutates auth/config; skips startup pending-update cleanup and automatic update checks.
+- Strictly local: reads stored credentials without token refresh or Pixiv requests; leaves configuration unchanged and skips startup pending-update cleanup and automatic update checks. First account access may initialize `auth.json` through the [local migration](cli-reference.md#configuration-toml-paths).
 - `--all` cannot combine with a UID; `--force` requires `--output`; no JSON/proxy flags.
 - `--output` refuses an existing destination unless `--force`. Unix: file `0600`, existing parent permissions/ownership unchanged. Windows: owner + protected DACL granting full control only to the current user, LocalSystem and builtin Administrators (CI-tested; not claimed as validated on a real Windows filesystem for this release).
 - The bundle is an **unencrypted point-in-time secret backup**, not live sync; token rotation can make older copies stale.

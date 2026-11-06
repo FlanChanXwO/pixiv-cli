@@ -35,7 +35,7 @@ edited directly in private `config.toml`.
 
 The account pool applies only to safe, non-mutating Pixiv reads and downloads.
 Run `pixiv config set account_pool.enabled true` and optionally
-`pixiv config set account_pool.strategy random`, then use the database-backed
+`pixiv config set account_pool.strategy random`, then use the local account
 commands below to manage which local Pixiv accounts participate:
 
 ```text
@@ -82,10 +82,12 @@ pixiv auth import < /private/path/pixiv-auth.json
 pixiv auth export --all | ssh trusted-host pixiv auth import
 ```
 
-The v1 CLI never reads or migrates the old `~/.pixiv-cli/auth.json`. When
-moving from an older CLI, run `pixiv auth export --all --output <private
-bundle>` with the old version, then restore that private bundle through shell
-redirection or a pipe such as `pixiv auth import < bundle.json`.
+First account access initializes `~/.pixiv-cli/auth.json` by importing an
+existing `pixiv-cli.db` read-only, or creating an empty account file. The old
+database stays unchanged. Valid JSON with a different/missing schema is replaced
+by that initialization; invalid JSON, damaged own-schema data and newer versions
+report errors while preserving the file content. For transfer to another machine,
+use a private export bundle and restore through shell redirection or a pipe.
 
 With no positional token, the import classifier checks the first non-whitespace
 byte of non-TTY stdin. `{` selects strict versioned bundle decoding; any other

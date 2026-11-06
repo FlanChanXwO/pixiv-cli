@@ -70,9 +70,9 @@ Public positional commands can fill one missing value from non-TTY stdin. Only a
 
 ## Authentication and service boundaries
 
-Pixiv content is App-only. Use the selected local `auth use` account or an eligible database-managed account when the pool is enabled. There is no anonymous Web fallback and no per-command `--uid`/`--refresh-token` selection or `PIXIV_REFRESH_TOKEN` credential shortcut. The public SDK and MCP have their own explicit runtime credential contracts.
+Pixiv content is App-only. Use the selected local `auth use` account or an eligible locally stored pool account when the pool is enabled. There is no anonymous Web fallback and no per-command `--uid`/`--refresh-token` selection or `PIXIV_REFRESH_TOKEN` credential shortcut. The public SDK and MCP have their own explicit runtime credential contracts.
 
-Pool enabled/strategy settings are configuration; schedulable accounts are managed by `auth pool status|enable|disable`. Reads/downloads may use the pool, but mutations must not be silently assigned to a different account. Removed settings fail explicitly; use the authorized cleanup described in `auth.md`, not an automatic account migration.
+Pool enabled/strategy settings are configuration; schedulable accounts are managed by `auth pool status|enable|disable`. Reads/downloads may use the pool, but mutations must not be silently assigned to a different account.
 
 FANBOX is separate: use `pixiv fanbox --help` and its read-only creator/post/tag/feed/resource capabilities. Importing `FANBOXSESSID` with `pixiv fanbox auth import` or selecting an account with `pixiv fanbox auth use --auto`/an explicit UID is a separately authorized credential/state action, not automatic preflight. FANBOX MCP does not reuse the Pixiv pool. Its optional challenge-only solver does not carry ordinary API/resource traffic or receive the session; never send the session to a non-first-party host.
 
