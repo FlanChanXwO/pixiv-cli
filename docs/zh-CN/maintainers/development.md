@@ -46,7 +46,7 @@ sh scripts/build.sh
 
 ## Ugoira Go encoder
 
-默认下载器构造 `ugoira.NewEncoder()`，用 Go 生成 GIF/APNG——不需要 `ffmpeg`，没有后端选择器，也没有运行时 fallback。PNG 帧用 Go 标准解码器；JPEG 帧用 owner-local 的 `internal/media/ugoira/jpeg` 解码器。
+默认下载器构造 `ugoira.NewEncoder()`，用 Go 生成 GIF/APNG。JPEG/PNG 帧使用标准库解码器；GIF 输出使用 `image/gif`，APNG 将逐帧 `image/png` 输出与动画控制块组合。
 
 ```bash
 sh scripts/build.sh                                   # CGO_ENABLED=0 → build/pixiv(.exe)
@@ -55,12 +55,20 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 | 规则 | 说明 |
 | --- | --- |
-| 单帧上限 | 512 MiB，分别作用于 ZIP 成员源字节与解码前分配估算（继承固定版本 Rust `image` crate 的 `Limits::default().max_alloc`） |
+| 单帧上限 | 项目常量 `maxFrameSourceBytes` 与 `maxFrameDecodedBytes` 均为 512 MiB，分别约束 ZIP 成员源字节与解码前分配估算 |
 | 超出上限 | 声明大小超出 → 读取前失败；实际展开超出 → 分块读取时失败；非法/溢出尺寸或估算 → 错误。不截断，不 fallback |
-| 取消 | 每个读取分块与图片解码的前后都会检查；PNG/JPEG 解码循环没有回调，因此单帧解码中途的取消在该次解码返回时才被观察到 |
+| 取消 | 每次读取和图像解码前后、缩放/量化的每行、标准库编码器的写入及完成时检查；PNG/JPEG 解码返回后观察取消，标准库 GIF/PNG 编码的取消延迟取决于其写入粒度 |
 | 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
 
-**编码器保真说明** —— `internal/media/ugoira`：JPEG 解码器是 Go 1.26.3 解析加旧 zune-jpeg 0.5.15 整数 IDCT 与 14 位 BT.601（标准库 IDCT 舍入对调色板选择的改变足以让固定门禁失败；解析器 BSD 许可证留在该包，zune-jpeg 的 MIT 署名留在 `internal/media/ugoira/jpeg/idct.go`）。缩放使用带显式 `math.FMA` 的有界正弦/余弦多项式对齐旧 `sinf`，保真证据由保留的 native 编码测试负责。APNG 使用固定 Sub 预测、每帧独立的 level-7 zlib 流与 RGBA8 无损：只有全部变化像素不透明且差分能减少横向 RGBA 游程时，才对未变像素使用透明的 Over，否则使用 Source，均用 None disposal。压缩字节可能随工具链变化；只有在验证完整渲染画布、时序与循环行为后才能复用旧质量证据——不能只看文件大小。
+解码估算将宽、高分别向上对齐到 32 像素，按每像素 24 字节计入 JPEG 系数、像素平面与转换空间。这一保守估算可能比之前按色型估算更早拒绝超大的灰度或其他低通道图片。
+
+**编码与内存** —— GIF 两遍读取 ZIP：先用全局 RGB Wu 直方图生成一个调色板，再以蛇形 Floyd–Steinberg 抖动生成完整索引帧，交给 `gif.EncodeAll`。输出前保留全部索引帧，约占帧数 × 宽 × 高字节，另加元数据；彩色帧逐帧解码。APNG 使用 `png.Encode` 将每个变化矩形编码为 RGBA8，暂存该帧的压缩 PNG，再将 IDAT 数据转写为动画块，使用 Source 混合与 None disposal。逐帧预算之外还会保留这些动画缓冲。
+
+最近色匹配对每个像素扫描至多 256 个调色板颜色，因此大型 GIF 帧会花费更多量化 CPU 时间，并更久占用共享编码槽；每行之间检查取消。完全透明像素保持索引零并丢弃接收的抖动误差，避免隐藏 RGB 改变相邻可见颜色。
+
+透明 APNG 矩形使用标准编码器的 NRGBA 直接像素路径。不透明矩形通过图像包装强制输出 RGBA8，会进入编码器的通用路径并逐像素分配。两种路径均在 APNG 输出中保留透明像素及其隐藏 RGB。
+
+`Input.MaxEdge` 通过双线性缩放保持宽高比，零值保留原尺寸；下载器、MCP tool 与 MCP 媒体代理目前均使用零值。多帧 GIF 与 APNG 无限循环；标准库单帧 GIF 输出省略循环扩展。JPEG 舍入、GIF 调色板/抖动与缩放像素可能和之前有细微差异，文件体积也可能变化。比较编码器时，验证完整渲染画布、尺寸、时序与循环行为。
 
 **平台构建** —— `scripts/build/platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀。runner 元数据在 `scripts/build/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 

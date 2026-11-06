@@ -323,7 +323,7 @@ Default path constructs `ugoira.NewEncoder()` — no backend selector or externa
 
 ### `internal/media/ugoira`
 
-Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG streaming and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. PNG uses the standard library; owner-local `jpeg` keeps legacy IDCT/color rounding. Six-target execution evidence comes from the platform smoke workers, separate from the runtime encoder.
+Owns `Format`, ordered frame input, `Encoder`, ZIP validation/decoding, resizing, GIF quantization/dithering, APNG container assembly and atomic publication. The downloader consumes `Encoder` and must not duplicate encoding or publication. JPEG/PNG decoding and GIF/PNG encoding use the standard library; this package retains RGB Wu quantization, Floyd–Steinberg dithering, bilinear resizing and APNG animation chunks. Buffer ownership and frame budgets are described in [development](development.md#ugoira-go-encoder). Six-target execution evidence comes from the platform smoke workers, separate from the runtime encoder.
 
 ## Release assets and trust boundary
 

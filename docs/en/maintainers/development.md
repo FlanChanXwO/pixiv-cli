@@ -46,7 +46,7 @@ sh scripts/build.sh
 
 ## Ugoira Go encoder
 
-The default downloader builds `ugoira.NewEncoder()` and produces GIF/APNG in Go — no `ffmpeg`, no backend selector, no runtime fallback. PNG frames use Go's standard decoder; JPEG frames the owner-local `internal/media/ugoira/jpeg` decoder.
+The default downloader builds `ugoira.NewEncoder()` and produces GIF/APNG in Go. JPEG/PNG frames use the standard-library decoders; GIF output uses `image/gif`, and APNG combines per-frame `image/png` output with animation control chunks.
 
 ```bash
 sh scripts/build.sh                                   # CGO_ENABLED=0 → build/pixiv(.exe)
@@ -55,12 +55,20 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 | Rule | Detail |
 | --- | --- |
-| Per-frame bound | 512 MiB, applied separately to ZIP member source bytes and the pre-decode allocation estimate (inherits the pinned Rust `image` crate's `Limits::default().max_alloc`) |
+| Per-frame bounds | Project constants `maxFrameSourceBytes` and `maxFrameDecodedBytes` each allow 512 MiB: ZIP member source bytes and the pre-decode allocation estimate, respectively |
 | Over the bound | declared size → fail before reading; actual expansion → fail during chunked reading; invalid/overflowing dimensions or estimates → error. No truncation or fallback |
-| Cancellation | checked before/after each read chunk and image decode; PNG/JPEG decode loops have no callback, so mid-frame cancellation is seen when that decode returns |
+| Cancellation | checked before/after each read chunk and image decode, per row during resizing/quantization, and on standard-encoder writes and completion; PNG/JPEG decode loops return before cancellation is observed, and standard GIF/PNG encoding latency follows their write granularity |
 | Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
 
-**Encoder fidelity notes** — `internal/media/ugoira`: the JPEG decoder is Go 1.26.3 parsing plus the legacy zune-jpeg 0.5.15 integer IDCT and 14-bit BT.601 (standard-library IDCT rounding changed palette selection enough to fail the fixed gate; the parser BSD license stays in the package and the zune-jpeg MIT attribution in `internal/media/ugoira/jpeg/idct.go`). Resize uses bounded sine/cosine polynomials with explicit `math.FMA` against legacy `sinf`; retained native encoder tests own fidelity evidence. APNG uses fixed Sub prediction, an independent level-7 zlib stream per frame and RGBA8 lossless: Over with transparent unchanged pixels only when every changed pixel is opaque and the delta reduces horizontal RGBA runs, else Source, with None disposal. Compressed bytes may change with the toolchain; reuse quality evidence only after verifying complete canvases, timing and loop behavior — not file size alone.
+The decode estimate rounds each dimension up to 32 pixels and charges 24 bytes per pixel for JPEG coefficients/planes and conversion space. This conservative estimate can reject large grayscale or other low-channel images earlier than the previous color-type estimate.
+
+**Encoding and memory** — GIF reads the ZIP twice: a global RGB Wu histogram produces one palette, then serpentine Floyd–Steinberg dithering produces full indexed frames for `gif.EncodeAll`. All indexed frames remain in memory until output, about frame count × width × height bytes plus metadata; color frames are decoded one at a time. APNG encodes each changed rectangle as RGBA8 using `png.Encode`, buffers that frame's compressed PNG, then forwards its IDAT data into animation chunks with Source blending and None disposal. Per-frame budgets apply alongside these retained animation buffers.
+
+Nearest-color matching scans up to 256 palette entries per pixel. Large GIF frames therefore spend more CPU time in quantization and hold the shared encoding slot longer; cancellation is checked between rows. Fully transparent pixels keep index zero and discard incoming dithering error, so hidden RGB does not alter adjacent visible colors.
+
+Transparent APNG rectangles use the standard encoder's direct NRGBA path. Opaque rectangles use an image wrapper to force RGBA8; this invokes the encoder's generic path and allocates per pixel. Both paths preserve transparent pixels and their hidden RGB in APNG output.
+
+`Input.MaxEdge` keeps aspect ratio with bilinear resizing; zero preserves the original dimensions. The downloader, MCP tool and MCP media proxy currently leave it at zero. Multi-frame GIF and APNG loop indefinitely; standard-library single-frame GIF output omits the loop extension. JPEG rounding, GIF palette/dithering and resized pixels may differ slightly from earlier output, and file sizes may change. Validate complete rendered canvases, dimensions, timing and loops when comparing encoders.
 
 **Platform builds** — `scripts/build/platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes. Runner metadata stays in `scripts/build/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 

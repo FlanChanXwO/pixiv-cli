@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -16,18 +15,22 @@ import (
 	"io"
 	"io/fs"
 	"math"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira/jpeg"
 )
 
-// 沿用旧 image 0.25 的默认 max_alloc：分别约束单帧源字节和原色型解码缓冲。
-const frameAllocationLimit = 512 * 1024 * 1024
+// 分别限制帧源数据与解码工作区，避免上游压缩帧导致无界分配。
+const (
+	maxFrameSourceBytes  = 512 * 1024 * 1024
+	maxFrameDecodedBytes = 512 * 1024 * 1024
+	// 覆盖四分量渐进 JPEG 的系数、像素平面与转换输出；PNG 最大为 RGBA64。
+	decodedPixelBytes = 24
+	// JPEG 的 MCU 最多按 32 像素对齐分配平面。
+	decodedBlockEdge = 32
+)
 
 type frameArchive struct {
 	zip    *zip.ReadCloser
 	files  map[string]*zip.File
 	size   image.Point
-	jpeg   jpeg.Decoder
 	source frameSource
 	header bufio.Reader
 }
@@ -51,7 +54,7 @@ func openFrameArchive(ctx context.Context, input Input) (*frameArchive, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, errors.Join(err, z.Close())
 		}
-		// 与旧 zip::by_name 一致：精确匹配，重名时最后一个 entry 生效；不提取到磁盘。
+		// 精确匹配成员名，重名时最后一个成员生效；不提取到磁盘。
 		a.files[entry.Name] = entry
 	}
 	return a, nil
@@ -72,11 +75,11 @@ func (a *frameArchive) decodeInto(ctx context.Context, frame Frame, reuse *image
 	if err != nil {
 		return nil, fmt.Errorf("open frame %q: %w", frame.File, err)
 	}
-	source, readErr := a.source.read(ctx, r, frame.File, entry.UncompressedSize64, frameAllocationLimit)
+	source, readErr := a.source.read(ctx, r, frame.File, entry.UncompressedSize64, maxFrameSourceBytes)
 	if err := errors.Join(readErr, r.Close()); err != nil {
 		return nil, err
 	}
-	decoded, err := decodeFrameSourceInto(ctx, source, reuse, &a.jpeg, &a.header)
+	decoded, err := decodeFrameSourceInto(ctx, source, reuse, &a.header)
 	if err != nil {
 		return nil, fmt.Errorf("decode frame %q: %w", frame.File, err)
 	}
@@ -113,7 +116,7 @@ func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declar
 		capacity := min(limit, uint64(math.MaxInt), max(declaredSize, uint64(cap(source))*2))
 		source = make([]byte, 0, int(capacity))
 	}
-	// 32 KiB 只决定取消检查粒度，与旧读取器相同，不截断帧源。
+	// 分块读取使取消能在整帧读取完成前生效。
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -149,7 +152,7 @@ func (s *frameSource) read(ctx context.Context, r io.Reader, file string, declar
 	}
 }
 
-func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, decoder *jpeg.Decoder, header *bufio.Reader) (*image.NRGBA, error) {
+func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGBA, header *bufio.Reader) (*image.NRGBA, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -159,97 +162,38 @@ func decodeFrameSourceInto(ctx context.Context, source []byte, reuse *image.NRGB
 	if err := errors.Join(err, ctx.Err()); err != nil {
 		return nil, err
 	}
-	var bytesPerPixel uint64
-	switch format {
-	case "jpeg":
-		bytesPerPixel = 3
-		if config.ColorModel == color.GrayModel {
-			bytesPerPixel = 1
-		}
-	case "png":
-		bytesPerPixel, err = pngDecodedPixelBytes(source)
-		if err != nil {
-			return nil, err
-		}
-	default:
+	if format != "jpeg" && format != "png" {
 		return nil, fmt.Errorf("unsupported frame image format %q; expected jpeg or png", format)
 	}
-	if err := validateDecodedSize(config.Width, config.Height, bytesPerPixel); err != nil {
+	if err := validateDecodedSize(config.Width, config.Height); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	// 标准库不提供解码循环的取消回调；只能在单帧解码返回后立即观察取消。
-	var decoded image.Image
-	if format == "jpeg" {
-		decoded, err = decoder.Decode(bytes.NewReader(source))
-	} else {
-		decoded, _, err = image.Decode(bytes.NewReader(source))
-	}
+	decoded, _, err := image.Decode(bytes.NewReader(source))
 	if err := errors.Join(err, ctx.Err()); err != nil {
 		return nil, err
 	}
 	return frameNRGBAInto(ctx, decoded, reuse)
 }
 
-func validateDecodedSize(width, height int, bytesPerPixel uint64) error {
+func validateDecodedSize(width, height int) error {
 	if width <= 0 || height <= 0 {
 		return errors.New("image dimensions must be non-zero")
 	}
 	w, h := uint64(width), uint64(height)
-	if w > math.MaxUint64/h || w*h > uint64(math.MaxInt)/4 {
-		return errors.New("image dimensions overflow RGBA buffer size")
+	// 在解码前计入块对齐，覆盖 JPEG 平面填充；NRGBA 转换缓冲也在此上限内。
+	w = (w + decodedBlockEdge - 1) / decodedBlockEdge * decodedBlockEdge
+	h = (h + decodedBlockEdge - 1) / decodedBlockEdge * decodedBlockEdge
+	if w > uint64(math.MaxInt)/decodedPixelBytes/h {
+		return errors.New("image dimensions overflow decoded buffer size")
 	}
-	if bytesPerPixel == 0 || w*h > frameAllocationLimit/bytesPerPixel {
-		return fmt.Errorf("decoded image exceeds image allocation limit %d bytes", frameAllocationLimit)
+	if w*h > maxFrameDecodedBytes/decodedPixelBytes {
+		return fmt.Errorf("decoded image exceeds frame allocation limit %d bytes", maxFrameDecodedBytes)
 	}
 	return nil
-}
-
-// PNG EXPAND 后的原色型决定旧解码缓冲大小；Gray/GrayAlpha 不能一律按 RGBA 算。
-func pngDecodedPixelBytes(source []byte) (uint64, error) {
-	if len(source) < 33 {
-		return 0, io.ErrUnexpectedEOF
-	}
-	var channels uint64
-	switch source[25] {
-	case 0:
-		channels = 1
-	case 2, 3:
-		channels = 3
-	case 4:
-		channels = 2
-	case 6:
-		channels = 4
-	default:
-		return 0, errors.New("invalid PNG color type")
-	}
-	for offset := 8; ; {
-		if len(source)-offset < 12 {
-			return 0, io.ErrUnexpectedEOF
-		}
-		length := uint64(binary.BigEndian.Uint32(source[offset:]))
-		if length > uint64(len(source)-offset-12) {
-			return 0, io.ErrUnexpectedEOF
-		}
-		kind := string(source[offset+4 : offset+8])
-		if kind == "tRNS" {
-			if source[25] == 0 {
-				channels = 2
-			} else {
-				channels = 4
-			}
-		}
-		if kind == "IDAT" || kind == "IEND" {
-			break
-		}
-		offset += int(length) + 12
-	}
-	if source[24] == 16 {
-		channels *= 2
-	}
-	return channels, nil
 }
 
 func frameNRGBAInto(ctx context.Context, src image.Image, dst *image.NRGBA) (*image.NRGBA, error) {
@@ -271,37 +215,12 @@ func frameNRGBAInto(ctx context.Context, src image.Image, dst *image.NRGBA) (*im
 		}
 		sy := y + bounds.Min.Y
 		switch img := src.(type) {
-		case *image.YCbCr:
-			// 沿用 zune-jpeg 0.5.15 的 14-bit BT.601 系数与 0.4999 舍入，避免量化中心漂移。
-			// Copyright (c) 2023 zune-image developers, MIT；见 third_party/licenses/zune-jpeg-0.5.15/LICENSE-MIT。
-			// 4:4:4 的三平面每像素连续，按行取片，避免逐像素重复 COffset 分派。
-			var ys, cbs, crs []byte
-			if img.SubsampleRatio == image.YCbCrSubsampleRatio444 {
-				width := dst.Rect.Dx()
-				yi, ci := img.YOffset(bounds.Min.X, sy), img.COffset(bounds.Min.X, sy)
-				ys, cbs, crs = img.Y[yi:][:width], img.Cb[ci:][:width], img.Cr[ci:][:width]
-			}
-			for x := 0; x < dst.Rect.Dx(); x++ {
-				var c color.YCbCr
-				if ys != nil {
-					c = color.YCbCr{Y: ys[x], Cb: cbs[x], Cr: crs[x]}
-				} else {
-					c = img.YCbCrAt(x+bounds.Min.X, sy)
-				}
-				yy := int32(c.Y)*16384 + 8191
-				cb, cr := int32(c.Cb)-128, int32(c.Cr)-128
-				p := dst.Pix[y*dst.Stride+x*4:][:4]
-				p[0] = uint8(max(0, min(255, (yy+22970*cr)>>14)))
-				p[1] = uint8(max(0, min(255, (yy-11700*cr-5638*cb)>>14)))
-				p[2] = uint8(max(0, min(255, (yy+29032*cb)>>14)))
-				p[3] = 255
-			}
 		case *image.NRGBA64, *image.RGBA64, *image.Gray16, *image.Paletted:
 			for x := 0; x < dst.Rect.Dx(); x++ {
 				var c color.NRGBA
 				switch v := img.At(x+bounds.Min.X, sy).(type) {
 				case color.NRGBA64:
-					// 保留隐藏 RGB；16→8 沿用 image 的四舍五入，不走预乘 alpha 或高字节截断。
+					// 保留透明像素隐藏的 RGB，并将 16 位通道舍入到 8 位。
 					c = color.NRGBA{R: round16(v.R), G: round16(v.G), B: round16(v.B), A: round16(v.A)}
 				case color.RGBA64:
 					c = color.NRGBA{R: round16(v.R), G: round16(v.G), B: round16(v.B), A: 255}

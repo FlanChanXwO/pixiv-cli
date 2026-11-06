@@ -7,3 +7,4 @@
 - `pixiv config get/set/unset` now uses TOML paths, such as `download.path` in place of `download_path`. It accepts the declared configuration fields, including service network, login and default-account settings. Existing file paths stay the same, and obsolete file keys remain ignored.
 - New `config.toml` files use a template with English comments and defaults. Existing files are preserved.
 - `pixiv config set reverse_search.saucenao_api_key VALUE` accepts the API key as an argument. `config get` prints its effective value, including an environment override, directly instead of `<redacted>`.
+- Simplify Ugoira GIF/APNG encoding with standard-library codecs; output images may have subtle visual differences.

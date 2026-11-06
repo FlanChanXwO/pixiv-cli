@@ -36,16 +36,12 @@ func TestResizeFrameInvalidSize(t *testing.T) {
 			t.Errorf("invalid size %v accepted", size)
 		}
 	}
-	wide := &image.NRGBA{Rect: image.Rect(0, 0, math.MaxInt/16+1, 1)}
-	if _, err := resizeFrame(t.Context(), wide, image.Pt(1, 1)); err == nil {
-		t.Fatal("float32 row size overflow accepted")
-	}
 }
 
 func TestResizeFrameCancellation(t *testing.T) {
 	src := image.NewNRGBA(image.Rect(0, 0, 512, 256))
-	// 在权重生成、重采样及下一行开始时取消，避免依赖机器速度或 sleep。
-	for _, checks := range []int{1, 8, 3060, 3070, 3200, 3330} {
+	// 在重采样前及逐行处理时取消，避免依赖机器速度或 sleep。
+	for _, checks := range []int{1, 8, 64, 129} {
 		ctx := &resizeCancelContext{Context: t.Context(), remaining: checks}
 		if got, err := resizeFrame(ctx, src, image.Pt(256, 128)); got != nil || !errors.Is(err, context.Canceled) {
 			t.Errorf("cancel after %d checks: frame=%v, error=%v", checks, got, err)
@@ -55,6 +51,23 @@ func TestResizeFrameCancellation(t *testing.T) {
 	cancel()
 	if _, err := resizeFrame(ctx, src, src.Rect.Size()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("unchanged dimensions ignored cancellation: %v", err)
+	}
+}
+
+func TestResizeFrameBilinear(t *testing.T) {
+	src := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	for i, value := range []byte{0, 64, 128, 192} {
+		offset := src.PixOffset(1+i%2, 1+i/2)
+		copy(src.Pix[offset:offset+4], []byte{value, value, value, value})
+	}
+	got, err := resizeFrame(t.Context(), src.SubImage(image.Rect(1, 1, 3, 3)).(*image.NRGBA), image.Pt(1, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range got.Pix {
+		if value != 96 {
+			t.Fatalf("bilinear channel = %d, want 96", value)
+		}
 	}
 }
 
