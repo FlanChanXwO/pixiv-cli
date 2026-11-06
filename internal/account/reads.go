@@ -13,7 +13,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
-// ReadSession 持有短期 SDK client；凭据不会离开账号 owner。
+// ReadSession 关联短期 SDK client 与已保存的凭据版本；Invalidated 通知该代次失效。
 type ReadSession struct {
 	Client      *pixiv.Client
 	Revision    int64
@@ -134,7 +134,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	return session, nil
 }
 
-// Invalidate 只丢弃失败的 代次，保留并发替换产生的新值。
+// Invalidate 只丢弃失败的代次，保留并发替换产生的新值。
 func (m *ReadSessions) Invalidate(uid int64, version uint64, err error) {
 	var classified *sdk.Error
 	if !errors.As(err, &classified) || (classified.Reason != sdk.Unauthorized && classified.Reason != sdk.CredentialsExpired && classified.HTTPStatus != 401) {
@@ -152,9 +152,9 @@ func (m *ReadSessions) discard(uid int64, version uint64) {
 	}
 }
 
-// Close 在 MCP 宿主 生命周期结束时释放空闲传输。
+// Close 在 MCP 宿主生命周期结束时释放空闲传输。
 func (m *ReadSessions) Close() error {
-	// 先唤醒占有mu的本地锁等待与在途读取，不能先取得mu再取消生命周期。
+	// 先唤醒占有 mu的本地锁等待与在途读取，不能先取得 mu再取消生命周期。
 	m.cancel()
 	m.mu.Lock()
 	m.closed = true
@@ -172,7 +172,7 @@ func (e readEntry) close() {
 	e.transport.CloseIdleConnections()
 }
 
-// 原始读取租约（例如媒体 tool）在上游 401 时同样作废当前 代次，不重试失败请求，
+// 原始读取租约（例如媒体 tool）在上游 401 时同样作废当前代次，不重试失败请求，
 // 也不改变 SDK 的错误分类。
 type readSessionTransport struct {
 	inner    http.RoundTripper
@@ -203,7 +203,7 @@ func (t *readSessionTransport) RoundTrip(r *http.Request) (*http.Response, error
 	}
 	response, err := t.inner.RoundTrip(r.Clone(ctx))
 	if response != nil && response.StatusCode == http.StatusUnauthorized {
-		// 返回本次401 完整正文；失效只主动取消同一代次的其他传输。
+		// 返回本次 401 的完整正文；失效只主动取消同一代次的其他传输。
 		stop()
 		t.owner.Invalidate(t.userID, t.version.Load(), sdk.NewError("pixiv", "Read", sdk.Unauthorized))
 	}

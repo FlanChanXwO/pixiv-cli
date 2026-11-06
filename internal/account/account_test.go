@@ -129,13 +129,44 @@ func TestMigratedFileDoesNotReadLegacyAgain(t *testing.T) {
 }
 
 func TestMalformedPoolFilePreserved(t *testing.T) {
+	for _, tc := range []struct{ name, pool string }{
+		{"missing", ""},
+		{"misspelled-freeze", `,"pool":{"enabled":true,"frozenUntil":"2026-11-06T00:00:00Z"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, "auth.json")
+			body := `{"schema":"pixiv-cli.auth","version":1,"pixiv":[{"user_id":1,"revision":1,"refresh_token":"test","created_at":"2026-11-06T00:00:00Z","updated_at":"2026-11-06T00:00:00Z"` + tc.pool + `}],"fanbox":[]}`
+			require.NoError(t, os.WriteFile(path, []byte(body), 0600))
+			_, err := account.Open(t.Context(), directory)
+			require.Error(t, err)
+			after, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, body, string(after))
+		})
+	}
+}
+
+func TestExistingAccountFileKeepsPrivatePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permissions are enforced on Unix platforms")
+	}
 	directory := t.TempDir()
-	path := filepath.Join(directory, "auth.json")
-	body := `{"schema":"pixiv-cli.auth","version":1,"pixiv":[{"user_id":1,"revision":1,"refresh_token":"test","created_at":"2026-11-06T00:00:00Z","updated_at":"2026-11-06T00:00:00Z"}],"fanbox":[]}`
-	require.NoError(t, os.WriteFile(path, []byte(body), 0600))
 	_, err := account.Open(t.Context(), directory)
-	require.Error(t, err)
+	require.NoError(t, err)
+	path := filepath.Join(directory, "auth.json")
+	require.NoError(t, os.Chmod(path, 0644))
+	body, err := os.ReadFile(path)
+	require.NoError(t, err)
+	before, err := os.Stat(path)
+	require.NoError(t, err)
+	_, err = account.Open(t.Context(), directory)
+	require.NoError(t, err)
+	stat, err := os.Stat(path)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0600), stat.Mode().Perm())
+	require.Equal(t, before.ModTime(), stat.ModTime())
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
-	require.Equal(t, body, string(after))
+	require.Equal(t, body, after)
 }

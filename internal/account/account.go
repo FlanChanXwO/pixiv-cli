@@ -2,6 +2,10 @@
 //
 // [Open] 在文件锁内读取或迁移 auth.json；[Store] 的读取每次取得当前文件快照，
 // 不持有 SQLite 连接。默认账号与网络配置由调用方管理。
+//
+// 包的组成：[Store] 保存 [Pixiv] 与 [Fanbox] 的有序快照和凭据版本，
+// [ReadSessions] 按版本复用读取客户端，[Scheduler] 编排安全的账号池重放，
+// [LoginService] 处理一次性登录与凭据保存。
 package account
 
 import (
@@ -12,6 +16,7 @@ import (
 	"path/filepath"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
 const (
@@ -40,7 +45,7 @@ func (s *Store) withLock(ctx context.Context, action func() error) error {
 }
 
 func (s *Store) read(ctx context.Context) (document, error) {
-	body, err := os.ReadFile(s.path)
+	body, err := secretfile.ReadPrivateFile(s.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return document{}, fmt.Errorf("account: read file: %w", err)
 	}

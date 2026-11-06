@@ -13,11 +13,11 @@ import (
 )
 
 type document struct {
-	Schema     string   `json:"schema"`
-	Version    int      `json:"version"`
-	LastUserID int64    `json:"pixiv_pool_last_user_id"`
-	Pixiv      []Pixiv  `json:"pixiv"`
-	Fanbox     []Fanbox `json:"fanbox"`
+	Schema     string
+	Version    int
+	LastUserID int64
+	Pixiv      []Pixiv
+	Fanbox     []Fanbox
 }
 
 // 凭据只在文件编码的边界显式展开；账号值的普通 JSON、fmt 与 slog 都保持脱敏。

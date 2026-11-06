@@ -1,6 +1,7 @@
 package account
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"time"
@@ -34,7 +35,9 @@ func (m *Membership) UnmarshalJSON(body []byte) error {
 		Enabled     *bool      `json:"enabled"`
 		FrozenUntil *time.Time `json:"frozen_until"`
 	}
-	if err := json.Unmarshal(body, &value); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
 		return err
 	}
 	if value.Enabled == nil {
