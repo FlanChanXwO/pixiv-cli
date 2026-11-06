@@ -56,6 +56,9 @@ func checkJPEGAnimation(t *testing.T, body []byte, input Input, size image.Point
 			if frame.Bounds().Size() != size || animation.Delay[i]*10 != input.Frames[i].Delay {
 				t.Fatalf("GIF frame %d dimensions or delay differs", i)
 			}
+			// 低色数 JPEG fixture 每通道允许 8 级量化误差。
+			const maxChannelError = 8
+			checkJPEGCanvas(t, input.Frames[i].File, frame, maxChannelError)
 		}
 		return
 	}
@@ -67,11 +70,11 @@ func checkJPEGAnimation(t *testing.T, body []byte, input Input, size image.Point
 		if frame.image.Bounds().Size() != size || int(frame.numerator)*1000 != input.Frames[i].Delay*int(frame.denominator) {
 			t.Fatalf("APNG frame %d dimensions or delay differs", i)
 		}
-		checkJPEGCanvas(t, input.Frames[i].File, frame.image)
+		checkJPEGCanvas(t, input.Frames[i].File, frame.image, 0)
 	}
 }
 
-func checkJPEGCanvas(t *testing.T, file string, canvas *image.NRGBA) {
+func checkJPEGCanvas(t *testing.T, file string, canvas image.Image, maxChannelError int) {
 	t.Helper()
 	body, err := os.ReadFile(filepath.Join("testdata", file))
 	if err != nil {
@@ -81,11 +84,19 @@ func checkJPEGCanvas(t *testing.T, file string, canvas *image.NRGBA) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err = resizeFrame(t.Context(), want, canvas.Rect.Size())
+	want, err = resizeFrame(t.Context(), want, canvas.Bounds().Size())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(canvas.Pix, want.Pix) {
-		t.Fatalf("APNG canvas for %s differs", file)
+	for y := range want.Rect.Dy() {
+		for x := range want.Rect.Dx() {
+			r, g, b, a := canvas.At(x, y).RGBA()
+			wr, wg, wb, wa := want.At(x, y).RGBA()
+			for _, delta := range []int{int(r) - int(wr), int(g) - int(wg), int(b) - int(wb), int(a) - int(wa)} {
+				if delta < -maxChannelError*0x101 || delta > maxChannelError*0x101 {
+					t.Fatalf("%s pixel (%d,%d) differs by %d/257", file, x, y, delta)
+				}
+			}
+		}
 	}
 }

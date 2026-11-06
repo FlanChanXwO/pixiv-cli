@@ -18,9 +18,9 @@ type frameQuantizer struct {
 }
 
 func newFrameQuantizer(palette []rgb, hasTransparency bool) (*frameQuantizer, error) {
-	limit := 256
+	limit := maxGIFPaletteColors
 	if hasTransparency {
-		limit = 255
+		limit--
 	}
 	if len(palette) > limit {
 		return nil, fmt.Errorf("palette has %d colors, maximum is %d", len(palette), limit)
@@ -91,6 +91,7 @@ func (q *frameQuantizer) quantize(ctx context.Context, frame *image.NRGBA) ([]by
 	return indices, nil
 }
 
+// shortcut: 每像素扫描至多 256 色；实际量化延迟影响调用时再引入查找索引。
 func nearestColor(palette []rgb, value [3]float32) byte {
 	best := 0
 	distance := float32(math.Inf(1))

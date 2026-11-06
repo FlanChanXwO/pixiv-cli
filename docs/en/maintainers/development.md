@@ -57,12 +57,14 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | --- | --- |
 | Per-frame bounds | Project constants `maxFrameSourceBytes` and `maxFrameDecodedBytes` each allow 512 MiB: ZIP member source bytes and the pre-decode allocation estimate, respectively |
 | Over the bound | declared size → fail before reading; actual expansion → fail during chunked reading; invalid/overflowing dimensions or estimates → error. No truncation or fallback |
-| Cancellation | checked before/after each read chunk and image decode; PNG/JPEG decode loops have no callback, so mid-frame cancellation is seen when that decode returns |
+| Cancellation | checked before/after each read chunk and image decode, per row during resizing/quantization, and on standard-encoder writes and completion; PNG/JPEG decode loops return before cancellation is observed, and standard GIF/PNG encoding latency follows their write granularity |
 | Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
 
 The decode estimate rounds each dimension up to 32 pixels and charges 24 bytes per pixel for JPEG coefficients/planes and conversion space. This conservative estimate can reject large grayscale or other low-channel images earlier than the previous color-type estimate.
 
 **Encoding and memory** — GIF reads the ZIP twice: a global RGB Wu histogram produces one palette, then serpentine Floyd–Steinberg dithering produces full indexed frames for `gif.EncodeAll`. All indexed frames remain in memory until output, about frame count × width × height bytes plus metadata; color frames are decoded one at a time. APNG encodes each changed rectangle as RGBA8 using `png.Encode`, buffers that frame's compressed PNG, then forwards its IDAT data into animation chunks with Source blending and None disposal. Per-frame budgets apply alongside these retained animation buffers.
+
+Nearest-color matching scans up to 256 palette entries per pixel. Large GIF frames therefore spend more CPU time in quantization and hold the shared encoding slot longer; cancellation is checked between rows.
 
 `Input.MaxEdge` keeps aspect ratio with bilinear resizing; zero preserves the original dimensions. The downloader, MCP tool and MCP media proxy currently leave it at zero. Multi-frame GIF and APNG loop indefinitely; standard-library single-frame GIF output omits the loop extension. JPEG rounding, GIF palette/dithering and resized pixels may differ slightly from earlier output, and file sizes may change. Validate complete rendered canvases, dimensions, timing and loops when comparing encoders.
 

@@ -10,6 +10,11 @@ import (
 // Copyright (c) 2023 Ian Manske，按 MIT 使用；许可见
 // third_party/licenses/quantette-0.6.0/LICENSE-MIT。
 
+const (
+	wuHistogramBits = 5
+	wuHistogramBins = 1 << wuHistogramBits
+)
+
 type wuStats struct {
 	count      uint64
 	components [3]float64
@@ -37,20 +42,20 @@ type wuCube struct {
 	variance float64
 }
 
-type wuHistogram [32][32][32]wuStats
+type wuHistogram [wuHistogramBins][wuHistogramBins][wuHistogramBins]wuStats
 
 func wuPalette(ctx context.Context, hist *wuHistogram, size int) ([]rgb, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if size < 1 || size > 256 {
+	if size < 1 || size > maxGIFPaletteColors {
 		return nil, fmt.Errorf("invalid palette size %d", size)
 	}
 	for r := range hist {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		var area [32]wuStats
+		var area [wuHistogramBins]wuStats
 		for g := range hist[r] {
 			var line wuStats
 			for b := range hist[r][g] {
@@ -63,7 +68,7 @@ func wuPalette(ctx context.Context, hist *wuHistogram, size int) ([]rgb, error) 
 			}
 		}
 	}
-	cubes := []wuCube{{max: [3]int{32, 32, 32}}}
+	cubes := []wuCube{{max: [3]int{wuHistogramBins, wuHistogramBins, wuHistogramBins}}}
 	if hist.volume(cubes[0]).count == 0 {
 		return nil, nil
 	}

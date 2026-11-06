@@ -35,7 +35,7 @@ func (s *colorStatistics) addFrame(ctx context.Context, frame *image.NRGBA) erro
 				return fmt.Errorf("ugoira color statistics overflow")
 			}
 			s.opaquePixels++
-			bin := &s.histogram[row[x]>>3][row[x+1]>>3][row[x+2]>>3]
+			bin := &s.histogram[row[x]>>(8-wuHistogramBits)][row[x+1]>>(8-wuHistogramBits)][row[x+2]>>(8-wuHistogramBits)]
 			bin.count++
 			for c := range bin.components {
 				v := float64(row[x+c])
@@ -48,7 +48,7 @@ func (s *colorStatistics) addFrame(ctx context.Context, frame *image.NRGBA) erro
 }
 
 func globalPalette(ctx context.Context, statistics *colorStatistics) ([]rgb, error) {
-	size := 256
+	size := maxGIFPaletteColors
 	if statistics.hasTransparency {
 		size--
 	}

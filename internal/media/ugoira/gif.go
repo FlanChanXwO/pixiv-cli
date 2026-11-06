@@ -11,6 +11,8 @@ import (
 	"math"
 )
 
+const maxGIFPaletteColors = 256
+
 func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	archive, err := openFrameArchive(ctx, input)
 	if err != nil {
@@ -56,7 +58,7 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	if err != nil {
 		return err
 	}
-	colors := make(color.Palette, 0, 256)
+	colors := make(color.Palette, 0, maxGIFPaletteColors)
 	if hasTransparency {
 		colors = append(colors, color.NRGBA{})
 	}
