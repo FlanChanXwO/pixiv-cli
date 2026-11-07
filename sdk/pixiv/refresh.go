@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
@@ -75,6 +76,9 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 func (c *Client) refresh(ctx context.Context, previous Credentials) (Credentials, error) {
 	if previous.RefreshToken.Empty() {
 		return Credentials{}, newError("refresh", sdk.CredentialsExpired, "refresh token is required to renew credentials", nil)
+	}
+	if previous.Revision == math.MaxInt64 {
+		return Credentials{}, newError("refresh", sdk.LocalStateError, "credential revision cannot advance", nil)
 	}
 	auth := oauth.New(previous.RefreshToken.Value(), oauth.Config{HTTPClient: c.http, Logger: protocolLogger()})
 	if err := auth.Refresh(ctx); err != nil {
