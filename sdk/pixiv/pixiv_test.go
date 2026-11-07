@@ -156,6 +156,9 @@ func TestCursorQueryBinding(t *testing.T) {
 	changed.Account = "12"
 	_, err = cursor.Decode(token, changed)
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+	var malformed sdk.Cursor
+	err = json.Unmarshal([]byte(`{}`), &malformed)
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 }
 
 func TestUnboundPage(t *testing.T) {

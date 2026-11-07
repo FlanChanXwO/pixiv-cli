@@ -1,6 +1,9 @@
 package sdk
 
-import "encoding/base64"
+import (
+	"encoding/base64"
+	"encoding/json"
+)
 
 // Cursor holds an opaque continuation received from a product SDK. Its zero
 // value starts a query or marks the last page. Persist String and parse it with
@@ -38,4 +41,17 @@ func (c *Cursor) UnmarshalText(text []byte) error {
 	}
 	*c = parsed
 	return nil
+}
+
+// UnmarshalJSON accepts the persistent JSON string form, including "" for the
+// zero cursor. Other JSON values return InvalidArgument and leave c unchanged.
+func (c *Cursor) UnmarshalJSON(data []byte) error {
+	var text *string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return newError(InvalidArgument, "Cursor.UnmarshalJSON", "cursor must be a JSON string", err)
+	}
+	if text == nil {
+		return newError(InvalidArgument, "Cursor.UnmarshalJSON", "cursor must be a JSON string", nil)
+	}
+	return c.UnmarshalText([]byte(*text))
 }
