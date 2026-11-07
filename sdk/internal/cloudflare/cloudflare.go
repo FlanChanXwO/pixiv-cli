@@ -8,7 +8,8 @@
 // FlareSolverr control requests are direct and carry no product credentials.
 // PersistentSession selects the session protocol required by ascii2d; FANBOX
 // uses a direct request.get. Concurrent solves share one cancellable request and
-// an expiring cache. Close cancels pending solves and destroys a created session.
+// an expiring cache. Close cancels pending solves and cleans up attempted
+// persistent sessions, including creation whose acknowledgment was lost.
 package cloudflare
 
 import (
@@ -117,7 +118,7 @@ func (c *Client) CloseIdleConnections() {
 	}
 }
 
-// Close cancels and joins pending solves, destroys an existing browser session,
+// Close cancels and joins pending solves, cleans up attempted browser sessions,
 // and releases idle connections. A failed destroy can be retried with Close.
 // The caller must finish native requests before closing their transport.
 func (c *Client) Close(ctx context.Context) error {

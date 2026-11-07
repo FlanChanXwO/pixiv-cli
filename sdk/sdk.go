@@ -10,13 +10,18 @@
 // the original request and use the same account. Here list is the original
 // product list operation, and request contains its original query options:
 //
-//	request.Cursor, err = sdk.ParseCursor(saved)
+//	resume, err := sdk.ParseCursor(saved)
 //	if err != nil {
 //		return err
 //	}
+//	if resume.IsZero() {
+//		return nil // The saved page was the last batch.
+//	}
+//	request.Cursor = resume
 //	page, err = list(ctx, request)
 //
-// Check Cursor.IsZero before resuming: an empty cursor starts a fresh query.
+// Keep every original query option; a mismatch returns [InvalidArgument] before
+// a content request. An empty cursor starts a fresh query.
 // During a live iteration, page.Next(ctx) keeps the client and query bound.
 // JSON-decoded pages retain data and cursors; resume them through the list
 // operation to restore that binding.

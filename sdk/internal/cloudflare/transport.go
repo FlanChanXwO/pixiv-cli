@@ -62,6 +62,7 @@ func newBrowserTransport(proxyURL *url.URL) (tlsclient.HttpClient, error) {
 
 // RoundTrip sends one native request with the Chrome 146 TLS profile. It never
 // invokes the solver or follows redirects; the outer http.Client owns redirects.
+// Cancellation follows request.Context, as required by http.RoundTripper.
 // Header ordering metadata stays in fhttp and is never added to request.Header.
 func (c *Client) RoundTrip(request *http.Request) (*http.Response, error) {
 	converted, err := fhttp.NewRequestWithContext(request.Context(), request.Method, request.URL.String(), request.Body)
@@ -132,6 +133,7 @@ type proxyDialer struct {
 	headers  http.Header
 }
 
+// DialContext binds proxy dialing and the CONNECT exchange to ctx cancellation.
 func (d *proxyDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	var conn net.Conn
 	var err error

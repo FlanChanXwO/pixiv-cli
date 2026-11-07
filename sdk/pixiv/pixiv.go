@@ -5,10 +5,31 @@
 // storage locks, and saves through a revision comparison before using new tokens.
 // [NewMemoryCredentials] supplies storage for applications that need no file.
 // All content requests require credentials; configuration and account selection
-// remain with the caller. Logs use the current slog default logger.
+// remain with the caller. Logs use the current slog default logger; use
+// [slog.SetDefault] to route events into the application's handler.
 //
 // [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
 // URL and persists the credentials returned by Complete before content requests.
+//
+// # In-memory credentials
+//
+// To start from a refresh token without file persistence:
+//
+//	store, err := pixiv.NewMemoryCredentials(pixiv.NewCredentials(refreshToken))
+//	if err != nil {
+//		return err
+//	}
+//	client, err := pixiv.New(store, pixiv.Options{})
+//	if err != nil {
+//		return err
+//	}
+//	defer client.CloseIdleConnections()
+//
+// For persistent storage, implement [CredentialStore]. Load returns the latest
+// saved revision; CompareAndSwap completes persistence before returning true.
+// Release storage locks when each method returns: OAuth runs between calls.
+// The client adopts a newer saved revision after a conflict, and a failed save
+// fails the operation before the rotated credentials can be used.
 package pixiv
 
 import (
