@@ -66,7 +66,7 @@ type Client struct {
 	language      string
 	resourceHosts []string
 	gate          chan struct{}
-	cached        Credentials  // Protected by gate; only persisted revisions are cached.
+	cached        *Credentials // Protected by gate; a pointer keeps token fields opaque in value diagnostics.
 	userID        atomic.Int64 // Identity reads must not race its first binding.
 }
 

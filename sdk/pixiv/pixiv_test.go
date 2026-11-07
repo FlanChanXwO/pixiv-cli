@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -156,8 +157,7 @@ func TestCursorQueryBinding(t *testing.T) {
 	changed.Account = "12"
 	_, err = cursor.Decode(token, changed)
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-	var malformed sdk.Cursor
-	err = json.Unmarshal([]byte(`{}`), &malformed)
+	err = json.Unmarshal([]byte(`{}`), new(sdk.Cursor))
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 }
 
@@ -173,26 +173,28 @@ func TestUnboundPage(t *testing.T) {
 }
 
 func TestErrorChainAndPrivacy(t *testing.T) {
-	failure := &sdk.Error{Reason: sdk.LocalStateError, Operation: "save", Message: "credential save failed", Err: context.Canceled}
+	failure := &sdk.Error{Reason: sdk.LocalStateError, Operation: "save", Message: "credential save failed", Err: &url.Error{URL: "https://fixture.invalid?token=secret-fixture", Err: context.Canceled}}
 	require.ErrorIs(t, failure, context.Canceled)
 	require.ErrorIs(t, failure, &sdk.Error{Reason: sdk.LocalStateError})
 	require.Equal(t, sdk.LocalStateError, sdk.ReasonOf(fmt.Errorf("wrapped: %w", failure)))
-	failure.Err = errors.New("secret-fixture")
 	for _, format := range []string{"%v", "%+v", "%#v", "%q"} {
 		require.NotContains(t, fmt.Sprintf(format, failure), "secret-fixture")
 	}
-	require.Equal(t, "secret-fixture", errors.Unwrap(failure).Error())
-	failure.Err = &url.Error{URL: "https://fixture.invalid?token=secret-fixture", Err: context.Canceled}
+	require.Same(t, failure.Err, errors.Unwrap(failure))
 	data, err := json.Marshal(failure)
 	require.NoError(t, err)
 	require.NotContains(t, string(data), "secret-fixture")
 	credentials := NewCredentials("credential-fixture")
+	credentials.SetTokens("credential-fixture", "credential-fixture")
+	credentials.UserID = 11
 	store, err := NewMemoryCredentials(credentials)
 	require.NoError(t, err)
 	client, err := New(store, Options{})
 	require.NoError(t, err)
 	defer client.CloseIdleConnections()
+	_, err = client.credentials(t.Context(), Credentials{})
+	require.NoError(t, err)
 	for _, format := range []string{"%v", "%+v", "%#v"} {
-		require.NotContains(t, fmt.Sprintf(format, []any{credentials, store, client}), "credential-fixture")
+		require.NotRegexp(t, `credential-fixture|\[99 114 101|\[\]uint8\{0x63, 0x72, 0x65`, fmt.Sprintf(format, []any{credentials, store, client, reflect.ValueOf(client).Elem().Interface()}))
 	}
 }

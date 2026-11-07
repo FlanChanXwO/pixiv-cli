@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	tlsclient "github.com/bogdanfinn/tls-client"
 )
@@ -39,6 +40,11 @@ const (
 	sessionUncertain
 	sessionReady
 )
+
+type solverCredentials struct {
+	proxy   credential.Secret
+	session credential.Secret
+}
 
 // Options separates the native route from the solver's browser route. The
 // product supplies its anonymous Origin; product cookies never reach the solver.
@@ -58,8 +64,7 @@ type Client struct {
 	control     *http.Client
 	endpoint    string
 	origin      *url.URL
-	solverProxy string
-	session     string
+	credentials *solverCredentials // Pointer keeps private secret fields opaque in value diagnostics.
 	sessionMu   sync.Mutex
 	phase       sessionPhase // Protected by sessionMu; uncertain creation still requires cleanup.
 	mu          sync.Mutex
@@ -75,7 +80,7 @@ func New(options Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &Client{}
+	client := &Client{credentials: &solverCredentials{}}
 	if options.FlareSolverrURL != "" {
 		service, err := httpURL(options.FlareSolverrURL)
 		if err != nil {
@@ -94,10 +99,11 @@ func New(options Options) (*Client, error) {
 			}
 		}
 		client.endpoint = strings.TrimRight(service.String(), "/") + solverAPIPath
-		client.origin, client.solverProxy = origin, options.FlareSolverrProxyURL
+		client.origin = origin
+		client.credentials.proxy = credential.New([]byte(options.FlareSolverrProxyURL))
 		client.control = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		if options.PersistentSession {
-			client.session = solverSessionPrefix + rand.Text()
+			client.credentials.session = credential.New([]byte(solverSessionPrefix + rand.Text()))
 		}
 	}
 	client.native, err = newBrowserTransport(proxyURL)
@@ -142,7 +148,7 @@ func (c *Client) Close(ctx context.Context) error {
 	if c.phase == sessionUnused {
 		return nil
 	}
-	_, err := c.call(ctx, solverRequest{Command: commandDestroy, Session: c.session})
+	_, err := c.call(ctx, solverRequest{Command: commandDestroy, Session: c.credentials.session.Value()})
 	if err == nil {
 		c.phase = sessionUnused
 	}

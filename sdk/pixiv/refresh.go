@@ -35,11 +35,11 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 		if err := c.bindIdentity(latest.UserID); err != nil {
 			return Credentials{}, err
 		}
-		if c.cached.Revision == latest.Revision && c.cached.usable() {
-			latest = c.cached
+		if c.cached != nil && c.cached.Revision == latest.Revision && c.cached.usable() {
+			latest = *c.cached
 		}
 		if latest.usable() && (rejected.AccessToken.Empty() || latest.Revision != rejected.Revision || latest.AccessToken.Value() != rejected.AccessToken.Value()) {
-			c.cached = latest
+			c.cached = &latest
 			return latest, nil
 		}
 		// 2. Exchange credentials after Load has released its storage lock.
@@ -67,7 +67,7 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 			slog.DebugContext(ctx, "Credential revision changed; loading the saved credentials")
 			continue
 		}
-		c.cached = rotated
+		c.cached = &rotated
 		slog.DebugContext(ctx, "Refreshed credentials saved")
 		return rotated, nil
 	}

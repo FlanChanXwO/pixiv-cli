@@ -72,13 +72,13 @@ type solverCookie struct {
 
 func (c *Client) solve(ctx context.Context, target string) (Clearance, error) {
 	request := solverRequest{Command: commandGet, URL: target}
-	if c.session != "" {
+	if !c.credentials.session.Empty() {
 		if err := c.createSession(ctx); err != nil {
 			return Clearance{}, err
 		}
-		request.Session, request.MaxTimeout = c.session, sessionMaxTimeout
-	} else if c.solverProxy != "" {
-		request.Proxy = &solverProxy{URL: c.solverProxy}
+		request.Session, request.MaxTimeout = c.credentials.session.Value(), sessionMaxTimeout
+	} else if !c.credentials.proxy.Empty() {
+		request.Proxy = &solverProxy{URL: c.credentials.proxy.Value()}
 	}
 	response, err := c.call(ctx, request)
 	if err != nil {
@@ -97,9 +97,9 @@ func (c *Client) createSession(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	request := solverRequest{Command: commandCreate, Session: c.session}
-	if c.solverProxy != "" {
-		request.Proxy = &solverProxy{URL: c.solverProxy}
+	request := solverRequest{Command: commandCreate, Session: c.credentials.session.Value()}
+	if !c.credentials.proxy.Empty() {
+		request.Proxy = &solverProxy{URL: c.credentials.proxy.Value()}
 	}
 	// A canceled or lost response does not prove that the remote session was not created.
 	c.phase = sessionUncertain
