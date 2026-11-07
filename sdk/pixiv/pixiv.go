@@ -6,6 +6,9 @@
 // [NewMemoryCredentials] supplies storage for applications that need no file.
 // All content requests require credentials; configuration and account selection
 // remain with the caller. Logs use the current slog default logger.
+//
+// [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
+// URL and persists the credentials returned by Complete before content requests.
 package pixiv
 
 import (
