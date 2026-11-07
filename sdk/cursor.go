@@ -5,7 +5,8 @@ import "encoding/base64"
 // Cursor holds an opaque continuation received from a product SDK. Its zero
 // value starts a query or marks the last page. Persist String and parse it with
 // ParseCursor, then pass the result in the original query's Cursor field.
-// Product operations validate the query and account binding before network I/O.
+// Product operations validate the query and account binding before sending a
+// content request.
 // Cursors contain no credentials and provide no cryptographic authenticity.
 type Cursor struct {
 	text string

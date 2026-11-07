@@ -25,6 +25,7 @@ package sdk
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Reason identifies the category of an SDK failure.
@@ -68,8 +69,9 @@ type Error struct {
 	Reason     Reason
 	Operation  string
 	Message    string
-	HTTPStatus int // Zero when no HTTP response was received.
-	Err        error
+	HTTPStatus int            // Zero when no HTTP response was received.
+	RetryAfter *time.Duration // Present only when the upstream supplied a valid Retry-After.
+	Err        error          `json:"-"` // Inspect with Unwrap; causes are excluded from JSON diagnostics.
 }
 
 func newError(reason Reason, operation, message string, cause error) *Error {
