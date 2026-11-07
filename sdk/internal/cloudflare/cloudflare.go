@@ -31,6 +31,14 @@ const (
 	operationClose     = "cloudflare.Close"
 )
 
+type sessionPhase uint8
+
+const (
+	sessionUnused sessionPhase = iota
+	sessionUncertain
+	sessionReady
+)
+
 // Options separates the native route from the solver's browser route. The
 // product supplies its anonymous Origin; product cookies never reach the solver.
 type Options struct {
@@ -52,7 +60,7 @@ type Client struct {
 	solverProxy string
 	session     string
 	sessionMu   sync.Mutex
-	created     bool // Protected by sessionMu.
+	phase       sessionPhase // Protected by sessionMu; uncertain creation still requires cleanup.
 	mu          sync.Mutex
 	state       *Clearance
 	active      *solveCall
@@ -130,12 +138,12 @@ func (c *Client) Close(ctx context.Context) error {
 	}
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()
-	if !c.created {
+	if c.phase == sessionUnused {
 		return nil
 	}
 	_, err := c.call(ctx, solverRequest{Command: commandDestroy, Session: c.session})
 	if err == nil {
-		c.created = false
+		c.phase = sessionUnused
 	}
 	return err
 }

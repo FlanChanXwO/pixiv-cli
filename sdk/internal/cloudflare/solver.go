@@ -91,16 +91,21 @@ func (c *Client) createSession(ctx context.Context) error {
 	// Serializing creation prevents concurrent Close calls from destroying a new session.
 	c.sessionMu.Lock()
 	defer c.sessionMu.Unlock()
-	if c.created {
+	if c.phase == sessionReady {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	request := solverRequest{Command: commandCreate, Session: c.session}
 	if c.solverProxy != "" {
 		request.Proxy = &solverProxy{URL: c.solverProxy}
 	}
+	// A canceled or lost response does not prove that the remote session was not created.
+	c.phase = sessionUncertain
 	_, err := c.call(ctx, request)
 	if err == nil {
-		c.created = true
+		c.phase = sessionReady
 	}
 	return err
 }
