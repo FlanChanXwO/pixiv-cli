@@ -157,7 +157,7 @@ func (c *Client) do(ctx context.Context, req request) (*http.Response, error) {
 			return nil, Transport(err)
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && req.retryRateLimit && !rateRetried {
-			if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+			if wait, ok := ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
 				rateRetried = true
 				c.log.LogAttrs(ctx, slog.LevelWarn, "Rate limited; retrying after wait",
 					logging.OperationAttr(ctx), slog.Duration(logging.AttrWait, wait))
@@ -225,7 +225,7 @@ func readBody(resp *http.Response) ([]byte, error) {
 		return nil, Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		retryAfter, present := parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
+		retryAfter, present := ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 		return nil, HTTPStatusWithRetryAfter(resp.StatusCode, retryAfter, present)
 	}
 	return body, nil
@@ -298,7 +298,8 @@ func (c *Client) apiHeaders() map[string]string {
 	return headers
 }
 
-func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+// ParseRetryAfter 解析服务端秒数或 HTTP 日期；合法的零等待与缺失/无效值通过 bool 区分。
+func ParseRetryAfter(value string, now time.Time) (time.Duration, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return 0, false

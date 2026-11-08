@@ -94,7 +94,7 @@ func (s *LoginSession) Complete(ctx context.Context, callbackOrCode string) (Cre
 	if !s.used.CompareAndSwap(false, true) {
 		return Credentials{}, newError("LoginSession.Complete", sdk.InvalidArgument, "login session was already consumed", nil)
 	}
-	auth := oauth.New("", oauth.Config{HTTPClient: s.http, Logger: protocolLogger()})
+	auth := oauth.New("", oauth.Config{HTTPClient: s.http, Logger: protocolLogger(), PreferConfiguredLogger: true})
 	token, err := auth.ExchangeAuthorizationCode(ctx, code, s.verifier.Value())
 	if err != nil {
 		return Credentials{}, classifyError("LoginSession.Complete", err, true)

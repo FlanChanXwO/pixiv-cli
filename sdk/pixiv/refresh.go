@@ -38,7 +38,7 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 		if c.cached != nil && c.cached.Revision == latest.Revision && c.cached.usable() {
 			latest = *c.cached
 		}
-		if latest.usable() && (rejected.AccessToken.Empty() || latest.Revision != rejected.Revision || latest.AccessToken.Value() != rejected.AccessToken.Value()) {
+		if latest.usable() && (rejected.AccessToken.Empty() || latest.AccessToken.Value() != rejected.AccessToken.Value()) {
 			c.cached = &latest
 			return latest, nil
 		}
@@ -67,6 +67,8 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 			slog.DebugContext(ctx, "Credential revision changed; loading the saved credentials")
 			continue
 		}
+		// The gate keeps the checked identity stable until persistence commits.
+		c.userID.CompareAndSwap(0, rotated.UserID)
 		c.cached = &rotated
 		slog.DebugContext(ctx, "Refreshed credentials saved")
 		return rotated, nil
@@ -80,18 +82,18 @@ func (c *Client) refresh(ctx context.Context, previous Credentials) (Credentials
 	if previous.Revision == math.MaxInt64 {
 		return Credentials{}, newError("refresh", sdk.LocalStateError, "credential revision cannot advance", nil)
 	}
-	auth := oauth.New(previous.RefreshToken.Value(), oauth.Config{HTTPClient: c.http, Logger: protocolLogger()})
+	auth := oauth.New(previous.RefreshToken.Value(), oauth.Config{HTTPClient: c.http, Logger: protocolLogger(), PreferConfiguredLogger: true})
 	if err := auth.Refresh(ctx); err != nil {
 		return Credentials{}, classifyError("refresh", err, true)
 	}
-	if strings.TrimSpace(auth.AccessToken()) == "" {
-		return Credentials{}, newError("refresh", sdk.MalformedUpstreamResponse, "OAuth response is missing an access token", nil)
+	if strings.TrimSpace(auth.AccessToken()) == "" || strings.TrimSpace(auth.RefreshTokenValue()) == "" {
+		return Credentials{}, newError("refresh", sdk.MalformedUpstreamResponse, "OAuth response is missing usable tokens", nil)
 	}
 	if auth.UserID() <= 0 {
 		return Credentials{}, newError("refresh", sdk.MalformedUpstreamResponse, "OAuth response is missing account identity", nil)
 	}
-	if err := c.bindIdentity(auth.UserID()); err != nil {
-		return Credentials{}, err
+	if id := c.userID.Load(); id != 0 && id != auth.UserID() {
+		return Credentials{}, newError("refresh", sdk.LocalStateError, "credential identity does not match this client", nil)
 	}
 	result := Credentials{UserID: auth.UserID(), DisplayName: auth.UserName(), Revision: previous.Revision + 1, ExpiresAt: auth.Expiry()}
 	result.SetTokens(auth.AccessToken(), auth.RefreshTokenValue())

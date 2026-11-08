@@ -83,7 +83,7 @@ func New(store CredentialStore, options Options) (*Client, error) {
 // Format keeps cached credentials and connection settings out of diagnostics.
 func (*Client) Format(state fmt.State, _ rune) { fmt.Fprint(state, "pixiv.Client{}") }
 
-// UserID reports the identity established by loaded or refreshed credentials,
+// UserID reports the identity established by loaded credentials or a committed refresh,
 // or zero before an operation has established it.
 func (c *Client) UserID() int64 { return c.userID.Load() }
 

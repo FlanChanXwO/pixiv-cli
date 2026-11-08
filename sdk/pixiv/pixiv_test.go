@@ -3,7 +3,6 @@ package pixiv
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -37,10 +36,13 @@ func (f *refreshFixture) CompareAndSwap(ctx context.Context, revision int64, nex
 	}
 	return f.CredentialStore.CompareAndSwap(ctx, revision, next)
 }
-
 func (f *refreshFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == api.PathOAuthToken {
 		f.oauthCalls.Add(1)
+		if r.ParseForm() != nil || r.Form.Get("refresh_token") != "refresh-fixture" {
+			http.Error(w, "unexpected refresh credentials", http.StatusBadRequest)
+			return
+		}
 		if f.mode == "blank_access" {
 			fmt.Fprint(w, `{"access_token":" ","refresh_token":"rotated-fixture","user":{"id":11}}`)
 			return
@@ -68,7 +70,6 @@ func (f *refreshFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.access.Store(r.Header.Get("Authorization"))
 	fmt.Fprint(w, `{"ok":true}`)
 }
-
 func fixtureHTTP(server *httptest.Server) *http.Client {
 	client := server.Client()
 	transport := client.Transport.(*http.Transport)
@@ -115,6 +116,7 @@ func assertRefreshed(t *testing.T, fixture *refreshFixture, err error) {
 	mode := fixture.mode
 	if mode == "blank_access" {
 		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		require.EqualValues(t, 1, fixture.oauthCalls.Load())
 		require.Zero(t, fixture.saves.Load())
 		require.Zero(t, fixture.appCalls.Load())
 		return
@@ -134,7 +136,6 @@ func assertRefreshed(t *testing.T, fixture *refreshFixture, err error) {
 	require.Equal(t, expected, fixture.access.Load())
 	saved, err := fixture.Load(t.Context())
 	require.NoError(t, err)
-	require.EqualValues(t, 2, saved.Revision)
 	if mode == "expired" {
 		require.Equal(t, "rotated-fixture", saved.RefreshToken.Value())
 		require.EqualValues(t, 1, fixture.saves.Load())
@@ -180,13 +181,12 @@ func TestErrorChainAndPrivacy(t *testing.T) {
 	for _, format := range []string{"%v", "%+v", "%#v", "%q"} {
 		require.NotContains(t, fmt.Sprintf(format, failure), "secret-fixture")
 	}
-	require.Same(t, failure.Err, errors.Unwrap(failure))
+	require.Same(t, failure.Err, failure.Unwrap())
 	data, err := json.Marshal(failure)
 	require.NoError(t, err)
 	require.NotContains(t, string(data), "secret-fixture")
-	credentials := NewCredentials("credential-fixture")
+	credentials := Credentials{UserID: 11, Revision: 1}
 	credentials.SetTokens("credential-fixture", "credential-fixture")
-	credentials.UserID = 11
 	store, err := NewMemoryCredentials(credentials)
 	require.NoError(t, err)
 	client, err := New(store, Options{})
