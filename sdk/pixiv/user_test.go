@@ -24,6 +24,15 @@ func TestUserDecodeClearsBinding(t *testing.T) {
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 	err = user.Follow(t.Context(), FollowOptions{})
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+	page := ArtworkPage{Artwork: &Artwork{ArtworkRef: client.Artwork(23)}}
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &page))
+	require.Nil(t, page.Artwork)
+	archive := UgoiraArchive{Image: Image{client: client}, Quality: UgoiraQualityMedium}
+	require.NoError(t, json.Unmarshal([]byte(`{"url":"https://i.pximg.net/f.zip","quality":"original"}`), &archive))
+	require.Equal(t, UgoiraQualityOriginal, archive.Quality)
+	_, err = archive.Open(t.Context())
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+
 }
 
 type userEndpoint struct {

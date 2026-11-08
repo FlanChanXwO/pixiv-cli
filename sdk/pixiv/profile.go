@@ -59,6 +59,7 @@ type profileVisibility struct {
 	Valid   bool
 }
 
+// UnmarshalJSON records whether a supplied visibility value matches the upstream boolean or string forms.
 func (v *profileVisibility) UnmarshalJSON(data []byte) error {
 	*v = profileVisibility{Present: true}
 	switch string(bytes.TrimSpace(data)) {

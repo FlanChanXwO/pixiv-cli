@@ -140,6 +140,7 @@ func (c *Client) profile(ctx context.Context, id int64, filter bool) (*Profile, 
 
 type blockedUserWire struct{ User userWire }
 
+// UnmarshalJSON accepts the wrapped and bare user forms returned by blocked-user lists.
 func (w *blockedUserWire) UnmarshalJSON(data []byte) error {
 	var wrapped struct {
 		User *userWire `json:"user"`

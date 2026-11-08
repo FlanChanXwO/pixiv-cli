@@ -142,3 +142,15 @@ type ArtworkPage struct {
 	Width     int      `json:"width"`
 	Height    int      `json:"height"`
 }
+
+// UnmarshalJSON clears the previous owner; decoding a complete Artwork restores
+// the page's link to that decoded, unbound artwork.
+func (p *ArtworkPage) UnmarshalJSON(data []byte) error {
+	type value ArtworkPage
+	var decoded value
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = ArtworkPage(decoded)
+	return nil
+}
