@@ -150,3 +150,40 @@ func TestImageSave(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "image bytes", string(data))
 }
+
+func TestRelatedArtworkContinuation(t *testing.T) {
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		require.Equal(t, api.PathIllustRelated, r.URL.Path)
+		require.Equal(t, "23", r.URL.Query().Get(api.ParamIllustID))
+		if calls == 1 {
+			fmt.Fprint(w, `{"illusts":[],"next_url":"https://app-api.pixiv.net/v2/illust/related?illust_id=23&seed_illust_ids[0]=24&viewed[0]=25"}`)
+		} else {
+			require.Equal(t, []string{"24"}, r.URL.Query()[api.ParamSeedIllustIDs])
+			require.Equal(t, []string{"25"}, r.URL.Query()[api.ParamViewed])
+			fmt.Fprint(w, `{"illusts":[]}`)
+		}
+	}))
+	defer server.Close()
+	value := NewCredentials("fixture-refresh")
+	value.SetTokens("fixture-access", "fixture-refresh")
+	value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
+	store, err := NewMemoryCredentials(value)
+	require.NoError(t, err)
+	client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+	require.NoError(t, err)
+	page, err := client.Artwork(23).Related(t.Context(), RelatedArtworksOptions{})
+	require.NoError(t, err)
+	_, err = client.Artwork(99).Related(t.Context(), RelatedArtworksOptions{Cursor: page.Cursor})
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+	data, err := json.Marshal(page)
+	require.NoError(t, err)
+	var decoded sdk.Page[*Artwork]
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	_, err = decoded.Next(t.Context())
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+	_, err = page.Next(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+}

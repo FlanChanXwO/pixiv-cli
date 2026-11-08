@@ -66,7 +66,7 @@ func firstImageURL(w imageURLsWire) string {
 }
 
 func (c *Client) mapUser(w userWire) (*User, error) {
-	u := &User{UserRef: c.User(w.ID), Name: w.Name, Account: w.Account, Comment: w.Comment, IsFollowed: w.IsFollowed}
+	u := &User{UserRef: c.User(w.ID), userData: userData{Name: w.Name, Account: w.Account, Comment: w.Comment, IsFollowed: w.IsFollowed}}
 	if w.ProfileImageURLs.Medium != nil {
 		image, err := c.image(*w.ProfileImageURLs.Medium, 0, 0)
 		if err != nil {
