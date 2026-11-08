@@ -46,7 +46,7 @@ The new SDK is a pure API library with page-level download support. Callers supp
 | Comments | All comments and doc comments under `sdk/` are English. Document every exported symbol. |
 | Dependencies | Root-module production builds remain CGO-free; race instrumentation follows the [development guide](development.md#ugoira-go-encoder). New SDK code references `tls-client` only from `sdk/internal/cloudflare`. |
 
-During migration, Pixiv uses the module-level `internal/pixiv/api` protocol layer, including its indirect logging dependency. The two existing Cloudflare implementations remain until their consumers migrate; new FANBOX and ascii2d SDK code shares `sdk/internal/cloudflare`.
+During migration, Pixiv uses the module-level `internal/pixiv/api` protocol layer, including its indirect logging dependency. The two existing Cloudflare implementations remain until their consumers migrate; new FANBOX and ascii2d SDK code shares `sdk/internal/cloudflare`. The architecture and SDK reference pages still describe the legacy clients, including their `Options.Logger`; consult the new packages' Go documentation for their current API.
 
 List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after consuming the current batch, parse it with `sdk.ParseCursor`, and pass it in the original list request's `Cursor` field with the same query and account. A zero cursor marks the last page; sending it starts a fresh query. Query or account mismatches return `InvalidArgument` before a content request. A live page's `Next(ctx)` retains its binding; a nonterminal JSON-decoded page resumes through the original list operation.
 

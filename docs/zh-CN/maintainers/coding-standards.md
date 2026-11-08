@@ -46,7 +46,7 @@
 | 注释 | `sdk/` 的全部注释与文档注释使用英文；每个导出符号都有文档注释。 |
 | 依赖 | 根模块的生产构建保持纯 Go，race 插桩按[开发流程](development.md#ugoira-go-encoder)执行。新 SDK 对 `tls-client` 的引用集中在 `sdk/internal/cloudflare`。 |
 
-过渡期间，Pixiv 使用模块级 `internal/pixiv/api` 协议层，保留其中的日志间接依赖。现有两份 Cloudflare 实现在调用方迁移后删除；新的 FANBOX 与 ascii2d SDK 共用 `sdk/internal/cloudflare`。
+过渡期间，Pixiv 使用模块级 `internal/pixiv/api` 协议层，保留其中的日志间接依赖。现有两份 Cloudflare 实现在调用方迁移后删除；新的 FANBOX 与 ascii2d SDK 共用 `sdk/internal/cloudflare`。架构与 SDK 参考页仍描述旧客户端及其 `Options.Logger`；新 API 以新包的 Go 文档为准。
 
 列表请求通过不透明的 `sdk.Cursor` 续页。消费当前页后保存 `page.Cursor.String()`，恢复时用 `sdk.ParseCursor` 解析，放回原列表请求的 `Cursor` 字段，并保持原查询条件与同一账号。空游标表示末页，将空游标传回列表入口会开始新查询。查询条件或账号不一致时，在内容请求前返回 `InvalidArgument`。当前页的 `Next(ctx)` 保留绑定；JSON 解码后的非末页通过原列表入口恢复绑定。
 
