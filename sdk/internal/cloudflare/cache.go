@@ -20,6 +20,7 @@ type solveCall struct {
 }
 
 // Solve obtains or reuses clearance for a protected URL within the configured origin.
+// Query parameters are preserved; the product owns the target's privacy policy.
 // The product must detect a real challenge before invoking it and must scope the
 // returned cookie to its validated product host. Canceling one waiter leaves a
 // shared solve alive for the others; canceling all waiters stops that request.

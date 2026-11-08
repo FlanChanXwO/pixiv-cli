@@ -13,18 +13,21 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+type solverCommand string
+type solverStatus string
+
 const (
-	solverAPIPath       = "/v1"
-	solverSessionPrefix = "pixiv-cli-cloudflare-"
-	commandCreate       = "sessions.create"
-	commandGet          = "request.get"
-	commandDestroy      = "sessions.destroy"
-	statusOK            = "ok"
-	statusError         = "error"
-	clearanceCookieName = "cf_clearance"
-	headerContentType   = "Content-Type"
-	headerAccept        = "Accept"
-	jsonMediaType       = "application/json"
+	solverAPIPath                     = "/v1"
+	solverSessionPrefix               = "pixiv-cli-cloudflare-"
+	commandCreate       solverCommand = "sessions.create"
+	commandGet          solverCommand = "request.get"
+	commandDestroy      solverCommand = "sessions.destroy"
+	statusOK            solverStatus  = "ok"
+	statusError         solverStatus  = "error"
+	clearanceCookieName               = "cf_clearance"
+	headerContentType                 = "Content-Type"
+	headerAccept                      = "Accept"
+	jsonMediaType                     = "application/json"
 	// Retain ascii2d's browser-protocol maxTimeout; Go requests use caller cancellation.
 	sessionMaxTimeout = 180000
 )
@@ -42,19 +45,21 @@ type Clearance struct {
 func (s Clearance) expired() bool { return !s.ExpiresAt.IsZero() && !time.Now().Before(s.ExpiresAt) }
 
 type solverRequest struct {
-	Command    string       `json:"cmd"`
-	Session    string       `json:"session,omitempty"`
-	URL        string       `json:"url,omitempty"`
-	Proxy      *solverProxy `json:"proxy,omitempty"`
-	MaxTimeout int          `json:"maxTimeout,omitempty"`
+	Command    solverCommand `json:"cmd"`
+	Session    string        `json:"session,omitempty"`
+	URL        string        `json:"url,omitempty"`
+	Proxy      *solverProxy  `json:"proxy,omitempty"`
+	MaxTimeout int           `json:"maxTimeout,omitempty"`
 }
 
 type solverProxy struct {
-	URL string `json:"url"`
+	URL      string  `json:"url"`
+	Username *string `json:"username,omitempty"`
+	Password *string `json:"password,omitempty"`
 }
 
 type solverResponse struct {
-	Status   string          `json:"status"`
+	Status   solverStatus    `json:"status"`
 	Solution *solverSolution `json:"solution"`
 }
 
@@ -77,8 +82,8 @@ func (c *Client) solve(ctx context.Context, target string) (Clearance, error) {
 			return Clearance{}, err
 		}
 		request.Session, request.MaxTimeout = c.credentials.session.Value(), sessionMaxTimeout
-	} else if !c.credentials.proxy.Empty() {
-		request.Proxy = &solverProxy{URL: c.credentials.proxy.Value()}
+	} else {
+		request.Proxy = c.credentials.proxy
 	}
 	response, err := c.call(ctx, request)
 	if err != nil {
@@ -88,19 +93,17 @@ func (c *Client) solve(ctx context.Context, target string) (Clearance, error) {
 }
 
 func (c *Client) createSession(ctx context.Context) error {
-	// Serializing creation prevents concurrent Close calls from destroying a new session.
-	c.sessionMu.Lock()
-	defer c.sessionMu.Unlock()
+	if err := c.lockSession(ctx); err != nil {
+		return failure(operationSolve, sdk.UpstreamUnavailable, "session creation canceled", err)
+	}
+	defer func() { <-c.sessionGate }()
 	if c.phase == sessionReady {
 		return nil
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return failure(operationSolve, sdk.UpstreamUnavailable, "session creation canceled", err)
 	}
-	request := solverRequest{Command: commandCreate, Session: c.credentials.session.Value()}
-	if !c.credentials.proxy.Empty() {
-		request.Proxy = &solverProxy{URL: c.credentials.proxy.Value()}
-	}
+	request := solverRequest{Command: commandCreate, Session: c.credentials.session.Value(), Proxy: c.credentials.proxy}
 	// A canceled or lost response does not prove that the remote session was not created.
 	c.phase = sessionUncertain
 	_, err := c.call(ctx, request)
@@ -131,7 +134,13 @@ func (c *Client) call(ctx context.Context, payload solverRequest) (solverRespons
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		err := failure(operation, sdk.ChallengeRequired, "FlareSolverr returned an HTTP failure", nil)
+		reason := sdk.UpstreamError
+		if response.StatusCode == http.StatusTooManyRequests {
+			reason = sdk.RateLimited
+		} else if response.StatusCode >= http.StatusInternalServerError {
+			reason = sdk.UpstreamUnavailable
+		}
+		err := failure(operation, reason, "FlareSolverr returned an HTTP failure", nil)
 		err.HTTPStatus = response.StatusCode
 		return solverResponse{}, err
 	}

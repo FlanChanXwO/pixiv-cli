@@ -42,7 +42,7 @@ const (
 )
 
 type solverCredentials struct {
-	proxy   credential.Secret
+	proxy   *solverProxy
 	session credential.Secret
 }
 
@@ -51,7 +51,7 @@ type solverCredentials struct {
 type Options struct {
 	ProxyURL             string // Empty selects direct native transport; HTTP(S) and SOCKS5 are supported.
 	FlareSolverrURL      string // Empty disables solver recovery; a service path prefix is allowed.
-	FlareSolverrProxyURL string // Browser-only proxy; HTTP, SOCKS4, or SOCKS5.
+	FlareSolverrProxyURL string // Browser-only proxy; HTTP supports authentication, SOCKS4/5 are unauthenticated.
 	Origin               string // Required with FlareSolverrURL; HTTP(S) origin for clearance sharing.
 	PersistentSession    bool   // Create/destroy a browser session and keep it across solves.
 }
@@ -65,8 +65,8 @@ type Client struct {
 	endpoint    string
 	origin      *url.URL
 	credentials *solverCredentials // Pointer keeps private secret fields opaque in value diagnostics.
-	sessionMu   sync.Mutex
-	phase       sessionPhase // Protected by sessionMu; uncertain creation still requires cleanup.
+	sessionGate chan struct{}
+	phase       sessionPhase // Protected by sessionGate; uncertain creation still requires cleanup.
 	mu          sync.Mutex
 	state       *Clearance
 	active      *solveCall
@@ -80,27 +80,30 @@ func New(options Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &Client{credentials: &solverCredentials{}}
+	client := &Client{credentials: &solverCredentials{}, sessionGate: make(chan struct{}, 1)}
 	if options.FlareSolverrURL != "" {
 		service, err := httpURL(options.FlareSolverrURL)
 		if err != nil {
 			return nil, err
 		}
+		if service.RawQuery != "" || service.ForceQuery {
+			return nil, failure(operationSolve, sdk.InvalidArgument, "solver service URL must not contain a query", nil)
+		}
 		origin, err := httpURL(options.Origin)
 		if err != nil {
 			return nil, err
 		}
-		if origin.Path != "" && origin.Path != "/" {
-			return nil, failure(operationSolve, sdk.InvalidArgument, "clearance origin must not contain a path", nil)
+		if (origin.Path != "" && origin.Path != "/") || origin.RawQuery != "" || origin.ForceQuery {
+			return nil, failure(operationSolve, sdk.InvalidArgument, "clearance origin must not contain a path or query", nil)
 		}
 		if options.FlareSolverrProxyURL != "" {
-			if err := validateSolverProxy(options.FlareSolverrProxyURL); err != nil {
+			client.credentials.proxy, err = solverProxyURL(options.FlareSolverrProxyURL)
+			if err != nil {
 				return nil, err
 			}
 		}
 		client.endpoint = strings.TrimRight(service.String(), "/") + solverAPIPath
 		client.origin = origin
-		client.credentials.proxy = credential.New([]byte(options.FlareSolverrProxyURL))
 		client.control = &http.Client{Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		if options.PersistentSession {
 			client.credentials.session = credential.New([]byte(solverSessionPrefix + rand.Text()))
@@ -143,8 +146,10 @@ func (c *Client) Close(ctx context.Context) error {
 			return failure(operationClose, sdk.LocalStateError, "solver shutdown canceled", ctx.Err())
 		}
 	}
-	c.sessionMu.Lock()
-	defer c.sessionMu.Unlock()
+	if err := c.lockSession(ctx); err != nil {
+		return failure(operationClose, sdk.LocalStateError, "solver shutdown canceled", err)
+	}
+	defer func() { <-c.sessionGate }()
 	if c.phase == sessionUnused {
 		return nil
 	}
@@ -153,6 +158,16 @@ func (c *Client) Close(ctx context.Context) error {
 		c.phase = sessionUnused
 	}
 	return err
+}
+
+func (c *Client) lockSession(ctx context.Context) error {
+	// A caller can stop waiting while another create/destroy request owns the gate.
+	select {
+	case c.sessionGate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func failure(operation string, reason sdk.Reason, message string, cause error) *sdk.Error {
@@ -166,7 +181,7 @@ func failure(operation string, reason sdk.Reason, message string, cause error) *
 
 func httpURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, failure(operationSolve, sdk.InvalidArgument, "solver service or challenge URL is invalid", nil)
 	}
 	return parsed, nil
@@ -183,10 +198,21 @@ func nativeProxy(raw string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func validateSolverProxy(raw string) error {
+func solverProxyURL(raw string) (*solverProxy, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "socks4" && parsed.Scheme != "socks5") || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
-		return failure(operationSolve, sdk.InvalidArgument, "solver browser proxy URL is invalid", nil)
+		return nil, failure(operationSolve, sdk.InvalidArgument, "solver browser proxy URL is invalid", nil)
 	}
-	return nil
+	result := &solverProxy{}
+	if parsed.User != nil {
+		if parsed.Scheme != "http" {
+			return nil, failure(operationSolve, sdk.InvalidArgument, "Chromium does not support authenticated SOCKS proxies", nil)
+		}
+		username := parsed.User.Username()
+		password, _ := parsed.User.Password()
+		result.Username, result.Password = &username, &password
+		parsed.User = nil
+	}
+	result.URL = parsed.String()
+	return result, nil
 }
