@@ -35,12 +35,12 @@ func TestUserDecodeClearsBinding(t *testing.T) {
 
 }
 
-type userEndpoint struct {
+type endpointContract struct {
 	name, path, body string
 	call             func(*testing.T, context.Context, *Client) error
 }
 
-var userEndpoints = []userEndpoint{
+var userEndpoints = []endpointContract{
 	{"current", api.PathUserDetail, `{"user":{"id":11},"profile":{},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *Client) error { _, err := c.CurrentUser(ctx); return err }},
 	{"profile", api.PathUserDetail, `{"user":{"id":11},"profile":{"total_illusts":7},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *Client) error {
 		p, e := c.User(11).Profile(ctx)
@@ -82,8 +82,11 @@ var userEndpoints = []userEndpoint{
 	}},
 }
 
-func TestUserEndpointContracts(t *testing.T) {
-	for _, endpoint := range userEndpoints {
+func TestUserEndpointContracts(t *testing.T) { testEndpointContracts(t, userEndpoints) }
+
+func testEndpointContracts(t *testing.T, endpoints []endpointContract) {
+	t.Helper()
+	for _, endpoint := range endpoints {
 		t.Run(endpoint.name, func(t *testing.T) {
 			for _, mode := range []string{"normal", "upstream", "malformed", "cancel"} {
 				t.Run(mode, func(t *testing.T) {
@@ -92,11 +95,16 @@ func TestUserEndpointContracts(t *testing.T) {
 						if mode == "upstream" {
 							w.WriteHeader(403)
 						}
-						if mode == "normal" {
+
+						switch {
+						case mode == "normal":
 							fmt.Fprint(w, endpoint.body)
-						} else {
+						case endpoint.path == api.PathIllustBookmarkDetail:
+							fmt.Fprint(w, `{"bookmark_detail":[]}`)
+						default:
 							fmt.Fprint(w, `{}`)
 						}
+
 					}))
 					defer server.Close()
 					value := NewCredentials("fixture-refresh")

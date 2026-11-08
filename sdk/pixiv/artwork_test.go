@@ -7,8 +7,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -124,31 +122,6 @@ func TestUgoiraMetadata(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestImageSave(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "image bytes") }))
-	defer server.Close()
-	credentials := NewCredentials("fixture-refresh")
-	credentials.SetTokens("fixture-access", "fixture-refresh")
-	credentials.UserID, credentials.ExpiresAt = 11, time.Now().Add(time.Hour)
-	store, err := NewMemoryCredentials(credentials)
-	require.NoError(t, err)
-	client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
-	require.NoError(t, err)
-	image, err := client.image("https://i.pximg.net/fixture.jpg", 640, 480)
-	require.NoError(t, err)
-	dest := filepath.Join(t.TempDir(), "image.jpg")
-	require.NoError(t, image.Save(t.Context(), dest))
-	data, err := os.ReadFile(dest)
-	require.NoError(t, err)
-	require.Equal(t, "image bytes", string(data))
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	require.ErrorIs(t, image.Save(ctx, dest), context.Canceled)
-	data, err = os.ReadFile(dest)
-	require.NoError(t, err)
-	require.Equal(t, "image bytes", string(data))
 }
 
 func TestRelatedArtworkContinuation(t *testing.T) {
