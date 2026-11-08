@@ -22,7 +22,7 @@ Name a package, file, type, function, or field for what it is and what it owns, 
 | No context the package name already gives | `session.PixivSession`, `filename.FilenameData` | `session.Pixiv`, `filename.Fields` |
 | One name per capability | `UsageError` and `Usage`, `PrintJSON` and `WriteJSON` side by side | one name on `environment.Env` |
 
-These rules apply to new code only (since 2026-10-26). Existing names are not renamed for them, and public SDK names are not broken again for them.
+These rules apply to new code (since 2026-10-26). The current SDK rewrite designs `sdk/` from scratch and applies these naming rules throughout. Code under `internal/legacy/sdk/` serves as an upstream-behavior reference; its structure and names do not prescribe the new API. Other existing names stay unchanged unless the task calls for a rename. SDK breaking changes are consolidated in the changelog when the rewrite is complete.
 
 - No `Kind`, `Type` (as a catch-all discriminator), `Item`, `Object`, or `Misc` as a name or suffix. Use the specific role: `Phase`, `Mode`, `Source`, `Status`, `Registry`, `Store`. Keep upstream wire field names, such as Pixiv `type`, unchanged at the mapping layer.
 - No abbreviations: write `Config`, `Manager`, `Service`, `Message`, `Request`, `Response`, `Temporary`, `Value`. Short names remain fine for locals used within a few lines (`ctx`, `err`, `ok`, `i`, `n`, `req`) and for one- or two-letter receivers. Keep initialisms such as `ID`, `URL`, and `HTTP` in full capitals.
@@ -31,6 +31,24 @@ These rules apply to new code only (since 2026-10-26). Existing names are not re
 Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api` and `account`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`).
 
 Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivaccount` and `fanboxaccount`. The `internal/cli` composition root and `internal/storage/database` do this. The CLI root also imports its `internal/cli/config` command package as `configcmd` alongside the configuration owner `internal/config`. Otherwise add no import alias, and never one that repeats the package name.
+
+## SDK calling conventions
+
+The new SDK is a pure API library with page-level download support. Callers supply connection settings through each package's `Options`, own configuration and account selection, and provide Pixiv credential storage through `CredentialStore`. The SDK supplies an in-memory store and refreshes tokens through revision-checked persistence before using them.
+
+| Contract | Rule |
+| --- | --- |
+| Context | Every network-capable SDK operation takes `ctx context.Context` first. Pass it per call; keep it out of structs and provide no context-free variant. Standard `http.RoundTripper` implementations obtain context from the request, as required by that interface. |
+| Parameters | Pass required parameters directly. Group optional parameters in one `Options` or `XxxRequest` struct whose zero value selects defaults. A parameterless operation needs no empty struct. |
+| Entry points | Each product package has one primary entry point, `New` or `Search`; omit variants such as `OpenWith` and `NewWith`. Pixiv's standalone PKCE flow starts with `BeginLogin`. |
+| Logging | Accept no logger. Call `slog.DebugContext(ctx, …)` and the other Context functions, using the default logger at the time of the event. Routine pacing and retry details use Debug; genuine warnings, such as waiting after rate limiting, use Warn. New SDK code has no direct import of `internal/logging`. |
+| Errors | Expose one error type, `sdk.Error`, classified by `Reason`; support `sdk.ReasonOf` and `errors.As`. Keep error-construction functions private. |
+| Comments | All comments and doc comments under `sdk/` are English. Document every exported symbol. |
+| Dependencies | Root-module production builds remain CGO-free; race instrumentation follows the [development guide](development.md#ugoira-go-encoder). New SDK code references `tls-client` only from `sdk/internal/cloudflare`. |
+
+During migration, Pixiv uses the module-level `internal/pixiv/api` protocol layer, including its indirect logging dependency. The two existing Cloudflare implementations remain until their consumers migrate; new FANBOX and ascii2d SDK code shares `sdk/internal/cloudflare`. The architecture and SDK reference pages still describe the legacy clients, including their `Options.Logger`; consult the new packages' Go documentation for their current API.
+
+List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after consuming the current batch, parse it with `sdk.ParseCursor`, and pass it in the original list request's `Cursor` field with the same query and account. A zero cursor marks the last page; sending it starts a fresh query. Query or account mismatches return `InvalidArgument` before a content request. A live page's `Next(ctx)` retains its binding; a nonterminal JSON-decoded page resumes through the original list operation.
 
 ## Declaration placement and file names
 
