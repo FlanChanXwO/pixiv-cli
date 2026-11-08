@@ -39,7 +39,7 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 		return nil, err
 	}
 	for index, page := range w.MetaPages {
-		raw := firstImageURL(page.ImageURLs)
+		raw := page.ImageURLs.Original
 		if raw == "" {
 			return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "page has no image URL", nil)
 		}
@@ -57,6 +57,9 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 			return nil, err
 		}
 		a.Pages = append(a.Pages, ArtworkPage{Artwork: a, PageIndex: 0, Original: image, Width: w.Width, Height: w.Height})
+	}
+	if a.ContentType != ContentTypeUgoira && w.PageCount > 0 && len(a.Pages) != w.PageCount {
+		return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "incomplete artwork pages", nil)
 	}
 	return a, nil
 }

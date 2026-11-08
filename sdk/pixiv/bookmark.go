@@ -81,6 +81,9 @@ func (r *ArtworkRef) Bookmark(ctx context.Context) (ArtworkBookmarkDetail, error
 	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
 		return result, nil
 	}
+	if raw.Detail.IsBookmarked != nil && *raw.Detail.IsBookmarked && raw.Detail.Restrict == "" {
+		return ArtworkBookmarkDetail{}, newError("Artwork.Bookmark", sdk.MalformedUpstreamResponse, "bookmarked artwork has no visibility", nil)
+	}
 	result.Restrict = Restrict(raw.Detail.Restrict)
 	for _, tag := range raw.Detail.Tags {
 		if tag.IsRegistered {

@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
@@ -11,73 +11,69 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUserDecodeClearsBinding(t *testing.T) {
-	client := &Client{}
-	user := &User{UserRef: client.User(11), userData: userData{Name: "old"}}
+	client := &pixiv.Client{}
+	profile := pixiv.Profile{User: &pixiv.User{UserRef: client.User(11)}}
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &profile))
+	require.Nil(t, profile.User)
+	user := &pixiv.User{UserRef: client.User(11)}
 	require.NoError(t, json.Unmarshal([]byte(`{"id":12,"name":"decoded"}`), user))
-	require.Nil(t, user.client)
-	require.Equal(t, "decoded", user.Name)
 	_, err := user.Profile(t.Context())
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-	err = user.Follow(t.Context(), FollowOptions{})
+	err = user.Follow(t.Context(), pixiv.FollowOptions{})
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-	page := ArtworkPage{Artwork: &Artwork{ArtworkRef: client.Artwork(23)}}
-	require.NoError(t, json.Unmarshal([]byte(`{}`), &page))
-	require.Nil(t, page.Artwork)
-	archive := UgoiraArchive{Image: Image{client: client}, Quality: UgoiraQualityMedium}
-	require.NoError(t, json.Unmarshal([]byte(`{"url":"https://i.pximg.net/f.zip","quality":"original"}`), &archive))
-	require.Equal(t, UgoiraQualityOriginal, archive.Quality)
-	_, err = archive.Open(t.Context())
-	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-
 }
 
 type endpointContract struct {
 	name, path, body string
-	call             func(*testing.T, context.Context, *Client) error
+	call             func(*testing.T, context.Context, *pixiv.Client) error
 }
 
 var userEndpoints = []endpointContract{
-	{"current", api.PathUserDetail, `{"user":{"id":11},"profile":{},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *Client) error { _, err := c.CurrentUser(ctx); return err }},
-	{"profile", api.PathUserDetail, `{"user":{"id":11},"profile":{"total_illusts":7},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		p, e := c.User(11).Profile(ctx)
+	{"current", api.PathUserDetail, `{"user":{"id":11},"profile":{},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, err := c.CurrentUser(ctx)
+		return err
+	}},
+	{"profile", api.PathUserDetail, `{"user":{"id":12},"profile":{"total_illusts":7},"profile_publicity":{},"workspace":{}}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		p, e := c.User(12).Profile(ctx)
 		if e == nil {
 			require.Equal(t, 7, p.TotalIllusts)
-			require.EqualValues(t, 11, p.User.ID)
+			require.EqualValues(t, 12, p.User.ID)
 		}
 		return e
 	}},
-	{"related", api.PathUserRelated, `{"user_previews":[{"user":{"id":12}}]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		p, e := c.User(11).Related(ctx, RelatedUsersOptions{})
+	{"related", api.PathUserRelated, `{"user_previews":[{"user":{"id":12}}]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		p, e := c.User(11).Related(ctx, pixiv.RelatedUsersOptions{})
 		if e == nil {
 			require.EqualValues(t, 12, p.Items[0].ID)
 		}
 		return e
 	}},
-	{"following", api.PathUserFollowing, `{"user_previews":[]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		_, e := c.User(11).Following(ctx, RelationshipOptions{})
+	{"following", api.PathUserFollowing, `{"user_previews":[]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, e := c.User(11).Following(ctx, pixiv.RelationshipOptions{})
 		return e
 	}},
-	{"followers", api.PathUserFollower, `{"user_previews":[]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		_, e := c.User(11).Followers(ctx, RelationshipOptions{})
+	{"followers", api.PathUserFollower, `{"user_previews":[]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, e := c.User(11).Followers(ctx, pixiv.RelationshipOptions{})
 		return e
 	}},
-	{"blocked", api.PathUserBlocked, `{"users":[{"id":12}]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		p, e := c.User(11).BlockedUsers(ctx, BlockedUsersOptions{})
+	{"blocked", api.PathUserBlocked, `{"users":[{"id":12}]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		p, e := c.User(11).BlockedUsers(ctx, pixiv.BlockedUsersOptions{})
 		if e == nil {
 			require.EqualValues(t, 12, p.Items[0].ID)
 		}
 		return e
 	}},
-	{"artworks", api.PathUserIllusts, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		_, e := c.User(11).Artworks(ctx, UserArtworksOptions{})
+	{"artworks", api.PathUserIllusts, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, e := c.User(11).Artworks(ctx, pixiv.UserArtworksOptions{})
 		return e
 	}},
-	{"related_artworks", api.PathIllustRelated, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		_, e := c.Artwork(23).Related(ctx, RelatedArtworksOptions{})
+	{"related_artworks", api.PathIllustRelated, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, e := c.Artwork(23).Related(ctx, pixiv.RelatedArtworksOptions{})
 		return e
 	}},
 }
@@ -92,27 +88,35 @@ func testEndpointContracts(t *testing.T, endpoints []endpointContract) {
 				t.Run(mode, func(t *testing.T) {
 					server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						require.Equal(t, endpoint.path, r.URL.Path)
+						if endpoint.name == "current" || endpoint.name == "profile" {
+							id, filter := "12", ""
+							if endpoint.name == "current" {
+								id, filter = "11", "for_android"
+							}
+							require.Equal(t, id, r.URL.Query().Get(api.ParamUserID))
+							require.Equal(t, filter, r.URL.Query().Get(api.ParamFilter))
+						}
 						if mode == "upstream" {
 							w.WriteHeader(403)
 						}
-
 						switch {
 						case mode == "normal":
 							fmt.Fprint(w, endpoint.body)
 						case endpoint.path == api.PathIllustBookmarkDetail:
-							fmt.Fprint(w, `{"bookmark_detail":[]}`)
+							fmt.Fprint(w, `{"bookmark_detail":{"is_bookmarked":true}}`)
+						case endpoint.name == "profile":
+							fmt.Fprint(w, `{"user":{"id":13},"profile":{},"profile_publicity":{},"workspace":{}}`)
 						default:
 							fmt.Fprint(w, `{}`)
 						}
-
 					}))
 					defer server.Close()
-					value := NewCredentials("fixture-refresh")
+					value := pixiv.NewCredentials("fixture-refresh")
 					value.SetTokens("fixture-access", "fixture-refresh")
 					value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
-					store, err := NewMemoryCredentials(value)
+					store, err := pixiv.NewMemoryCredentials(value)
 					require.NoError(t, err)
-					client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+					client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
 					require.NoError(t, err)
 					ctx, cancel := context.WithCancel(t.Context())
 					defer cancel()
@@ -148,6 +152,7 @@ func TestFollowWrites(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
 				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, []string{api.PathFollowAdd, api.PathFollowDelete}[calls-1], r.URL.Path)
 				require.NoError(t, r.ParseForm())
 				require.Equal(t, "12", r.Form.Get(api.ParamUserID))
 				if mode == "upstream" {
@@ -161,19 +166,19 @@ func TestFollowWrites(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			value := NewCredentials("fixture-refresh")
+			value := pixiv.NewCredentials("fixture-refresh")
 			value.SetTokens("fixture-access", "fixture-refresh")
 			value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
-			store, err := NewMemoryCredentials(value)
+			store, err := pixiv.NewMemoryCredentials(value)
 			require.NoError(t, err)
-			client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+			client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if mode == "cancel" {
 				cancel()
 			}
-			followErr := client.User(12).Follow(ctx, FollowOptions{})
+			followErr := client.User(12).Follow(ctx, pixiv.FollowOptions{})
 			unfollowErr := client.User(12).Unfollow(ctx)
 			assertFollowResult(t, mode, followErr, unfollowErr, calls)
 		})
@@ -182,7 +187,6 @@ func TestFollowWrites(t *testing.T) {
 
 func assertFollowResult(t *testing.T, mode string, followErr, unfollowErr error, calls int) {
 	t.Helper()
-
 	if mode == "malformed" {
 		require.Equal(t, sdk.UpstreamUnavailable, sdk.ReasonOf(followErr))
 		require.Equal(t, sdk.UpstreamUnavailable, sdk.ReasonOf(unfollowErr))

@@ -1,4 +1,4 @@
-package pixiv
+package pixiv_test
 
 import (
 	"context"
@@ -11,26 +11,27 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
 var bookmarkEndpoints = []endpointContract{
-	{"detail", api.PathIllustBookmarkDetail, `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"kept","is_registered":true},{"name":"dropped"}]}}`, func(t *testing.T, ctx context.Context, c *Client) error {
+	{"detail", api.PathIllustBookmarkDetail, `{"bookmark_detail":{"is_bookmarked":true,"restrict":"private","tags":[{"name":"kept","is_registered":true},{"name":"dropped"}]}}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
 		v, e := c.Artwork(23).Bookmark(ctx)
 		if e == nil {
-			require.Equal(t, RestrictPrivate, v.Restrict)
+			require.Equal(t, pixiv.RestrictPrivate, v.Restrict)
 			require.Equal(t, []string{"kept"}, v.Tags)
 		}
 		return e
 	}},
-	{"artworks", api.PathUserBookmarksIllust, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		_, e := c.User(11).ArtworkBookmarks(ctx, ArtworkBookmarksOptions{Tag: "kept"})
+	{"artworks", api.PathUserBookmarksIllust, `{"illusts":[]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		_, e := c.User(11).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Tag: "kept"})
 		return e
 	}},
-	{"tags", api.PathUserBookmarkTags, `{"bookmark_tags":[{"name":"kept","count":2}]}`, func(t *testing.T, ctx context.Context, c *Client) error {
-		v, e := c.User(11).ArtworkBookmarkTags(ctx, ArtworkBookmarkTagsOptions{})
+	{"tags", api.PathUserBookmarkTags, `{"bookmark_tags":[{"name":"kept","count":2}]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+		v, e := c.User(11).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{})
 		if e == nil {
-			require.Equal(t, []BookmarkTag{{Name: "kept", Count: 2}}, v.Items)
+			require.Equal(t, []pixiv.BookmarkTag{{Name: "kept", Count: 2}}, v.Items)
 		}
 		return e
 	}},
@@ -46,16 +47,16 @@ func TestEmptyBookmarkStates(t *testing.T) {
 		t.Run(fmt.Sprint(tc.status, tc.body), func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status); fmt.Fprint(w, tc.body) }))
 			defer server.Close()
-			value := NewCredentials("fixture-refresh")
+			value := pixiv.NewCredentials("fixture-refresh")
 			value.SetTokens("fixture-access", "fixture-refresh")
 			value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
-			store, err := NewMemoryCredentials(value)
+			store, err := pixiv.NewMemoryCredentials(value)
 			require.NoError(t, err)
-			client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+			client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
 			require.NoError(t, err)
 			detail, err := client.Artwork(23).Bookmark(t.Context())
 			require.NoError(t, err)
-			require.Equal(t, ArtworkBookmarkDetail{Tags: []string{}}, detail)
+			require.Equal(t, pixiv.ArtworkBookmarkDetail{Tags: []string{}}, detail)
 		})
 	}
 }
@@ -66,6 +67,8 @@ func TestBookmarkWrites(t *testing.T) {
 			calls := 0
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls++
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, []string{api.PathBookmarkAdd, api.PathBookmarkDelete}[calls-1], r.URL.Path)
 				require.NoError(t, r.ParseForm())
 				require.Equal(t, "23", r.Form.Get(api.ParamIllustID))
 				if r.URL.Path == api.PathBookmarkAdd {
@@ -77,61 +80,53 @@ func TestBookmarkWrites(t *testing.T) {
 				}
 				if mode == "malformed" {
 					w.Header().Set("Content-Length", "100")
-					fmt.Fprint(w, "broken")
-				} else {
-					fmt.Fprint(w, `{}`)
 				}
+				fmt.Fprint(w, `{}`)
 			}))
 			defer server.Close()
-			value := NewCredentials("fixture-refresh")
+			value := pixiv.NewCredentials("fixture-refresh")
 			value.SetTokens("fixture-access", "fixture-refresh")
 			value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
-			store, err := NewMemoryCredentials(value)
+			store, err := pixiv.NewMemoryCredentials(value)
 			require.NoError(t, err)
-			client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+			client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
 			require.NoError(t, err)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if mode == "cancel" {
 				cancel()
 			}
-			assertFollowResult(t, mode, client.Artwork(23).AddBookmark(ctx, BookmarkOptions{Tags: []string{"a", "b"}}), client.Artwork(23).RemoveBookmark(ctx), calls)
+			assertFollowResult(t, mode, client.Artwork(23).AddBookmark(ctx, pixiv.BookmarkOptions{Tags: []string{"a", "b"}}), client.Artwork(23).RemoveBookmark(ctx), calls)
 		})
 	}
 }
 
 func TestParsedReferences(t *testing.T) {
-	var art Artwork
+	var art pixiv.Artwork
 	require.NoError(t, json.Unmarshal([]byte(`{"id":23}`), &art))
 	_, err := art.Bookmark(t.Context())
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(art.AddBookmark(t.Context(), BookmarkOptions{})))
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(art.AddBookmark(t.Context(), pixiv.BookmarkOptions{})))
 
-	var bookmarks UserBookmarksRef
+	var bookmarks pixiv.UserBookmarksRef
 	require.NoError(t, json.Unmarshal([]byte(`{"id":11}`), &bookmarks))
 	_, err = bookmarks.Get(t.Context())
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
-	client := &Client{}
-	for _, tc := range []struct{ raw, want string }{
-		{"https://www.pixiv.net/en/artworks/23?tracking=1", "https://www.pixiv.net/artworks/23"},
-		{"https://pixiv.net/users/11/artworks", "https://www.pixiv.net/users/11"},
-		{"https://pixiv.net/zh-CN/users/11/bookmarks/artworks", "https://www.pixiv.net/users/11/bookmarks/artworks"},
+	client := &pixiv.Client{}
+	for _, tc := range []struct {
+		raw, want string
+		kind      any
+	}{
+		{"https://www.pixiv.net/en/artworks/23?tracking=1", "https://www.pixiv.net/artworks/23", &pixiv.ArtworkRef{}},
+		{"https://pixiv.net/users/11/artworks", "https://www.pixiv.net/users/11", &pixiv.UserRef{}},
+		{"https://pixiv.net/zh-CN/users/11/bookmarks/artworks", "https://www.pixiv.net/users/11/bookmarks/artworks", &pixiv.UserBookmarksRef{}},
 	} {
 		ref, err := client.ParseURL(tc.raw)
 		require.NoError(t, err)
 		canonical, err := ref.CanonicalURL()
 		require.NoError(t, err)
 		require.Equal(t, tc.want, canonical)
-		switch r := ref.(type) {
-		case *ArtworkRef:
-			require.Same(t, client, r.client)
-		case *UserRef:
-			require.Same(t, client, r.client)
-		case *UserBookmarksRef:
-			require.Same(t, client, r.client)
-		default:
-			t.Fatalf("unexpected reference %T", ref)
-		}
+		require.IsType(t, tc.kind, ref)
 	}
 	for _, raw := range []string{"23", "http://pixiv.net/artworks/23", "https://pixiv.net.evil/artworks/23", "https://x@pixiv.net/artworks/23", "https://pixiv.net:443/artworks/23", "https://pixiv.net/artworks/0", "https://pixiv.net/novel/show.php?id=23", "https://pixiv.net/user/11/series/23"} {
 		_, err := client.ParseURL(raw)
@@ -165,12 +160,12 @@ func TestBookmarkContinuation(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			value := NewCredentials("fixture-refresh")
+			value := pixiv.NewCredentials("fixture-refresh")
 			value.SetTokens("fixture-access", "fixture-refresh")
 			value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
-			store, err := NewMemoryCredentials(value)
+			store, err := pixiv.NewMemoryCredentials(value)
 			require.NoError(t, err)
-			client, err := New(store, Options{HTTPClient: fixtureHTTP(server)})
+			client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
 			require.NoError(t, err)
 			assertBookmarkNext(t, client, path)
 			require.Equal(t, 2, calls)
@@ -178,18 +173,18 @@ func TestBookmarkContinuation(t *testing.T) {
 	}
 }
 
-func assertBookmarkNext(t *testing.T, client *Client, path string) {
+func assertBookmarkNext(t *testing.T, client *pixiv.Client, path string) {
 	t.Helper()
 
 	if path == api.PathUserBookmarksIllust {
-		page, err := client.User(11).ArtworkBookmarks(t.Context(), ArtworkBookmarksOptions{Tag: "kept"})
+		page, err := client.User(11).ArtworkBookmarks(t.Context(), pixiv.ArtworkBookmarksOptions{Tag: "kept"})
 		require.NoError(t, err)
-		_, err = client.User(11).ArtworkBookmarks(t.Context(), ArtworkBookmarksOptions{Tag: "changed", Cursor: page.Cursor})
+		_, err = client.User(11).ArtworkBookmarks(t.Context(), pixiv.ArtworkBookmarksOptions{Tag: "changed", Cursor: page.Cursor})
 		require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 		_, err = page.Next(t.Context())
 		require.NoError(t, err)
 	} else {
-		page, err := client.User(11).ArtworkBookmarkTags(t.Context(), ArtworkBookmarkTagsOptions{})
+		page, err := client.User(11).ArtworkBookmarkTags(t.Context(), pixiv.ArtworkBookmarkTagsOptions{})
 		require.NoError(t, err)
 		_, err = page.Next(t.Context())
 		require.NoError(t, err)

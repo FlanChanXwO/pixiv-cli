@@ -75,6 +75,9 @@ func (r *ArtworkRef) Get(ctx context.Context) (*Artwork, error) {
 	if raw.Illust == nil || raw.Illust.ID <= 0 {
 		return nil, newError("Artwork.Get", sdk.MalformedUpstreamResponse, "missing artwork", nil)
 	}
+	if raw.Illust.ID != r.ID {
+		return nil, newError("Artwork.Get", sdk.MalformedUpstreamResponse, "artwork ID does not match request", nil)
+	}
 	return r.client.mapArtwork(*raw.Illust)
 }
 

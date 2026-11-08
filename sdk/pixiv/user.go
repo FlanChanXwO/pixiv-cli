@@ -135,6 +135,9 @@ func (c *Client) profile(ctx context.Context, id int64, filter bool) (*Profile, 
 		!raw.ProfilePublicity.Present || !raw.ProfilePublicity.Valid || !raw.ProfilePublicity.Value.valid() || !raw.Workspace.Present || !raw.Workspace.Valid {
 		return nil, newError("User.Profile", sdk.MalformedUpstreamResponse, "incomplete user profile", nil)
 	}
+	if raw.User.Value.ID != id {
+		return nil, newError("User.Profile", sdk.MalformedUpstreamResponse, "user ID does not match request", nil)
+	}
 	return c.mapProfile(raw)
 }
 

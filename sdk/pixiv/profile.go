@@ -133,6 +133,17 @@ type Profile struct {
 	IsUsingCustomProfileImage bool             `json:"is_using_custom_profile_image"`
 }
 
+// UnmarshalJSON replaces the profile without retaining an earlier user's binding.
+func (p *Profile) UnmarshalJSON(data []byte) error {
+	type value Profile
+	var decoded value
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = Profile(decoded)
+	return nil
+}
+
 // ProfilePublicity records which profile fields are publicly visible.
 type ProfilePublicity struct {
 	Gender    bool `json:"gender"`

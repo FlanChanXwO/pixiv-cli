@@ -71,6 +71,9 @@ func (r *ArtworkRef) UgoiraMetadata(ctx context.Context) (UgoiraMetadata, error)
 	}
 	seen := map[string]bool{}
 	for i, frame := range w.Frames.Items {
+		if frame.Delay < 0 {
+			return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "negative animation frame delay", nil)
+		}
 		if !safeArchiveFilename(frame.File) || seen[frame.File] {
 			return UgoiraMetadata{}, newError("UgoiraMetadata", sdk.MalformedUpstreamResponse, "invalid animation frame filename", nil)
 		}
