@@ -49,6 +49,8 @@ import (
 // Options configures the connection shared by App, OAuth, and resource requests.
 // HTTPClient stays caller-owned; nil creates a client whose idle connections are
 // released by CloseIdleConnections. Positive RequestInterval enables pacing.
+// An injected HTTPClient, including its Transport, must not retry POST requests:
+// the SDK sends each mutation once and relies on the caller's transport to do the same.
 type Options struct {
 	HTTPClient      *http.Client
 	AcceptLanguage  string
