@@ -3,6 +3,7 @@ package pixiv
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -70,3 +71,33 @@ func assertImageResult(t *testing.T, mode string, err error, dest string) {
 		require.Equal(t, "existing", string(data))
 	}
 }
+
+func TestImageSaveCancellationBeforeReplace(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	value := NewCredentials("fixture-refresh")
+	value.SetTokens("fixture-access", "fixture-refresh")
+	value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
+	store, err := NewMemoryCredentials(value)
+	require.NoError(t, err)
+	client, err := New(store, Options{HTTPClient: &http.Client{Transport: cancelMedia{cancel}}})
+	require.NoError(t, err)
+	image, err := client.image("https://i.pximg.net/fixture.jpg", 0, 0)
+	require.NoError(t, err)
+	dest := filepath.Join(t.TempDir(), "image.jpg")
+	require.NoError(t, os.WriteFile(dest, []byte("existing"), 0600))
+	assertImageResult(t, "cancel", image.Save(ctx, dest), dest)
+}
+
+type cancelMedia struct{ cancel context.CancelFunc }
+
+func (c cancelMedia) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: c}, nil
+}
+
+func (c cancelMedia) Read([]byte) (int, error) {
+	c.cancel()
+	return 0, io.EOF
+}
+
+func (cancelMedia) Close() error { return nil }

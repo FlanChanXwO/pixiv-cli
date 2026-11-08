@@ -17,14 +17,11 @@ type userDetailWire struct {
 type profileWire struct {
 	Webpage                    *string `json:"webpage"`
 	Gender                     string  `json:"gender"`
-	Birth                      string  `json:"birth"`
 	BirthDay                   string  `json:"birth_day"`
 	BirthYear                  int     `json:"birth_year"`
 	Region                     string  `json:"region"`
-	AddressID                  int64   `json:"address_id"`
 	CountryCode                string  `json:"country_code"`
 	Job                        string  `json:"job"`
-	JobID                      int64   `json:"job_id"`
 	TotalFollowUsers           int     `json:"total_follow_users"`
 	TotalMyPixivUsers          int     `json:"total_mypixiv_users"`
 	TotalIllusts               int     `json:"total_illusts"`

@@ -13,7 +13,6 @@ type singlePageWire struct {
 type metaPageWire struct {
 	Width     int           `json:"width"`
 	Height    int           `json:"height"`
-	Extension string        `json:"extension"`
 	ImageURLs imageURLsWire `json:"image_urls"`
 }
 

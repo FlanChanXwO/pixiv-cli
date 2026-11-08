@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
-	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -158,7 +158,7 @@ func TestBookmarkContinuation(t *testing.T) {
 					require.Equal(t, "kept", r.URL.Query().Get(api.ParamTag))
 				}
 				if calls == 1 {
-					fmt.Fprintf(w, `{"%s":[],"next_url":"https://app-api.pixiv.net%s?%s=30"}`, bodyKey, path, key)
+					fmt.Fprintf(w, `{"%s":[],"next_url":"https://app-api.pixiv.net%s?%s=30&restrict=&user_id=11"}`, bodyKey, path, key)
 				} else {
 					require.Equal(t, "30", r.URL.Query().Get(key))
 					fmt.Fprintf(w, `{"%s":[]}`, bodyKey)

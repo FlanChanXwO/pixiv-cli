@@ -62,7 +62,7 @@ func (i Image) Save(ctx context.Context, path string) error {
 	defer os.Remove(name)
 	_, copyErr := io.Copy(file, body)
 	closeErr := file.Close()
-	if err := errors.Join(copyErr, closeErr); err != nil {
+	if err := errors.Join(copyErr, closeErr, ctx.Err()); err != nil {
 		return newError("Image.Save", sdk.LocalStateError, "write image failed", err)
 	}
 	if err := os.Rename(name, path); err != nil {
