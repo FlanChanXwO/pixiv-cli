@@ -53,6 +53,10 @@ func validPosition(path string, values, base url.Values) bool {
 		return len(values) == 1 && (positiveValues(values[api.ParamMaxIllustID], true) || positiveValues(values[api.ParamOffset], true))
 	case api.PathNovelNew:
 		return len(values) == 1 && positiveValues(values[api.ParamMaxNovelID], true)
+	case api.PathIllustSeries:
+		return len(values) == 1 && (positiveValues(values[api.ParamLastOrder], true) || positiveValues(values[api.ParamOffset], true))
+	case api.PathNovelSeries:
+		return len(values) == 1 && positiveValues(values[api.ParamLastOrder], true)
 	}
 	if path == api.PathSearchIllust {
 		return validArtworkSearchPosition(values)

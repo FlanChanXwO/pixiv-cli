@@ -29,22 +29,31 @@ func (c *Client) novels(ctx context.Context, path string, base url.Values, token
 	if err := c.getJSON(ctx, path, query, &raw); err != nil {
 		return sdk.Page[*Novel]{}, err
 	}
-	if !raw.Novels.Present || !raw.Novels.Valid {
-		return sdk.Page[*Novel]{}, newError(path, sdk.MalformedUpstreamResponse, "missing novels", nil)
-	}
-	items := make([]*Novel, len(raw.Novels.Items))
-	for i, w := range raw.Novels.Items {
-		if path == api.PathSearchNovel && (w.XRestrict == nil || w.TextLength == nil || w.IsOriginal == nil) {
-			return sdk.Page[*Novel]{}, newError(path, sdk.MalformedUpstreamResponse, "missing novel search fields", nil)
-		}
-		items[i], err = c.mapNovel(w)
-		if err != nil {
-			return sdk.Page[*Novel]{}, err
-		}
+	items, err := c.mapNovels(path, raw.Novels)
+	if err != nil {
+		return sdk.Page[*Novel]{}, err
 	}
 	next, err := nextCursor(raw.NextURL, path, base, binding)
 	if err != nil {
 		return sdk.Page[*Novel]{}, err
 	}
 	return sdk.NewPage(items, next, func(ctx context.Context) (sdk.Page[*Novel], error) { return c.novels(ctx, path, base, next) }), nil
+}
+
+func (c *Client) mapNovels(path string, list api.RequiredList[novelWire]) ([]*Novel, error) {
+	if !list.Present || !list.Valid {
+		return nil, newError(path, sdk.MalformedUpstreamResponse, "missing novels", nil)
+	}
+	items := make([]*Novel, len(list.Items))
+	for i, w := range list.Items {
+		if path == api.PathSearchNovel && (w.XRestrict == nil || w.TextLength == nil || w.IsOriginal == nil) {
+			return nil, newError(path, sdk.MalformedUpstreamResponse, "missing novel search fields", nil)
+		}
+		var err error
+		items[i], err = c.mapNovel(w)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
 }

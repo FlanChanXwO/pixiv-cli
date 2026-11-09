@@ -55,8 +55,14 @@ func (c *Client) artworks(ctx context.Context, path string, base url.Values, tok
 	if !raw.Illusts.Present || !raw.Illusts.Valid {
 		return sdk.Page[*Artwork]{}, newError(path, sdk.MalformedUpstreamResponse, "missing artworks", nil)
 	}
+	if path == api.PathIllustSeries && (raw.SeriesDetail == nil || raw.SeriesDetail.User.ID <= 0) {
+		return sdk.Page[*Artwork]{}, newError(path, sdk.MalformedUpstreamResponse, "invalid series detail", nil)
+	}
 	items := make([]*Artwork, len(raw.Illusts.Items))
 	for i, w := range raw.Illusts.Items {
+		if (path == api.PathIllustSeries || path == api.PathIllustMyPixiv) && w.User.ID <= 0 {
+			return sdk.Page[*Artwork]{}, newError(path, sdk.MalformedUpstreamResponse, "missing artwork author", nil)
+		}
 		items[i], err = c.mapArtwork(w)
 		if err != nil {
 			return sdk.Page[*Artwork]{}, err

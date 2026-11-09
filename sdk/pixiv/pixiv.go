@@ -22,6 +22,11 @@
 // query-bound pages. [Client.CheckpointSearchArtworks] also resumes within a batch,
 // counting items after local AI filtering.
 //
+// Series references list complete works. [NovelSeriesRef.Get] returns metadata
+// and a novels page together; its options also resume a saved novels cursor.
+// [Artwork.Series] links to the artwork's series without a separate lookup.
+// Ranking, recommendation, following, latest, and MyPixiv feeds use the same pages.
+//
 // [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
 // URL and persists the credentials returned by Complete before content requests.
 //
