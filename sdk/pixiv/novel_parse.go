@@ -3,6 +3,7 @@ package pixiv
 import (
 	"bytes"
 	"strings"
+	"unicode"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"golang.org/x/net/html"
@@ -11,6 +12,8 @@ import (
 // ParseContent parses caller-supplied webview HTML without fetching it.
 // Body images and files are validated against the client's resource policy and
 // bound to its account. Missing body blocks or media locators fail explicitly.
+// Each recognized media figure must contain a single image or file; compound
+// figures fail without returning partial content.
 func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 	// 1. Establish the resource owner and parse the supplied document.
 	if err := r.bound("Novel.ParseContent"); err != nil {
@@ -83,11 +86,21 @@ func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 
 func (c *Client) novelMediaBlock(n *html.Node) (NovelBlock, error) {
 	class := novelAttribute(n, "class")
+	// A media block represents one locator; reject compound figures instead of losing resources.
+	media := novelMediaElements(n)
+	if (strings.Contains(class, "image") || strings.Contains(class, "file")) && len(media) > 1 {
+		return NovelBlock{}, newError("Novel.ParseContent", sdk.MalformedUpstreamResponse, "compound novel media figure is unsupported", nil)
+	}
 	switch {
 	case strings.Contains(class, "image"):
 		source := novelAttribute(n, "src")
-		if image := novelElement(n, "img"); source == "" && image != nil {
-			source = novelAttribute(image, "src")
+		if len(media) == 1 {
+			if media[0].Data != "img" {
+				return NovelBlock{}, newError("Novel.ParseContent", sdk.MalformedUpstreamResponse, "novel image contains another media type", nil)
+			}
+			if source == "" {
+				source = novelAttribute(media[0], "src")
+			}
 		}
 		if source == "" {
 			return NovelBlock{}, newError("Novel.ParseContent", sdk.MalformedUpstreamResponse, "novel image has no source", nil)
@@ -98,10 +111,10 @@ func (c *Client) novelMediaBlock(n *html.Node) (NovelBlock, error) {
 		}
 		return NovelBlock{Format: NovelBlockImage, Marks: []NovelMark{}, Image: &NovelImageBlock{Image: image, Caption: novelText(n)}}, nil
 	case strings.Contains(class, "file"):
-		link := novelElement(n, "a")
-		if link == nil {
+		if len(media) != 1 || media[0].Data != "a" {
 			return NovelBlock{}, newError("Novel.ParseContent", sdk.MalformedUpstreamResponse, "novel file has no link", nil)
 		}
+		link := media[0]
 		source := novelAttribute(link, "href")
 		if source == "" {
 			source = novelAttribute(link, "data-file-url")
@@ -121,7 +134,7 @@ func (c *Client) novelMediaBlock(n *html.Node) (NovelBlock, error) {
 
 func novelUnknown(n *html.Node) NovelBlock {
 	payload := map[string]string{}
-	if text := novelText(n); text != "" {
+	if text := novelPlainText(n, true); text != "" {
 		payload["text"] = text
 	}
 	return NovelBlock{Format: NovelBlockUnknown, Marks: []NovelMark{}, Unknown: &NovelUnknownBlock{Source: n.Data + ":" + novelAttribute(n, "class"), Payload: payload}}
@@ -146,6 +159,8 @@ func novelInline(n *html.Node) (string, []NovelMark) {
 		mark := NovelMark{}
 		if node.Type == html.ElementNode {
 			switch node.Data {
+			case "rt", "rp":
+				return
 			case "strong", "b":
 				mark.Style = NovelMarkStrong
 			case "em", "i":
@@ -153,8 +168,14 @@ func novelInline(n *html.Node) (string, []NovelMark) {
 			case "del", "s", "strike":
 				mark.Style = NovelMarkDelete
 			case "ruby":
-				ruby := novelRuby(node)
-				marks = append(marks, NovelMark{Style: NovelMarkRuby, Text: ruby.Text, Ruby: &ruby})
+				ruby, nested := novelRuby(node)
+				start := text.Len()
+				marks = append(marks, NovelMark{Style: NovelMarkRuby, Text: ruby.Text, Start: start, End: start + len(ruby.Text), Ruby: &ruby})
+				for _, child := range nested {
+					child.Start += start
+					child.End += start
+					marks = append(marks, child)
+				}
 				text.WriteString(ruby.Text)
 				return
 			case "a":
@@ -178,14 +199,26 @@ func novelInline(n *html.Node) (string, []NovelMark) {
 		}
 		if mark.Style != "" {
 			marks[index].Text = text.String()[start:]
+			marks[index].Start, marks[index].End = start, text.Len()
 		}
 	}
-	walk(n)
+	for child := n.FirstChild; child != nil; child = child.NextSibling {
+		walk(child)
+	}
 	return text.String(), marks
 }
 
-func novelRuby(n *html.Node) NovelRuby {
-	var base, reading strings.Builder
+func novelRuby(n *html.Node) (NovelRuby, []NovelMark) {
+	base, marks := novelInline(n)
+	// Preserve ruby's trimmed base while translating nested ranges into that trimmed text.
+	start := len(base) - len(strings.TrimLeftFunc(base, unicode.IsSpace))
+	base = strings.TrimSpace(base)
+	for i := range marks {
+		marks[i].Start = min(len(base), max(0, marks[i].Start-start))
+		marks[i].End = min(len(base), max(0, marks[i].End-start))
+		marks[i].Text = base[marks[i].Start:marks[i].End]
+	}
+	var reading strings.Builder
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
 		if skipNovelNode(node) {
@@ -200,23 +233,23 @@ func novelRuby(n *html.Node) NovelRuby {
 				return
 			}
 		}
-		if node.Type == html.TextNode {
-			base.WriteString(node.Data)
-			return
-		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
 			walk(child)
 		}
 	}
 	walk(n)
-	return NovelRuby{Text: strings.TrimSpace(base.String()), Furigana: strings.TrimSpace(reading.String())}
+	return NovelRuby{Text: base, Furigana: strings.TrimSpace(reading.String())}, marks
 }
 
 func novelText(n *html.Node) string {
+	return novelPlainText(n, false)
+}
+
+func novelPlainText(n *html.Node, unclaimedOnly bool) string {
 	var text strings.Builder
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
-		if skipNovelNode(node) {
+		if skipNovelNode(node) || (unclaimedOnly && node != n && novelConsumedNode(node)) {
 			return
 		}
 		if node.Type == html.TextNode {
@@ -235,23 +268,42 @@ func novelText(n *html.Node) string {
 	return strings.TrimSpace(text.String())
 }
 
+func novelConsumedNode(n *html.Node) bool {
+	if n.Type != html.ElementNode {
+		return false
+	}
+	class := novelAttribute(n, "class")
+	switch n.Data {
+	case "h1", "h2", "h3", "h4", "figure":
+		return true
+	case "p":
+		return strings.Contains(class, "noveltext")
+	case "div":
+		return strings.Contains(class, "caption") || ((strings.Contains(class, "novel") || strings.Contains(class, "text") || strings.Contains(class, "title")) && !novelWrapper(class))
+	}
+	return false
+}
+
 func skipNovelNode(n *html.Node) bool {
 	return n.Type == html.ElementNode && (n.Data == "script" || n.Data == "style" || n.Data == "head")
 }
 
-func novelElement(n *html.Node, name string) *html.Node {
-	if skipNovelNode(n) {
-		return nil
-	}
-	if n.Type == html.ElementNode && n.Data == name {
-		return n
-	}
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		if found := novelElement(child, name); found != nil {
-			return found
+func novelMediaElements(n *html.Node) []*html.Node {
+	var media []*html.Node
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if skipNovelNode(node) {
+			return
+		}
+		if node != n && node.Type == html.ElementNode && (node.Data == "img" || node.Data == "a" || node.Data == "figure") {
+			media = append(media, node)
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
 		}
 	}
-	return nil
+	walk(n)
+	return media
 }
 
 func novelAttribute(n *html.Node, key string) string {

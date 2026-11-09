@@ -49,6 +49,8 @@ type NovelRuby struct {
 type NovelMark struct {
 	Style NovelMarkStyle `json:"style"`
 	Text  string         `json:"text"`
+	Start int            `json:"start"` // Inclusive UTF-8 byte offset in the containing block's Text.
+	End   int            `json:"end"`   // Exclusive UTF-8 byte offset; nested marks have overlapping ranges.
 	Ruby  *NovelRuby     `json:"ruby,omitempty"`
 	Href  string         `json:"href,omitempty"`
 	Class string         `json:"class,omitempty"`
@@ -88,7 +90,7 @@ func (b *NovelFileBlock) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// NovelUnknownBlock retains an upstream element identifier and plain-text metadata.
+// NovelUnknownBlock retains an upstream element identifier and otherwise unclaimed text.
 type NovelUnknownBlock struct {
 	Source  string            `json:"source"`
 	Payload map[string]string `json:"payload"`

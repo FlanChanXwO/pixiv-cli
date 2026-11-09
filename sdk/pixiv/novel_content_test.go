@@ -46,13 +46,15 @@ func TestNovelContentBlocks(t *testing.T) {
 
 func TestNovelContentUnknownContainerPreservesMedia(t *testing.T) {
 	for _, element := range []string{"div", "figure"} {
-		raw := fmt.Sprintf(`<%s class="novel-widget"><figure class="novel-image"><img src="https://i.pximg.net/nested.jpg"></figure></%s>`, element, element)
+		raw := fmt.Sprintf(`<%s class="novel-widget">Fallback<p class="noveltext">Paragraph</p><figure class="novel-image"><img src="https://i.pximg.net/nested.jpg"></figure></%s>`, element, element)
 		content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(raw))
 		require.NoError(t, err)
-		require.Len(t, content.Blocks, 2)
+		require.Len(t, content.Blocks, 3)
 		require.Equal(t, pixiv.NovelBlockUnknown, content.Blocks[0].Format)
-		require.Equal(t, pixiv.NovelBlockImage, content.Blocks[1].Format)
-		require.Equal(t, "https://i.pximg.net/nested.jpg", content.Blocks[1].Image.Image.URL)
+		require.Equal(t, map[string]string{"text": "Fallback"}, content.Blocks[0].Unknown.Payload)
+		require.Equal(t, "Paragraph", content.Blocks[1].Text)
+		require.Equal(t, pixiv.NovelBlockImage, content.Blocks[2].Format)
+		require.Equal(t, "https://i.pximg.net/nested.jpg", content.Blocks[2].Image.Image.URL)
 	}
 }
 
@@ -69,14 +71,46 @@ func TestNovelContentFailures(t *testing.T) {
 		{`<div class="novel-widget"><figure class="novel-image"><img src="https://evil.example/image"></figure></div>`, sdk.ResourceForbidden},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
-			value, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(tc.body))
+			value, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(`<h1 class="title">Title</h1><div class="caption">Caption</div>` + tc.body))
 			require.Equal(t, tc.reason, sdk.ReasonOf(err))
-			require.Empty(t, value.Blocks)
+			require.Equal(t, pixiv.NovelContent{}, value)
 		})
 	}
 	var unbound pixiv.NovelRef
 	_, err := unbound.ParseContent([]byte(novelHTML))
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+}
+
+func TestNovelContentMarkRangesAndRuby(t *testing.T) {
+	raw := `<p class="noveltext">漢<strong>漢<em>漢</em></strong><ruby> <strong><a href="/target">漢</a></strong><rp>(</rp><rt>かん</rt><rp>)</rp> </ruby>漢</p>`
+	content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(raw))
+	require.NoError(t, err)
+	block := content.Blocks[0]
+	require.Equal(t, "漢漢漢漢漢", block.Text)
+	require.Equal(t, []pixiv.NovelMark{
+		{Style: pixiv.NovelMarkStrong, Text: "漢漢", Start: 3, End: 9},
+		{Style: pixiv.NovelMarkEmphasis, Text: "漢", Start: 6, End: 9},
+		{Style: pixiv.NovelMarkRuby, Text: "漢", Start: 9, End: 12, Ruby: &pixiv.NovelRuby{Text: "漢", Furigana: "かん"}},
+		{Style: pixiv.NovelMarkStrong, Text: "漢", Start: 9, End: 12},
+		{Style: pixiv.NovelMarkLink, Text: "漢", Start: 9, End: 12, Href: "/target"},
+	}, block.Marks)
+	for _, mark := range block.Marks {
+		require.Equal(t, mark.Text, block.Text[mark.Start:mark.End])
+	}
+}
+
+func TestNovelContentMultipleMediaFailsWholeBody(t *testing.T) {
+	for _, body := range []string{
+		`<figure class="novel-image"><img src="https://i.pximg.net/first"><img src="https://i.pximg.net/second"></figure>`,
+		`<figure class="novel-image"><img src="https://i.pximg.net/first"><img src="https://evil.example/second"></figure>`,
+		`<figure class="novel-image"><img src="https://i.pximg.net/first"><img></figure>`,
+		`<figure class="novel-image"><img src="https://i.pximg.net/first"><figure class="novel-file"><a>file</a></figure></figure>`,
+		`<figure class="novel-file"><a href="https://i.pximg.net/first">first</a><a>second</a></figure>`,
+	} {
+		content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(body))
+		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		require.Equal(t, pixiv.NovelContent{}, content)
+	}
 }
 
 func TestNovelAttachmentSave(t *testing.T) {
