@@ -25,6 +25,7 @@ func TestCommentMutations(t *testing.T) {
 		for _, action := range []string{"post", "reply", "stamp", "stamp_text", "delete"} {
 			for _, tc := range []commentWriteCase{
 				{"normal", 200, ""}, {"forbidden", 403, sdk.Forbidden}, {"unauthorized", 401, sdk.CredentialsExpired}, {"rate_limited", 429, sdk.RateLimited}, {"truncated", 200, sdk.UpstreamUnavailable}, {"cancel", 200, sdk.UpstreamUnavailable},
+				{"service_unavailable", http.StatusServiceUnavailable, sdk.UpstreamError},
 			} {
 				t.Run(fmt.Sprint(novel, "/", action, "/", tc.name), func(t *testing.T) {
 					testCommentMutation(t, novel, action, tc)

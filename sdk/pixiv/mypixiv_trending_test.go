@@ -94,3 +94,18 @@ func TestMyPixivAndTrendingMalformedItems(t *testing.T) {
 		})
 	}
 }
+
+func TestTrendingPreservesUnidentifiedAuthor(t *testing.T) {
+	for _, user := range []string{``, `,"user":{"id":0}`} {
+		artwork := strings.Replace(searchArtworkFirst, `,"user":{"id":11}`, user, 1)
+		testEndpointContracts(t, []endpointContract{{"unidentified_author", api.PathTrendingTagsIllust, `{"trend_tags":[{"tag":"tag","illust":` + artwork + `}]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+			tags, err := c.TrendingArtworkTags(ctx)
+			if err == nil {
+				require.Zero(t, tags[0].Artwork.Author.ID)
+				_, profileErr := tags[0].Artwork.Author.Profile(ctx)
+				require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(profileErr))
+			}
+			return err
+		}}})
+	}
+}

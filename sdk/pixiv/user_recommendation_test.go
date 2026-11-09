@@ -41,6 +41,8 @@ func TestRecommendedUserSamplesFailWholePage(t *testing.T) {
 		`{"user":{"id":12},"illusts":[{"id":23,"user":{"id":11},"create_date":"broken"}]}`,
 		`{"user":{"id":12},"novels":[{"id":23,"user":{"id":11},"create_date":"broken"}]}`,
 		`{"user":{"id":12},"novels":[{"id":0}]}`,
+		`{"user":{"id":12},"novels":[` + strings.Replace(novelMetadata, `,"user":{"id":11,"name":"author"}`, ``, 1) + `]}`,
+		`{"user":{"id":12},"novels":[` + strings.Replace(novelMetadata, `"id":11`, `"id":0`, 1) + `]}`,
 	} {
 		t.Run(preview, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

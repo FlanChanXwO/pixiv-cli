@@ -144,3 +144,22 @@ func TestArtworkSeriesAssociation(t *testing.T) {
 	_, err = art.Series.Artworks(t.Context(), pixiv.ArtworkSeriesOptions{})
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 }
+
+func TestArtworkMalformedSeriesReference(t *testing.T) {
+	for _, series := range []string{`{}`, `{"id":0}`, `{"id":-1}`} {
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"illust":`+strings.TrimSuffix(searchArtworkFirst, "}")+`,"series":`+series+`}}`)
+		}))
+		value := pixiv.NewCredentials("fixture-refresh")
+		value.SetTokens("fixture-access", "fixture-refresh")
+		value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
+		store, err := pixiv.NewMemoryCredentials(value)
+		require.NoError(t, err)
+		client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
+		require.NoError(t, err)
+		art, err := client.Artwork(23).Get(t.Context())
+		server.Close()
+		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		require.Nil(t, art)
+	}
+}
