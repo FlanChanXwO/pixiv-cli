@@ -12,7 +12,7 @@ import (
 // ParseContent parses caller-supplied webview HTML without fetching it.
 // Body images and files are validated against the client's resource policy and
 // bound to its account. Missing body blocks or media locators fail explicitly.
-// Each recognized media figure must contain a single image or file; compound
+// Each recognized media figure must contain a single independent image or file; compound
 // figures fail without returning partial content.
 func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 	// 1. Establish the resource owner and parse the supplied document.
@@ -86,7 +86,7 @@ func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 
 func (c *Client) novelMediaBlock(n *html.Node) (NovelBlock, error) {
 	class := novelAttribute(n, "class")
-	// A media block represents one locator; reject compound figures instead of losing resources.
+	// A media block represents one independent resource; links and file icons belong to that resource.
 	media := novelMediaElements(n)
 	if (strings.Contains(class, "image") || strings.Contains(class, "file")) && len(media) > 1 {
 		return NovelBlock{}, newError("Novel.ParseContent", sdk.MalformedUpstreamResponse, "compound novel media figure is unsupported", nil)
@@ -290,19 +290,33 @@ func skipNovelNode(n *html.Node) bool {
 
 func novelMediaElements(n *html.Node) []*html.Node {
 	var media []*html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
+	image := strings.Contains(novelAttribute(n, "class"), "image")
+	var walk func(*html.Node, bool, bool)
+	walk = func(node *html.Node, inLink, inCaption bool) {
 		if skipNovelNode(node) {
 			return
 		}
-		if node != n && node.Type == html.ElementNode && (node.Data == "img" || node.Data == "a" || node.Data == "figure") {
-			media = append(media, node)
+		if node.Type == html.ElementNode {
+			var independent bool
+			switch node.Data {
+			case "figure":
+				independent = node != n
+			case "img":
+				independent = image || !inLink
+			case "a":
+				independent = (!image && !inCaption) || novelAttribute(node, "data-file-url") != ""
+			}
+			if independent {
+				media = append(media, node)
+			}
+			inLink = inLink || node.Data == "a"
+			inCaption = inCaption || node.Data == "figcaption"
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
+			walk(child, inLink, inCaption)
 		}
 	}
-	walk(n)
+	walk(n, false, false)
 	return media
 }
 

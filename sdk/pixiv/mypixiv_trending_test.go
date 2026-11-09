@@ -101,6 +101,7 @@ func TestTrendingPreservesUnidentifiedAuthor(t *testing.T) {
 		testEndpointContracts(t, []endpointContract{{"unidentified_author", api.PathTrendingTagsIllust, `{"trend_tags":[{"tag":"tag","illust":` + artwork + `}]}`, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
 			tags, err := c.TrendingArtworkTags(ctx)
 			if err == nil {
+				require.EqualValues(t, 23, tags[0].Artwork.ID)
 				require.Zero(t, tags[0].Artwork.Author.ID)
 				_, profileErr := tags[0].Artwork.Author.Profile(ctx)
 				require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(profileErr))
