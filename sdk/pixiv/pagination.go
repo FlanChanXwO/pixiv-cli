@@ -44,6 +44,16 @@ func cloneValues(values url.Values) url.Values {
 }
 
 func validPosition(path string, values, base url.Values) bool {
+	switch path {
+	case api.PathIllustRecommended, api.PathNovelRecommended:
+		return validRecommendationPosition(path, values)
+	case api.PathUserRecommended:
+		return len(values) == 1 && nonnegativeOffset(values[api.ParamOffset])
+	case api.PathIllustNew:
+		return len(values) == 1 && (positiveValues(values[api.ParamMaxIllustID], true) || positiveValues(values[api.ParamOffset], true))
+	case api.PathNovelNew:
+		return len(values) == 1 && positiveValues(values[api.ParamMaxNovelID], true)
+	}
 	if path == api.PathSearchIllust {
 		return validArtworkSearchPosition(values)
 	}
@@ -90,6 +100,10 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 	}
 	position := url.Values{}
 	for key, entries := range values {
+		// Recommendation viewed arrays are deliberately excluded by the App continuation contract.
+		if path == api.PathIllustRecommended && strings.HasPrefix(key, "viewed[") {
+			continue
+		}
 		if path == api.PathSearchIllust && key == searchConsumedKey {
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "upstream continuation contains a local checkpoint", nil)
 		}
@@ -97,7 +111,7 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
 		_, original := base[key]
-		if (path != api.PathIllustRelated || key != api.ParamIllustID) && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag) {
+		if (path != api.PathIllustRelated || key != api.ParamIllustID) && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag || path == api.PathIllustRanking && key == api.ParamDate) {
 			continue
 		}
 		position[key] = entries

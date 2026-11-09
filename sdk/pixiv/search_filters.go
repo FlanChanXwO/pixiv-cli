@@ -49,7 +49,7 @@ const (
 	DurationLastMonth DurationFilter = "within_last_month"
 )
 
-// ArtworkCategory selects one or more categories for artwork search.
+// ArtworkCategory selects categories for artwork search and latest feeds.
 type ArtworkCategory string
 
 const (
