@@ -18,6 +18,10 @@
 // stamp. [CommentRef.Reply] and [CommentRef.Delete] use the same bound account;
 // [Client.Stamps] lists the available stamp images.
 //
+// [Client.SearchArtworks], [Client.SearchNovels], and [Client.SearchUsers] return
+// query-bound pages. [Client.CheckpointSearchArtworks] also resumes within a batch,
+// counting items after local AI filtering.
+//
 // [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
 // URL and persists the credentials returned by Complete before content requests.
 //

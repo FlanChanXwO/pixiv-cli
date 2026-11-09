@@ -44,6 +44,9 @@ func cloneValues(values url.Values) url.Values {
 }
 
 func validPosition(path string, values, base url.Values) bool {
+	if path == api.PathSearchIllust {
+		return validArtworkSearchPosition(values)
+	}
 	if path == api.PathIllustRelated {
 		if len(values[api.ParamIllustID]) != 1 || values.Get(api.ParamIllustID) != base.Get(api.ParamIllustID) {
 			return false
@@ -87,6 +90,9 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 	}
 	position := url.Values{}
 	for key, entries := range values {
+		if path == api.PathSearchIllust && key == searchConsumedKey {
+			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "upstream continuation contains a local checkpoint", nil)
+		}
 		if len(entries) != 1 {
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
