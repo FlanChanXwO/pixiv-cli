@@ -54,7 +54,7 @@ func validPosition(path string, values, base url.Values) bool {
 		return len(values) == 3 && positiveValues(values[api.ParamSeedIllustIDs], false) && positiveValues(values[api.ParamViewed], false)
 	}
 	key := api.ParamOffset
-	if path == api.PathUserBookmarksIllust {
+	if path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks {
 		key = api.ParamMaxBookmarkID
 	}
 	return len(values) == 1 && positiveValues(values[key], true)
@@ -91,7 +91,7 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
 		_, original := base[key]
-		if key != api.ParamIllustID && (original || path == api.PathUserBookmarksIllust && key == api.ParamTag) {
+		if key != api.ParamIllustID && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag) {
 			continue
 		}
 		position[key] = entries

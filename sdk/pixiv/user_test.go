@@ -102,7 +102,7 @@ func testEndpointContracts(t *testing.T, endpoints []endpointContract) {
 						switch {
 						case mode == "normal":
 							fmt.Fprint(w, endpoint.body)
-						case endpoint.path == api.PathIllustBookmarkDetail:
+						case endpoint.path == api.PathIllustBookmarkDetail || endpoint.path == api.PathNovelBookmarkDetail:
 							fmt.Fprint(w, `{"bookmark_detail":{"is_bookmarked":true}}`)
 						case endpoint.name == "profile":
 							fmt.Fprint(w, `{"user":{"id":13},"profile":{},"profile_publicity":{},"workspace":{}}`)
