@@ -63,13 +63,13 @@ func (r *CommentRef) UnmarshalJSON(data []byte) error {
 		ID int64 `json:"id"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
+		return newError("CommentRef.UnmarshalJSON", sdk.InvalidArgument, "malformed comment reference", err)
 	}
 	*r = CommentRef{ID: decoded.ID}
 	return nil
 }
 
-// Comment carries a comment's text, author, timestamp, and parent chain with bound operations.
+// Comment carries a comment's text, optional stamp, author, timestamp, and parent chain with bound operations.
 type Comment struct {
 	*CommentRef
 	commentData
@@ -80,6 +80,7 @@ type commentData struct {
 	Author    *User     `json:"author"` // ID is zero when upstream supplies no author identity.
 	CreatedAt time.Time `json:"created_at"`
 	Parent    *Comment  `json:"parent_comment"`
+	Stamp     *Stamp    `json:"stamp,omitempty"`
 }
 
 // UnmarshalJSON restores comment data without retaining any earlier account binding.
@@ -89,7 +90,7 @@ func (c *Comment) UnmarshalJSON(data []byte) error {
 		ID int64 `json:"id"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
+		return newError("Comment.UnmarshalJSON", sdk.InvalidArgument, "malformed comment", err)
 	}
 	*c = Comment{CommentRef: &CommentRef{ID: decoded.ID}, commentData: decoded.commentData}
 	return nil
@@ -127,7 +128,7 @@ func (c *CommentAccessControl) UnmarshalJSON(data []byte) error {
 		NumericValue *int64 `json:"comment_access_control"`
 	}
 	if err := json.Unmarshal(data, &value); err != nil {
-		return err
+		return newError("CommentAccessControl.UnmarshalJSON", sdk.InvalidArgument, "malformed comment access control", err)
 	}
 	*c = CommentAccessControl{CanComment: value.CanComment, IsLocked: value.IsLocked, NumericValue: value.NumericValue}
 	return nil
@@ -147,7 +148,7 @@ func (p *CommentPage) UnmarshalJSON(data []byte) error {
 	type value CommentPage
 	var decoded value
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
+		return newError("CommentPage.UnmarshalJSON", sdk.InvalidArgument, "malformed comment page", err)
 	}
 	*p = CommentPage(decoded)
 	return nil

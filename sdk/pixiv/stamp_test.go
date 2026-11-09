@@ -3,9 +3,11 @@ package pixiv_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,4 +61,47 @@ func TestStampDecodeClearsBinding(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(`{"id":2}`), &stamp))
 	_, err = stamp.Image.Open(t.Context())
 	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+	stamp.Image = content.Blocks[2].Image.Image
+	require.NoError(t, json.Unmarshal([]byte(`{"id":2,"image":{"url":"https://s.pximg.net/stamp.png","width":20,"height":30}}`), &stamp))
+	require.Equal(t, "https://s.pximg.net/stamp.png", stamp.Image.URL)
+	require.Equal(t, 20, stamp.Image.Width)
+	require.Equal(t, 30, stamp.Image.Height)
+	_, err = stamp.Image.Open(t.Context())
+	require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+}
+
+func TestCommentStampData(t *testing.T) {
+	for _, novel := range []bool{false, true} {
+		path := api.PathIllustComments
+		if novel {
+			path = api.PathNovelComments
+		}
+		body := `{"comments":[` + strings.TrimSuffix(strings.Replace(commentMetadata, `"comment":"reply"`, `"comment":""`, 1), "}") + `,"stamp":{"stamp_id":1,"stamp_url":"https://s.pximg.net/stamp.png"}}]}`
+		testEndpointContracts(t, []endpointContract{{fmt.Sprint(novel), path, body, func(t *testing.T, ctx context.Context, c *pixiv.Client) error {
+			read := c.Artwork(23).Comments
+			if novel {
+				read = c.Novel(23).Comments
+			}
+			page, err := read(ctx, pixiv.CommentsOptions{})
+			if err == nil {
+				stamp := page.Page.Items[0].Stamp
+				require.NotNil(t, stamp)
+				require.EqualValues(t, 1, stamp.ID)
+				require.Equal(t, "https://s.pximg.net/stamp.png", stamp.Image.URL)
+				require.Empty(t, page.Page.Items[0].Text)
+			}
+			return err
+		}}})
+	}
+}
+
+func TestCommentJSONErrors(t *testing.T) {
+	for _, value := range []interface{ UnmarshalJSON([]byte) error }{&pixiv.CommentRef{}, &pixiv.Comment{}, &pixiv.CommentAccessControl{}, &pixiv.CommentPage{}, &pixiv.Stamp{}} {
+		err := value.UnmarshalJSON([]byte(`{"id":"invalid","can_comment":1,"page":1}`))
+		require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
+		var failure *sdk.Error
+		require.ErrorAs(t, err, &failure)
+		var cause *json.UnmarshalTypeError
+		require.True(t, errors.As(err, &cause))
+	}
 }

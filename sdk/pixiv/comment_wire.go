@@ -26,6 +26,7 @@ type commentWire struct {
 	Date      string       `json:"date"`
 	CreatedAt string       `json:"created_at"`
 	Parent    *commentWire `json:"parent_comment"`
+	Stamp     *stampWire   `json:"stamp"`
 }
 
 func (c *Client) mapComment(w commentWire, target commentTarget) (*Comment, error) {
@@ -41,6 +42,13 @@ func (c *Client) mapComment(w commentWire, target commentTarget) (*Comment, erro
 		return nil, err
 	}
 	comment := &Comment{CommentRef: &CommentRef{ID: w.ID, client: c, target: target}, commentData: commentData{Text: cmp.Or(w.Comment, w.Caption), Author: author, CreatedAt: created.UTC()}}
+	if w.Stamp != nil {
+		stamp, err := c.mapStamp(*w.Stamp)
+		if err != nil {
+			return nil, err
+		}
+		comment.Stamp = &stamp
+	}
 	if w.Parent != nil {
 		comment.Parent, err = c.mapComment(*w.Parent, target)
 		if err != nil {

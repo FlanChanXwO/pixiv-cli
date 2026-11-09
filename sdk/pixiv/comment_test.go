@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,6 +98,9 @@ func TestMalformedCommentResponses(t *testing.T) {
 		`{"comments":[{"id":31,"user":{"id":11},"date":"invalid"}]}`,
 		`{"comments":[{"id":31,"user":{"id":11},"date":"2026-11-01T00:00:00Z","parent_comment":{"id":0}}]}`,
 		`{"comments":[],"next_url":"https://evil.example/v3/illust/comments?offset=2"}`,
+		`{"comments":[` + strings.TrimSuffix(commentMetadata, "}") + `,"stamp":{"stamp_id":0,"stamp_url":"https://s.pximg.net/stamp.png"}}]}`,
+		`{"comments":[` + strings.TrimSuffix(commentMetadata, "}") + `,"stamp":{"stamp_id":1,"stamp_url":"https://evil.example/stamp.png"}}]}`,
+		`{"comments":[` + strings.TrimSuffix(commentMetadata, "}") + `,"stamp":{"stamp_id":1}}]}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, body) }))
