@@ -106,6 +106,7 @@ func TestNovelContentMultipleMediaFailsWholeBody(t *testing.T) {
 		`<figure class="novel-image"><img src="https://i.pximg.net/first"><img></figure>`,
 		`<figure class="novel-image"><img src="https://i.pximg.net/first"><figure class="novel-file"><a>file</a></figure></figure>`,
 		`<figure class="novel-file"><a href="https://i.pximg.net/first">first</a><a>second</a></figure>`,
+		`<figure class="novel-file"><a href="https://i.pximg.net/first">first</a><a href="/credits">credits</a></figure>`,
 	} {
 		content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(body))
 		require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
@@ -115,18 +116,24 @@ func TestNovelContentMultipleMediaFailsWholeBody(t *testing.T) {
 
 func TestNovelContentMediaLinksAndIcons(t *testing.T) {
 	for _, figure := range []string{
-		`<figure class="novel-image"><a href="https://www.pixiv.net/"><img src="https://i.pximg.net/body.jpg"></a><figcaption>Picture <a href="/credits">credits</a></figcaption></figure>`,
+		`<figure class="novel-image"><a href="https://www.pixiv.net/"><img src="https://i.pximg.net/body.jpg"></a><figcaption>Picture <img src="https://s.pximg.net/icon.png"><a href="/credits">credits</a></figcaption></figure>`,
 		`<figure class="novel-file"><a href="https://i.pximg.net/file.pdf"><img src="https://s.pximg.net/icon.png">file.pdf</a><figcaption>File <a href="/credits">credits</a></figcaption></figure>`,
+		`<figure class="novel-file"><figcaption>File <a href="https://i.pximg.net/file.pdf">file.pdf</a></figcaption></figure>`,
 	} {
-		content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(figure))
-		require.NoError(t, err)
-		require.Len(t, content.Blocks, 1)
-		if content.Blocks[0].Format == pixiv.NovelBlockImage {
-			require.Equal(t, "https://i.pximg.net/body.jpg", content.Blocks[0].Image.Image.URL)
-		} else {
-			require.Equal(t, "https://i.pximg.net/file.pdf", content.Blocks[0].File.File.URL)
-			require.Equal(t, "file.pdf", content.Blocks[0].File.File.Filename)
-		}
+		t.Run(figure, func(t *testing.T) {
+			content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(figure))
+			require.NoError(t, err)
+			require.Len(t, content.Blocks, 1)
+			if content.Blocks[0].Format == pixiv.NovelBlockImage {
+				require.Equal(t, "https://i.pximg.net/body.jpg", content.Blocks[0].Image.Image.URL)
+				require.Contains(t, content.Blocks[0].Image.Caption, "Picture credits")
+			} else {
+				require.Equal(t, pixiv.NovelBlockFile, content.Blocks[0].Format)
+				require.Equal(t, "https://i.pximg.net/file.pdf", content.Blocks[0].File.File.URL)
+				require.Equal(t, "file.pdf", content.Blocks[0].File.File.Filename)
+				require.Contains(t, content.Blocks[0].File.Caption, "File ")
+			}
+		})
 	}
 }
 

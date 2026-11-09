@@ -14,6 +14,8 @@ import (
 // bound to its account. Missing body blocks or media locators fail explicitly.
 // Each recognized media figure must contain a single independent image or file; compound
 // figures fail without returning partial content.
+// File links outside figcaption are primary locators; a sole caption link is used
+// when no primary locator exists. Multiple primary links fail as ambiguous.
 func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 	// 1. Establish the resource owner and parse the supplied document.
 	if err := r.bound("Novel.ParseContent"); err != nil {
@@ -290,6 +292,7 @@ func skipNovelNode(n *html.Node) bool {
 
 func novelMediaElements(n *html.Node) []*html.Node {
 	var media []*html.Node
+	var captionLinks []*html.Node
 	image := strings.Contains(novelAttribute(n, "class"), "image")
 	var walk func(*html.Node, bool, bool)
 	walk = func(node *html.Node, inLink, inCaption bool) {
@@ -302,9 +305,12 @@ func novelMediaElements(n *html.Node) []*html.Node {
 			case "figure":
 				independent = node != n
 			case "img":
-				independent = image || !inLink
+				independent = !inCaption && (image || !inLink)
 			case "a":
 				independent = (!image && !inCaption) || novelAttribute(node, "data-file-url") != ""
+				if !image && inCaption && !independent {
+					captionLinks = append(captionLinks, node)
+				}
 			}
 			if independent {
 				media = append(media, node)
@@ -317,6 +323,9 @@ func novelMediaElements(n *html.Node) []*html.Node {
 		}
 	}
 	walk(n, false, false)
+	if len(media) == 0 && !image {
+		return captionLinks
+	}
 	return media
 }
 
