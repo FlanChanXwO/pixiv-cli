@@ -91,7 +91,7 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
 		_, original := base[key]
-		if key != api.ParamIllustID && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag) {
+		if (path != api.PathIllustRelated || key != api.ParamIllustID) && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag) {
 			continue
 		}
 		position[key] = entries

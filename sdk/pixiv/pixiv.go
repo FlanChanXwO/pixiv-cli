@@ -13,6 +13,11 @@
 // remain with the caller. Logs use the current slog default logger; use
 // [slog.SetDefault] to route events into the application's handler.
 //
+// [ArtworkRef.Comments] and [NovelRef.Comments] return [CommentPage] batches.
+// Use [ArtworkRef.PostComment] or [NovelRef.PostComment] to publish text or a
+// stamp. [CommentRef.Reply] and [CommentRef.Delete] use the same bound account;
+// [Client.Stamps] lists the available stamp images.
+//
 // [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
 // URL and persists the credentials returned by Complete before content requests.
 //
