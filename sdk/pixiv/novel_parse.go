@@ -50,7 +50,10 @@ func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 					return err
 				}
 				content.Blocks = append(content.Blocks, block)
-				return nil
+				// Unknown containers can hold supported blocks that still need parsing and URL checks.
+				if block.Format != NovelBlockUnknown {
+					return nil
+				}
 			case "div":
 				if strings.Contains(class, "caption") {
 					content.Caption = novelText(n)
@@ -58,7 +61,6 @@ func (r *NovelRef) ParseContent(raw []byte) (NovelContent, error) {
 				}
 				if (strings.Contains(class, "novel") || strings.Contains(class, "text") || strings.Contains(class, "title")) && !novelWrapper(class) {
 					content.Blocks = append(content.Blocks, novelUnknown(n))
-					return nil
 				}
 			}
 		}

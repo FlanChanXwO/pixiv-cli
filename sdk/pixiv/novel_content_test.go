@@ -44,6 +44,18 @@ func TestNovelContentBlocks(t *testing.T) {
 	require.NotContains(t, string(data), "<script")
 }
 
+func TestNovelContentUnknownContainerPreservesMedia(t *testing.T) {
+	for _, element := range []string{"div", "figure"} {
+		raw := fmt.Sprintf(`<%s class="novel-widget"><figure class="novel-image"><img src="https://i.pximg.net/nested.jpg"></figure></%s>`, element, element)
+		content, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(raw))
+		require.NoError(t, err)
+		require.Len(t, content.Blocks, 2)
+		require.Equal(t, pixiv.NovelBlockUnknown, content.Blocks[0].Format)
+		require.Equal(t, pixiv.NovelBlockImage, content.Blocks[1].Format)
+		require.Equal(t, "https://i.pximg.net/nested.jpg", content.Blocks[1].Image.Image.URL)
+	}
+}
+
 func TestNovelContentFailures(t *testing.T) {
 	for _, tc := range []struct {
 		body   string
@@ -54,6 +66,7 @@ func TestNovelContentFailures(t *testing.T) {
 		{`<figure class="novel-file"><a>file</a></figure>`, sdk.MalformedUpstreamResponse},
 		{`<figure class="novel-image"><img src="https://evil.example/image"></figure>`, sdk.ResourceForbidden},
 		{`<p class="noveltext">valid</p><figure class="novel-file"><a href="http://i.pximg.net/file">file</a></figure>`, sdk.ResourceForbidden},
+		{`<div class="novel-widget"><figure class="novel-image"><img src="https://evil.example/image"></figure></div>`, sdk.ResourceForbidden},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			value, err := (&pixiv.Client{}).Novel(23).ParseContent([]byte(tc.body))
