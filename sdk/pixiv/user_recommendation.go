@@ -81,6 +81,9 @@ func (c *Client) mapRecommendation(w recommendationWire) (UserRecommendation, er
 	}
 	result := UserRecommendation{User: user, Artworks: make([]*Artwork, len(w.Artworks)), Novels: make([]*Novel, len(w.Novels))}
 	for i, item := range w.Artworks {
+		if item.User.ID <= 0 {
+			return UserRecommendation{}, newError("RecommendedUsers", sdk.MalformedUpstreamResponse, "missing artwork sample author", nil)
+		}
 		result.Artworks[i], err = c.mapArtwork(item)
 		if err != nil {
 			return UserRecommendation{}, err

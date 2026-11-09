@@ -43,6 +43,26 @@ func cloneValues(values url.Values) url.Values {
 	return result
 }
 
+// The App may echo optional query fields omitted by the caller; only positions are replayed.
+func optionalContinuationQueryKey(path, key string) bool {
+	switch path {
+	case api.PathSearchIllust:
+		switch key {
+		case api.ParamDuration, api.ParamStartDate, api.ParamEndDate, api.ParamContentType,
+			api.ParamRatioPattern, api.ParamWidthMin, api.ParamWidthMax, api.ParamHeightMin,
+			api.ParamHeightMax, api.ParamTool, api.ParamBookmarkNumMin, api.ParamBookmarkNumMax:
+			return true
+		}
+	case api.PathSearchNovel:
+		return key == api.ParamDuration
+	case api.PathIllustRanking:
+		return key == api.ParamDate
+	case api.PathUserBookmarksIllust, api.PathUserNovelBookmarks:
+		return key == api.ParamTag
+	}
+	return false
+}
+
 func validPosition(path string, values, base url.Values) bool {
 	switch path {
 	case api.PathIllustRecommended, api.PathNovelRecommended:
@@ -114,9 +134,10 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 		if len(entries) != 1 {
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
-		_, original := base[key]
-		if (path != api.PathIllustRelated || key != api.ParamIllustID) && (original || (path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks) && key == api.ParamTag || path == api.PathIllustRanking && key == api.ParamDate) {
-			continue
+		if path != api.PathIllustRelated || key != api.ParamIllustID {
+			if _, original := base[key]; original || optionalContinuationQueryKey(path, key) {
+				continue
+			}
 		}
 		position[key] = entries
 	}

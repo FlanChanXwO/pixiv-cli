@@ -1,9 +1,11 @@
 package pixiv_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -12,6 +14,21 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSearchContinuationEchoesDefaults(t *testing.T) {
+	for _, feed := range []feedEndpoint{
+		{"search_artworks", api.PathSearchIllust, searchEndpoints[0].body, url.Values{"word": {"word"}, "search_target": {"partial_match_for_tags"}, "sort": {"date_desc"}, "search_ai_type": {"0"}}, url.Values{"offset": {"30"}}, func(ctx context.Context, c *pixiv.Client, token sdk.Cursor) (sdk.Cursor, error) {
+			page, err := c.SearchArtworks(ctx, "word", pixiv.ArtworkSearchOptions{Cursor: token})
+			return page.Cursor, err
+		}},
+		{"search_novels", api.PathSearchNovel, searchEndpoints[1].body, url.Values{"word": {"word"}, "search_target": {"partial_match_for_tags"}, "sort": {"date_desc"}}, url.Values{"offset": {"30"}}, func(ctx context.Context, c *pixiv.Client, token sdk.Cursor) (sdk.Cursor, error) {
+			page, err := c.SearchNovels(ctx, "word", pixiv.NovelSearchOptions{Cursor: token})
+			return page.Cursor, err
+		}},
+	} {
+		t.Run(feed.name, func(t *testing.T) { testFeedContinuation(t, feed) })
+	}
+}
 
 func TestArtworkSearchCheckpoint(t *testing.T) {
 	calls := 0

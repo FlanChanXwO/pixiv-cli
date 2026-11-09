@@ -44,6 +44,9 @@ func testFeedContinuation(t *testing.T, feed feedEndpoint) {
 		if feed.path == api.PathIllustRanking && next.Get("date") == "" {
 			next.Set("date", "2026-11-01")
 		}
+		if feed.path == api.PathSearchIllust || feed.path == api.PathSearchNovel {
+			next.Set("duration", "")
+		}
 		if feed.path == api.PathIllustRecommended {
 			next.Set("viewed[0]", "23")
 		}

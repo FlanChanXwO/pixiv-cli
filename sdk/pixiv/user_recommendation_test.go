@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +37,7 @@ func TestRecommendedUsersEndpoint(t *testing.T) {
 func TestRecommendedUserSamplesFailWholePage(t *testing.T) {
 	for _, preview := range []string{
 		`{"user":{"id":0}}`,
+		`{"user":{"id":12},"illusts":[` + strings.Replace(searchArtworkFirst, `"id":11`, `"id":0`, 1) + `]}`,
 		`{"user":{"id":12},"illusts":[{"id":23,"user":{"id":11},"create_date":"broken"}]}`,
 		`{"user":{"id":12},"novels":[{"id":23,"user":{"id":11},"create_date":"broken"}]}`,
 		`{"user":{"id":12},"novels":[{"id":0}]}`,
