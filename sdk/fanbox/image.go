@@ -11,10 +11,13 @@ import (
 // Image carries a first-party media locator and its optional pixel dimensions.
 // JSON preserves metadata and omits the account binding.
 type Image struct {
-	URL    string `json:"url"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-	client *Client
+	ID        string `json:"id"`
+	Extension string `json:"extension"`
+	URL       string `json:"url"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Thumbnail *Image `json:"thumbnail,omitempty"`
+	client    *Client
 }
 
 // UnmarshalJSON restores image metadata and clears the earlier account binding.
@@ -36,4 +39,29 @@ func (c *Client) image(operation, raw string) (Image, error) {
 		}
 	}
 	return Image{URL: raw, client: c}, nil
+}
+
+func (c *Client) postImage(operation string, source imageWire) (Image, error) {
+	if strings.TrimSpace(source.ID) == "" {
+		return Image{}, newError(operation, sdk.MalformedUpstreamResponse, "FANBOX image is missing an ID")
+	}
+	if strings.TrimSpace(source.OriginalURL) == "" {
+		return Image{}, newError(operation, sdk.ResourceForbidden, "FANBOX image URL is required")
+	}
+	image, err := c.image(operation, source.OriginalURL)
+	if err != nil {
+		return Image{}, err
+	}
+	image.ID, image.Extension, image.Width, image.Height = source.ID, source.Extension, source.Width, source.Height
+	if source.ThumbnailURL != "" {
+		thumbnail, err := c.image(operation, source.ThumbnailURL)
+		if err != nil {
+			return Image{}, err
+		}
+		if thumbnail.URL == "" {
+			return Image{}, newError(operation, sdk.ResourceForbidden, "FANBOX thumbnail URL is required")
+		}
+		image.Thumbnail = &thumbnail
+	}
+	return image, nil
 }

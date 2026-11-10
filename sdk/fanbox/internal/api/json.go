@@ -26,6 +26,16 @@ const (
 	PathPlanListSupporting = "plan.listSupporting"
 	// PathTagGetFeatured fetches featured tags for a creator.
 	PathTagGetFeatured = "tag.getFeatured"
+	// PathPostInfo fetches one post's details.
+	PathPostInfo = "post.info"
+	// PathPostListCreator lists a creator's posts.
+	PathPostListCreator = "post.listCreator"
+	// PathPostListTagged lists a creator's posts under a tag.
+	PathPostListTagged = "post.listTagged"
+	// PathPostListHome lists the current account's home feed.
+	PathPostListHome = "post.listHome"
+	// PathPostListSupporting lists posts from supported creators.
+	PathPostListSupporting = "post.listSupporting"
 )
 
 const (
@@ -35,7 +45,12 @@ const (
 	ParamPostID = "postId"
 	// ParamTag selects a creator's tag.
 	ParamTag = "tag"
+	// ParamLimit sets the initial post list size.
+	ParamLimit = "limit"
 )
+
+// PostListPageLimit preserves the upstream initial post-page size.
+const PostListPageLimit = 10
 
 // GetJSON reads a product-owned API endpoint, preserving transport and close
 // failures while excluding raw upstream documents from decoding errors.

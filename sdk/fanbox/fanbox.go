@@ -9,6 +9,8 @@
 // [Client.Creator] creates a [CreatorRef] without I/O; Get loads a [Creator]
 // with the same operations. [Client.Creators] returns bound summaries and
 // query/account-bound pages. Decoded objects require a fresh client reference.
+// [Client.Post] creates a [PostRef]; its Get and all post lists return [Post]
+// with available text, ordered blocks, first-party media and upstream payloads.
 package fanbox
 
 import (
