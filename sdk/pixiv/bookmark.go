@@ -60,6 +60,11 @@ func (r *ArtworkRef) Bookmark(ctx context.Context) (ArtworkBookmarkDetail, error
 	if err := r.bound("Artwork.Bookmark"); err != nil {
 		return ArtworkBookmarkDetail{}, err
 	}
+	restrict, tags, err := r.client.bookmarkDetail(ctx, "Artwork.Bookmark", api.PathIllustBookmarkDetail, api.ParamIllustID, r.ID)
+	return ArtworkBookmarkDetail{Restrict: restrict, Tags: tags}, err
+}
+
+func (c *Client) bookmarkDetail(ctx context.Context, operation, path, parameter string, id int64) (Restrict, []string, error) {
 	var raw struct {
 		Detail *struct {
 			IsBookmarked *bool  `json:"is_bookmarked"`
@@ -70,27 +75,26 @@ func (r *ArtworkRef) Bookmark(ctx context.Context) (ArtworkBookmarkDetail, error
 			} `json:"tags"`
 		} `json:"bookmark_detail"`
 	}
-	result := ArtworkBookmarkDetail{Tags: []string{}}
-	if err := r.client.getJSON(ctx, api.PathIllustBookmarkDetail, url.Values{api.ParamIllustID: {strconv.FormatInt(r.ID, 10)}}, &raw); err != nil {
+	tags := []string{}
+	if err := c.getJSON(ctx, path, url.Values{parameter: {strconv.FormatInt(id, 10)}}, &raw); err != nil {
 		var failure *sdk.Error
 		if errors.As(err, &failure) && failure.HTTPStatus == http.StatusNotFound {
-			return result, nil
+			return "", tags, nil
 		}
-		return ArtworkBookmarkDetail{}, err
+		return "", nil, err
 	}
 	if raw.Detail == nil || raw.Detail.IsBookmarked != nil && !*raw.Detail.IsBookmarked {
-		return result, nil
+		return "", tags, nil
 	}
 	if raw.Detail.IsBookmarked != nil && *raw.Detail.IsBookmarked && raw.Detail.Restrict == "" {
-		return ArtworkBookmarkDetail{}, newError("Artwork.Bookmark", sdk.MalformedUpstreamResponse, "bookmarked artwork has no visibility", nil)
+		return "", nil, newError(operation, sdk.MalformedUpstreamResponse, "bookmarked work has no visibility", nil)
 	}
-	result.Restrict = Restrict(raw.Detail.Restrict)
 	for _, tag := range raw.Detail.Tags {
 		if tag.IsRegistered {
-			result.Tags = append(result.Tags, tag.Name)
+			tags = append(tags, tag.Name)
 		}
 	}
-	return result, nil
+	return Restrict(raw.Detail.Restrict), tags, nil
 }
 
 // AddBookmark adds this artwork to the client account's bookmarks, sending the write once.

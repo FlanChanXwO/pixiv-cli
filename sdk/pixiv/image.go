@@ -3,13 +3,8 @@ package pixiv
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -35,40 +30,13 @@ func (i *Image) UnmarshalJSON(data []byte) error {
 
 // Open returns the media body; the caller must close it.
 func (i Image) Open(ctx context.Context) (io.ReadCloser, error) {
-	response, err := i.client.openResource(ctx, i.URL)
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != http.StatusOK {
-		response.Body.Close()
-		return nil, classifyError("Image.Open", api.HTTPStatus(response.StatusCode), false)
-	}
-	return response.Body, nil
+	return i.client.resourceBody(ctx, "Image", i.URL)
 }
 
 // Save writes an image to path, preserving an existing file on download failure.
 // The containing directory must already exist.
 func (i Image) Save(ctx context.Context, path string) error {
-	body, err := i.Open(ctx)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-	file, err := os.CreateTemp(filepath.Dir(path), ".pixiv-image-*")
-	if err != nil {
-		return newError("Image.Save", sdk.LocalStateError, "create image file failed", err)
-	}
-	name := file.Name()
-	defer os.Remove(name)
-	_, copyErr := io.Copy(file, body)
-	closeErr := file.Close()
-	if err := errors.Join(copyErr, closeErr, ctx.Err()); err != nil {
-		return newError("Image.Save", sdk.LocalStateError, "write image failed", err)
-	}
-	if err := os.Rename(name, path); err != nil {
-		return newError("Image.Save", sdk.LocalStateError, "replace image failed", err)
-	}
-	return nil
+	return i.client.saveResource(ctx, "Image", i.URL, path)
 }
 
 func (c *Client) image(raw string, width, height int) (Image, error) {

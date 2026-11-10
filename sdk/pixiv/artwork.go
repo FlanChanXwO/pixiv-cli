@@ -81,9 +81,9 @@ func (r *ArtworkRef) Get(ctx context.Context) (*Artwork, error) {
 	return r.client.mapArtwork(*raw.Illust)
 }
 
-// ArtworkSeriesSummary identifies the series containing an artwork.
+// ArtworkSeriesSummary links an artwork to its bound series and supplied title.
 type ArtworkSeriesSummary struct {
-	ID    int64  `json:"id"`
+	*ArtworkSeriesRef
 	Title string `json:"title"`
 }
 

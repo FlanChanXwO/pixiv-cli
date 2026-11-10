@@ -32,7 +32,12 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 		a.Tags[i] = Tag{Name: tag.Name, TranslatedName: tag.TranslatedName}
 	}
 	if w.Series != nil {
-		a.Series = &ArtworkSeriesSummary{ID: w.Series.ID, Title: w.Series.Title}
+		if w.Series.ID <= 0 {
+			return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "series ID must be positive", nil)
+		}
+		series := c.ArtworkSeries(w.Series.ID)
+		series.OwnerUserID = w.User.ID
+		a.Series = &ArtworkSeriesSummary{ArtworkSeriesRef: series, Title: w.Series.Title}
 	}
 	a.Cover, err = c.image(firstImageURL(w.ImageURLs), w.Width, w.Height)
 	if err != nil {

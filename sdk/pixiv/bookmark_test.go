@@ -128,7 +128,7 @@ func TestParsedReferences(t *testing.T) {
 		require.Equal(t, tc.want, canonical)
 		require.IsType(t, tc.kind, ref)
 	}
-	for _, raw := range []string{"23", "http://pixiv.net/artworks/23", "https://pixiv.net.evil/artworks/23", "https://x@pixiv.net/artworks/23", "https://pixiv.net:443/artworks/23", "https://pixiv.net/artworks/0", "https://pixiv.net/novel/show.php?id=23", "https://pixiv.net/user/11/series/23"} {
+	for _, raw := range []string{"23", "http://pixiv.net/artworks/23", "https://pixiv.net.evil/artworks/23", "https://x@pixiv.net/artworks/23", "https://pixiv.net:443/artworks/23", "https://pixiv.net/artworks/0", "https://pixiv.net/novel/show.php?id=0", "https://pixiv.net/user/0/series/23"} {
 		_, err := client.ParseURL(raw)
 		require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err))
 	}

@@ -43,7 +43,44 @@ func cloneValues(values url.Values) url.Values {
 	return result
 }
 
+// The App may echo optional query fields omitted by the caller; only positions are replayed.
+func optionalContinuationQueryKey(path, key string) bool {
+	switch path {
+	case api.PathSearchIllust:
+		switch key {
+		case api.ParamDuration, api.ParamStartDate, api.ParamEndDate, api.ParamContentType,
+			api.ParamRatioPattern, api.ParamWidthMin, api.ParamWidthMax, api.ParamHeightMin,
+			api.ParamHeightMax, api.ParamTool, api.ParamBookmarkNumMin, api.ParamBookmarkNumMax:
+			return true
+		}
+	case api.PathSearchNovel:
+		return key == api.ParamDuration
+	case api.PathIllustRanking:
+		return key == api.ParamDate
+	case api.PathUserBookmarksIllust, api.PathUserNovelBookmarks:
+		return key == api.ParamTag
+	}
+	return false
+}
+
 func validPosition(path string, values, base url.Values) bool {
+	switch path {
+	case api.PathIllustRecommended, api.PathNovelRecommended:
+		return validRecommendationPosition(path, values)
+	case api.PathUserRecommended:
+		return len(values) == 1 && nonnegativeOffset(values[api.ParamOffset])
+	case api.PathIllustNew:
+		return len(values) == 1 && (positiveValues(values[api.ParamMaxIllustID], true) || positiveValues(values[api.ParamOffset], true))
+	case api.PathNovelNew:
+		return len(values) == 1 && positiveValues(values[api.ParamMaxNovelID], true)
+	case api.PathIllustSeries:
+		return len(values) == 1 && (positiveValues(values[api.ParamLastOrder], true) || positiveValues(values[api.ParamOffset], true))
+	case api.PathNovelSeries:
+		return len(values) == 1 && positiveValues(values[api.ParamLastOrder], true)
+	}
+	if path == api.PathSearchIllust {
+		return validArtworkSearchPosition(values)
+	}
 	if path == api.PathIllustRelated {
 		if len(values[api.ParamIllustID]) != 1 || values.Get(api.ParamIllustID) != base.Get(api.ParamIllustID) {
 			return false
@@ -54,7 +91,7 @@ func validPosition(path string, values, base url.Values) bool {
 		return len(values) == 3 && positiveValues(values[api.ParamSeedIllustIDs], false) && positiveValues(values[api.ParamViewed], false)
 	}
 	key := api.ParamOffset
-	if path == api.PathUserBookmarksIllust {
+	if path == api.PathUserBookmarksIllust || path == api.PathUserNovelBookmarks {
 		key = api.ParamMaxBookmarkID
 	}
 	return len(values) == 1 && positiveValues(values[key], true)
@@ -87,12 +124,20 @@ func nextCursor(raw *string, path string, base url.Values, binding cursor.Bindin
 	}
 	position := url.Values{}
 	for key, entries := range values {
+		// Recommendation viewed arrays are deliberately excluded by the App continuation contract.
+		if path == api.PathIllustRecommended && strings.HasPrefix(key, "viewed[") {
+			continue
+		}
+		if path == api.PathSearchIllust && key == searchConsumedKey {
+			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "upstream continuation contains a local checkpoint", nil)
+		}
 		if len(entries) != 1 {
 			return sdk.Cursor{}, newError(path, sdk.MalformedUpstreamResponse, "invalid continuation value", nil)
 		}
-		_, original := base[key]
-		if key != api.ParamIllustID && (original || path == api.PathUserBookmarksIllust && key == api.ParamTag) {
-			continue
+		if path != api.PathIllustRelated || key != api.ParamIllustID {
+			if _, original := base[key]; original || optionalContinuationQueryKey(path, key) {
+				continue
+			}
 		}
 		position[key] = entries
 	}

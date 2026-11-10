@@ -4,9 +4,28 @@
 // client reads current credentials before refreshing, performs OAuth outside
 // storage locks, and saves through a revision comparison before using new tokens.
 // [NewMemoryCredentials] supplies storage for applications that need no file.
+// [Client.Novel] constructs a reference without I/O; [NovelRef.Get] loads its
+// metadata and [UserRef.Novels] lists an author's novels. [NovelRef.Content]
+// reports ContentUnavailable, matching the App API contract. To read an existing
+// webview document, pass its HTML to [NovelRef.ParseContent]; body images and
+// attachments retain the client's resource policy and account binding.
 // All content requests require credentials; configuration and account selection
 // remain with the caller. Logs use the current slog default logger; use
 // [slog.SetDefault] to route events into the application's handler.
+//
+// [ArtworkRef.Comments] and [NovelRef.Comments] return [CommentPage] batches.
+// Use [ArtworkRef.PostComment] or [NovelRef.PostComment] to publish text or a
+// stamp. [CommentRef.Reply] and [CommentRef.Delete] use the same bound account;
+// [Client.Stamps] lists the available stamp images.
+//
+// [Client.SearchArtworks], [Client.SearchNovels], and [Client.SearchUsers] return
+// query-bound pages. [Client.CheckpointSearchArtworks] also resumes within a batch,
+// counting items after local AI filtering.
+//
+// Series references list complete works. [NovelSeriesRef.Get] returns metadata
+// and a novels page together; its options also resume a saved novels cursor.
+// [Artwork.Series] links to the artwork's series without a separate lookup.
+// Ranking, recommendation, following, latest, and MyPixiv feeds use the same pages.
 //
 // [BeginLogin] creates a standalone [LoginSession]. The caller opens its login
 // URL and persists the credentials returned by Complete before content requests.

@@ -75,8 +75,11 @@ func (w *artworkWire) UnmarshalJSON(data []byte) error {
 }
 
 type artworkListWire struct {
-	Illusts api.RequiredList[artworkWire] `json:"illusts"`
-	NextURL *string                       `json:"next_url"`
+	Illusts      api.RequiredList[artworkWire] `json:"illusts"`
+	NextURL      *string                       `json:"next_url"`
+	SeriesDetail *struct {
+		User userWire `json:"user"`
+	} `json:"illust_series_detail"`
 }
 
 type ugoiraZipURLsWire struct {
