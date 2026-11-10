@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/internal/cloudflare"
 )
 
 const (
@@ -32,47 +33,51 @@ const (
 )
 
 func (c *Client) do(ctx context.Context, operation, endpoint, accept string) (*http.Response, error) {
-	response, err := c.native(ctx, operation, endpoint, accept)
+	state := c.nativeState()
+	response, err := c.native(ctx, operation, endpoint, accept, state)
 	if sdk.ReasonOf(err) != sdk.ChallengeRequired || !c.solverEnabled {
 		return response, err
 	}
 	// Only a verified challenge permits one anonymous solve and one native replay.
-	c.invalidate()
-	state, err := c.browser.Solve(ctx, WebBaseURL)
+	c.invalidate(state)
+	solved, err := c.browser.Solve(ctx, WebBaseURL)
 	if err != nil {
 		return nil, err
 	}
 	c.mu.Lock()
-	c.clearance = &state
+	state = &solved
+	c.clearance = state
 	c.mu.Unlock()
 	slog.DebugContext(ctx, "Replaying FANBOX request with fresh clearance", "operation", operation)
-	response, err = c.native(ctx, operation, endpoint, accept)
+	response, err = c.native(ctx, operation, endpoint, accept, state)
 	if sdk.ReasonOf(err) == sdk.ChallengeRequired {
-		c.invalidate()
+		c.invalidate(state)
 	}
 	return response, err
 }
 
-func (c *Client) invalidate() {
+func (c *Client) invalidate(rejected *cloudflare.Clearance) {
 	c.mu.Lock()
-	c.clearance = nil
-	c.mu.Unlock()
-	c.browser.Invalidate()
+	defer c.mu.Unlock()
+	current := c.clearance
+	// A delayed challenge can reject only the state that request actually used.
+	// Shared solve waiters may have adopted equivalent copies of that state.
+	if rejected != nil && current != nil && current.UserAgent == rejected.UserAgent && current.Cookie.Value() == rejected.Cookie.Value() && current.ExpiresAt.Equal(rejected.ExpiresAt) {
+		c.clearance = nil
+		c.browser.Invalidate()
+	}
 }
 
-func (c *Client) nativeState() (string, string) {
+func (c *Client) nativeState() *cloudflare.Clearance {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.clearance != nil && !c.clearance.ExpiresAt.IsZero() && !time.Now().Before(c.clearance.ExpiresAt) {
 		c.clearance = nil
 	}
-	if c.clearance == nil {
-		return c.agent, ""
-	}
-	return c.clearance.UserAgent, c.clearance.Cookie.Value()
+	return c.clearance
 }
 
-func (c *Client) native(ctx context.Context, operation, endpoint, accept string) (*http.Response, error) {
+func (c *Client) native(ctx context.Context, operation, endpoint, accept string, state *cloudflare.Clearance) (*http.Response, error) {
 	visited := make(map[string]bool)
 	redirected := false
 	for {
@@ -89,7 +94,10 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string)
 		if err != nil {
 			return nil, externalFailure(ctx, operation, "build FANBOX request failed", err)
 		}
-		agent, clearance := c.nativeState()
+		agent, clearance := c.agent, ""
+		if state != nil {
+			agent, clearance = state.UserAgent, state.Cookie.Value()
+		}
 		request.Header.Set(headerOrigin, webOrigin)
 		request.Header.Set(headerReferer, WebBaseURL)
 		request.Header.Set(headerUserAgent, agent)
