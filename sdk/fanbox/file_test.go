@@ -98,7 +98,65 @@ func TestFileSaveCancellation(t *testing.T) {
 	go func() { result <- post.Body.Files[0].Save(ctx, path) }()
 	<-started
 	cancel()
-	require.ErrorIs(t, <-result, context.Canceled)
+	err = <-result
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, sdk.UpstreamUnavailable, sdk.ReasonOf(err))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "old bytes", string(data))
+}
+
+type cancelAfterReadTransport struct {
+	base   http.RoundTripper
+	cancel context.CancelFunc
+}
+
+func (r cancelAfterReadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := r.base.RoundTrip(request)
+	if err == nil && request.URL.Hostname() == "downloads.fanbox.cc" {
+		response.Body = cancelAfterReadBody{response.Body, r.cancel}
+	}
+	return response, err
+}
+
+type cancelAfterReadBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b cancelAfterReadBody) Read(data []byte) (int, error) {
+	n, err := b.ReadCloser.Read(data)
+	if n > 0 {
+		b.cancel()
+		// Let the atomic writer observe cancellation at its next context check.
+		return n, nil
+	}
+	return n, err
+}
+
+func TestFileSaveWriterCancellation(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/post.info" {
+			fmt.Fprint(w, `{"body":{"post":{"id":"42","publishedDatetime":"2026-11-10T00:00:00Z","body":{"files":[{"id":"f","url":"https://downloads.fanbox.cc/file"}]}}}}`)
+			return
+		}
+		fmt.Fprint(w, "new bytes")
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	httpClient := server.Client()
+	routeToServer(httpClient, server)
+	httpClient.Transport = cancelAfterReadTransport{httpClient.Transport, cancel}
+	client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: httpClient})
+	require.NoError(t, err)
+	post, err := client.Post("42").Get(t.Context())
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, []byte("old bytes"), 0o600))
+	err = post.Body.Files[0].Save(ctx, path)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, sdk.UpstreamUnavailable, sdk.ReasonOf(err))
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, "old bytes", string(data))

@@ -46,3 +46,12 @@ func TestFanboxURLFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestFanboxServiceURLs(t *testing.T) {
+	client, err := fanbox.New("session-fixture", fanbox.Options{})
+	require.NoError(t, err)
+	for _, raw := range []string{"https://api.fanbox.cc/post.info?postId=1", "https://DOWNLOADS.FANBOX.CC/file"} {
+		_, err := client.ParseURL(raw)
+		require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(err), raw)
+	}
+}

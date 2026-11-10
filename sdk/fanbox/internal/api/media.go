@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	downloadsHost = "downloads.fanbox.cc"
+	// DownloadsHost names the session-authenticated media service, not a creator page.
+	DownloadsHost = "downloads.fanbox.cc"
 	acceptMedia   = "*/*"
 )
 

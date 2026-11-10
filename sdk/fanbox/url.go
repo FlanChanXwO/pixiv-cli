@@ -26,7 +26,8 @@ type CreatorPostsRef struct {
 // ParseURL creates a bound reference without network I/O. Main-host forms are
 // /creators/{id}, /@creator, /@creator/posts, /@creator/posts/{post}, and
 // /@creator/posts/tag/{tag}. Creator subdomains retain the legacy interpretation
-// as creator profiles regardless of path. Query and fragment are discarded.
+// as creator profiles regardless of path; known API and download service hosts
+// are rejected. Query and fragment are discarded.
 func (c *Client) ParseURL(raw string) (Reference, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Scheme != "https" || parsed.User != nil {
@@ -34,7 +35,7 @@ func (c *Client) ParseURL(raw string) (Reference, error) {
 	}
 	host := strings.ToLower(parsed.Hostname())
 	if host != "www.fanbox.cc" && host != "fanbox.cc" {
-		if strings.HasSuffix(host, ".fanbox.cc") {
+		if host != api.APIHost && host != api.DownloadsHost && strings.HasSuffix(host, ".fanbox.cc") {
 			creator := strings.TrimSuffix(host, ".fanbox.cc")
 			if creator != "" && !strings.Contains(creator, ".") {
 				return c.Creator(creator), nil

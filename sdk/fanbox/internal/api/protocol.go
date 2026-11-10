@@ -127,7 +127,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint string, profile
 			}
 		}
 		host := strings.ToLower(target.Hostname())
-		cookieAllowed := profile.media && host == downloadsHost || !profile.media && (host == "www.fanbox.cc" || host == "api.fanbox.cc")
+		cookieAllowed := profile.media && host == DownloadsHost || !profile.media && (host == "www.fanbox.cc" || host == "api.fanbox.cc")
 		if !redirected && cookieAllowed {
 			cookie := sessionCookieName + "=" + c.session.Value()
 			if clearance != "" {

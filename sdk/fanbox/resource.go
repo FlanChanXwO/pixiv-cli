@@ -63,6 +63,9 @@ func (c *Client) saveMedia(ctx context.Context, operation, raw, path string) err
 		if errors.As(err, &upstream) {
 			return err
 		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return &sdk.Error{Operation: operation, Reason: sdk.UpstreamUnavailable, Message: "save FANBOX media failed", Err: err}
+		}
 		return &sdk.Error{Operation: operation, Reason: sdk.LocalStateError, Message: "save FANBOX media failed", Err: err}
 	}
 	return nil
