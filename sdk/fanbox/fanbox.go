@@ -27,9 +27,6 @@ import (
 // HTTPClient remains caller-owned; an empty FlareSolverrURL disables recovery.
 type Options = api.Options
 
-// User exposes the authenticated session's non-secret identity fields.
-type User = api.User
-
 // Client binds every operation to the session supplied to New. It reads no
 // account files and never substitutes another account after authentication fails.
 type Client struct{ app *api.Client }
@@ -47,17 +44,6 @@ func New(sessionID string, options Options) (*Client, error) {
 
 // Format keeps the session, proxies, and cached cookies out of diagnostics.
 func (*Client) Format(state fmt.State, _ rune) { fmt.Fprint(state, "fanbox.Client{}") }
-
-// CurrentUser fetches the authenticated identity from homepage metadata.
-func (c *Client) CurrentUser(ctx context.Context) (User, error) {
-	return c.app.CurrentUser(ctx, "CurrentUser")
-}
-
-// ValidateSession checks the current session; an expired session returns CredentialsExpired.
-func (c *Client) ValidateSession(ctx context.Context) error {
-	_, err := c.app.CurrentUser(ctx, "ValidateSession")
-	return err
-}
 
 // CloseIdleConnections releases SDK-owned idle connections. Injected HTTP
 // transports remain caller-owned; finish ongoing operations before closing.

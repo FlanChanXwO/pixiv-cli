@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -105,4 +107,40 @@ func TestCreatorTagFailures(t *testing.T) {
 			require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
 		})
 	}
+}
+
+func TestDelayedChallengeReusesFreshClearance(t *testing.T) {
+	var solves atomic.Int32
+	solver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		solves.Add(1)
+		fmt.Fprint(w, `{"status":"ok","solution":{"userAgent":"fixture","cookies":[{"name":"cf_clearance","value":"clearance-fixture"}]}}`)
+	}))
+	defer solver.Close()
+	started, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Cookie"), "cf_clearance=") {
+			fmt.Fprint(w, `{"body":{"user":{"name":"fixture"}}}`)
+			return
+		}
+		if r.URL.Query().Get("creatorId") == "slow" {
+			close(started)
+			<-release
+		}
+		w.Header().Set("Cf-Mitigated", "challenge")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	httpClient := server.Client()
+	routeToServer(httpClient, server)
+	client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: httpClient, FlareSolverrURL: solver.URL})
+	require.NoError(t, err)
+	result := make(chan error, 1)
+	go func() { _, err := client.Creator("slow").Get(t.Context()); result <- err }()
+	<-started
+	_, err = client.Creator("fast").Get(t.Context())
+	close(release)
+	require.NoError(t, err)
+	require.NoError(t, <-result)
+	require.EqualValues(t, 1, solves.Load())
+	require.NoError(t, client.Close(t.Context()))
 }
