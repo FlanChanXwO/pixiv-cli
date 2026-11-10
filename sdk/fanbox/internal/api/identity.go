@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -60,7 +61,7 @@ func (c *Client) VerifiedUserID(ctx context.Context, operation string) (int64, e
 // malformed identity, and expired authentication are returned explicitly.
 // operation labels errors with the public caller that initiated validation.
 func (c *Client) CurrentUser(ctx context.Context, operation string) (User, error) {
-	response, err := c.do(ctx, operation, WebBaseURL, acceptHTML)
+	response, err := c.do(ctx, operation, WebBaseURL, requestProfile{accept: acceptHTML, method: http.MethodGet})
 	if err != nil {
 		return User{}, err
 	}

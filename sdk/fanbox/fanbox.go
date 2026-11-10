@@ -11,6 +11,8 @@
 // query/account-bound pages. Decoded objects require a fresh client reference.
 // [Client.Post] creates a [PostRef]; its Get and all post lists return [Post]
 // with available text, ordered blocks, first-party media and upstream payloads.
+// [Image] and [File] provide conditional Open and atomic Save operations.
+// [Client.ParseURL] resolves page URLs to bound references without I/O.
 package fanbox
 
 import (

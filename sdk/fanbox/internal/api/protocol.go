@@ -22,7 +22,6 @@ const (
 	headerAccept            = "Accept"
 	headerCookie            = "Cookie"
 	headerLocation          = "Location"
-	headerContentType       = "Content-Type"
 	headerMitigated         = "Cf-Mitigated"
 	headerServer            = "Server"
 	headerRay               = "Cf-Ray"
@@ -32,9 +31,16 @@ const (
 	challengeReadBufferSize = 32 * 1024
 )
 
-func (c *Client) do(ctx context.Context, operation, endpoint, accept string) (*http.Response, error) {
+type requestProfile struct {
+	accept  string
+	method  string
+	media   bool
+	headers http.Header
+}
+
+func (c *Client) do(ctx context.Context, operation, endpoint string, profile requestProfile) (*http.Response, error) {
 	state := c.nativeState()
-	response, err := c.native(ctx, operation, endpoint, accept, state)
+	response, err := c.native(ctx, operation, endpoint, profile, state)
 	if sdk.ReasonOf(err) != sdk.ChallengeRequired || !c.solverEnabled {
 		return response, err
 	}
@@ -49,7 +55,7 @@ func (c *Client) do(ctx context.Context, operation, endpoint, accept string) (*h
 	c.clearance = state
 	c.mu.Unlock()
 	slog.DebugContext(ctx, "Replaying FANBOX request with fresh clearance", "operation", operation)
-	response, err = c.native(ctx, operation, endpoint, accept, state)
+	response, err = c.native(ctx, operation, endpoint, profile, state)
 	if sdk.ReasonOf(err) == sdk.ChallengeRequired {
 		c.invalidate(state)
 	}
@@ -77,11 +83,11 @@ func (c *Client) nativeState() *cloudflare.Clearance {
 	return c.clearance
 }
 
-func (c *Client) native(ctx context.Context, operation, endpoint, accept string, state *cloudflare.Clearance) (*http.Response, error) {
+func (c *Client) native(ctx context.Context, operation, endpoint string, profile requestProfile, state *cloudflare.Clearance) (*http.Response, error) {
 	visited := make(map[string]bool)
 	redirected := false
 	for {
-		target, err := allowedURL(endpoint, false)
+		target, err := allowedURL(endpoint, profile.media)
 		if err != nil {
 			return nil, failure(operation, sdk.ResourceForbidden, "FANBOX URL is not allowed", nil)
 		}
@@ -90,7 +96,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string,
 			return nil, failure(operation, sdk.UpstreamError, "FANBOX redirect loop", nil)
 		}
 		visited[canonical] = true
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, canonical, nil)
+		request, err := http.NewRequestWithContext(ctx, profile.method, canonical, nil)
 		if err != nil {
 			return nil, externalFailure(ctx, operation, "build FANBOX request failed", err)
 		}
@@ -101,9 +107,15 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string,
 		request.Header.Set(headerOrigin, webOrigin)
 		request.Header.Set(headerReferer, WebBaseURL)
 		request.Header.Set(headerUserAgent, agent)
-		request.Header.Set(headerAccept, accept)
+		request.Header.Set(headerAccept, profile.accept)
+		for name, values := range profile.headers {
+			for _, value := range values {
+				request.Header.Add(name, value)
+			}
+		}
 		host := strings.ToLower(target.Hostname())
-		if !redirected && (host == "www.fanbox.cc" || host == "api.fanbox.cc") {
+		cookieAllowed := profile.media && host == downloadsHost || !profile.media && (host == "www.fanbox.cc" || host == "api.fanbox.cc")
+		if !redirected && cookieAllowed {
 			cookie := sessionCookieName + "=" + c.session.Value()
 			if clearance != "" {
 				cookie += "; " + clearanceCookieName + "=" + clearance
@@ -133,6 +145,9 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string,
 			}
 			endpoint, redirected = next.String(), true
 			continue
+		}
+		if profile.media && response.StatusCode == http.StatusNotModified {
+			return response, nil
 		}
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 			return nil, responseFailure(ctx, operation, response)
@@ -201,7 +216,7 @@ func responseFailure(ctx context.Context, operation string, response *http.Respo
 		reason = sdk.CredentialsExpired
 	case http.StatusForbidden:
 		reason = sdk.Forbidden
-		htmlChallenge := strings.HasPrefix(strings.ToLower(response.Header.Get(headerContentType)), "text/html") && (strings.Contains(strings.ToLower(response.Header.Get(headerServer)), "cloudflare") || response.Header.Get(headerRay) != "")
+		htmlChallenge := strings.HasPrefix(strings.ToLower(response.Header.Get(HeaderContentType)), "text/html") && (strings.Contains(strings.ToLower(response.Header.Get(headerServer)), "cloudflare") || response.Header.Get(headerRay) != "")
 		if challenge || strings.Contains(strings.ToLower(response.Header.Get(headerMitigated)), "challenge") || htmlChallenge {
 			reason = sdk.ChallengeRequired
 		}

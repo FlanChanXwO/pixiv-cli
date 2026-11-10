@@ -45,7 +45,9 @@ func (c *Client) mapPost(operation string, source postWire) (*Post, error) {
 			return nil, err
 		}
 	}
-	return &Post{PostRef: c.Post(id), postData: data}, nil
+	ref := c.Post(id)
+	ref.CreatorID = strings.TrimSpace(source.CreatorID)
+	return &Post{PostRef: ref, postData: data}, nil
 }
 
 type postBodyWire struct {

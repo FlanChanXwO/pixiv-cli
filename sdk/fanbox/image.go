@@ -1,6 +1,7 @@
 package fanbox
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -18,6 +19,17 @@ type Image struct {
 	Height    int    `json:"height"`
 	Thumbnail *Image `json:"thumbnail,omitempty"`
 	client    *Client
+}
+
+// Open streams this image with optional GET/HEAD conditions; the caller closes Body.
+func (i Image) Open(ctx context.Context, request OpenRequest) (*MediaResponse, error) {
+	return i.client.openMedia(ctx, "Image.Open", i.URL, request)
+}
+
+// Save atomically writes this image to path, creating its containing directory.
+// Download, cancellation and close failures preserve an existing destination.
+func (i Image) Save(ctx context.Context, path string) error {
+	return i.client.saveMedia(ctx, "Image.Save", i.URL, path)
 }
 
 // UnmarshalJSON restores image metadata and clears the earlier account binding.

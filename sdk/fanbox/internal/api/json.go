@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -59,7 +60,7 @@ func (c *Client) GetJSON(ctx context.Context, operation, path string, query url.
 	if len(query) != 0 {
 		endpoint += "?" + query.Encode()
 	}
-	response, err := c.do(ctx, operation, endpoint, acceptJSON)
+	response, err := c.do(ctx, operation, endpoint, requestProfile{accept: acceptJSON, method: http.MethodGet})
 	if err != nil {
 		return err
 	}

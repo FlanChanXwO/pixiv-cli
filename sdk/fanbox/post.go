@@ -13,8 +13,10 @@ import (
 
 // PostRef addresses a post on the client that created it.
 type PostRef struct {
-	ID     string `json:"id"`
-	client *Client
+	ID string `json:"id"`
+	// CreatorID is optional URL provenance; Get requires only ID.
+	CreatorID string `json:"creator_id,omitempty"`
+	client    *Client
 }
 
 // Post returns a reference without network I/O.
@@ -71,15 +73,16 @@ func (r *PostRef) bound(operation string) error {
 	return nil
 }
 
-// UnmarshalJSON restores the ID and clears the earlier client binding.
+// UnmarshalJSON restores the ID and creator provenance without retaining the earlier client.
 func (r *PostRef) UnmarshalJSON(data []byte) error {
 	var value struct {
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		CreatorID string `json:"creator_id"`
 	}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*r = PostRef{ID: value.ID}
+	*r = PostRef{ID: value.ID, CreatorID: value.CreatorID}
 	return nil
 }
 
@@ -87,12 +90,13 @@ func (r *PostRef) UnmarshalJSON(data []byte) error {
 func (p *Post) UnmarshalJSON(data []byte) error {
 	var value struct {
 		postData
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		CreatorID string `json:"creator_id"`
 	}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*p = Post{PostRef: &PostRef{ID: value.ID}, postData: value.postData}
+	*p = Post{PostRef: &PostRef{ID: value.ID, CreatorID: value.CreatorID}, postData: value.postData}
 	return nil
 }
 

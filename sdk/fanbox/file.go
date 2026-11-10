@@ -1,6 +1,7 @@
 package fanbox
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
@@ -16,6 +17,31 @@ type File struct {
 	Extension string `json:"extension"`
 	URL       string `json:"url"`
 	client    *Client
+}
+
+// Open streams this attachment with optional GET/HEAD conditions; the caller closes Body.
+func (f File) Open(ctx context.Context, request OpenRequest) (*MediaResponse, error) {
+	response, err := f.client.openMedia(ctx, "File.Open", f.URL, request)
+	if err != nil {
+		return nil, err
+	}
+	response.Filename = f.Filename()
+	return response, nil
+}
+
+// Save atomically writes this attachment to path, creating its containing directory.
+// Download, cancellation and close failures preserve an existing destination.
+func (f File) Save(ctx context.Context, path string) error {
+	return f.client.saveMedia(ctx, "File.Save", f.URL, path)
+}
+
+// Filename returns the upstream name with its extension appended at most once,
+// case-insensitively. Empty names remain empty; the value is untrusted metadata.
+func (f File) Filename() string {
+	if f.Name == "" || f.Extension == "" || strings.HasSuffix(strings.ToLower(f.Name), "."+strings.ToLower(f.Extension)) {
+		return f.Name
+	}
+	return f.Name + "." + f.Extension
 }
 
 // UnmarshalJSON restores file metadata and clears the earlier account binding.
