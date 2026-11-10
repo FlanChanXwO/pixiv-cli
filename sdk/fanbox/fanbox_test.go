@@ -70,6 +70,31 @@ func TestSessionFailures(t *testing.T) {
 	}
 }
 
+func TestSessionCreatorStatus(t *testing.T) {
+	for _, tc := range []struct {
+		status, explicit, expected string
+		isCreator                  bool
+	}{
+		{"false", "true", "true", true},
+		{"true", "false", "false", false},
+	} {
+		t.Run(tc.expected, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprintf(w, `<meta name="metadata" content='{"context":{"user":{"userId":21,"name":"fixture","creatorStatus":%s,"isCreator":%s}}}'>`, tc.status, tc.explicit)
+			}))
+			defer server.Close()
+			httpClient := server.Client()
+			routeToServer(httpClient, server)
+			client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: httpClient})
+			require.NoError(t, err)
+			user, err := client.CurrentUser(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, user.CreatorStatus)
+			require.Equal(t, tc.isCreator, user.IsCreator)
+		})
+	}
+}
+
 func routeToServer(client *http.Client, server *httptest.Server) {
 	transport := client.Transport.(*http.Transport)
 	transport.Proxy = nil

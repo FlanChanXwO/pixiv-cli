@@ -12,7 +12,10 @@ import (
 
 // Reference identifies a locally parsed FANBOX creator, post or post list.
 // Use a type switch to access the corresponding bound operations.
-type Reference interface{ CanonicalURL() (string, error) }
+type Reference interface {
+	// CanonicalURL returns a tracking-free page URL or InvalidArgument when identity is incomplete.
+	CanonicalURL() (string, error)
+}
 
 // CreatorPostsRef identifies a creator's complete or tag-filtered post list.
 type CreatorPostsRef struct {

@@ -9,12 +9,19 @@ import (
 )
 
 const (
-	downloadsHost         = "downloads.fanbox.cc"
-	acceptMedia           = "*/*"
-	headerRange           = "Range"
-	headerIfNoneMatch     = "If-None-Match"
-	headerIfModifiedSince = "If-Modified-Since"
-	headerIfRange         = "If-Range"
+	downloadsHost = "downloads.fanbox.cc"
+	acceptMedia   = "*/*"
+)
+
+const (
+	// HeaderRange requests a byte range of a media representation.
+	HeaderRange = "Range"
+	// HeaderIfNoneMatch makes the read conditional on the representation's ETag.
+	HeaderIfNoneMatch = "If-None-Match"
+	// HeaderIfModifiedSince makes the read conditional on its modification time.
+	HeaderIfModifiedSince = "If-Modified-Since"
+	// HeaderIfRange requests a range only when the representation still matches.
+	HeaderIfRange = "If-Range"
 )
 
 // Allowed representation header names are shared with the public media boundary.
@@ -56,7 +63,7 @@ func (c *Client) OpenMedia(ctx context.Context, operation, raw string, request M
 	}
 	headers := make(http.Header)
 	for _, field := range []struct{ name, value string }{
-		{headerRange, request.Range}, {headerIfNoneMatch, request.IfNoneMatch}, {headerIfModifiedSince, request.IfModifiedSince}, {headerIfRange, request.IfRange},
+		{HeaderRange, request.Range}, {HeaderIfNoneMatch, request.IfNoneMatch}, {HeaderIfModifiedSince, request.IfModifiedSince}, {HeaderIfRange, request.IfRange},
 	} {
 		if !validHeaderValue(field.value) {
 			return nil, failure(operation, sdk.InvalidArgument, "invalid media condition header", nil)

@@ -16,16 +16,29 @@ import (
 )
 
 const (
-	headerOrigin            = "Origin"
-	headerReferer           = "Referer"
-	headerUserAgent         = "User-Agent"
-	headerAccept            = "Accept"
-	headerCookie            = "Cookie"
-	headerLocation          = "Location"
-	headerMitigated         = "Cf-Mitigated"
-	headerServer            = "Server"
-	headerRay               = "Cf-Ray"
-	headerRetryAfter        = "Retry-After"
+	// HeaderOrigin carries the FANBOX web origin on product requests.
+	HeaderOrigin = "Origin"
+	// HeaderReferer identifies the FANBOX homepage on API and media requests.
+	HeaderReferer = "Referer"
+	// HeaderUserAgent carries the native or solved browser identity.
+	HeaderUserAgent = "User-Agent"
+	// HeaderAccept selects the expected representation.
+	HeaderAccept = "Accept"
+	// HeaderCookie carries credentials only to the product's approved cookie host.
+	HeaderCookie = "Cookie"
+	// HeaderLocation supplies the next redirect target for validation.
+	HeaderLocation = "Location"
+	// HeaderMitigated identifies an explicit Cloudflare challenge.
+	HeaderMitigated = "Cf-Mitigated"
+	// HeaderServer helps distinguish Cloudflare HTML from product failures.
+	HeaderServer = "Server"
+	// HeaderRay identifies responses processed by Cloudflare.
+	HeaderRay = "Cf-Ray"
+	// HeaderRetryAfter supplies the upstream wait duration without scheduling retries.
+	HeaderRetryAfter = "Retry-After"
+)
+
+const (
 	webOrigin               = "https://www.fanbox.cc"
 	acceptHTML              = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 	challengeReadBufferSize = 32 * 1024
@@ -104,10 +117,10 @@ func (c *Client) native(ctx context.Context, operation, endpoint string, profile
 		if state != nil {
 			agent, clearance = state.UserAgent, state.Cookie.Value()
 		}
-		request.Header.Set(headerOrigin, webOrigin)
-		request.Header.Set(headerReferer, WebBaseURL)
-		request.Header.Set(headerUserAgent, agent)
-		request.Header.Set(headerAccept, profile.accept)
+		request.Header.Set(HeaderOrigin, webOrigin)
+		request.Header.Set(HeaderReferer, WebBaseURL)
+		request.Header.Set(HeaderUserAgent, agent)
+		request.Header.Set(HeaderAccept, profile.accept)
 		for name, values := range profile.headers {
 			for _, value := range values {
 				request.Header.Add(name, value)
@@ -120,7 +133,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint string, profile
 			if clearance != "" {
 				cookie += "; " + clearanceCookieName + "=" + clearance
 			}
-			request.Header.Set(headerCookie, cookie)
+			request.Header.Set(HeaderCookie, cookie)
 		}
 		// Revalidate each redirect and never forward credentials or a caller's jar.
 		client := *c.http
@@ -135,7 +148,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint string, profile
 		slog.DebugContext(ctx, "FANBOX request completed", "operation", operation, "host", target.Host, "path", target.Path, "status", response.StatusCode, "duration", time.Since(started))
 		switch response.StatusCode {
 		case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-			location := response.Header.Get(headerLocation)
+			location := response.Header.Get(HeaderLocation)
 			if err := closeResponse(ctx, operation, response); err != nil {
 				return nil, err
 			}
@@ -216,8 +229,8 @@ func responseFailure(ctx context.Context, operation string, response *http.Respo
 		reason = sdk.CredentialsExpired
 	case http.StatusForbidden:
 		reason = sdk.Forbidden
-		htmlChallenge := strings.HasPrefix(strings.ToLower(response.Header.Get(HeaderContentType)), "text/html") && (strings.Contains(strings.ToLower(response.Header.Get(headerServer)), "cloudflare") || response.Header.Get(headerRay) != "")
-		if challenge || strings.Contains(strings.ToLower(response.Header.Get(headerMitigated)), "challenge") || htmlChallenge {
+		htmlChallenge := strings.HasPrefix(strings.ToLower(response.Header.Get(HeaderContentType)), "text/html") && (strings.Contains(strings.ToLower(response.Header.Get(HeaderServer)), "cloudflare") || response.Header.Get(HeaderRay) != "")
+		if challenge || strings.Contains(strings.ToLower(response.Header.Get(HeaderMitigated)), "challenge") || htmlChallenge {
 			reason = sdk.ChallengeRequired
 		}
 	case http.StatusNotFound:
@@ -231,7 +244,7 @@ func responseFailure(ctx context.Context, operation string, response *http.Respo
 	}
 	err := failure(operation, reason, "FANBOX returned an HTTP failure", nil)
 	err.HTTPStatus = response.StatusCode
-	if raw := response.Header.Get(headerRetryAfter); raw != "" {
+	if raw := response.Header.Get(HeaderRetryAfter); raw != "" {
 		if seconds, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && seconds >= 0 && seconds <= int64((1<<63-1)/time.Second) {
 			wait := time.Duration(seconds) * time.Second
 			err.RetryAfter = &wait

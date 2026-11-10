@@ -17,7 +17,7 @@ type User struct {
 	UserID        int64  `json:"user_id"`
 	DisplayName   string `json:"display_name"`
 	CreatorID     string `json:"creator_id"`
-	CreatorStatus string `json:"creator_status"`
+	CreatorStatus string `json:"creator_status"` // String status, or a boolean normalized using explicit isCreator.
 	IsCreator     bool   `json:"is_creator"`
 }
 
@@ -126,6 +126,9 @@ func parseIdentity(operation, document string) (User, error) {
 			var enabled bool
 			if json.Unmarshal(source.CreatorStatus, &enabled) != nil {
 				return malformed()
+			}
+			if source.IsCreator != nil {
+				enabled = *source.IsCreator
 			}
 			out.CreatorStatus = strconv.FormatBool(enabled)
 			out.IsCreator = enabled

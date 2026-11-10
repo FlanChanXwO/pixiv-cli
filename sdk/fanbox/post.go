@@ -103,7 +103,8 @@ func (p *Post) UnmarshalJSON(data []byte) error {
 // PostBody preserves text, ordered blocks and first-party media.
 // Explicit media lists retain duplicates; block media are deduplicated within
 // each class in first-use order. Payload retains the complete upstream body,
-// including embed maps and fields with no typed representation.
+// including signed media locators, embed maps and fields with no typed representation.
+// Callers choose which fields to expose in their own output.
 type PostBody struct {
 	Text    string          `json:"text"`
 	Images  []Image         `json:"images"`
