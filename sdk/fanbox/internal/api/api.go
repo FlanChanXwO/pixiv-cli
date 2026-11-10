@@ -52,6 +52,8 @@ type Client struct {
 	solverEnabled bool
 	mu            sync.Mutex
 	clearance     *cloudflare.Clearance // Protected by mu; never persisted or logged.
+	identityGate  chan struct{}         // Serializes identity verification while allowing waiters to cancel.
+	userID        int64                 // Protected by identityGate; only the verified non-secret ID is cached.
 }
 
 // New validates settings and the cookie value without contacting any endpoint.
@@ -86,7 +88,7 @@ func New(sessionID string, options Options) (*Client, error) {
 		client = &http.Client{Transport: browser}
 	}
 	session := credential.New([]byte(sessionID))
-	return &Client{http: client, browser: browser, session: &session, agent: agent, solverEnabled: options.FlareSolverrURL != ""}, nil
+	return &Client{http: client, browser: browser, session: &session, agent: agent, solverEnabled: options.FlareSolverrURL != "", identityGate: make(chan struct{}, 1)}, nil
 }
 
 // Format keeps credentials and connection settings out of diagnostics.

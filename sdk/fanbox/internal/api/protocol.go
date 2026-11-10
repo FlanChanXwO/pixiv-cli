@@ -76,7 +76,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string)
 	visited := make(map[string]bool)
 	redirected := false
 	for {
-		target, err := allowedURL(endpoint)
+		target, err := allowedURL(endpoint, false)
 		if err != nil {
 			return nil, failure(operation, sdk.ResourceForbidden, "FANBOX URL is not allowed", nil)
 		}
@@ -133,13 +133,26 @@ func (c *Client) native(ctx context.Context, operation, endpoint, accept string)
 	}
 }
 
-func allowedURL(raw string) (*url.URL, error) {
+// ValidateMediaURL checks a first-party media locator without fetching it.
+func ValidateMediaURL(raw string) error {
+	_, err := allowedURL(raw, true)
+	return err
+}
+
+func allowedURL(raw string, media bool) (*url.URL, error) {
 	target, err := url.Parse(raw)
 	if err != nil || target.Scheme != "https" || target.Hostname() == "" || target.User != nil {
 		return nil, errors.New("invalid FANBOX URL")
 	}
 	host := strings.ToLower(target.Hostname())
-	if host != "fanbox.cc" && !strings.HasSuffix(host, ".fanbox.cc") {
+	allowed := host == "fanbox.cc" || strings.HasSuffix(host, ".fanbox.cc")
+	if media {
+		allowed = allowed || strings.HasSuffix(host, ".pximg.net") || host == "fanbox.pixiv.net" || strings.HasSuffix(host, ".fanbox.pixiv.net")
+		if target.Path == "" || target.Path == "/" {
+			return nil, errors.New("invalid FANBOX media path")
+		}
+	}
+	if !allowed {
 		return nil, errors.New("invalid FANBOX host")
 	}
 	return target, nil

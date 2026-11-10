@@ -32,6 +32,30 @@ type identityWire struct {
 	} `json:"context"`
 }
 
+// VerifiedUserID verifies the session once for account-bound pagination. Waiting
+// callers can cancel independently; a failed verification never populates the cache.
+func (c *Client) VerifiedUserID(ctx context.Context, operation string) (int64, error) {
+	// A channel gates the fetch so waiting on another request respects this caller's context.
+	select {
+	case <-ctx.Done():
+		return 0, externalFailure(ctx, operation, "identity verification canceled", ctx.Err())
+	case c.identityGate <- struct{}{}:
+	}
+	defer func() { <-c.identityGate }()
+	if err := ctx.Err(); err != nil {
+		return 0, externalFailure(ctx, operation, "identity verification canceled", err)
+	}
+	if c.userID != 0 {
+		return c.userID, nil
+	}
+	identity, err := c.CurrentUser(ctx, operation)
+	if err != nil {
+		return 0, err
+	}
+	c.userID = identity.UserID
+	return c.userID, nil
+}
+
 // CurrentUser fetches homepage metadata to verify the session. Missing metadata,
 // malformed identity, and expired authentication are returned explicitly.
 // operation labels errors with the public caller that initiated validation.

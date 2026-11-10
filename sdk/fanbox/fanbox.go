@@ -5,12 +5,17 @@
 // [Client.ValidateSession] explicitly validate that session. Requests use Chrome
 // TLS and optional challenge-only FlareSolverr recovery; logs use the current
 // slog default logger. [Client.Close] ends pending solver work.
+//
+// [Client.Creator] creates a [CreatorRef] without I/O; Get loads a [Creator]
+// with the same operations. [Client.Creators] returns bound summaries and
+// query/account-bound pages. Decoded objects require a fresh client reference.
 package fanbox
 
 import (
 	"context"
 	"fmt"
 
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox/internal/api"
 )
 
@@ -57,3 +62,7 @@ func (c *Client) CloseIdleConnections() { c.app.CloseIdleConnections() }
 // Close cancels and joins pending solver requests and releases SDK-owned
 // connections. Finish native requests before closing; caller transports stay open.
 func (c *Client) Close(ctx context.Context) error { return c.app.Close(ctx) }
+
+func newError(operation string, reason sdk.Reason, message string) *sdk.Error {
+	return &sdk.Error{Operation: operation, Reason: reason, Message: message}
+}
