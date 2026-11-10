@@ -36,7 +36,7 @@ func (c *Client) pageQuery(ctx context.Context, operation, path string, base url
 	return query, binding, nil
 }
 
-func nextCursor(raw, operation, path string, base url.Values, binding cursor.Binding) (sdk.Cursor, error) {
+func nextCursor(raw, operation, path string, current url.Values, binding cursor.Binding) (sdk.Cursor, error) {
 	if raw == "" {
 		return sdk.Cursor{}, nil
 	}
@@ -48,9 +48,12 @@ func nextCursor(raw, operation, path string, base url.Values, binding cursor.Bin
 	if err != nil {
 		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation query")
 	}
-	position, valid := continuationPosition(values, base)
+	position, valid := continuationPosition(values, binding.Query)
 	if !valid {
 		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation position")
+	}
+	if previous, ok := continuationPosition(current, binding.Query); ok && previous.Encode() == position.Encode() {
+		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "FANBOX continuation position did not advance")
 	}
 	return cursor.Encode(binding, position)
 }

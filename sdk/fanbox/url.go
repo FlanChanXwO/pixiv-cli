@@ -34,9 +34,9 @@ func (c *Client) ParseURL(raw string) (Reference, error) {
 		return nil, newError("ParseURL", sdk.InvalidArgument, "FANBOX URL must use HTTPS without userinfo")
 	}
 	host := strings.ToLower(parsed.Hostname())
-	if host != "www.fanbox.cc" && host != "fanbox.cc" {
-		if host != api.APIHost && host != api.DownloadsHost && strings.HasSuffix(host, ".fanbox.cc") {
-			creator := strings.TrimSuffix(host, ".fanbox.cc")
+	if host != api.WebHost && host != api.Domain {
+		if host != api.APIHost && host != api.DownloadsHost && strings.HasSuffix(host, "."+api.Domain) {
+			creator := strings.TrimSuffix(host, "."+api.Domain)
 			if creator != "" && !strings.Contains(creator, ".") {
 				return c.Creator(creator), nil
 			}

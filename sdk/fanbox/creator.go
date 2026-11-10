@@ -19,7 +19,8 @@ type CreatorRef struct {
 // Creator returns a reference without network I/O.
 func (c *Client) Creator(id string) *CreatorRef { return &CreatorRef{ID: id, client: c} }
 
-// Creator carries a profile or a list summary. Get explicitly loads the profile.
+// Creator is a profile or list summary bound to the client used by Get or Creators.
+// JSON decoding clears that binding; Get, Tags and Posts then return InvalidArgument.
 type Creator struct {
 	*CreatorRef
 	creatorData

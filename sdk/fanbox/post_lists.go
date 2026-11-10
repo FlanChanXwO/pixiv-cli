@@ -86,7 +86,7 @@ func (c *Client) postList(ctx context.Context, operation, path string, base url.
 			return sdk.Page[*Post]{}, err
 		}
 	}
-	next, err := nextCursor(page.continuation(), operation, path, base, binding)
+	next, err := nextCursor(page.continuation(), operation, path, query, binding)
 	if err != nil {
 		return sdk.Page[*Post]{}, err
 	}

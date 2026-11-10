@@ -107,3 +107,37 @@ func TestCreatorIdentityCancellation(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, <-result, context.Canceled)
 }
+
+func TestRepeatedContinuation(t *testing.T) {
+	for _, path := range []string{"/plan.listSupporting", "/creator.listFollowing", "/post.listCreator", "/post.listTagged", "/post.listHome", "/post.listSupporting"} {
+		t.Run(path, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/" {
+					fmt.Fprint(w, `<meta name="metadata" content='{"context":{"user":{"userId":21,"name":"fixture"}}}'>`)
+					return
+				}
+				fmt.Fprintf(w, `{"body":{"plans":[],"creators":[],"posts":[],"nextUrl":"https://api.fanbox.cc%s?offset=1"}}`, path)
+			}))
+			defer server.Close()
+			httpClient := server.Client()
+			routeToServer(httpClient, server)
+			client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: httpClient})
+			require.NoError(t, err)
+			if path == "/plan.listSupporting" || path == "/creator.listFollowing" {
+				relation := fanbox.CreatorSupporting
+				if path == "/creator.listFollowing" {
+					relation = fanbox.CreatorFollowing
+				}
+				page, err := client.Creators(t.Context(), fanbox.CreatorsRequest{Relation: relation})
+				require.NoError(t, err)
+				_, err = page.Next(t.Context())
+				require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+				return
+			}
+			page, err := readPostPage(t.Context(), client, path, sdk.Cursor{})
+			require.NoError(t, err)
+			_, err = page.Next(t.Context())
+			require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+		})
+	}
+}

@@ -59,7 +59,7 @@ func (c *Client) Creators(ctx context.Context, request CreatorsRequest) (sdk.Pag
 			return sdk.Page[*Creator]{}, err
 		}
 	}
-	next, err := nextCursor(continuation, operation, path, base, binding)
+	next, err := nextCursor(continuation, operation, path, query, binding)
 	if err != nil {
 		return sdk.Page[*Creator]{}, err
 	}

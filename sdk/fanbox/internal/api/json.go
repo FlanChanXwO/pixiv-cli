@@ -11,7 +11,7 @@ import (
 
 const (
 	// APIHost names the origin used to validate and rebuild API continuations.
-	APIHost = "api.fanbox.cc"
+	APIHost = "api." + Domain
 	// APIBaseURL prefixes the product-owned endpoint paths.
 	APIBaseURL = "https://" + APIHost + "/"
 	acceptJSON = "application/json, text/plain, */*"

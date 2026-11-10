@@ -39,7 +39,12 @@ const (
 )
 
 const (
-	webOrigin               = "https://www.fanbox.cc"
+	// Domain is the FANBOX domain shared by page, API and download hosts.
+	Domain = "fanbox.cc"
+	// WebHost names the FANBOX web origin used for identity and page URLs.
+	WebHost                 = "www." + Domain
+	webOrigin               = "https://" + WebHost
+	pixivMediaHost          = "fanbox.pixiv.net"
 	acceptHTML              = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 	challengeReadBufferSize = 32 * 1024
 )
@@ -127,7 +132,7 @@ func (c *Client) native(ctx context.Context, operation, endpoint string, profile
 			}
 		}
 		host := strings.ToLower(target.Hostname())
-		cookieAllowed := profile.media && host == DownloadsHost || !profile.media && (host == "www.fanbox.cc" || host == "api.fanbox.cc")
+		cookieAllowed := profile.media && host == DownloadsHost || !profile.media && (host == WebHost || host == APIHost)
 		if !redirected && cookieAllowed {
 			cookie := sessionCookieName + "=" + c.session.Value()
 			if clearance != "" {
@@ -181,9 +186,9 @@ func allowedURL(raw string, media bool) (*url.URL, error) {
 		return nil, errors.New("invalid FANBOX URL")
 	}
 	host := strings.ToLower(target.Hostname())
-	allowed := host == "fanbox.cc" || strings.HasSuffix(host, ".fanbox.cc")
+	allowed := host == Domain || strings.HasSuffix(host, "."+Domain)
 	if media {
-		allowed = allowed || strings.HasSuffix(host, ".pximg.net") || host == "fanbox.pixiv.net" || strings.HasSuffix(host, ".fanbox.pixiv.net")
+		allowed = allowed || strings.HasSuffix(host, ".pximg.net") || host == pixivMediaHost || strings.HasSuffix(host, "."+pixivMediaHost)
 		if target.Path == "" || target.Path == "/" {
 			return nil, errors.New("invalid FANBOX media path")
 		}
