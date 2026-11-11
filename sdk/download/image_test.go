@@ -94,3 +94,23 @@ func TestSaveRejectsInvalidPathsBeforeMediaIO(t *testing.T) {
 		require.Empty(t, entries)
 	}
 }
+
+func TestSaveRejectsHTMLResponse(t *testing.T) {
+	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.PathIllustDetail {
+			fmt.Fprint(w, staticArtwork)
+			return
+		}
+		fmt.Fprint(w, "<html><body>upstream error</body></html>")
+	})
+	art, err := client.Artwork(23).Get(t.Context())
+	require.NoError(t, err)
+	dir := t.TempDir()
+	report, err := download.New(download.Options{DownloadPath: dir}).Save(t.Context(), art.Pages[0])
+	require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+	require.Len(t, report.Failures, 1)
+	require.Empty(t, report.Files)
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}

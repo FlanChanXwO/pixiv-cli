@@ -7,7 +7,8 @@ type File struct {
 	Path      string // Absolute destination path.
 }
 
-// Failure retains the original error for a page that could not be saved.
+// Failure retains the original error from a page operation. A published file
+// also appears in Report.Files if its cleanup subsequently fails.
 type Failure struct {
 	ArtworkID int64
 	PageIndex int

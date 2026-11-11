@@ -13,10 +13,12 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 const imageSniffBytes = 512 // http.DetectContentType examines at most this many bytes.
+const unknownMediaType = "application/octet-stream"
 
 func imageForQuality(image pixiv.Image, quality Quality) (pixiv.Image, error) {
 	if quality == QualityOriginal {
@@ -65,7 +67,8 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 		return "", invalidArgument("invalid image URL")
 	}
 	var extension string
-	switch http.DetectContentType(header) {
+	mediaType := http.DetectContentType(header)
+	switch mediaType {
 	case "image/jpeg":
 		extension = ".jpg"
 		if strings.EqualFold(path.Ext(locator.Path), ".jpeg") {
@@ -78,6 +81,9 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 	case "image/webp":
 		extension = ".webp"
 	default:
+		if mediaType != unknownMediaType {
+			return "", &sdk.Error{Operation: "download.Save", Reason: sdk.MalformedUpstreamResponse, Message: "resource is not a supported image"}
+		}
 		// Image.Open exposes bytes without headers; retain the old URL-extension fallback.
 		extension = filename.Sanitize(path.Ext(locator.Path))
 		extension = strings.TrimRight(strings.Map(func(r rune) rune {
