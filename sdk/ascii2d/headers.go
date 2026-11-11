@@ -120,7 +120,9 @@ func (c *searchSession) applyNavigationHeaders(request *http.Request, fetchSite,
 	header.Set(headerFetchMode, fetchNavigate)
 	header.Set(headerFetchUser, "?1")
 	header.Set(headerFetchDestination, fetchDocument)
-	header.Set(headerEncoding, browserEncoding)
+	if c.acceptEncoding != "" {
+		header.Set(headerEncoding, c.acceptEncoding)
+	}
 	header.Set(headerLanguage, browserLanguage)
 	request.Header = header
 }

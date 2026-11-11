@@ -36,10 +36,11 @@ var (
 )
 
 type searchSession struct {
-	httpClient *http.Client
-	endpoint   *url.URL
-	userAgent  string
-	hints      clientHints
+	httpClient     *http.Client
+	endpoint       *url.URL
+	userAgent      string
+	hints          clientHints
+	acceptEncoding string
 }
 
 func newSession(options Options, browser *cloudflare.Client, agent string) (*searchSession, error) {
@@ -66,7 +67,12 @@ func newSession(options Options, browser *cloudflare.Client, agent string) (*sea
 		}
 		return nil
 	}
-	return &searchSession{httpClient: &client, endpoint: endpoint, userAgent: agent, hints: parseClientHints(agent)}, nil
+	session := &searchSession{httpClient: &client, endpoint: endpoint, userAgent: agent, hints: parseClientHints(agent)}
+	if options.HTTPClient == nil {
+		// Injected transports negotiate and decode their own compression.
+		session.acceptEncoding = browserEncoding
+	}
+	return session, nil
 }
 
 func (s *searchSession) request(ctx context.Context, method, path string, body io.Reader, contentType string) (data []byte, httpResponse *http.Response, err error) {

@@ -44,10 +44,11 @@ const (
 )
 
 // Options configures image bytes, matching, and independent native/solver routes.
+// A supplied HTTPClient requires an explicit Transport and remains caller-owned.
 type Options struct {
 	Image                []byte       `json:"-"` // JPEG, PNG, or WEBP, at most 10 MB; unchanged until Search returns.
 	Mode                 Mode         // Empty selects Color.
-	HTTPClient           *http.Client `json:"-"` // Optional caller-owned transport; its Jar is bypassed.
+	HTTPClient           *http.Client `json:"-"` // Nil uses Chrome TLS; injected transports own compression, and Jar is bypassed.
 	ProxyURL             string
 	UserAgent            string // Empty selects the Chrome TLS profile's default agent.
 	FlareSolverrURL      string // Empty disables recovery.

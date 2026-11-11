@@ -1,6 +1,7 @@
 package ascii2d_test
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -88,7 +89,7 @@ func serveSearch(t *testing.T, w http.ResponseWriter, r *http.Request, uploads *
 	}
 	switch r.URL.Path {
 	case "/":
-		fmt.Fprint(w, form)
+		writeCompressed(t, w, form)
 	case "/search/file":
 		uploads.Add(1)
 		if err := r.ParseMultipartForm(1024); err != nil {
@@ -109,7 +110,19 @@ func serveSearch(t *testing.T, w http.ResponseWriter, r *http.Request, uploads *
 		w.Header().Set("Location", "http://ascii2d.net/search/color/"+hash)
 		w.WriteHeader(http.StatusFound)
 	default:
-		fmt.Fprint(w, results)
+		writeCompressed(t, w, results)
+	}
+}
+
+func writeCompressed(t *testing.T, w http.ResponseWriter, text string) {
+	t.Helper()
+	w.Header().Set("Content-Encoding", "gzip")
+	writer := gzip.NewWriter(w)
+	if _, err := io.WriteString(writer, text); err != nil {
+		t.Error(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Error(err)
 	}
 }
 
