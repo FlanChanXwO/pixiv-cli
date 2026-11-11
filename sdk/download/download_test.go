@@ -129,16 +129,16 @@ func TestSaveUgoira(t *testing.T) {
 			fmt.Fprint(w, animationMetadata)
 		case "/frames.zip":
 			w.Write(archive.Bytes())
-		default:
-			w.WriteHeader(http.StatusNotFound)
 		}
 	})
 	art, err := client.Artwork(24).Get(t.Context())
 	require.NoError(t, err)
 	for _, format := range []download.UgoiraFormat{download.UgoiraFormatGIF, download.UgoiraFormatAPNG} {
 		t.Run(string(format), func(t *testing.T) {
-			report, err := download.New(download.Options{DownloadPath: t.TempDir(), UgoiraFormat: format}).Save(t.Context(), art.Pages...)
+			report, err := download.New(download.Options{DownloadPath: t.TempDir(), FilenameTemplate: "{unknown}", UgoiraFormat: format}).Save(t.Context(), art.Pages...)
 			require.NoError(t, err)
+			require.Len(t, report.Warnings, 1)
+			require.Error(t, report.Warnings[0].Cause)
 			require.Empty(t, report.Failures)
 			require.Len(t, report.Files, 1)
 			data, err := os.ReadFile(report.Files[0].Path)

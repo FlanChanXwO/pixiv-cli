@@ -7,7 +7,12 @@ package download
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -60,5 +65,69 @@ func New(options Options) *Downloader { return &Downloader{options: options} }
 // recorded and processing continues; the returned error joins the failures.
 // Cancellation stops the batch and returns the context error with partial results.
 func (d *Downloader) Save(ctx context.Context, pages ...pixiv.ArtworkPage) (Report, error) {
-	return Report{}, errors.New("download saving is not implemented")
+	var report Report
+	if err := ctx.Err(); err != nil {
+		return report, err
+	}
+	options := d.options
+	if options.Quality == "" {
+		options.Quality = QualityOriginal
+	}
+	if options.UgoiraFormat == "" {
+		options.UgoiraFormat = UgoiraFormatGIF
+	}
+	switch options.Quality {
+	case QualityOriginal, QualityRegular, QualitySmall, QualityThumb, QualityMini:
+	default:
+		return report, invalidArgument("quality must be one of original, regular, small, thumb, mini")
+	}
+	switch options.UgoiraFormat {
+	case UgoiraFormatGIF, UgoiraFormatAPNG:
+	default:
+		return report, invalidArgument("ugoira format must be one of gif, apng")
+	}
+	options.DirectoryTemplate = strings.TrimSpace(options.DirectoryTemplate)
+	if err := filename.ValidateDirectoryTemplate(options.DirectoryTemplate); err != nil {
+		return report, invalidArgument(err.Error())
+	}
+	base, err := filepath.Abs(options.DownloadPath)
+	if err != nil {
+		return report, err
+	}
+	var failures []error
+	for _, page := range pages {
+		if err := ctx.Err(); err != nil {
+			return report, errors.Join(append(failures, err)...)
+		}
+		file := File{PageIndex: page.PageIndex}
+		if page.Artwork != nil && page.Artwork.ArtworkRef != nil {
+			file.ArtworkID = page.Artwork.ID
+		}
+		output, warnings, err := savePage(ctx, options, base, page)
+		report.Warnings = append(report.Warnings, warnings...)
+		if output != "" {
+			file.Path = output
+			report.Files = append(report.Files, file)
+		}
+		if err != nil {
+			if sdk.ReasonOf(err) == "" {
+				reason := sdk.LocalStateError
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					reason = sdk.UpstreamUnavailable
+				}
+				err = &sdk.Error{Operation: "download.Save", Reason: reason, Message: "save page failed", Err: err}
+			}
+			failure := fmt.Errorf("artwork %d page %d: %w", file.ArtworkID, page.PageIndex, err)
+			report.Failures = append(report.Failures, Failure{ArtworkID: file.ArtworkID, PageIndex: page.PageIndex, Cause: failure})
+			failures = append(failures, failure)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return report, errors.Join(failures...)
+			}
+		}
+	}
+	return report, errors.Join(append(failures, ctx.Err())...)
+}
+
+func invalidArgument(message string) *sdk.Error {
+	return &sdk.Error{Operation: "download.Save", Reason: sdk.InvalidArgument, Message: message}
 }

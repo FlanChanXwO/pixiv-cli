@@ -19,6 +19,7 @@ type Warning struct {
 	ArtworkID int64
 	PageIndex int
 	Message   string
+	Cause     error // Original template failure, when available.
 }
 
 // Report retains successful files, warnings and page failures together.
