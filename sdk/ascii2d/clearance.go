@@ -33,6 +33,12 @@ func acquireClearance(options Options) (*clearanceEntry, *cloudflare.Client, err
 	key := clearanceKey{options.ProxyURL, options.FlareSolverrURL, options.FlareSolverrProxyURL, options.UserAgent, options.HTTPClient}
 	clearancePool.Lock()
 	defer clearancePool.Unlock()
+	// Reclaim idle expired states even when callers stop reusing their HTTP client.
+	for key, entry := range clearancePool.entries {
+		if entry.users == 0 && entry.state != nil && !entry.state.ExpiresAt.IsZero() && !time.Now().Before(entry.state.ExpiresAt) {
+			delete(clearancePool.entries, key)
+		}
+	}
 	entry := clearancePool.entries[key]
 	if entry == nil {
 		entry = &clearanceEntry{key: key}
@@ -55,7 +61,7 @@ func (entry *clearanceEntry) release(ctx context.Context) error {
 	var browser *cloudflare.Client
 	if entry.users == 0 {
 		browser, entry.browser = entry.browser, nil
-		if entry.state == nil {
+		if entry.state == nil || (!entry.state.ExpiresAt.IsZero() && !time.Now().Before(entry.state.ExpiresAt)) {
 			delete(clearancePool.entries, entry.key)
 		}
 	}

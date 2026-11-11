@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -28,6 +29,7 @@ const (
 	homePath          = "/"
 	defaultHTTPPort   = "80"
 	defaultHTTPSPort  = "443"
+	maxRedirects      = 10 // Preserve net/http's default redirect limit.
 )
 
 var (
@@ -62,8 +64,8 @@ func newSession(options Options, browser *cloudflare.Client, agent string) (*sea
 		if prior != nil {
 			return prior(next, via)
 		}
-		if len(via) >= 10 { // Preserve net/http's default redirect limit.
-			return errors.New("stopped after 10 redirects")
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
 		}
 		return nil
 	}

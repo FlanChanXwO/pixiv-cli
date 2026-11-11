@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -27,6 +28,7 @@ const (
 	outputJSON        = "2"
 	allDatabases      = "999"
 	imageFilename     = "image"
+	maxRedirects      = 10 // Retain net/http's default redirect limit.
 )
 
 var errCrossOrigin = errors.New("SauceNAO redirect is outside its origin")
@@ -117,8 +119,8 @@ func Search(ctx context.Context, options Options) (result Result, err error) {
 		if client.CheckRedirect != nil {
 			return client.CheckRedirect(next, via)
 		}
-		if len(via) >= 10 { // Retain net/http's default redirect limit.
-			return errors.New("stopped after 10 redirects")
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
 		}
 		return nil
 	}
