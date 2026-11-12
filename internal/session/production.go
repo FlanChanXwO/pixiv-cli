@@ -82,7 +82,8 @@ type pixivPorts struct {
 	facade   *Pixiv
 }
 
-// NewLocal 构造按需打开的本地账号装配；三个 loader 由组合根提供。
+// NewLocal 构造按需打开的本地账号装配；三个配置加载函数由组合根提供。
+// loadPixiv 每次交出独立传输，新 SDK 租约关闭时释放其空闲连接。
 func NewLocal(
 	closeState *lifecycle.CloseState,
 	loadPixiv func(ProxyRequest) (PixivSettings, error),

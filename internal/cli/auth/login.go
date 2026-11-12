@@ -116,6 +116,9 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if err != nil {
 		return err
 	}
+	if loginOptions.HTTPClient != nil {
+		defer loginOptions.HTTPClient.CloseIdleConnections()
+	}
 	loginFlow, err := login.Start(account.LoginRequest{Options: loginOptions})
 	if err != nil {
 		return err

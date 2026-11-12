@@ -46,7 +46,13 @@ func (l *Local) OpenSDKLease(ctx context.Context, request ProxyRequest) (*lifecy
 	return openSDKLease(ctx, ports, request.UserID, settings.SDKOptions)
 }
 
-func openSDKLease(ctx context.Context, ports *pixivPorts, userID int64, options pixiv.Options) (*lifecycle.Lease[*pixiv.Client], int64, error) {
+func openSDKLease(ctx context.Context, ports *pixivPorts, userID int64, options pixiv.Options) (lease *lifecycle.Lease[*pixiv.Client], selectedID int64, err error) {
+	// 配置加载函数交出的传输归本次操作；SDK 只释放它自己创建的空闲连接。
+	defer func() {
+		if lease == nil && options.HTTPClient != nil {
+			options.HTTPClient.CloseIdleConnections()
+		}
+	}()
 	if err := ports.facade.gate.Acquire(ctx); err != nil {
 		return nil, 0, err
 	}
@@ -66,6 +72,9 @@ func openSDKLease(ctx context.Context, ports *pixivPorts, userID int64, options 
 	return lifecycle.NewLease(client, func() error {
 		defer ports.facade.gate.Release()
 		client.CloseIdleConnections()
+		if options.HTTPClient != nil {
+			options.HTTPClient.CloseIdleConnections()
+		}
 		return nil
 	}), userID, nil
 }

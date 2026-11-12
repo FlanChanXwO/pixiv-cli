@@ -165,6 +165,7 @@ func (s AccountService) importAccount(ctx context.Context, request accountImport
 	if err != nil {
 		return accountImportOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.ImportAccount(ctx, validatedToken, false, options)
 	if err != nil {
 		return accountImportOut{}, err
@@ -354,6 +355,7 @@ func (s AccountService) checkWithRequest(ctx context.Context, request accountChe
 	if err != nil {
 		return accountOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.CheckAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountOut{}, err
@@ -374,6 +376,7 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 	if err != nil {
 		return accountOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.RefreshAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountOut{}, err
