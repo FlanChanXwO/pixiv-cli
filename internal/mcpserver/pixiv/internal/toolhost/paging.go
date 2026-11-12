@@ -80,20 +80,6 @@ func collectFrom[E any, T any, C pagination.Cursor](ctx context.Context, baseExe
 	return result.Items, result.HasMore, err
 }
 
-// CollectStreamsWith 让需要多条有序上游流的读工具复用同一账号池执行边界和结构化
-// 配置错误。traversal 每次 attempt 都重置聚合结果，失败 attempt 的部分结果不会带进
-// 后续安全重放。
-func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan pagination.PagePlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
-	result, err := pagination.CollectStreamsWith(ctx, app.ReadExecutor(), pagination.PagePlan{
-		Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch,
-	}, streams)
-	if errors.Is(err, pagination.ErrExecuteNotConfigured) {
-		err = sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
-	}
-	return result.Items, result.HasMore, err
-}
-
 // CollectPagesFrom 保留流内过滤语义；只有完整批次结束才返回可供续读的 cursor。
 func CollectPagesFrom[T any, C pagination.Cursor](ctx context.Context, plan pagination.PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error)) ([]T, bool, C, error) {
 	var zero, continuation C

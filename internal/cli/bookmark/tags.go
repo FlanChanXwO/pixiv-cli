@@ -9,12 +9,11 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -54,25 +53,22 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.executeSDK(cmd.Context(), request, func(ctx context.Context, selected int64, client *pixiv.Client) (bool, error) {
+		userID := requestedUserID
+		if userID == 0 {
+			userID = selected
+		}
 		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
-			if userID == 0 {
-				userID, err = session.CurrentUserID(client)
-				if err != nil {
-					return nil, sdk.Cursor{}, err
-				}
-			}
 			var result sdk.Page[pixiv.BookmarkTag]
 			if opts.typ == string(target.NamespaceNovel) {
-				result, err = client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
+				result, err = client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			} else {
-				result, err = client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
+				result, err = client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			}
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			return result.Items, result.Cursor, nil
 		}
 		var items []pixiv.BookmarkTag
 		page, err := pagination.TraversePages(ctx, plan, fetch, func(page []pixiv.BookmarkTag) error {
@@ -137,14 +133,10 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.executeSDK(cmd.Context(), request, func(ctx context.Context, selected int64, client *pixiv.Client) (bool, error) {
 		attemptUserID := userID
 		if attemptUserID == 0 {
-			resolvedUserID, err := session.CurrentUserID(client)
-			if err != nil {
-				return false, err
-			}
-			attemptUserID = resolvedUserID
+			attemptUserID = selected
 		}
 		streams := []pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
 			bookmarkArtworkTagStream(client, attemptUserID, opts),
@@ -189,8 +181,8 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkTagItem, bookmarkStreamCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkTagItem, bookmarkStreamCursor, error) {
-			result, err := client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
+			result, err := client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{
+				Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkStreamCursor{}, err
@@ -202,7 +194,7 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 			for _, item := range result.Items[cursor.consumed:] {
 				items = append(items, bookmarkTagItem{kind: string(target.NamespaceArtwork), tag: item})
 			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
+			return items, bookmarkStreamCursor{upstream: result.Cursor}, nil
 		},
 		Checkpoint: bookmarkCheckpoint,
 	}
@@ -211,8 +203,8 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkTagItem, bookmarkStreamCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkStreamCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkTagItem, bookmarkStreamCursor, error) {
-			result, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
+			result, err := client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{
+				Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkStreamCursor{}, err
@@ -224,7 +216,7 @@ func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions
 			for _, item := range result.Items[cursor.consumed:] {
 				items = append(items, bookmarkTagItem{kind: string(target.NamespaceNovel), tag: item})
 			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
+			return items, bookmarkStreamCursor{upstream: result.Cursor}, nil
 		},
 		Checkpoint: bookmarkCheckpoint,
 	}

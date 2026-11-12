@@ -5,14 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,16 +35,16 @@ func (t pixivTools) bookmarkAddHandler(ctx context.Context, in bookmarkAddIn) (*
 	if in.Type == kindNovel {
 		out := outputs.Mutation{Action: "add_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Bookmarked novel %d.", in.ID)}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				return client.AddNovelBookmark(ctx, pixiv.AddNovelBookmarkRequest{NovelID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				return client.Novel(in.ID).AddBookmark(ctx, pixiv.BookmarkOptions{Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 			})
 		})
 	}
 
 	out := outputs.Mutation{Action: "add_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Bookmarked artwork %d.", in.ID)}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.AddArtworkBookmark(ctx, pixiv.AddArtworkBookmarkRequest{ArtworkID: in.ID, Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			return client.Artwork(in.ID).AddBookmark(ctx, pixiv.BookmarkOptions{Restrict: pixiv.Restrict(in.Restrict), Tags: in.Tags})
 		})
 	})
 }
@@ -62,8 +62,8 @@ func (t pixivTools) bookmarkDetailHandler(ctx context.Context, in bookmarkDetail
 	if in.IllustID <= 0 {
 		return outputs.BookmarkDetailError(errors.New("illust_id must be a positive integer"))
 	}
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.ArtworkBookmarkDetail, error) {
-		return client.ArtworkBookmark(ctx, pixiv.ArtworkBookmarkRequest{ArtworkID: in.IllustID})
+	result, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.ArtworkBookmarkDetail, error) {
+		return client.Artwork(in.IllustID).Bookmark(ctx)
 	})
 	if err != nil {
 		return outputs.BookmarkDetailError(err)
@@ -72,8 +72,7 @@ func (t pixivTools) bookmarkDetailHandler(ctx context.Context, in bookmarkDetail
 	return outputs.BookmarkDetailResult(out, in.IllustID), out, nil
 }
 
-// registerBookmarkListAll 注册 bookmark_list_all，把作品与小说收藏合并成一个序列；
-// user_bookmarks 与 user_novel_bookmarks 的 wire 契约保持不变。
+// registerBookmarkListAll 按作品、小说顺序合并收藏，共用一个逻辑分页预算。
 func (t pixivTools) registerBookmarkListAll(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{
 		Name: "pixiv_bookmark_list_all", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
@@ -124,12 +123,12 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
 	if err != nil {
 		return outputs.Error(err)
 	}
 
-	items, more, err := toolhost.CollectStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkItem, bookmarkCursor] {
+	items, more, err := toolhost.CollectSDKStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkItem, bookmarkCursor] {
 		return []pagination.Stream[bookmarkItem, bookmarkCursor]{
 			artworkStream(client, userID, in.Restrict, in.Tag),
 			novelStream(client, userID, in.Restrict, in.Tag),
@@ -143,9 +142,13 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 	for _, item := range items {
 		var recordItem record.Record
 		if item.artwork != nil {
-			recordItem, err = record.RecordFromArtwork(*item.artwork)
+			recordItem, err = record.RecordFromSDKArtwork(item.artwork, false)
 		} else if item.novel != nil {
-			recordItem, err = record.RecordFromNovel(*item.novel)
+			projected, projectionErr := record.NovelOutput(item.novel)
+			if projectionErr != nil {
+				return outputs.Error(projectionErr)
+			}
+			recordItem, err = record.RecordFromNovel(projected)
 		} else {
 			err = errors.New("bookmark aggregate returned an empty item")
 		}
@@ -165,8 +168,8 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
 	return pagination.Stream[bookmarkItem, bookmarkCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkCursor) ([]bookmarkItem, bookmarkCursor, error) {
-			page, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
+			page, err := client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{
+				Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkCursor{}, err
@@ -184,8 +187,8 @@ func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pag
 func novelStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
 	return pagination.Stream[bookmarkItem, bookmarkCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkCursor) ([]bookmarkItem, bookmarkCursor, error) {
-			page, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
+			page, err := client.User(userID).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{
+				Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkCursor{}, err
@@ -200,28 +203,28 @@ func novelStream(client *pixiv.Client, userID int64, restrict, tag string) pagin
 	}
 }
 
-func artworkBatch(page sdk.Page[pixiv.Artwork], consumed int) ([]bookmarkItem, sdk.Cursor, error) {
+func artworkBatch(page sdk.Page[*pixiv.Artwork], consumed int) ([]bookmarkItem, sdk.Cursor, error) {
 	if consumed < 0 || consumed > len(page.Items) {
 		return nil, sdk.Cursor{}, errors.New("artwork bookmark stream checkpoint exceeds batch")
 	}
 	items := make([]bookmarkItem, 0, len(page.Items)-consumed)
 	for index := consumed; index < len(page.Items); index++ {
 		item := page.Items[index]
-		items = append(items, bookmarkItem{artwork: &item})
+		items = append(items, bookmarkItem{artwork: item})
 	}
-	return items, page.Next, nil
+	return items, page.Cursor, nil
 }
 
-func novelBatch(page sdk.Page[pixiv.Novel], consumed int) ([]bookmarkItem, sdk.Cursor, error) {
+func novelBatch(page sdk.Page[*pixiv.Novel], consumed int) ([]bookmarkItem, sdk.Cursor, error) {
 	if consumed < 0 || consumed > len(page.Items) {
 		return nil, sdk.Cursor{}, errors.New("novel bookmark stream checkpoint exceeds batch")
 	}
 	items := make([]bookmarkItem, 0, len(page.Items)-consumed)
 	for index := consumed; index < len(page.Items); index++ {
 		item := page.Items[index]
-		items = append(items, bookmarkItem{novel: &item})
+		items = append(items, bookmarkItem{novel: item})
 	}
-	return items, page.Next, nil
+	return items, page.Cursor, nil
 }
 
 func bookmarkCheckpoint(cursor bookmarkCursor, position int) (bookmarkCursor, error) {
@@ -247,16 +250,16 @@ func (t pixivTools) bookmarkRemoveHandler(ctx context.Context, in bookmarkRemove
 	if in.Type == kindNovel {
 		out := outputs.Mutation{Action: "remove_novel_bookmark", NovelID: in.ID, Text: fmt.Sprintf("Removed bookmark from novel %d.", in.ID)}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				return client.RemoveNovelBookmark(ctx, pixiv.RemoveNovelBookmarkRequest{NovelID: in.ID})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				return client.Novel(in.ID).RemoveBookmark(ctx)
 			})
 		})
 	}
 
 	out := outputs.Mutation{Action: "remove_bookmark", IllustID: in.ID, Text: fmt.Sprintf("Removed bookmark from artwork %d.", in.ID)}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.RemoveArtworkBookmark(ctx, pixiv.RemoveArtworkBookmarkRequest{ArtworkID: in.ID})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			return client.Artwork(in.ID).RemoveBookmark(ctx)
 		})
 	})
 }
@@ -277,7 +280,7 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if in.Type != "" && in.Type != kindArtwork && in.Type != kindNovel {
 		return outputs.BookmarkTagsError(errors.New("kind must be artwork or novel"))
 	}
-	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
@@ -285,19 +288,19 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
 		if in.Type == kindNovel {
-			result, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+			result, err := client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			return result.Items, result.Cursor, nil
 		}
-		result, err := client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+		result, err := client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.BookmarkTagsError(err)
@@ -369,8 +372,8 @@ type bookmarkTagItem struct {
 func artworkTagStream(client *pixiv.Client, userID int64, restrict string) pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkTagsCursor) ([]bookmarkTagItem, bookmarkTagsCursor, error) {
-			page, err := client.UserArtworkBookmarkTags(ctx, pixiv.UserArtworkBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
+			page, err := client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{
+				Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
@@ -388,8 +391,8 @@ func artworkTagStream(client *pixiv.Client, userID int64, restrict string) pagin
 func novelTagStream(client *pixiv.Client, userID int64, restrict string) pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkTagsCursor) ([]bookmarkTagItem, bookmarkTagsCursor, error) {
-			page, err := client.UserNovelBookmarkTags(ctx, pixiv.UserNovelBookmarkTagsRequest{
-				UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
+			page, err := client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{
+				Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkTagsCursor{}, err
@@ -416,12 +419,12 @@ func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsA
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
-	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
+	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
 
-	items, more, err := toolhost.CollectStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
+	items, more, err := toolhost.CollectSDKStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 		return []pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
 			artworkTagStream(client, userID, in.Restrict),
 			novelTagStream(client, userID, in.Restrict),
@@ -455,5 +458,5 @@ func tagBatch(page sdk.Page[pixiv.BookmarkTag], consumed int, contentType string
 	for index := consumed; index < len(page.Items); index++ {
 		items = append(items, bookmarkTagItem{tag: page.Items[index], contentType: contentType})
 	}
-	return items, page.Next, nil
+	return items, page.Cursor, nil
 }

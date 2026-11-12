@@ -10,10 +10,11 @@ package outputs
 import (
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -86,8 +87,8 @@ func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 
 // TrendingTags 承载 trending_tags_illust 工具的输出。
 type TrendingTags struct {
-	Tags []pixiv.TrendingTag `json:"tags"`
-	Text string              `json:"text"`
+	Tags []legacysdk.TrendingTag `json:"tags"`
+	Text string                  `json:"text"`
 }
 
 // TrendingTagsResult 用 out.Text 生成摘要；没有标签时仍返回成功结果。
@@ -97,16 +98,16 @@ func TrendingTagsResult(out TrendingTags, isError bool) *mcp.CallToolResult {
 
 // TrendingTagsError 返回 isError 的趋势标签结果，tags 为空数组。
 func TrendingTagsError(err error) (*mcp.CallToolResult, TrendingTags, error) {
-	out := TrendingTags{Tags: []pixiv.TrendingTag{}, Text: "Error: " + err.Error()}
+	out := TrendingTags{Tags: []legacysdk.TrendingTag{}, Text: "Error: " + err.Error()}
 	return TrendingTagsResult(out, true), out, nil
 }
 
 // Comments 承载评论工具的输出；Total 与 AccessControl 可能缺失。
 type Comments struct {
-	Comments      []pixiv.Comment             `json:"comments"`
-	Pagination    toolhost.PaginationOut      `json:"pagination"`
-	Total         *int64                      `json:"total,omitempty"`
-	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
+	Comments      []legacysdk.Comment             `json:"comments"`
+	Pagination    toolhost.PaginationOut          `json:"pagination"`
+	Total         *int64                          `json:"total,omitempty"`
+	AccessControl *legacysdk.CommentAccessControl `json:"access_control,omitempty"`
 }
 
 // CommentsResult 生成评论摘要，message 为空时报告返回条数。
@@ -119,13 +120,13 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 返回 isError 的评论结果，列表为空、分页为第一页。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []pixiv.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
+	out := Comments{Comments: []legacysdk.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
 // NovelContent 承载 novel_content 工具的输出。
 type NovelContent struct {
-	Content pixiv.NovelContent `json:"content"`
+	Content legacysdk.NovelContent `json:"content"`
 }
 
 // NovelContentResult 生成小说正文的文本摘要。
@@ -135,13 +136,13 @@ func NovelContentResult(novelID int64) *mcp.CallToolResult {
 
 // NovelContentError 返回 isError 的正文结果，blocks 为空数组。
 func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
-	out := NovelContent{Content: pixiv.NovelContent{Blocks: []pixiv.NovelBlock{}}}
+	out := NovelContent{Content: legacysdk.NovelContent{Blocks: []legacysdk.NovelBlock{}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 
 // NovelSeries 承载 novel_series 工具的输出。
 type NovelSeries struct {
-	Series     pixiv.NovelSeries      `json:"series"`
+	Series     legacysdk.NovelSeries  `json:"series"`
 	Records    []record.Record        `json:"records"`
 	Pagination toolhost.PaginationOut `json:"pagination"`
 }

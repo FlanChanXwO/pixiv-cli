@@ -52,3 +52,16 @@ func CollectSDKCursorWith[T any](ctx context.Context, app *App, operation string
 	page.NextCursor, err = binding.Encode(next)
 	return items, page, err
 }
+
+// CollectSDKStreamsWith 让需要多条有序上游流的读工具复用同一账号池执行边界和结构化
+// 配置错误。traversal 每次 attempt 都重置聚合结果，失败 attempt 的部分结果不会带进
+// 后续安全重放。
+func CollectSDKStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan pagination.PagePlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
+	result, err := pagination.CollectStreamsWith(ctx, app.SDKReadExecutor(), pagination.PagePlan{
+		Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch,
+	}, streams)
+	if errors.Is(err, pagination.ErrExecuteNotConfigured) {
+		err = &sdk.Error{Operation: "pixiv.PagedRead", Reason: sdk.LocalStateError, Message: "sdk pooled operation is not configured"}
+	}
+	return result.Items, result.HasMore, err
+}

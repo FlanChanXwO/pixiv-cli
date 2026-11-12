@@ -141,7 +141,7 @@ func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra
 		timeline.New(env, exec),
 		mypixiv.New(env, exec),
 		user.New(env, a.local.ExecuteSDK, func() *cobra.Command { return follow.New(env, a.local.ExecuteSDK) }),
-		bookmark.New(env, exec),
+		bookmark.New(env, a.local.ExecuteSDK),
 		follow.New(env, a.local.ExecuteSDK),
 	}
 }
