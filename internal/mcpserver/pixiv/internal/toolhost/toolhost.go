@@ -3,7 +3,8 @@
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
-// [Read]、[Write] 与 [App.OpenClient] 是三种执行入口；分页适配在 paging.go，
+// [ReadSDK] 与 [App.SDKReadExecutor] 使用新 SDK；[Read]、[Write] 与
+// [App.OpenClient] 保留旧领域入口。分页适配在 paging.go 与 sdk_paging.go，
 // cursor 封装在 cursor.go，具体工具在 tools 包。
 package toolhost
 
@@ -41,8 +42,10 @@ type LocalDownloads struct {
 // SDKPorts 让 MCP 打开独立认证快照，并在账号池的重放边界内执行操作。实现由组合根
 // 注入；MCP 通过这组函数取用依赖。
 type SDKPorts struct {
-	Downloads *LocalDownloads
-	Media     *mediaproxy.Service
+	// ExecuteSDK 为已迁移的工具装配新 SDK；其余工具保留旧端口。
+	ExecuteSDK SDKExecutor
+	Downloads  *LocalDownloads
+	Media      *mediaproxy.Service
 	// Accounts 供 ResolveAccount 读取本地账号选择，所有连接器共享。
 	Accounts accounts.Selection
 	// Login 与 HTTP 登录接力共享，生命周期归 server 所有。

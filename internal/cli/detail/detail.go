@@ -16,10 +16,11 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -34,13 +35,14 @@ type Options struct {
 }
 
 type commandRunner struct {
-	env    environment.Env
-	runner session.Runner
+	env        environment.Env
+	runner     session.Runner
+	executeSDK session.SDKExecutor
 }
 
 // New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
+func New(env environment.Env, exec session.Executor, executeSDK session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), executeSDK: executeSDK}
 	options := Options{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
@@ -189,8 +191,14 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 	}
 	switch entity {
 	case string(target.NamespaceArtwork):
-		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Artwork, error) {
-			return client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
+		var result legacysdk.Artwork
+		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+			artwork, err := client.Artwork(id).Get(ctx)
+			if err != nil {
+				return false, err
+			}
+			result, err = record.ArtworkOutput(artwork, true)
+			return false, err
 		})
 		if err != nil {
 			return err
@@ -208,8 +216,8 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		return display.PrintArtworkDetail(a.env.Out, result)
 	case string(target.NamespaceNovel):
 		if opts.content {
-			result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
-				return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: id})
+			result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.NovelContent, error) {
+				return client.NovelContent(ctx, legacysdk.NovelContentRequest{NovelID: id})
 			})
 			if err != nil {
 				return err
@@ -226,8 +234,8 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 			}
 			return display.PrintNovelContent(a.env.Out, result)
 		}
-		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
-			return client.Novel(ctx, pixiv.NovelRequest{NovelID: id})
+		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.Novel, error) {
+			return client.Novel(ctx, legacysdk.NovelRequest{NovelID: id})
 		})
 		if err != nil {
 			return err
@@ -244,8 +252,8 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		}
 		return display.PrintNovelDetail(a.env.Out, result)
 	case string(target.NamespaceUser):
-		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
-			return client.User(ctx, pixiv.UserRequest{UserID: id})
+		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.UserDetail, error) {
+			return client.User(ctx, legacysdk.UserRequest{UserID: id})
 		})
 		if err != nil {
 			return err
@@ -320,17 +328,27 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
 		return id, nil
 	}
-	ref, err := pixiv.ParseURL(value)
+	ref, err := (&pixiv.Client{}).ParseURL(value)
 	if err != nil {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
 	}
-	want := map[string]pixiv.ReferenceKind{
-		string(target.NamespaceArtwork): pixiv.ReferenceKindArtwork,
-		string(target.NamespaceNovel):   pixiv.ReferenceKindNovel,
-		string(target.NamespaceUser):    pixiv.ReferenceKindUser,
+	var id int64
+	switch value := ref.(type) {
+	case *pixiv.ArtworkRef:
+		if entity == string(target.NamespaceArtwork) {
+			id = value.ID
+		}
+	case *pixiv.NovelRef:
+		if entity == string(target.NamespaceNovel) {
+			id = value.ID
+		}
+	case *pixiv.UserRef:
+		if entity == string(target.NamespaceUser) {
+			id = value.ID
+		}
 	}
-	if ref.Kind != want[entity] {
+	if id == 0 {
 		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))
 	}
-	return ref.ID, nil
+	return id, nil
 }

@@ -133,7 +133,7 @@ func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra
 	return []*cobra.Command{
 		search.New(env, exec, reverseSearch),
 		search.NewNovel(env, exec, reverseSearch),
-		detail.New(env, exec),
+		detail.New(env, exec, a.local.ExecuteSDK),
 		ranking.New(env, exec),
 		series.New(env, exec),
 		comment.New(env, exec),

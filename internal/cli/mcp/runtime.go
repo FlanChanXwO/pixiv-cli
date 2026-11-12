@@ -73,6 +73,9 @@ func (r Runtime) Run(ctx context.Context, request Request) error {
 func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) {
 	sdkPorts := pixivmcpserver.SDKPorts{
 		Logger: r.Logger(),
+		ExecuteSDK: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
+			return r.Local.ExecuteSDK(ctx, pixivRequest(account), attempt)
+		},
 		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *legacysdk.Client) (bool, error)) error {
 			return r.Local.Execute(ctx, pixivRequest(account), attempt)
 		},
@@ -101,8 +104,8 @@ func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts 
 	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: r.Downloads, Path: settings.Download.Path, FilenameTemplate: settings.Download.FilenameTemplate, DirectoryTemplate: settings.Download.DirectoryTemplate}
 	// 只经本地 Facade 解析一次身份，后续阶段固定使用同一账号，避免并发请求各选到不同账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
-		err := r.Local.Execute(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *legacysdk.Client) (bool, error) {
-			account.UserID = client.UserID()
+		err := r.Local.ExecuteSDK(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
+			account.UserID = userID
 			return false, nil
 		})
 		return account, err

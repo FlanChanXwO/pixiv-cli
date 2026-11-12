@@ -7,7 +7,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -20,7 +20,7 @@ import (
 func (t pixivTools) registerBlockedUsers(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_blocked_users", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "View users blocked by the authenticated account through the App API.", InputSchema: schemas.List(map[string]any{
 		"user_id":  schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-		"restrict": schemas.EnumString("Compatibility visibility field.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)),
+		"restrict": schemas.EnumString("Compatibility visibility field.", string(legacysdk.RestrictPublic), string(legacysdk.RestrictPrivate)),
 	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.blockedUsersHandler(ctx, input)
 	})
@@ -57,8 +57,8 @@ type followUserIn struct {
 func (t pixivTools) followUserHandler(ctx context.Context, in followUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "follow_user", UserID: in.UserID, Text: fmt.Sprintf("Followed user %d.", in.UserID)}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: in.UserID, Restrict: pixiv.Restrict(in.Restrict)})
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *legacysdk.Client) error {
+			return client.FollowUser(ctx, legacysdk.FollowUserRequest{UserID: in.UserID, Restrict: legacysdk.Restrict(in.Restrict)})
 		})
 	})
 }
@@ -102,8 +102,8 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
+		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *legacysdk.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			result, err := client.MyPixivNovels(ctx, legacysdk.MyPixivNovelsRequest{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -124,8 +124,8 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-			result, err := client.MyPixivUsers(ctx, pixiv.MyPixivUsersRequest{Cursor: cursor})
+		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *legacysdk.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+			result, err := client.MyPixivUsers(ctx, legacysdk.MyPixivUsersRequest{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -146,23 +146,9 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
-	})
-	if err != nil {
-		return outputs.Error(err)
-	}
-	recordItems, err := record.FromArtworks(items)
-	if err != nil {
-		return outputs.Error(err)
-	}
-	out := outputs.Records{Records: recordItems, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
-	return outputs.Result(out), out, nil
+	return t.myPixivArtworks(ctx, in, plan)
 }
+
 func (t pixivTools) registerUnfollowUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_unfollow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(true), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Unfollow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input unfollowUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 		return t.unfollowUserHandler(ctx, input)
@@ -176,14 +162,14 @@ type unfollowUserIn struct {
 func (t pixivTools) unfollowUserHandler(ctx context.Context, in unfollowUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
 	out := outputs.Mutation{Action: "unfollow_user", UserID: in.UserID, Text: fmt.Sprintf("Unfollowed user %d.", in.UserID)}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: in.UserID})
+		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *legacysdk.Client) error {
+			return client.UnfollowUser(ctx, legacysdk.UnfollowUserRequest{UserID: in.UserID})
 		})
 	})
 }
 func (t pixivTools) registerUserRelations(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_relations", Description: "Browse followers, following or related users; restrict applies only to followers/following.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", string(pixiv.RestrictPublic), string(pixiv.RestrictPrivate)), "user_filter": filters.UserFilterSchema()}, "relation"),
+		InputSchema:  schemas.List(map[string]any{"relation": schemas.EnumString("User relation.", "followers", "following", "related"), "user_id": schemas.PositiveInteger("Optional user ID; defaults to authenticated user."), "restrict": schemas.EnumString("Followers/following visibility; ignored for related users.", string(legacysdk.RestrictPublic), string(legacysdk.RestrictPrivate)), "user_filter": filters.UserFilterSchema()}, "relation"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userRelationsIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userRelationsHandler(ctx, input)
 	})
@@ -220,18 +206,18 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 // listUserRelations 在账号池重放边界内收集关注者、关注中、相关或屏蔽用户，输出统一的
 // records envelope；账号与分页计划由调用方解析。
 func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID int64, restrict string, plan pagination.PagePlan, limit *int) (*mcp.CallToolResult, outputs.Records, error) {
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		var result sdk.Page[pixiv.UserPreview]
+	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *legacysdk.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+		var result sdk.Page[legacysdk.UserPreview]
 		var err error
 		switch kind {
 		case "followers":
-			result, err = client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+			result, err = client.UserFollowers(ctx, legacysdk.UserFollowersRequest{UserID: userID, Restrict: legacysdk.Restrict(restrict), Cursor: cursor})
 		case "following":
-			result, err = client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+			result, err = client.UserFollowing(ctx, legacysdk.UserFollowingRequest{UserID: userID, Restrict: legacysdk.Restrict(restrict), Cursor: cursor})
 		case "related":
-			result, err = client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
+			result, err = client.RelatedUsers(ctx, legacysdk.RelatedUsersRequest{UserID: userID, Cursor: cursor})
 		case "blocked":
-			result, err = client.UserBlockedUsers(ctx, pixiv.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
+			result, err = client.UserBlockedUsers(ctx, legacysdk.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
 		default:
 			return nil, sdk.Cursor{}, errors.New("unknown user relation")
 		}

@@ -48,12 +48,16 @@ func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, 
 // collectWithFrom 统一逻辑分页与批次续读的 execution-attempt 生命周期；SDK cursor
 // 的解析与对外 envelope 由具体工具负责。
 func collectWithFrom[T any](ctx context.Context, app *App, plan pagination.PagePlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
+	return collectFrom(ctx, app.ReadExecutor(), plan, initial, fetch)
+}
+
+func collectFrom[E any, T any, C pagination.Cursor](ctx context.Context, baseExecute pagination.Execute[E], plan pagination.PagePlan, initial C, fetch func(context.Context, E, C) ([]T, C, error)) ([]T, bool, error) {
+	var zero C
 	seen := make(map[string]struct{})
-	baseExecute := app.ReadExecutor()
 	execute := baseExecute
 	if baseExecute != nil {
-		execute = func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-			return baseExecute(ctx, func(attemptCtx context.Context, client *pixiv.Client) (bool, error) {
+		execute = func(ctx context.Context, attempt func(context.Context, E) (bool, error)) error {
+			return baseExecute(ctx, func(attemptCtx context.Context, client E) (bool, error) {
 				// 安全重放可能在同一次 Execute 内切换账号，因此去重状态随 attempt 重置。
 				seen = make(map[string]struct{})
 				return attempt(attemptCtx, client)
@@ -62,10 +66,10 @@ func collectWithFrom[T any](ctx context.Context, app *App, plan pagination.PageP
 	}
 	result, err := pagination.CollectWithFrom(ctx, execute, pagination.PagePlan{
 		Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch,
-	}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	}, initial, func(ctx context.Context, client E, cursor C) ([]T, C, error) {
 		items, next, err := fetch(ctx, client, cursor)
 		if err != nil {
-			return nil, sdk.Cursor{}, err
+			return nil, zero, err
 		}
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
@@ -91,29 +95,29 @@ func CollectStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *Ap
 }
 
 // CollectPagesFrom 保留流内过滤语义；只有完整批次结束才返回可供续读的 cursor。
-func CollectPagesFrom[T any](ctx context.Context, plan pagination.PagePlan, initial sdk.Cursor, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, sdk.Cursor, error) {
-	var continuation sdk.Cursor
+func CollectPagesFrom[T any, C pagination.Cursor](ctx context.Context, plan pagination.PagePlan, initial C, fetch func(context.Context, C) ([]T, C, error)) ([]T, bool, C, error) {
+	var zero, continuation C
 	seen := make(map[string]struct{})
 	items, result, err := pagination.CollectPagesFrom(ctx, pagination.PagePlan{
 		Skip:     plan.Skip,
 		Limit:    plan.Limit,
 		OneBatch: plan.OneBatch,
-	}, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	}, initial, func(ctx context.Context, cursor C) ([]T, C, error) {
 		items, next, err := fetch(ctx, cursor)
 		if err != nil {
-			return nil, sdk.Cursor{}, err
+			return nil, zero, err
 		}
-		if plan.OneBatch && !next.IsZero() && next == cursor {
-			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
+		if plan.OneBatch && !next.IsZero() && next.String() == cursor.String() {
+			return nil, zero, errors.New("batch continuation cursor repeated")
 		}
 		continuation = next
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
 	if err != nil {
-		return nil, false, sdk.Cursor{}, err
+		return nil, false, zero, err
 	}
 	if !plan.OneBatch {
-		continuation = sdk.Cursor{}
+		continuation = zero
 	}
 	return items, result.HasMore, continuation, nil
 }

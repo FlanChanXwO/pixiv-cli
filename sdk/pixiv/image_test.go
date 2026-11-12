@@ -97,6 +97,25 @@ func TestImageSaveCancellationBeforeReplace(t *testing.T) {
 	assertImageResult(t, "cancel", art.Pages[0].Original.Save(ctx, dest), dest)
 }
 
+func TestUgoiraOriginalImage(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, api.PathIllustDetail, r.URL.Path)
+		fmt.Fprint(w, strings.Replace(artworkResponse, `"type":"illust"`, `"type":"ugoira"`, 1))
+	}))
+	defer server.Close()
+	value := pixiv.NewCredentials("fixture-refresh")
+	value.SetTokens("fixture-access", "fixture-refresh")
+	value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
+	store, err := pixiv.NewMemoryCredentials(value)
+	require.NoError(t, err)
+	client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server)})
+	require.NoError(t, err)
+	art, err := client.Artwork(23).Get(t.Context())
+	require.NoError(t, err)
+	require.Len(t, art.Pages, 1)
+	require.Equal(t, "https://i.pximg.net/fixture.jpg", art.Pages[0].Original.URL)
+}
+
 type cancelMedia struct{ cancel context.CancelFunc }
 
 func (c cancelMedia) RoundTrip(r *http.Request) (*http.Response, error) {
