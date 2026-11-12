@@ -146,7 +146,19 @@ func (t pixivTools) mypixivHandler(ctx context.Context, in mypixivIn) (*mcp.Call
 	if err != nil {
 		return outputs.Error(err)
 	}
-	return t.myPixivArtworks(ctx, in, plan)
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		page, err := client.MyPixivArtworks(ctx, pixiv.MyPixivOptions{Cursor: cursor})
+		return page.Items, page.Cursor, err
+	})
+	if err != nil {
+		return outputs.Error(err)
+	}
+	records, err := record.FromSDKArtworks(items)
+	if err != nil {
+		return outputs.Error(err)
+	}
+	out := outputs.Records{Records: records, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more)}
+	return outputs.Result(out), out, nil
 }
 
 func (t pixivTools) registerUnfollowUser(server *mcp.Server) {

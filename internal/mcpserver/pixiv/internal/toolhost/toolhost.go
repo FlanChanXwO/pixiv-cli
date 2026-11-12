@@ -194,27 +194,6 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 // ResolveAccount 返回本次工具调用固定的账号；同一调用内多次调用结果一致。
 func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
 
-// CurrentUserID 返回当前 client snapshot 的身份 UID；取不到时报错，不回退到默认账号。
-func (a *App) CurrentUserID(ctx context.Context) (int64, error) {
-	return Read(a, ctx, func(ctx context.Context, client *pixiv.Client) (int64, error) {
-		if id := client.UserID(); id > 0 {
-			return id, nil
-		}
-		return 0, errors.New("cannot determine current user id")
-	})
-}
-
-// ResolveUserID 解析 MCP 用户引用：正数原样返回，零回退到当前认证账号，负数报错。
-func ResolveUserID(app *App, ctx context.Context, requested int64) (int64, error) {
-	if requested > 0 {
-		return requested, nil
-	}
-	if requested < 0 {
-		return 0, errors.New("user_id must be positive when provided")
-	}
-	return app.CurrentUserID(ctx)
-}
-
 // Artwork 在有生产读会话时使用带 grant 范围的 Gallery 缓存，否则回退为一次普通 SDK
 // 读取。
 func (a *App) Artwork(ctx context.Context, id int64) (pixiv.Artwork, error) {

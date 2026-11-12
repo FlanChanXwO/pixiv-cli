@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Rating 给出产品层的本地 rating 语义。它不是 Pixiv App API 的请求参数。
@@ -28,11 +28,11 @@ type ContentType string
 // ContentTypeAll 等值是 [ContentType] 的 canonical 取值，与 public SDK 的内容类型
 // 字符串保持一致。
 const (
-	ContentTypeAll             ContentType = ContentType(pixiv.SearchContentTypeAll)
+	ContentTypeAll             ContentType = "all"
 	ContentTypeIllustAndUgoira ContentType = "illust-and-ugoira"
-	ContentTypeIllust          ContentType = ContentType(pixiv.SearchContentTypeIllust)
-	ContentTypeManga           ContentType = ContentType(pixiv.SearchContentTypeManga)
-	ContentTypeUgoira          ContentType = ContentType(pixiv.SearchContentTypeUgoira)
+	ContentTypeIllust          ContentType = ContentType(pixiv.ContentTypeIllust)
+	ContentTypeManga           ContentType = ContentType(pixiv.ContentTypeManga)
+	ContentTypeUgoira          ContentType = ContentType(pixiv.ContentTypeUgoira)
 )
 
 // Filter 保存已规范化的本地筛选条件。零值等价于没有筛选。
