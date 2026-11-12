@@ -48,7 +48,7 @@ func UserOutput(u *pixiv.User) (legacysdk.User, error) {
 	return legacysdk.User{ID: u.ID, Name: u.Name, Account: u.Account, Comment: u.Comment, IsFollowed: u.IsFollowed, ProfileImage: image}, err
 }
 
-// NovelOutput 为聚合推荐和收藏保留小说输出；独立小说命令继续使用旧入口。
+// NovelOutput 将小说绑定对象投影为 CLI/MCP 共用的既有输出值。
 func NovelOutput(n *pixiv.Novel) (legacysdk.Novel, error) {
 	u, err := UserOutput(n.Author)
 	if err != nil {
@@ -125,4 +125,10 @@ func outputImage(image pixiv.Image, kind string, id int64, page int, variant str
 	}
 	resource, err := outputResource(kind, id, page, variant)
 	return legacysdk.ImageResource{Resource: resource, Variant: variant, Width: image.Width, Height: image.Height}, err
+}
+
+// NovelSeriesOutput 保留系列元数据的 user 字段，不序列化绑定对象与分页状态。
+func NovelSeriesOutput(series *pixiv.NovelSeries) (legacysdk.NovelSeries, error) {
+	user, err := UserOutput(series.Author)
+	return legacysdk.NovelSeries{ID: series.ID, Title: series.Title, Caption: series.Caption, User: user, IsConcluded: series.IsConcluded}, err
 }
