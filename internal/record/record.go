@@ -5,8 +5,8 @@
 // 删除版本类元数据键。
 //
 // 包的组成：[Record] 是记录值，[ParseRecordJSON] 解析一行 NDJSON，
-// [ConsumeNDJSONRecords] 逐行消费管道并写诊断；[RunArtworks]、[RunNovels]、[RunUsers]
-// 与 [RunPages] 是 CLI 列表输出，[JSONArraySpool] 暂存完整 JSON 文档。
+// [ConsumeNDJSONRecords] 逐行消费管道并写诊断；[RunSDKList] 与 [RunPages] 输出 CLI 列表，
+// [JSONArraySpool] 暂存完整 JSON 文档。
 package record
 
 // Record 保留可在 CLI 管道和 MCP 之间共享的 Pixiv 实体 JSON 记录。

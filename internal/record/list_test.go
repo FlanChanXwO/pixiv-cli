@@ -9,18 +9,20 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	legacypixiv "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
-	pages := []sdk.Page[map[string]any]{
-		{Items: []map[string]any{{"id": 1}, {"id": 2}}, Next: sdk.Cursor{}},
+	pages := []legacysdk.Page[map[string]any]{
+		{Items: []map[string]any{{"id": 1}, {"id": 2}}, Next: legacysdk.Cursor{}},
 	}
-	fetch := func(context.Context, sdk.Cursor) (sdk.Page[map[string]any], error) {
+	fetch := func(context.Context, legacysdk.Cursor) (legacysdk.Page[map[string]any], error) {
 		return pages[0], nil
 	}
 	item := func(value map[string]any) any { return value }
@@ -48,27 +50,20 @@ func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
 	}
 }
 
-func TestRunArtworksClosesSpoolOnReplay(t *testing.T) {
+func TestRunSDKListClosesSpoolOnFailure(t *testing.T) {
 	// 把临时目录隔离到本测试内，避免与其他并行测试创建的同名 spool 冲突。
 	tempDir := t.TempDir()
 	t.Setenv("TMPDIR", tempDir)
 	t.Setenv("TMP", tempDir)
 	t.Setenv("TEMP", tempDir)
 	var out bytes.Buffer
-	runner := session.NewRunner(&out, func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		_, err := attempt(ctx, nil)
+	execute := func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
+		_, err := attempt(ctx, 9, nil)
 		return err
-	})
-	attempts := 0
+	}
 	before := spoolNames(t, tempDir)
-	err := record.RunArtworks(context.Background(), runner, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, io.Discard, record.ArtworkList{
-		Fetch: func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			attempts++
-			if attempts == 1 {
-				return nil, sdk.Cursor{}, retryableErr
-			}
-			return []pixiv.Artwork{{ID: 7, Title: "cat"}}, sdk.Cursor{}, nil
-		},
+	err := record.RunSDKList(context.Background(), &out, io.Discard, execute, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.List[int]{}, func(context.Context, int64, *pixiv.Client, sdk.Cursor) ([]int, sdk.Cursor, error) {
+		return nil, sdk.Cursor{}, retryableErr
 	})
 	if !errors.Is(err, retryableErr) || out.Len() != 0 {
 		t.Fatalf("err = %v, stdout = %q; want the retryable failure and empty stdout", err, out.String())
@@ -90,7 +85,7 @@ func spoolNames(t *testing.T, dir string) []string {
 }
 
 func TestArtworkRecordPreservesContentType(t *testing.T) {
-	value, err := record.RecordFromArtwork(pixiv.Artwork{ID: 101, ContentType: "future_art"})
+	value, err := record.RecordFromArtwork(legacypixiv.Artwork{ID: 101, ContentType: "future_art"})
 	if err != nil {
 		t.Fatal(err)
 	}

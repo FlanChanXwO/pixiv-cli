@@ -55,7 +55,7 @@
 | 声明的使用范围 | 放置位置 | 示例 |
 | --- | --- | --- |
 | 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/models.go`（公开实体）、`sdk/pixiv/artwork_wire.go`（作品响应结构）、`sdk/pixiv/response.go`（多个领域共用的响应结构）、`errors.go`（错误码） |
-| 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/record/list.go` 中的 `ArtworkList` |
+| 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/record/list.go` 中的 `List` |
 | 类型自身的方法（`String`、`Valid`、`MarshalJSON` 等） | 和类型放在同一个文件 | `sdk/resource.go` 中的 `Resource.MarshalJSON` |
 
 - 不按“一个类型一个文件”拆分。

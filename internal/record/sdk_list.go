@@ -21,5 +21,5 @@ func RunSDKList[T any](ctx context.Context, out, errOut io.Writer, execute sessi
 	}
 	return runList(ctx, out, errOut, run, plan, format, list, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		return fetch(ctx, selected, client, cursor)
-	}, list.PostFilter)
+	})
 }

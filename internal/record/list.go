@@ -7,9 +7,7 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 )
 
 // Format 指定列表命令的输出格式，由 --json/--ndjson 决定；两个 flag 互斥。
@@ -152,64 +150,12 @@ func (w *writer[T]) commit(plan pagination.PagePlan, result pagination.PageResul
 	return w.spool.CommitList(w.out, PageMetadata(plan, result))
 }
 
-// ArtworkList 描述一次作品列表读取及输出方式。
-type ArtworkList struct {
-	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error)
-	// PostFilter 只在已解析的窗口内本地筛选，不会继续向上游多取数据。
-	PostFilter func([]pixiv.Artwork) []pixiv.Artwork
-	Print      func(items []pixiv.Artwork, start int) error
-}
-
-// NovelList 描述一次小说列表读取及输出方式。
-type NovelList struct {
-	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error)
-	Print func(items []pixiv.Novel) error
-}
-
-// UserList 描述一次用户预览列表读取及输出方式。
-type UserList struct {
-	Fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error)
-	Print func(items []pixiv.UserPreview) error
-}
-
-// RunArtworks 在账号池重放边界内执行一次分页作品读取。NDJSON 逐条提交，JSON 在完整
-// 文档写入 stdout 后提交，文本在第一批可见后提交；因此 429 只会在结果暴露前换账号。
-func RunArtworks(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list ArtworkList) error {
-	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Artwork]{
-		Print:       list.Print,
-		RecordValue: artworkRecord,
-	}, list.Fetch, list.PostFilter)
-}
-
-// RunNovels 在同一个重放边界内执行一次分页小说读取。
-func RunNovels(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list NovelList) error {
-	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.Novel]{
-		Print:       func(items []pixiv.Novel, _ int) error { return list.Print(items) },
-		RecordValue: novelRecord,
-	}, list.Fetch, nil)
-}
-
-// RunUsers 执行一次分页用户预览读取。
-func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list UserList) error {
-	return runPixivList(ctx, runner, request, plan, format, errOut, List[pixiv.UserPreview]{
-		Print:       func(items []pixiv.UserPreview, _ int) error { return list.Print(items) },
-		RecordValue: userPreviewRecord,
-	}, list.Fetch, nil)
-}
-
-func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
-	return runList(ctx, runner.Out, errOut, runner.Execute(request), plan, format, list,
-		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
-			return fetch(client, ctx, cursor)
-		}, postFilter)
-}
-
-func runList[E any, T any, C pagination.Cursor](ctx context.Context, out, errOut io.Writer, execute pagination.Execute[E], plan pagination.PagePlan, format Format, list List[T], fetch func(context.Context, E, C) ([]T, C, error), postFilter func([]T) []T) error {
+func runList[E any, T any, C pagination.Cursor](ctx context.Context, out, errOut io.Writer, execute pagination.Execute[E], plan pagination.PagePlan, format Format, list List[T], fetch func(context.Context, E, C) ([]T, C, error)) error {
 	w := newWriter(out, format, plan.Skip, list)
 	defer w.closeSpool()
 	result, err := pagination.TraverseWith(ctx, execute, plan, w.begin, fetch, func(items []T) (bool, error) {
-		if postFilter != nil {
-			items = postFilter(items)
+		if list.PostFilter != nil {
+			items = list.PostFilter(items)
 		}
 		return w.consume(items)
 	})
@@ -257,9 +203,3 @@ func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination
 	}
 	return w.commit(plan, result)
 }
-
-func artworkRecord(item pixiv.Artwork) (any, error) { return RecordFromArtwork(item) }
-
-func novelRecord(item pixiv.Novel) (any, error) { return RecordFromNovel(item) }
-
-func userPreviewRecord(item pixiv.UserPreview) (any, error) { return RecordFromUserPreview(item) }
