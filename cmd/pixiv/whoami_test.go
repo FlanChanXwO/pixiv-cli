@@ -16,6 +16,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/stretchr/testify/require"
 )
@@ -174,5 +175,25 @@ func TestAccountOutputsMatchLegacyFixtures(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, string(expected), stdout)
 		})
+	}
+}
+
+func TestExplicitDefaultAccountOutputs(t *testing.T) {
+	home := isolatedHome(t)
+	store, err := account.Open(t.Context(), filepath.Join(home, config.AppDataDirName))
+	require.NoError(t, err)
+	token := credential.New([]byte("synthetic"))
+	for _, id := range []int64{42, 99} {
+		require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: id, Credential: token}))
+		require.NoError(t, store.SaveFanboxCredential(t.Context(), account.Fanbox{UserID: id, Credential: token, ValidatedAt: time.Unix(1, 0).UTC()}))
+	}
+	defaults := config.Store{Files: secretfile.ConfigFiles{}}
+	require.NoError(t, defaults.SetPixivDefaultUserID(99))
+	require.NoError(t, defaults.SetFanboxDefaultUserID(99))
+	for _, args := range [][]string{{"whoami", "--json"}, {"fanbox", "auth", "status", "--json"}} {
+		stdout, stderr, code := runCLI(t, args...)
+		require.Zero(t, code, stderr)
+		require.Empty(t, stderr)
+		require.Regexp(t, `"user_id":\s*99\b`, stdout)
 	}
 }
