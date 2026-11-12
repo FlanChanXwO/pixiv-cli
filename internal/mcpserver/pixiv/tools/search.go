@@ -6,8 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -16,11 +15,13 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type artworkSearchOutcome struct {
-	Page   sdk.Page[pixiv.Artwork]
+	Page   sdk.Page[legacysdk.Artwork]
 	Filter *outputs.BookmarkFilter
 }
 
@@ -28,7 +29,8 @@ type artworkSearchOutcome struct {
 const bookmarkMembershipUnknown = searchfilter.BookmarkMembershipUnknown
 
 type artworkSearchRequest struct {
-	Query    pixiv.SearchArtworksRequest
+	Word     string
+	Query    pixiv.ArtworkSearchOptions
 	Plan     pagination.PagePlan
 	Strategy searchfilter.BookmarkStrategy
 	Filter   *filters.IllustFilter
@@ -47,14 +49,10 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 	}
 	filter.Strategy = strategy
 	hasRange := filter.Active()
-	if execute == nil {
-		return outcome, sdk.NewError("pixiv", "SearchArtworks", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
-	}
 
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		if !hasRange {
-			page, err := searchArtworkPages(ctx, client, request.Query, request.Plan, request.Filter)
+			page, err := searchArtworkPages(ctx, client, request.Word, request.Query, request.Plan, request.Filter)
 			if err != nil {
 				return false, err
 			}
@@ -76,32 +74,38 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 			ctx,
 			request.Plan,
 			candidateQuery.Cursor,
-			func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+			func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
 				candidateQuery.Cursor = cursor
-				page, err := client.SearchArtworks(ctx, candidateQuery)
+				page, err := client.SearchArtworks(ctx, request.Word, candidateQuery)
 				if err != nil {
 					return nil, sdk.Cursor{}, err
 				}
-				return page.Items, page.Next, nil
+				items := make([]legacysdk.Artwork, len(page.Items))
+				for i, item := range page.Items {
+					items[i], err = record.ArtworkOutput(item, false)
+					if err != nil {
+						return nil, sdk.Cursor{}, err
+					}
+				}
+				return items, page.Cursor, nil
 			},
-			func(item pixiv.Artwork) (bool, error) {
+			func(item legacysdk.Artwork) (bool, error) {
 				if item.TotalBookmarks < 0 {
-					return false, sdk.NewError("pixiv", "SearchArtworks", sdk.MalformedUpstreamResponse,
-						sdk.WithDetail("artwork bookmark count is negative"))
+					return false, &sdk.Error{Operation: "pixiv:SearchArtworks", Reason: sdk.MalformedUpstreamResponse, Message: "artwork bookmark count is negative"}
 				}
 				return filter.Matches(item.TotalBookmarks) && filters.MatchesIllust(item, request.Filter), nil
 			},
 			func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 				checkpointQuery := candidateQuery
 				checkpointQuery.Cursor = cursor
-				return client.CheckpointSearchArtworks(checkpointQuery, consumed)
+				return client.CheckpointSearchArtworks(ctx, request.Word, checkpointQuery, consumed)
 			},
 		)
 		if err != nil {
 			return false, err
 		}
 		outcome = artworkSearchOutcome{
-			Page:   sdk.Page[pixiv.Artwork]{Items: items, Next: next},
+			Page:   sdk.Page[legacysdk.Artwork]{Items: items, Cursor: next},
 			Filter: bookmarkOutput(filter.Outcome(pageResult.HasMore || !next.IsZero())),
 		}
 		return false, nil
@@ -121,7 +125,7 @@ func bookmarkSearchError(err error) error {
 	case errors.Is(err, searchfilter.ErrBookmarkNonPremium):
 		kind = sdk.Forbidden
 	}
-	return sdk.NewError("pixiv", "SearchArtworks", kind, sdk.WithDetail(err.Error()))
+	return &sdk.Error{Operation: "pixiv:SearchArtworks", Reason: kind, Message: err.Error(), Err: err}
 }
 
 // bookmarkOutput 把共享筛选元数据映射到已发布的 filter 字段。
@@ -135,21 +139,31 @@ func bookmarkOutput(outcome searchfilter.BookmarkOutcome) *outputs.BookmarkFilte
 	}
 }
 
-func searchArtworkPages(ctx context.Context, client *pixiv.Client, query pixiv.SearchArtworksRequest, plan pagination.PagePlan, filter *filters.IllustFilter) (sdk.Page[pixiv.Artwork], error) {
-	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+func searchArtworkPages(ctx context.Context, client *pixiv.Client, word string, query pixiv.ArtworkSearchOptions, plan pagination.PagePlan, filter *filters.IllustFilter) (sdk.Page[legacysdk.Artwork], error) {
+	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
 		fetchQuery := query
 		fetchQuery.Cursor = cursor
-		page, err := client.SearchArtworks(ctx, fetchQuery)
-		return page.Items, page.Next, err
-	}, func(item pixiv.Artwork) (bool, error) { return filters.MatchesIllust(item, filter), nil }, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
+		page, err := client.SearchArtworks(ctx, word, fetchQuery)
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		items := make([]legacysdk.Artwork, len(page.Items))
+		for i, item := range page.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, page.Cursor, nil
+	}, func(item legacysdk.Artwork) (bool, error) { return filters.MatchesIllust(item, filter), nil }, func(cursor sdk.Cursor, consumed int) (sdk.Cursor, error) {
 		checkpointQuery := query
 		checkpointQuery.Cursor = cursor
-		return client.CheckpointSearchArtworks(checkpointQuery, consumed)
+		return client.CheckpointSearchArtworks(ctx, word, checkpointQuery, consumed)
 	})
 	if err != nil {
-		return sdk.Page[pixiv.Artwork]{}, err
+		return sdk.Page[legacysdk.Artwork]{}, err
 	}
-	return sdk.Page[pixiv.Artwork]{Items: items, Next: next}, nil
+	return sdk.Page[legacysdk.Artwork]{Items: items, Cursor: next}, nil
 }
 func (t pixivTools) registerSearchIllust(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_search_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Search for illustrations using keywords with filters.", InputSchema: searchIllustInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input searchIllustIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -203,7 +217,7 @@ func searchIllustInputSchema() map[string]any {
 			"end_date":          map[string]any{"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "Inclusive end date in YYYY-MM-DD; may be used with start_date."},
 			"page":              map[string]any{"type": "integer", "description": "1-based logical page; requires a positive limit."},
 			"limit":             map[string]any{"type": "integer", "description": "Maximum logical results; 0 returns all; omit for one logical batch."},
-			"content_type":      enumProperty("Artwork content type filter.", string(pixiv.SearchContentTypeAll), string(pixiv.SearchContentTypeIllustAndUgoira), string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(pixiv.SearchContentTypeUgoira)),
+			"content_type":      enumProperty("Artwork content type filter.", string(pixiv.ArtworkCategoryAll), string(pixiv.ArtworkCategoryIllustAndUgoira), string(pixiv.ArtworkCategoryIllust), string(pixiv.ArtworkCategoryManga), string(pixiv.ArtworkCategoryUgoira)),
 			"ai_mode":           enumProperty("AI-generated artwork filter.", string(pixiv.SearchAIModeAll), string(pixiv.SearchAIModeExclude), string(pixiv.SearchAIModeOnly)),
 			"aspect_ratio":      enumProperty("Artwork aspect ratio filter.", string(pixiv.SearchAspectRatioAll), string(pixiv.SearchAspectRatioLandscape), string(pixiv.SearchAspectRatioPortrait), string(pixiv.SearchAspectRatioSquare)),
 			"resolution":        enumProperty("Artwork resolution tier filter.", string(pixiv.SearchResolutionAll), string(pixiv.SearchResolutionHigh), string(pixiv.SearchResolutionMedium), string(pixiv.SearchResolutionLow)),
@@ -249,9 +263,9 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	query := pixiv.SearchArtworksRequest{
-		Word: word, Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration),
-		StartDate: in.StartDate, EndDate: in.EndDate, ContentType: pixiv.SearchContentType(in.ContentType), AIMode: pixiv.SearchAIMode(in.AIMode),
+	query := pixiv.ArtworkSearchOptions{
+		Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration),
+		StartDate: in.StartDate, EndDate: in.EndDate, Category: pixiv.ArtworkCategory(in.ContentType), AIMode: pixiv.SearchAIMode(in.AIMode),
 		AspectRatio: pixiv.SearchAspectRatio(in.AspectRatio), Resolution: pixiv.SearchResolution(in.Resolution), Tool: in.Tool,
 		BookmarkMin: in.BookmarkMin, BookmarkMax: in.BookmarkMax,
 	}
@@ -260,12 +274,18 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		if err != nil {
 			return outputs.Error(err)
 		}
-		initial, err := binding.Decode(in.Cursor)
+		initial, userID, err := binding.DecodeSDK(in.Cursor)
 		if err != nil {
 			return outputs.Error(err)
 		}
 		query.Cursor = initial
-		outcome, err := searchArtworks(ctx, t.app.ReadExecutor(), artworkSearchRequest{
+		outcome, err := searchArtworks(ctx, func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+			return t.app.SDKReadExecutor(userID)(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+				userID = toolhost.SDKUserID(ctx, 0)
+				return attempt(ctx, client)
+			})
+		}, artworkSearchRequest{
+			Word:     word,
 			Query:    query,
 			Plan:     pagination.PagePlan{Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch},
 			Strategy: searchfilter.BookmarkStrategy(in.BookmarkStrategy),
@@ -280,27 +300,34 @@ func (t pixivTools) searchIllustHandler(ctx context.Context, in searchIllustIn) 
 		}
 		out := outputs.Records{
 			Records:    recordItems,
-			Pagination: toolhost.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Next.IsZero()),
+			Pagination: toolhost.ListPagination(plan, in.Limit, len(outcome.Page.Items), !outcome.Page.Cursor.IsZero()),
 			Filter:     outcome.Filter,
 		}
 		if plan.OneBatch {
-			if !outcome.Page.Next.IsZero() && outcome.Page.Next == initial {
+			if !outcome.Page.Cursor.IsZero() && outcome.Page.Cursor == initial {
 				return outputs.Error(errors.New("batch continuation cursor repeated"))
 			}
-			out.Pagination.NextCursor, err = binding.Encode(outcome.Page.Next)
+			out.Pagination.NextCursor, err = binding.EncodeSDK(outcome.Page.Cursor, userID)
 			if err != nil {
 				return outputs.Error(err)
 			}
 		}
 		return outputs.Result(out), out, nil
 	}
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "search_illust", bindingInput, in.Cursor, toolrun.ListIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	items, page, err := toolhost.CollectSDKCursorWith(ctx, t.app, "search_illust", bindingInput, in.Cursor, toolrun.ListIn{Page: in.Page, Limit: in.Limit}, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
 		query.Cursor = cursor
-		result, err := client.SearchArtworks(ctx, query)
+		result, err := client.SearchArtworks(ctx, word, query)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
@@ -405,14 +432,21 @@ func (t pixivTools) searchNovelHandler(ctx context.Context, in searchNovelIn) (*
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.SearchNovels(ctx, pixiv.SearchNovelsRequest{
-			Word: in.Word, Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration), Cursor: cursor,
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		result, err := client.SearchNovels(ctx, in.Word, pixiv.NovelSearchOptions{
+			Target: pixiv.SearchTarget(in.SearchTarget), Sort: pixiv.SortMode(in.Sort), Duration: pixiv.DurationFilter(in.Duration), Cursor: cursor,
 		})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Novel, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.NovelOutput(item)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
@@ -441,8 +475,7 @@ type searchUserIn struct {
 
 func (t pixivTools) searchUserHandler(ctx context.Context, in searchUserIn) (*mcp.CallToolResult, outputs.Records, error) {
 	if strings.TrimSpace(in.Word) == "" {
-		return outputs.Error(sdk.NewError("pixiv", "SearchUsers", sdk.InvalidArgument,
-			sdk.WithDetail("search word is required")))
+		return outputs.Error(&sdk.Error{Operation: "pixiv:SearchUsers", Reason: sdk.InvalidArgument, Message: "search word is required"})
 	}
 	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
@@ -452,12 +485,19 @@ func (t pixivTools) searchUserHandler(ctx context.Context, in searchUserIn) (*mc
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		result, err := client.SearchUsers(ctx, pixiv.SearchUsersRequest{Word: in.Word, Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+		result, err := client.SearchUsers(ctx, in.Word, pixiv.UserSearchOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.UserPreview, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.UserPreviewOutput(item)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)

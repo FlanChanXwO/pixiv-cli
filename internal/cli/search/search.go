@@ -1,7 +1,7 @@
 // Package search 提供 pixiv search、pixiv novel search 与反向搜图命令。
 //
 // 包的组成：[New] 组装作品搜索，[NewNovel] 组装小说搜索，[ReverseSearchPort] 接入反向搜图；
-// 收藏筛选、小说和行式输出分别在 bookmark.go、novel.go、presentation.go。
+// 本地作品筛选、小说和反向搜图分别在 artworks.go、novel.go、reverse.go。
 package search
 
 import (
@@ -9,20 +9,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -62,20 +63,18 @@ type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearc
 
 type commandRunner struct {
 	env           environment.Env
-	runner        session.Runner
-	exec          session.Executor
 	reverseSearch ReverseSearchPort
 	executeSDK    session.SDKExecutor
 }
 
 // New 构造根级 `pixiv search` 命令，覆盖作品、小说、用户和反向搜图入口。
-func New(env environment.Env, exec session.Executor, executeSDK session.SDKExecutor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec, executeSDK: executeSDK, reverseSearch: reverseSearch}
+func New(env environment.Env, executeSDK session.SDKExecutor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, executeSDK: executeSDK, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
 		typ:         string(target.NamespaceArtwork),
-		contentType: string(pixiv.SearchContentTypeAll),
+		contentType: string(pixiv.ArtworkCategoryAll),
 		resolution:  string(pixiv.SearchResolutionAll),
 		aspectRatio: string(pixiv.SearchAspectRatioAll),
 		aiMode:      string(pixiv.SearchAIModeAll),
@@ -244,19 +243,19 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		return err
 	}
 	params.word = strings.Join(args, " ")
-	query := pixiv.SearchArtworksRequest{
-		Word: params.word, Target: target, Sort: pixiv.SortMode(opts.sortMode),
+	query := pixiv.ArtworkSearchOptions{
+		Target: target, Sort: pixiv.SortMode(opts.sortMode),
 		Duration: params.period, StartDate: params.startDate, EndDate: params.endDate,
-		ContentType: pixiv.SearchContentType(artworkFilter.ContentType), AIMode: params.aiMode,
+		Category: pixiv.ArtworkCategory(artworkFilter.ContentType), AIMode: params.aiMode,
 		AspectRatio: params.aspectRatio, Resolution: params.resolution,
 		Tool: opts.drawTool, BookmarkMin: params.bookmarkMin, BookmarkMax: params.bookmarkMax,
 	}
-	var include func(pixiv.Artwork) (bool, error)
+	var include func(legacysdk.Artwork) (bool, error)
 	if artworkFilter.Rating != searchfilter.RatingAll {
 		// rating 只有 DTO 中的 x_restrict 可验证；它必须绑定到 SDK cursor，
 		// 但不能伪造为 upstream 的 rating/x_restrict 请求参数。
 		query.CursorContext = artworkFilter.CursorContext()
-		include = func(item pixiv.Artwork) (bool, error) {
+		include = func(item legacysdk.Artwork) (bool, error) {
 			return artworkFilter.Matches(item.XRestrict, string(item.ContentType)), nil
 		}
 	}
@@ -268,25 +267,35 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		if err != nil {
 			return err
 		}
-		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, query, strategy, include)
+		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, strategy, include)
 	}
 	if include != nil {
-		return a.runLocallyFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, query, include)
+		return a.runBookmarkFiltered(cmd, params.request, params.plan, params.jsonOut, params.ndjson, params.word, query, "", include)
 	}
 	if params.aiMode != pixiv.SearchAIModeOnly && params.plan.Skip > 0 {
 		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
 		params.plan, query.Offset = params.plan.PushDownSkip()
 	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
 		request := query
 		request.Cursor = cursor
-		result, err := client.SearchArtworks(ctx, request)
+		result, err := client.SearchArtworks(ctx, params.word, request)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.List[legacysdk.Artwork]{
+		Print:       func(items []legacysdk.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) },
+		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+	}, fetch)
 }
 
 type artworkSearchOut struct {
@@ -302,15 +311,16 @@ type bookmarkFilterJSON struct {
 	Completeness searchfilter.BookmarkCompleteness `json:"completeness"`
 }
 
-// runBookmarkFiltered 在 CLI adapter 内完成 bookmark 区间过滤；输出形态与
-// 过滤元数据仍由 CLI 保持。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, strategy searchfilter.BookmarkStrategy, include func(pixiv.Artwork) (bool, error)) error {
-	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
-		Query:      query,
-		Plan:       plan,
-		Membership: searchfilter.BookmarkMembershipUnknown,
-		Strategy:   strategy,
-		Include:    include,
+// runBookmarkFiltered 在 SDK attempt 内执行收藏数与 rating 筛选，再统一输出逻辑页。
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.ArtworkSearchOptions, strategy searchfilter.BookmarkStrategy, include func(legacysdk.Artwork) (bool, error)) error {
+	outcome, err := searchArtworks(cmd.Context(), func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		return a.executeSDK(ctx, account, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) { return attempt(ctx, client) })
+	}, artworkSearchRequest{
+		Word:     word,
+		Query:    query,
+		Plan:     plan,
+		Strategy: strategy,
+		Include:  include,
 	})
 	if err != nil {
 		return err
@@ -318,19 +328,7 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.P
 	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, outcome.Filter)
 }
 
-func (a commandRunner) runLocallyFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, query pixiv.SearchArtworksRequest, include func(pixiv.Artwork) (bool, error)) error {
-	outcome, err := searchArtworks(cmd.Context(), a.runner.Execute(account), artworkSearchRequest{
-		Query:   query,
-		Plan:    plan,
-		Include: include,
-	})
-	if err != nil {
-		return err
-	}
-	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, nil)
-}
-
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[pixiv.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[legacysdk.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
 	items := page.Items
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
@@ -358,7 +356,7 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination
 		if err != nil {
 			return err
 		}
-		return record.WriteJSONValue(a.env.Out, artworkSearchOut{ListOutput: record.NewListOutput(records, plan, pagination.PageResult{Returned: len(records), HasMore: !page.Next.IsZero()}), Filter: filter})
+		return record.WriteJSONValue(a.env.Out, artworkSearchOut{ListOutput: record.NewListOutput(records, plan, pagination.PageResult{Returned: len(records), HasMore: !page.Cursor.IsZero()}), Filter: filter})
 	}
 	if len(items) == 0 {
 		_, err := fmt.Fprintln(a.env.Err, "No results.")
@@ -377,8 +375,21 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 	if err != nil {
 		return err
 	}
-	tags, err := session.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
-		return client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
+	var tags []legacysdk.TrendingTag
+	err = a.executeSDK(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+		result, err := client.TrendingArtworkTags(ctx)
+		if err != nil {
+			return false, err
+		}
+		tags = make([]legacysdk.TrendingTag, len(result))
+		for i, tag := range result {
+			artwork, err := record.ArtworkOutput(tag.Artwork, false)
+			if err != nil {
+				return false, err
+			}
+			tags[i] = legacysdk.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork}
+		}
+		return false, nil
 	})
 	if err != nil {
 		return err
