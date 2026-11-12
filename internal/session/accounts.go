@@ -11,7 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Accounts 将默认账号配置与 Pixiv 账号存储接到命令和会话，保持输出摘要契约。
@@ -135,27 +135,31 @@ func (s *Accounts) CurrentUser(ctx context.Context) (*AccountSummary, error) {
 
 // CheckAccount 在线校验指定账号的 refresh token，并持久化 OAuth 返回的 rotation。
 func (s *Accounts) CheckAccount(ctx context.Context, userID int64, options pixiv.Options) (AccountSummary, error) {
-	client, err := s.store.OpenAccountClient(ctx, userID, options)
+	client, err := s.store.OpenSDKClient(ctx, userID, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer client.CloseIdleConnections()
-	return AccountSummary{UserID: client.UserID(), Username: client.Username()}, nil
+	credentials, err := client.Credentials(ctx)
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	return AccountSummary{UserID: credentials.UserID, Username: credentials.DisplayName}, nil
 }
 
 // RefreshAccount 刷新指定账号的凭据并强制读取当前 profile，把会员资格快照写回
 // 账号文件，最后返回账号摘要。
 func (s *Accounts) RefreshAccount(ctx context.Context, userID int64, options pixiv.Options) (AccountSummary, error) {
-	client, err := s.store.OpenAccountClient(ctx, userID, options)
+	client, err := s.store.OpenSDKClient(ctx, userID, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer client.CloseIdleConnections()
-	detail, err := client.CurrentUser(ctx, pixiv.CurrentUserRequest{})
+	detail, err := client.CurrentUser(ctx)
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	premium := detail.Profile.IsPremium
+	premium := detail.IsPremium
 	if err := s.setPremiumStatus(ctx, userID, &premium); err != nil {
 		return AccountSummary{}, err
 	}

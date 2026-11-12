@@ -40,7 +40,7 @@ func (c *Client) mapNovel(w novelWire) (*Novel, error) {
 	if err != nil {
 		return nil, err
 	}
-	cover, err := c.image(firstImageURL(w.ImageURLs), 0, 0)
+	cover, err := c.coverImage(w.ImageURLs, 0, 0)
 	if err != nil {
 		return nil, err
 	}

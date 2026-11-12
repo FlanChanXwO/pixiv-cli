@@ -1,7 +1,6 @@
 // Package user 提供 pixiv user 命令组：用户搜索、详情、作品、收藏、关注关系与屏蔽列表。
 //
-// 包的组成：[New] 组装命令组，[NewSearch] 组装用户搜索，[SearchOptions] 携带搜索参数；
-// 输出在 presentation.go。
+// 包的组成：[New] 组装命令组，[RunSearch] 共享用户搜索；列表输出在 lists.go。
 package user
 
 import (
@@ -12,12 +11,13 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -32,22 +32,13 @@ type listOptions struct {
 }
 
 type commandRunner struct {
-	env    environment.Env
-	runner session.Runner
-}
-
-// currentUserID 在已打开账号没有身份时保留类型化的未认证错误，避免退化成通用失败。
-func currentUserID(client *pixiv.Client) (int64, error) {
-	if id := client.UserID(); id > 0 {
-		return id, nil
-	}
-	return 0, sdk.NewError("pixiv", "CurrentUser", sdk.Unauthorized,
-		sdk.WithDetail("cannot determine current user id"))
+	env        environment.Env
+	executeSDK session.SDKExecutor
 }
 
 // New 构造 `pixiv user` 命令组。follow 命令由组合根注入，本包不直接依赖同级的 follow 包。
-func New(env environment.Env, runner session.Runner, follow func() *cobra.Command) *cobra.Command {
-	a := commandRunner{env: env, runner: runner}
+func New(env environment.Env, executeSDK session.SDKExecutor, follow func() *cobra.Command) *cobra.Command {
+	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
 	cmd.AddCommand(
 		a.newSearchCommand(),
@@ -66,12 +57,6 @@ func New(env environment.Env, runner session.Runner, follow func() *cobra.Comman
 	return cmd
 }
 
-// NewSearch 构造用户搜索命令，同时服务 `pixiv user search` 和
-// `pixiv search --type user` 两个入口。
-func NewSearch(env environment.Env, runner session.Runner) *cobra.Command {
-	return commandRunner{env: env, runner: runner}.newSearchCommand()
-}
-
 // SearchOptions 携带兼容入口已解析的用户搜索 flag，让 `pixiv search --type user`
 // 复用这里的执行逻辑。
 type SearchOptions struct {
@@ -82,8 +67,8 @@ type SearchOptions struct {
 }
 
 // RunSearch 按 SearchOptions 执行用户搜索；兼容入口调用它避免复制搜索逻辑。
-func RunSearch(cmd *cobra.Command, env environment.Env, runner session.Runner, args []string, opts SearchOptions) error {
-	return commandRunner{env: env, runner: runner}.runSearch(cmd, args, listOptions{
+func RunSearch(cmd *cobra.Command, env environment.Env, executeSDK session.SDKExecutor, args []string, opts SearchOptions) error {
+	return commandRunner{env: env, executeSDK: executeSDK}.runSearch(cmd, args, listOptions{
 		Options: opts.Options,
 		ndjson:  opts.NDJSON,
 		limit:   opts.Limit,
@@ -288,9 +273,9 @@ func resolveUserID(ctx context.Context, value, operation string) (int64, error) 
 		Operation:   operation,
 		DefaultType: string(target.NamespaceUser),
 		Types: []target.TypeSpec{{
-			Name:              string(target.NamespaceUser),
-			ResultKind:        target.NamespaceUser,
-			BareReferenceKind: pixiv.ReferenceKindUser,
+			Name:           string(target.NamespaceUser),
+			ResultKind:     target.NamespaceUser,
+			BareTargetKind: target.NamespaceUser,
 		}},
 	})
 	if err != nil {
@@ -311,8 +296,7 @@ func validateArtworkType(value string) error {
 	case "", pixiv.ContentTypeIllust, pixiv.ContentTypeManga, pixiv.ContentTypeUgoira:
 		return nil
 	default:
-		return sdk.NewError("pixiv", "user artworks", sdk.InvalidArgument,
-			sdk.WithDetail("type must be one of illust, manga, or ugoira"))
+		return &sdk.Error{Operation: "pixiv.user artworks", Reason: sdk.InvalidArgument, Message: "type must be one of illust, manga, or ugoira"}
 	}
 }
 
@@ -321,8 +305,7 @@ func validateRelationshipRestrict(value string) error {
 	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
 		return nil
 	default:
-		return sdk.NewError("pixiv", "user relationships", sdk.InvalidArgument,
-			sdk.WithDetail("restrict must be public or private"))
+		return &sdk.Error{Operation: "pixiv.user relationships", Reason: sdk.InvalidArgument, Message: "restrict must be public or private"}
 	}
 }
 
@@ -332,14 +315,10 @@ func (a commandRunner) runSearch(cmd *cobra.Command, args []string, opts listOpt
 		return err
 	}
 	word := strings.Join(args, " ")
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		result, searchErr := client.SearchUsers(ctx, pixiv.SearchUsersRequest{Word: word, Cursor: cursor})
-		if searchErr != nil {
-			return nil, sdk.Cursor{}, searchErr
-		}
-		return result.Items, result.Next, nil
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.User], error) {
+		return client.SearchUsers(ctx, word, pixiv.UserSearchOptions{Cursor: cursor})
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return a.runUsers(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environment.Options) error {
@@ -355,8 +334,14 @@ func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environmen
 	if err != nil {
 		return err
 	}
-	result, err := session.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
-		return client.User(ctx, pixiv.UserRequest{UserID: userID})
+	var result legacysdk.UserDetail
+	err = a.executeSDK(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+		profile, err := client.User(userID).Profile(ctx)
+		if err != nil {
+			return false, err
+		}
+		result, err = record.UserDetailOutput(profile)
+		return false, err
 	})
 	if err != nil {
 		return err
@@ -379,22 +364,14 @@ func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listO
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.Artwork], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(opts.illustType), Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).Artworks(ctx, pixiv.UserArtworksOptions{Kind: pixiv.ContentType(opts.illustType), Cursor: cursor})
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return a.runArtworkList(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -409,22 +386,14 @@ func (a commandRunner) runBookmarks(cmd *cobra.Command, args []string, opts list
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.Artwork], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return a.runArtworkList(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 // runFollowing 保持既有输出模式：该命令不参与自动 NDJSON 判定。
@@ -440,22 +409,14 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, args []string, opts list
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.User], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserFollowing(ctx, pixiv.UserFollowingRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).Following(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return a.runUsers(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runNovels(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -467,22 +428,14 @@ func (a commandRunner) runNovels(cmd *cobra.Command, args []string, opts listOpt
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.Novel], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).Novels(ctx, pixiv.UserNovelsOptions{Cursor: cursor})
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+	return a.runNovelList(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runFollowers(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -497,22 +450,14 @@ func (a commandRunner) runFollowers(cmd *cobra.Command, args []string, opts list
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.User], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserFollowers(ctx, pixiv.UserFollowersRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).Followers(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return a.runUsers(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runRelated(cmd *cobra.Command, arg string, opts listOptions) error {
@@ -524,14 +469,10 @@ func (a commandRunner) runRelated(cmd *cobra.Command, arg string, opts listOptio
 	if err != nil {
 		return err
 	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		result, err := client.RelatedUsers(ctx, pixiv.RelatedUsersRequest{UserID: userID, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.User], error) {
+		return client.User(userID).Related(ctx, pixiv.RelatedUsersOptions{Cursor: cursor})
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return a.runUsers(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }
 
 func (a commandRunner) runBlocked(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -543,20 +484,12 @@ func (a commandRunner) runBlocked(cmd *cobra.Command, args []string, opts listOp
 	if err != nil {
 		return err
 	}
-	userID := requested
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) (sdk.Page[*pixiv.User], error) {
+		userID := requested
 		if userID == 0 {
-			var identityErr error
-			userID, identityErr = currentUserID(client)
-			if identityErr != nil {
-				return nil, sdk.Cursor{}, identityErr
-			}
+			userID = selected
 		}
-		result, err := client.UserBlockedUsers(ctx, pixiv.UserBlockedUsersRequest{UserID: userID, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return client.User(userID).BlockedUsers(ctx, pixiv.BlockedUsersOptions{Cursor: cursor})
 	}
-	return record.RunUsers(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
+	return a.runUsers(cmd.Context(), request, plan, record.FormatOf(jsonOut, ndjson), fetch)
 }

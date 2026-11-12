@@ -13,7 +13,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,28 +28,28 @@ func oauthClient(api *httptest.Server) *http.Client {
 	return client
 }
 
-func TestRotationPersistsNewTokenBeforeReturningClient(t *testing.T) {
-	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.FormValue("refresh_token") != "initial-refresh" {
-			t.Error("OAuth did not use stored credential")
-		}
-		fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated-refresh","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
-	}))
-	defer api.Close()
-	directory := t.TempDir()
-	store, err := account.Open(t.Context(), directory)
+func TestSDKRefreshPersistsBeforeContent(t *testing.T) {
+	store, err := account.Open(t.Context(), t.TempDir())
 	require.NoError(t, err)
 	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Username: "artist", Credential: credential.New([]byte("initial-refresh"))}))
-	client, err := store.OpenAccountClient(t.Context(), 42, pixiv.Options{HTTPClient: oauthClient(api)})
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/auth/token" {
+			fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated-refresh","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
+			return
+		}
+		saved, err := store.GetPixiv(r.Context(), 42)
+		if err != nil || saved.CredentialRevision != 2 || saved.Credential.Value() != "rotated-refresh" {
+			t.Error("content request preceded credential persistence")
+		}
+		fmt.Fprint(w, `{"illust":{"id":101,"title":"fixture","type":"illust","create_date":"2026-01-01T00:00:00Z","user":{"id":7}}}`)
+	}))
+	defer api.Close()
+	client, err := store.OpenSDKClient(t.Context(), 42, pixiv.Options{HTTPClient: oauthClient(api)})
 	require.NoError(t, err)
 	defer client.CloseIdleConnections()
+	_, err = client.Artwork(101).Get(t.Context())
+	require.NoError(t, err)
 	require.EqualValues(t, 42, client.UserID())
-	reopened, err := account.Open(t.Context(), directory)
-	require.NoError(t, err)
-	saved, err := reopened.GetPixiv(t.Context(), 42)
-	require.NoError(t, err)
-	require.Equal(t, "rotated-refresh", saved.Credential.Value())
-	require.EqualValues(t, 2, saved.CredentialRevision)
 }
 
 func TestRotationConflictUsesLatestCredential(t *testing.T) {
@@ -76,7 +77,7 @@ func TestRotationConflictUsesLatestCredential(t *testing.T) {
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"fresh","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
 	}))
 	defer api.Close()
-	client, err := store.OpenAccountClient(t.Context(), 42, pixiv.Options{HTTPClient: oauthClient(api)})
+	client, err := store.OpenAccountClient(t.Context(), 42, legacysdk.Options{HTTPClient: oauthClient(api)})
 	require.NoError(t, err)
 	defer client.CloseIdleConnections()
 	saved, err := store.GetPixiv(t.Context(), 42)
@@ -102,12 +103,12 @@ func TestReadLeaseChecksRevisionBeforeRequest(t *testing.T) {
 	defer api.Close()
 	reads := account.NewReadSessions(store, account.NewGate())
 	defer reads.Close()
-	snapshot, err := reads.Open(t.Context(), 42, "network", pixiv.Options{HTTPClient: oauthClient(api)})
+	snapshot, err := reads.Open(t.Context(), 42, "network", legacysdk.Options{HTTPClient: oauthClient(api)})
 	require.NoError(t, err)
 	current, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
 	require.NoError(t, store.RotatePixivCredentials(t.Context(), current, []byte("changed")))
-	_, err = snapshot.Client.CurrentUser(t.Context(), pixiv.CurrentUserRequest{})
+	_, err = snapshot.Client.CurrentUser(t.Context(), legacysdk.CurrentUserRequest{})
 	require.Error(t, err)
 	require.Zero(t, contentRequests.Load())
 	select {
@@ -133,7 +134,7 @@ func TestPersistenceFailureDoesNotReturnClient(t *testing.T) {
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"uncommitted","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
 	}))
 	defer api.Close()
-	client, err := store.OpenAccountClient(t.Context(), 42, pixiv.Options{HTTPClient: oauthClient(api)})
+	client, err := store.OpenAccountClient(t.Context(), 42, legacysdk.Options{HTTPClient: oauthClient(api)})
 	require.Error(t, err)
 	require.Nil(t, client)
 }
@@ -152,7 +153,7 @@ func TestReadCacheReusesAndReloadsByRevision(t *testing.T) {
 	defer api.Close()
 	reads := account.NewReadSessions(store, account.NewGate())
 	defer reads.Close()
-	options := pixiv.Options{HTTPClient: oauthClient(api)}
+	options := legacysdk.Options{HTTPClient: oauthClient(api)}
 	first, err := reads.Open(t.Context(), 42, "network", options)
 	require.NoError(t, err)
 	cached, err := reads.Open(t.Context(), 42, "network", options)
@@ -186,14 +187,14 @@ func TestRecreatedAccountInvalidatesReadLease(t *testing.T) {
 	defer api.Close()
 	reads := account.NewReadSessions(store, account.NewGate())
 	defer reads.Close()
-	lease, err := reads.Open(t.Context(), 42, "network", pixiv.Options{HTTPClient: oauthClient(api)})
+	lease, err := reads.Open(t.Context(), 42, "network", legacysdk.Options{HTTPClient: oauthClient(api)})
 	require.NoError(t, err)
 	require.NoError(t, store.RemovePixiv(t.Context(), 42))
 	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("replacement"))}))
 	current, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
 	require.NoError(t, store.RotatePixivCredentials(t.Context(), current, []byte("replacement-rotated")))
-	_, err = lease.Client.CurrentUser(t.Context(), pixiv.CurrentUserRequest{})
+	_, err = lease.Client.CurrentUser(t.Context(), legacysdk.CurrentUserRequest{})
 	require.Error(t, err)
 	require.EqualValues(t, 1, requests.Load(), "stale lease reached the upstream")
 }

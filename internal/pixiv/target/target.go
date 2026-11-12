@@ -12,8 +12,9 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Namespace 指定输入身份或操作内容的命名空间；URL 专属身份由 ReferenceKind 保留。
@@ -71,7 +72,7 @@ type Input struct {
 type TypeSpec struct {
 	Name              string
 	ResultKind        Namespace
-	BareReferenceKind pixiv.ReferenceKind
+	BareReferenceKind legacysdk.ReferenceKind
 	// BareTargetKind 承载没有可引用 Pixiv 页面的输入身份，例如评论 ID。设置时若同时
 	// 提供 BareReferenceKind，两者推导出的目标类型必须一致。
 	BareTargetKind Namespace
@@ -115,7 +116,7 @@ type Contract struct {
 	Operation   string
 	DefaultType string
 	Types       []TypeSpec
-	URLKinds    map[pixiv.ReferenceKind]URLTypeRelation
+	URLKinds    map[legacysdk.ReferenceKind]URLTypeRelation
 	BareID      *BareIDPolicy
 }
 
@@ -125,7 +126,7 @@ type Target struct {
 	ID            int64
 	TargetKind    Namespace
 	ResultKind    Namespace
-	ReferenceKind pixiv.ReferenceKind
+	ReferenceKind legacysdk.ReferenceKind
 	OwnerUserID   int64
 	All           bool
 	Source        Source
@@ -155,7 +156,7 @@ func resolveValue(ctx context.Context, value, typeName string, contract Contract
 		return resolveID(ctx, id, typeName, contract, SourceID)
 	}
 
-	ref, err := pixiv.ParseURL(value)
+	ref, err := parseURL(value)
 	if err != nil {
 		return Target{}, invalid(contract, "input must be a positive ID or a supported Pixiv URL")
 	}
@@ -174,12 +175,36 @@ func resolveValue(ctx context.Context, value, typeName string, contract Contract
 	return targetFromReference(ref, selection, SourceURL, contract)
 }
 
+// shortcut: 契约仍保留旧引用描述符，所有命令迁移后移除该投影。
+func parseURL(value string) (legacysdk.Reference, error) {
+	ref, err := (&pixiv.Client{}).ParseURL(value)
+	if err != nil {
+		return legacysdk.Reference{}, err
+	}
+	switch ref := ref.(type) {
+	case *pixiv.ArtworkRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindArtwork, ID: ref.ID}, nil
+	case *pixiv.NovelRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindNovel, ID: ref.ID}, nil
+	case *pixiv.UserRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindUser, ID: ref.ID}, nil
+	case *pixiv.UserBookmarksRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindUserBookmarks, ID: ref.ID}, nil
+	case *pixiv.ArtworkSeriesRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindArtworkSeries, ID: ref.ID, OwnerUserID: ref.OwnerUserID}, nil
+	case *pixiv.NovelSeriesRef:
+		return legacysdk.Reference{Kind: legacysdk.ReferenceKindNovelSeries, ID: ref.ID}, nil
+	default:
+		return legacysdk.Reference{}, fmt.Errorf("unsupported Pixiv reference %T", ref)
+	}
+}
+
 func resolveRecord(source record.Record, typeName string, contract Contract) (Target, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(source.ID()), 10, 64)
 	if err != nil || id <= 0 {
 		return Target{}, invalid(contract, "record id must be a positive integer")
 	}
-	ref, err := pixiv.ParseURL(source.URL())
+	ref, err := parseURL(source.URL())
 	if err != nil {
 		return Target{}, invalid(contract, "record url must be a supported Pixiv URL")
 	}
@@ -207,7 +232,7 @@ func resolveRecord(source record.Record, typeName string, contract Contract) (Ta
 
 func resolveID(ctx context.Context, id int64, typeName string, contract Contract, source Source) (Target, error) {
 	if strings.TrimSpace(typeName) != "" || strings.TrimSpace(contract.DefaultType) != "" {
-		selection, err := selectType(typeName, pixiv.Reference{}, contract)
+		selection, err := selectType(typeName, legacysdk.Reference{}, contract)
 		if err != nil {
 			return Target{}, err
 		}
@@ -266,7 +291,7 @@ func resolveBareID(ctx context.Context, id int64, contract Contract) (Target, er
 	return targetFromID(id, *found, SourceBareIDProbe, contract)
 }
 
-func selectType(typeName string, ref pixiv.Reference, contract Contract) (TypeSpec, error) {
+func selectType(typeName string, ref legacysdk.Reference, contract Contract) (TypeSpec, error) {
 	types, err := contractTypes(contract)
 	if err != nil {
 		return TypeSpec{}, err
@@ -306,7 +331,7 @@ func selectType(typeName string, ref pixiv.Reference, contract Contract) (TypeSp
 	return *selected, nil
 }
 
-func validateURLRelation(ref pixiv.Reference, selection TypeSpec, relation URLTypeRelation, contract Contract) error {
+func validateURLRelation(ref legacysdk.Reference, selection TypeSpec, relation URLTypeRelation, contract Contract) error {
 	if relation != URLTypeMustMatchResult && relation != URLTypeIndependent {
 		return invalid(contract, "URL type relation is not supported")
 	}
@@ -320,7 +345,7 @@ func validateURLRelation(ref pixiv.Reference, selection TypeSpec, relation URLTy
 	return nil
 }
 
-func targetFromReference(ref pixiv.Reference, selection TypeSpec, source Source, contract Contract) (Target, error) {
+func targetFromReference(ref legacysdk.Reference, selection TypeSpec, source Source, contract Contract) (Target, error) {
 	targetKind, ok := targetKindForReference(ref.Kind)
 	if !ok {
 		return Target{}, invalid(contract, "URL kind is not a supported target")
@@ -351,30 +376,30 @@ func targetFromID(id int64, selection TypeSpec, source Source, contract Contract
 	}, nil
 }
 
-func validateRecordNamespace(recordType string, refKind pixiv.ReferenceKind, contract Contract) error {
+func validateRecordNamespace(recordType string, refKind legacysdk.ReferenceKind, contract Contract) error {
 	result := Namespace(recordType)
 	switch refKind {
-	case pixiv.ReferenceKindArtwork:
+	case legacysdk.ReferenceKindArtwork:
 		if result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork URL")
 		}
-	case pixiv.ReferenceKindNovel:
+	case legacysdk.ReferenceKindNovel:
 		if result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel URL")
 		}
-	case pixiv.ReferenceKindUser:
+	case legacysdk.ReferenceKindUser:
 		if result != NamespaceUser {
 			return invalid(contract, "record type conflicts with user URL")
 		}
-	case pixiv.ReferenceKindUserBookmarks:
-		if recordType != string(pixiv.ReferenceKindUserBookmarks) && result != NamespaceArtwork {
+	case legacysdk.ReferenceKindUserBookmarks:
+		if recordType != string(legacysdk.ReferenceKindUserBookmarks) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with user bookmarks URL")
 		}
-	case pixiv.ReferenceKindArtworkSeries:
+	case legacysdk.ReferenceKindArtworkSeries:
 		if recordType != string(NamespaceSeries) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork series URL")
 		}
-	case pixiv.ReferenceKindNovelSeries:
+	case legacysdk.ReferenceKindNovelSeries:
 		if recordType != string(NamespaceSeries) && result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel series URL")
 		}
@@ -384,28 +409,28 @@ func validateRecordNamespace(recordType string, refKind pixiv.ReferenceKind, con
 	return nil
 }
 
-func resultKindForReference(kind pixiv.ReferenceKind) (Namespace, bool) {
+func resultKindForReference(kind legacysdk.ReferenceKind) (Namespace, bool) {
 	switch kind {
-	case pixiv.ReferenceKindArtwork, pixiv.ReferenceKindUserBookmarks, pixiv.ReferenceKindArtworkSeries:
+	case legacysdk.ReferenceKindArtwork, legacysdk.ReferenceKindUserBookmarks, legacysdk.ReferenceKindArtworkSeries:
 		return NamespaceArtwork, true
-	case pixiv.ReferenceKindNovel, pixiv.ReferenceKindNovelSeries:
+	case legacysdk.ReferenceKindNovel, legacysdk.ReferenceKindNovelSeries:
 		return NamespaceNovel, true
-	case pixiv.ReferenceKindUser:
+	case legacysdk.ReferenceKindUser:
 		return NamespaceUser, true
 	default:
 		return "", false
 	}
 }
 
-func targetKindForReference(kind pixiv.ReferenceKind) (Namespace, bool) {
+func targetKindForReference(kind legacysdk.ReferenceKind) (Namespace, bool) {
 	switch kind {
-	case pixiv.ReferenceKindArtwork:
+	case legacysdk.ReferenceKindArtwork:
 		return NamespaceArtwork, true
-	case pixiv.ReferenceKindNovel:
+	case legacysdk.ReferenceKindNovel:
 		return NamespaceNovel, true
-	case pixiv.ReferenceKindUser, pixiv.ReferenceKindUserBookmarks:
+	case legacysdk.ReferenceKindUser, legacysdk.ReferenceKindUserBookmarks:
 		return NamespaceUser, true
-	case pixiv.ReferenceKindArtworkSeries, pixiv.ReferenceKindNovelSeries:
+	case legacysdk.ReferenceKindArtworkSeries, legacysdk.ReferenceKindNovelSeries:
 		return NamespaceSeries, true
 	default:
 		return "", false

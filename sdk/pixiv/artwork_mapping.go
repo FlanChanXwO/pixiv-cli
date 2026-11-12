@@ -39,7 +39,7 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 		series.OwnerUserID = w.User.ID
 		a.Series = &ArtworkSeriesSummary{ArtworkSeriesRef: series, Title: w.Series.Title}
 	}
-	a.Cover, err = c.image(firstImageURL(w.ImageURLs), w.Width, w.Height)
+	a.Cover, err = c.coverImage(w.ImageURLs, w.Width, w.Height)
 	if err != nil {
 		return nil, err
 	}
@@ -52,16 +52,21 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 		if err != nil {
 			return nil, err
 		}
+		image.variant = "original"
 		a.Pages = append(a.Pages, ArtworkPage{Artwork: a, PageIndex: index, Original: image, Width: page.Width, Height: page.Height})
 	}
-	if a.ContentType == ContentTypeUgoira {
-		a.Pages = []ArtworkPage{{Artwork: a, PageIndex: 0, Original: a.Cover, Width: w.Width, Height: w.Height}}
-	} else if len(a.Pages) == 0 && w.MetaSinglePage.OriginalImageURL != "" {
+	if len(a.Pages) == 0 && w.MetaSinglePage.OriginalImageURL != "" {
 		image, err := c.image(w.MetaSinglePage.OriginalImageURL, w.Width, w.Height)
 		if err != nil {
 			return nil, err
 		}
+		image.variant = "original"
 		a.Pages = append(a.Pages, ArtworkPage{Artwork: a, PageIndex: 0, Original: image, Width: w.Width, Height: w.Height})
+	} else if len(a.Pages) == 0 && a.ContentType == ContentTypeUgoira {
+		cover := a.Cover
+		// A cover-backed page has no upstream original-image role.
+		cover.variant = ""
+		a.Pages = []ArtworkPage{{Artwork: a, PageIndex: 0, Original: cover, Width: w.Width, Height: w.Height}}
 	}
 	if a.ContentType != ContentTypeUgoira && w.PageCount > 0 && len(a.Pages) != w.PageCount {
 		return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "incomplete artwork pages", nil)

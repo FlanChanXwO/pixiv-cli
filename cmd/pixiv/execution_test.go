@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,11 +50,12 @@ func TestCommandFailureLogging(t *testing.T) {
 				} else {
 					require.Contains(t, text, "Command failed")
 					require.Contains(t, text, "call_id")
-					require.Regexp(t, `origin["=:]+[" ]*pixiv/pixiv.go:[0-9]+`, text)
 					if format == "json" {
 						require.Contains(t, text, `"level":"ERROR"`)
+						require.Regexp(t, `"source":\{[^\n]+/cli/root.go"`, text)
 					} else {
 						require.Contains(t, text, "[DBUG]")
+						require.Regexp(t, `\[cli/root.go:[0-9]+\]`, text)
 					}
 				}
 			})
@@ -140,6 +142,27 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 type failedErrorOutput struct{ err error }
 
 func (f failedErrorOutput) Write([]byte) (int, error) { return 0, f.err }
+
+func TestDefaultLoggerKeepsJSONOutputClean(t *testing.T) {
+	isolatedHome(t)
+	t.Setenv("PIXIV_LOG_LEVEL", "debug")
+	t.Setenv("PIXIV_LOG_FORMAT", "json")
+	previous := slog.Default()
+	var output defaultLogOutput
+	var diagnostics bytes.Buffer
+	code := cli.Run(t.Context(), []string{"pixiv", "auth", "list", "--json"}, strings.NewReader(""), &output, &diagnostics)
+	require.Zero(t, code, diagnostics.String())
+	require.JSONEq(t, `{"accounts":[]}`, output.buffer.String())
+	require.Contains(t, diagnostics.String(), `"msg":"SDK default logger"`)
+	require.Same(t, previous, slog.Default())
+}
+
+type defaultLogOutput struct{ buffer bytes.Buffer }
+
+func (out *defaultLogOutput) Write(body []byte) (int, error) {
+	slog.Debug("SDK default logger")
+	return out.buffer.Write(body)
+}
 
 func TestAuthAccountText(t *testing.T) {
 	home := isolatedHome(t)

@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -19,6 +21,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
@@ -117,4 +120,50 @@ func TestInvalidToolInputKeepsCredentialsPrivate(t *testing.T) {
 		require.NotContains(t, string(wire), "signature-canary")
 		require.Contains(t, string(wire), "invalid_request")
 	}
+}
+
+func TestSDKCursorKeepsSelectedAccount(t *testing.T) {
+	var selected []int64
+	api := httptest.NewTLSServer(http.HandlerFunc(cursorArtworkPage))
+	defer api.Close()
+	httpClient := api.Client()
+	httpClient.Transport.(*http.Transport).DialTLSContext = func(context.Context, string, string) (net.Conn, error) {
+		return tls.Dial("tcp", api.Listener.Addr().String(), httpClient.Transport.(*http.Transport).TLSClientConfig)
+	}
+	ports := pixiv.SDKPorts{ExecuteSDK: func(ctx context.Context, account pixiv.Account, attempt func(context.Context, int64, *pixivsdk.Client) (bool, error)) error {
+		if account.UserID == 0 {
+			account.UserID = int64(42 + len(selected)*42)
+		}
+		selected = append(selected, account.UserID)
+		store, err := pixivsdk.NewMemoryCredentials(pixivsdk.Credentials{UserID: account.UserID, Revision: 1, AccessToken: credential.New([]byte("fixture-access"))})
+		require.NoError(t, err)
+		client, err := pixivsdk.New(store, pixivsdk.Options{HTTPClient: httpClient})
+		require.NoError(t, err)
+		_, err = attempt(ctx, account.UserID, client)
+		return err
+	}}
+	server := mcpserver.New(ports, pixiv.Account{}, tools.SDKPorts{}, nil)
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(t.Context(), serverTransport, nil)
+	require.NoError(t, err)
+	defer serverSession.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "cursor", Version: "1"}, nil).Connect(t.Context(), clientTransport, nil)
+	require.NoError(t, err)
+	defer session.Close()
+	args := map[string]any{}
+	for range 2 {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "pixiv_illust_ranking", Arguments: args})
+		require.NoError(t, err)
+		require.False(t, result.IsError, "%s", result.Content[0].(*mcp.TextContent).Text)
+		args["cursor"] = result.StructuredContent.(map[string]any)["pagination"].(map[string]any)["next_cursor"]
+	}
+	require.Equal(t, []int64{42, 42}, selected)
+}
+
+func cursorArtworkPage(w http.ResponseWriter, r *http.Request) {
+	next := "null"
+	if !r.URL.Query().Has("offset") {
+		next = `"https://app-api.pixiv.net/v1/illust/ranking?mode=day&offset=1"`
+	}
+	fmt.Fprintf(w, `{"illusts":[{"id":101,"title":"artwork","type":"illust","create_date":"2026-01-01T00:00:00Z","user":{"id":42,"name":"artist"},"width":640,"height":480,"meta_single_page":{"original_image_url":"https://i.pximg.net/a.jpg"},"page_count":1}],"next_url":%s}`, next)
 }

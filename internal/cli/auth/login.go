@@ -14,7 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
@@ -117,6 +116,9 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	loginOptions, err := pixivOptionsForProxy(proxyOverride)
 	if err != nil {
 		return err
+	}
+	if loginOptions.HTTPClient != nil {
+		defer loginOptions.HTTPClient.CloseIdleConnections()
 	}
 	loginFlow, err := login.Start(account.LoginRequest{Options: loginOptions})
 	if err != nil {
@@ -568,7 +570,7 @@ func pixivPostRedirectReturnTo(rawURL string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if !pixiv.IsOfficialOAuthStartURL(target.String()) {
+	if !strings.EqualFold(target.Scheme, "https") || !strings.EqualFold(target.Host, "app-api.pixiv.net") || target.Path != "/web/v1/users/auth/pixiv/start" {
 		return "", false
 	}
 	return returnTo, true

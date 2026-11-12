@@ -131,18 +131,18 @@ func (a *app) newRootCommand() *cobra.Command {
 func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		search.New(env, exec, reverseSearch),
+		search.New(env, exec, a.local.ExecuteSDK, reverseSearch),
 		search.NewNovel(env, exec, reverseSearch),
-		detail.New(env, exec),
+		detail.New(env, exec, a.local.ExecuteSDK),
 		ranking.New(env, exec),
 		series.New(env, exec),
 		comment.New(env, exec),
 		recommended.New(env, exec),
 		timeline.New(env, exec),
 		mypixiv.New(env, exec),
-		user.New(env, session.NewRunner(env.Out, exec), func() *cobra.Command { return follow.New(env, exec) }),
-		bookmark.New(env, exec),
-		follow.New(env, exec),
+		user.New(env, a.local.ExecuteSDK, func() *cobra.Command { return follow.New(env, a.local.ExecuteSDK) }),
+		bookmark.New(env, a.local.ExecuteSDK),
+		follow.New(env, a.local.ExecuteSDK),
 	}
 }
 
@@ -161,6 +161,8 @@ func (a *app) runtimeConfig() (config.Config, error) {
 // 普通 NDJSON 输出与 MCP stdio 各自持有平台的 SIGPIPE 控制器：前者的 EPIPE 表示下游
 // 正常停止，后者属于 JSON-RPC transport 错误。
 func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) int {
+	previousLogger := slog.Default()
+	defer slog.SetDefault(previousLogger)
 	if len(args) == 0 {
 		args = []string{"pixiv"}
 	}
@@ -234,6 +236,7 @@ func (a *app) startLogging(cmd *cobra.Command, requirement environment.Execution
 		return err
 	}
 	*a.logs = call
+	slog.SetDefault(call.Logger)
 	cmd.SetContext(call.Ctx)
 	return nil
 }

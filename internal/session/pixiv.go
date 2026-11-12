@@ -85,20 +85,7 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 	if ctx == nil {
 		return lifecycle.ErrNilContext
 	}
-	settings, err := f.loadPoolConfig()
-	if err != nil {
-		return err
-	}
-	selection := request.Selection
-	if selection.Mode == account.SelectionPool && !settings.Enabled {
-		id, err := f.accounts.selectedUserID(ctx)
-		if err != nil {
-			return err
-		}
-		selection = account.Selection{Mode: account.SelectionFixed, UserID: id}
-	}
-	scheduler := account.Scheduler{State: f.accounts.store, Strategy: account.Strategy(settings.Strategy), Now: time.Now}
-	return scheduler.Run(ctx, selection, func(ctx context.Context, id int64, attempt *lifecycle.Attempt) (err error) {
+	return f.useAccount(ctx, request.Selection, func(ctx context.Context, id int64, attempt *lifecycle.Attempt) (err error) {
 		fixed := request
 		fixed.Selection = account.Selection{Mode: account.SelectionFixed, UserID: id}
 		lease, err := f.Open(ctx, fixed)
@@ -112,4 +99,20 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 		}
 		return err
 	})
+}
+
+func (f *Pixiv) useAccount(ctx context.Context, selection account.Selection, attempt func(context.Context, int64, *lifecycle.Attempt) error) error {
+	settings, err := f.loadPoolConfig()
+	if err != nil {
+		return err
+	}
+	if selection.Mode == account.SelectionPool && !settings.Enabled {
+		id, err := f.accounts.selectedUserID(ctx)
+		if err != nil {
+			return err
+		}
+		selection = account.Selection{Mode: account.SelectionFixed, UserID: id}
+	}
+	scheduler := account.Scheduler{State: f.accounts.store, Strategy: account.Strategy(settings.Strategy), Now: time.Now}
+	return scheduler.Run(ctx, selection, attempt)
 }

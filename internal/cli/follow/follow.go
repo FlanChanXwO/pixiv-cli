@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -24,13 +24,13 @@ type options struct {
 }
 
 type commandRunner struct {
-	env    environment.Env
-	runner session.Runner
+	env        environment.Env
+	executeSDK session.SDKExecutor
 }
 
 // New 构造 `pixiv follow` 命令；关注与取消关注都要求已认证账号。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
+func New(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}
 	cmd.AddCommand(a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
@@ -51,8 +51,8 @@ func (a commandRunner) newAdd() *cobra.Command {
 				return a.env.WrapUsage(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
-				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
-					return client.FollowUser(ctx, pixiv.FollowUserRequest{UserID: id, Restrict: pixiv.Restrict(opts.restrict)})
+				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+					return true, client.User(id).Follow(ctx, pixiv.FollowOptions{Restrict: pixiv.Restrict(opts.restrict)})
 				})
 			})
 			if len(args) == 0 {
@@ -84,8 +84,8 @@ func (a commandRunner) newRemove() *cobra.Command {
 				return a.env.WrapUsage(err)
 			}
 			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
-				return a.runner.Write(ctx, request, func(ctx context.Context, client *pixiv.Client) error {
-					return client.UnfollowUser(ctx, pixiv.UnfollowUserRequest{UserID: id})
+				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+					return true, client.User(id).Unfollow(ctx)
 				})
 			})
 			if len(args) == 0 {
@@ -126,9 +126,9 @@ func resolveFollowUserID(ctx context.Context, value, operation string) (int64, e
 		Operation:   operation,
 		DefaultType: string(target.NamespaceUser),
 		Types: []target.TypeSpec{{
-			Name:              string(target.NamespaceUser),
-			ResultKind:        target.NamespaceUser,
-			BareReferenceKind: pixiv.ReferenceKindUser,
+			Name:           string(target.NamespaceUser),
+			ResultKind:     target.NamespaceUser,
+			BareTargetKind: target.NamespaceUser,
 		}},
 	})
 	if err != nil {
@@ -142,7 +142,6 @@ func validateFollowRestrict(value string) error {
 	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
 		return nil
 	default:
-		return sdk.NewError("pixiv", "follow add", sdk.InvalidArgument,
-			sdk.WithDetail("restrict must be public or private"))
+		return &sdk.Error{Operation: "pixiv.follow add", Reason: sdk.InvalidArgument, Message: "restrict must be public or private"}
 	}
 }

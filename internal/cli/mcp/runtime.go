@@ -11,7 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -23,6 +23,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Runtime 是组合根交给 MCP 命令的生产依赖。
@@ -72,7 +73,10 @@ func (r Runtime) Run(ctx context.Context, request Request) error {
 func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) {
 	sdkPorts := pixivmcpserver.SDKPorts{
 		Logger: r.Logger(),
-		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
+		ExecuteSDK: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
+			return r.Local.ExecuteSDK(ctx, pixivRequest(account), attempt)
+		},
+		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *legacysdk.Client) (bool, error)) error {
 			return r.Local.Execute(ctx, pixivRequest(account), attempt)
 		},
 		ReverseSearch: r.ReverseSearch,
@@ -98,15 +102,18 @@ func pixivRequest(account pixivmcpserver.Account) session.ProxyRequest {
 func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts pixivmcpserver.SDKPorts, fanboxPorts fanboxmcpserver.SDKPorts, request Request) error {
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
 	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: r.Downloads, Path: settings.Download.Path, FilenameTemplate: settings.Download.FilenameTemplate, DirectoryTemplate: settings.Download.DirectoryTemplate}
-	// 只经本地 Facade 解析一次身份，后续阶段固定使用同一账号，避免并发请求各选到不同账号。
+	sdkPorts.ResolveSDKAccount = func(_ context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
+		return account, nil
+	}
+	// 旧领域仍只解析一次身份，媒体的多个阶段固定使用同一账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
-		err := r.Local.Execute(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, client *pixiv.Client) (bool, error) {
-			account.UserID = client.UserID()
+		err := r.Local.ExecuteSDK(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
+			account.UserID = userID
 			return false, nil
 		})
 		return account, err
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*legacysdk.Client], error) {
 		return r.Local.OpenLease(ctx, pixivRequest(account))
 	}
 	return mcpserver.RunStdio(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), r.In, r.Out)
@@ -132,7 +139,7 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 		return err
 	}
 	defer login.Close()
-	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*pixiv.Client], error) {
+	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*legacysdk.Client], error) {
 		return r.Local.OpenLease(ctx, session.ProxyRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 	if err != nil {
@@ -146,10 +153,10 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	}
 	defer func() { result = errors.Join(result, media.CloseAnimations()) }()
 	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, selection, login
-	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
 		return r.Local.Read(ctx, pixivRequest(account), callback)
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*legacysdk.Client], error) {
 		snapshot, err := r.Local.ReadSession(ctx, pixivRequest(account))
 		return snapshot.Lease, err
 	}
@@ -263,7 +270,7 @@ func (r Runtime) newLogin(ctx context.Context, baseURL string, selection account
 			}
 			service = &loaded
 		}
-		options := pixiv.LoginOptions{}
+		options := pixiv.Options{}
 		if proxy != nil {
 			client, err := config.HTTPClient(*proxy)
 			if err != nil {

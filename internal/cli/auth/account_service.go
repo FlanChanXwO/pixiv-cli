@@ -12,9 +12,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // accountOut 定义所有 auth 账号结果的 JSON 形状；省略字段视为未知，不当作 false。
@@ -119,7 +118,7 @@ const (
 	authExportBundleVersion    = 1
 )
 
-func (s AccountService) sdkOptions(ctx context.Context, proxyOverride *string) (pixiv.Options, error) {
+func (s AccountService) sdkOptions(proxyOverride *string) (pixiv.Options, error) {
 	proxy := proxyOverride
 	if proxy == nil {
 		runtime, err := s.LoadRuntime()
@@ -138,18 +137,18 @@ func (s AccountService) sdkOptions(ctx context.Context, proxyOverride *string) (
 	if err != nil {
 		return pixiv.Options{}, err
 	}
-	return pixiv.Options{HTTPClient: client, Logger: logging.From(ctx)}, nil
+	return pixiv.Options{HTTPClient: client}, nil
 }
 
-func pixivOptionsForProxy(proxyOverride *string) (pixiv.LoginOptions, error) {
+func pixivOptionsForProxy(proxyOverride *string) (pixiv.Options, error) {
 	if proxyOverride == nil {
-		return pixiv.LoginOptions{}, nil
+		return pixiv.Options{}, nil
 	}
 	client, err := config.HTTPClient(*proxyOverride)
 	if err != nil {
-		return pixiv.LoginOptions{}, err
+		return pixiv.Options{}, err
 	}
-	return pixiv.LoginOptions{HTTPClient: client}, nil
+	return pixiv.Options{HTTPClient: client}, nil
 }
 
 func (s AccountService) importAccount(ctx context.Context, request accountImportRequest) (accountImportOut, error) {
@@ -162,10 +161,11 @@ func (s AccountService) importAccount(ctx context.Context, request accountImport
 	if err != nil {
 		return accountImportOut{}, err
 	}
-	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
 		return accountImportOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.ImportAccount(ctx, validatedToken, false, options)
 	if err != nil {
 		return accountImportOut{}, err
@@ -351,10 +351,11 @@ func (s AccountService) checkWithRequest(ctx context.Context, request accountChe
 		}
 		request.UserID = current.UserID
 	}
-	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
 		return accountOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.CheckAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountOut{}, err
@@ -371,10 +372,11 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 		}
 		request.UserID = current.UserID
 	}
-	options, err := s.sdkOptions(ctx, request.HTTPSProxyOverride)
+	options, err := s.sdkOptions(request.HTTPSProxyOverride)
 	if err != nil {
 		return accountOut{}, err
 	}
+	defer options.HTTPClient.CloseIdleConnections()
 	account, err := service.RefreshAccount(ctx, request.UserID, options)
 	if err != nil {
 		return accountOut{}, err

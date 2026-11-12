@@ -9,12 +9,12 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -46,14 +46,10 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.executeSDK(cmd.Context(), request, func(ctx context.Context, selected int64, client *pixiv.Client) (bool, error) {
 		attemptUserID := userID
 		if attemptUserID == 0 {
-			resolvedUserID, err := session.CurrentUserID(client)
-			if err != nil {
-				return false, err
-			}
-			attemptUserID = resolvedUserID
+			attemptUserID = selected
 		}
 		streams := []pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
 			bookmarkArtworkStream(client, attemptUserID, opts),
@@ -92,9 +88,9 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				var err error
 				switch item.kind {
 				case string(target.NamespaceArtwork):
-					err = display.PrintArtworks(&staged, []pixiv.Artwork{item.artwork})
+					err = display.PrintArtworks(&staged, []legacysdk.Artwork{item.artwork})
 				case string(target.NamespaceNovel):
-					err = display.PrintNovels(&staged, []pixiv.Novel{item.novel})
+					err = display.PrintNovels(&staged, []legacysdk.Novel{item.novel})
 				}
 				if err != nil {
 					return false, err
@@ -109,8 +105,8 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkListItem, bookmarkStreamCursor] {
 	return pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkListItem, bookmarkStreamCursor, error) {
-			result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
+			result, err := client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{
+				Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkStreamCursor{}, err
@@ -120,9 +116,13 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(target.NamespaceArtwork), artwork: item})
+				value, err := record.ArtworkOutput(item, false)
+				if err != nil {
+					return nil, bookmarkStreamCursor{}, err
+				}
+				items = append(items, bookmarkListItem{kind: string(target.NamespaceArtwork), artwork: value})
 			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
+			return items, bookmarkStreamCursor{upstream: result.Cursor}, nil
 		},
 		Checkpoint: bookmarkCheckpoint,
 	}
@@ -131,8 +131,8 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) pagination.Stream[bookmarkListItem, bookmarkStreamCursor] {
 	return pagination.Stream[bookmarkListItem, bookmarkStreamCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkStreamCursor) ([]bookmarkListItem, bookmarkStreamCursor, error) {
-			result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{
-				UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
+			result, err := client.User(userID).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{
+				Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
 				return nil, bookmarkStreamCursor{}, err
@@ -142,9 +142,13 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
-				items = append(items, bookmarkListItem{kind: string(target.NamespaceNovel), novel: item})
+				value, err := record.NovelOutput(item)
+				if err != nil {
+					return nil, bookmarkStreamCursor{}, err
+				}
+				items = append(items, bookmarkListItem{kind: string(target.NamespaceNovel), novel: value})
 			}
-			return items, bookmarkStreamCursor{upstream: result.Next}, nil
+			return items, bookmarkStreamCursor{upstream: result.Cursor}, nil
 		},
 		Checkpoint: bookmarkCheckpoint,
 	}
@@ -195,23 +199,28 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		userID := requestedUserID
 		if userID == 0 {
-			userID, err = session.CurrentUserID(client)
+			userID = selected
+		}
+		result, err := client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 		}
-		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return items, result.Cursor, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error {
-		return display.PrintArtworks(a.env.Out, items)
-	}})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
+		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+	}, fetch)
 }
 
 func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts listOptions) error {
@@ -241,21 +250,26 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	userID := requestedUserID
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		userID := requestedUserID
 		if userID == 0 {
-			userID, err = session.CurrentUserID(client)
+			userID = selected
+		}
+		result, err := client.User(userID).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		items := make([]legacysdk.Novel, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.NovelOutput(item)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 		}
-		result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(opts.restrict), Tag: opts.tag, Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return items, result.Cursor, nil
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error {
-		return display.PrintNovels(a.env.Out, items)
-	}})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
+		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+	}, fetch)
 }

@@ -1,9 +1,10 @@
-// Package toolhost 是 Pixiv MCP 的执行宿主：它持有 SDK 窄端口，把一次工具调用绑定到
-// 固定账号，并在该账号的池重放边界内执行读、写和 client lease 操作。
+// Package toolhost 是 Pixiv MCP 的执行宿主：它持有 SDK 窄端口，在账号池重放边界内
+// 执行 stdio 读写，并固定 HTTP 调用与 client lease 的账号。
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
-// [Read]、[Write] 与 [App.OpenClient] 是三种执行入口；分页适配在 paging.go，
+// [ReadSDK] 与 [App.SDKReadExecutor] 使用新 SDK；[Read]、[Write] 与
+// [App.OpenClient] 保留旧领域入口。分页适配在 paging.go 与 sdk_paging.go，
 // cursor 封装在 cursor.go，具体工具在 tools 包。
 package toolhost
 
@@ -41,8 +42,13 @@ type LocalDownloads struct {
 // SDKPorts 让 MCP 打开独立认证快照，并在账号池的重放边界内执行操作。实现由组合根
 // 注入；MCP 通过这组函数取用依赖。
 type SDKPorts struct {
-	Downloads *LocalDownloads
-	Media     *mediaproxy.Service
+	// ExecuteSDK 为已迁移的工具装配新 SDK；其余工具保留旧端口。
+	ExecuteSDK SDKExecutor
+	// ResolveSDKAccount 保留 stdio 的池选择；HTTP 沿用 ResolveAccount 的固定快照。
+	// shortcut: 新旧工具的账号选择入口并存，旧工具迁移完成后统一。
+	ResolveSDKAccount func(context.Context, Account) (Account, error)
+	Downloads         *LocalDownloads
+	Media             *mediaproxy.Service
 	// Accounts 供 ResolveAccount 读取本地账号选择，所有连接器共享。
 	Accounts accounts.Selection
 	// Login 与 HTTP 登录接力共享，生命周期归 server 所有。
@@ -190,27 +196,6 @@ func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], 
 
 // ResolveAccount 返回本次工具调用固定的账号；同一调用内多次调用结果一致。
 func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
-
-// CurrentUserID 返回当前 client snapshot 的身份 UID；取不到时报错，不回退到默认账号。
-func (a *App) CurrentUserID(ctx context.Context) (int64, error) {
-	return Read(a, ctx, func(ctx context.Context, client *pixiv.Client) (int64, error) {
-		if id := client.UserID(); id > 0 {
-			return id, nil
-		}
-		return 0, errors.New("cannot determine current user id")
-	})
-}
-
-// ResolveUserID 解析 MCP 用户引用：正数原样返回，零回退到当前认证账号，负数报错。
-func ResolveUserID(app *App, ctx context.Context, requested int64) (int64, error) {
-	if requested > 0 {
-		return requested, nil
-	}
-	if requested < 0 {
-		return 0, errors.New("user_id must be positive when provided")
-	}
-	return app.CurrentUserID(ctx)
-}
 
 // Artwork 在有生产读会话时使用带 grant 范围的 Gallery 缓存，否则回退为一次普通 SDK
 // 读取。

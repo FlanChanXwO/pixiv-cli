@@ -60,14 +60,15 @@ func (s Scheduler) Run(ctx context.Context, selection Selection, attempt func(co
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		retryAfter, ok := retryAfterFor(attemptErr, current)
+		failedAt := s.Now()
+		retryAfter, ok := retryAfterFor(attemptErr, failedAt)
 		if !ok {
 			return attemptErr
 		}
 		lastRateLimit = attemptErr
 		attempted = append(attempted, userID)
 		// 旧池接口以整秒保存截止时间，向上取整避免提前解冻。
-		deadline := current.Add(retryAfter).UTC()
+		deadline := failedAt.Add(retryAfter).UTC()
 		frozenUntil := deadline.Unix()
 		if deadline.Nanosecond() != 0 {
 			frozenUntil++

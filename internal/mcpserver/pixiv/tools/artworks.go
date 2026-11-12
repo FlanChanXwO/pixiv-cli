@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -36,11 +37,13 @@ func (t pixivTools) illustDetailHandler(ctx context.Context, in illustReferenceI
 	if err != nil {
 		return outputs.DetailError(err)
 	}
-	result, err := t.app.Artwork(ctx, id)
-	if err != nil {
-		return outputs.DetailError(err)
-	}
-	artworkRecord, err := record.RecordFromArtwork(result)
+	artworkRecord, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (record.Record, error) {
+		result, err := client.Artwork(id).Get(ctx)
+		if err != nil {
+			return record.Record{}, err
+		}
+		return record.RecordFromSDKArtwork(result, true)
+	})
 	if err != nil {
 		return outputs.DetailError(err)
 	}
@@ -60,14 +63,15 @@ func resolveMCPArtworkReference(in illustReferenceIn) (int64, error) {
 		}
 		return in.IllustID, nil
 	}
-	reference, err := pixiv.ParseURL(in.URL)
+	reference, err := (&pixiv.Client{}).ParseURL(in.URL)
 	if err != nil {
 		return 0, err
 	}
-	if reference.Kind != pixiv.ReferenceKindArtwork {
+	artwork, ok := reference.(*pixiv.ArtworkRef)
+	if !ok {
 		return 0, errors.New("URL does not name a Pixiv artwork")
 	}
-	return reference.ID, nil
+	return artwork.ID, nil
 }
 func (t pixivTools) registerIllustRanking(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_illust_ranking", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse Pixiv rankings.", InputSchema: rankingInputSchema(), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input rankingIn) (*mcp.CallToolResult, outputs.Records, error) {
@@ -129,17 +133,17 @@ func (t pixivTools) illustRankingHandler(ctx context.Context, in rankingIn) (*mc
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
+	items, page, err := toolhost.CollectSDKCursorWith(ctx, t.app, "illust_ranking", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingOptions{Mode: pixiv.RankingMode(in.Mode), Date: in.Date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -178,17 +182,17 @@ func (t pixivTools) illustRecommendedHandler(ctx context.Context, in recommended
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
+	items, page, err := toolhost.CollectSDKCursorWith(ctx, t.app, "illust_recommended", bindingInput, in.Cursor, in.ListIn, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -216,20 +220,20 @@ func (t pixivTools) illustRelatedHandler(ctx context.Context, in relatedIn) (*mc
 	if err != nil {
 		return outputs.Error(err)
 	}
-	fetch := func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.RelatedArtworks(ctx, pixiv.RelatedArtworksRequest{ArtworkID: in.IllustID, Cursor: cursor})
+	fetch := func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.Artwork(in.IllustID).Related(ctx, pixiv.RelatedArtworksOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	}
 	bindingInput := in
 	bindingInput.Cursor = nil
-	items, page, err := toolhost.CollectCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.ListIn, fetch)
+	items, page, err := toolhost.CollectSDKCursorWith(ctx, t.app, "illust_related", bindingInput, in.Cursor, in.ListIn, fetch)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -255,17 +259,17 @@ func (t pixivTools) illustSeriesHandler(ctx context.Context, in illustSeriesIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.ArtworkSeries(ctx, pixiv.ArtworkSeriesRequest{SeriesID: in.SeriesID, Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.ArtworkSeries(in.SeriesID).Artworks(ctx, pixiv.ArtworkSeriesOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -339,7 +343,7 @@ func validateRecommendedFilters(in recommendedIn) error {
 }
 
 func artworkFilterForContentType(kind string, filter *filters.IllustFilter) *filters.IllustFilter {
-	if kind != string(pixiv.SearchContentTypeIllust) && kind != string(pixiv.SearchContentTypeManga) {
+	if kind != string(pixiv.ContentTypeIllust) && kind != string(pixiv.ContentTypeManga) {
 		return filter
 	}
 	if filter == nil {
@@ -362,14 +366,13 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	initial, err := recommendedInitialCursor(in, plan)
+	initial, userID, err := recommendedInitialCursor(in, plan)
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	execute := t.app.ReadExecutor()
+	execute := t.app.SDKReadExecutor(userID)
 	if execute == nil {
-		return outputs.RecommendedError(sdk.NewError("pixiv", "Recommended", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured")))
+		return outputs.RecommendedError(errors.New("sdk pooled operation is not configured"))
 	}
 	err = execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
 		// 重放必须丢弃前一账号/尝试的记录与分页状态。
@@ -413,18 +416,18 @@ func parseRecommendedRequest(in recommendedIn) (pagination.PagePlan, error) {
 	return plan, nil
 }
 
-func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.Cursor, error) {
+func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.Cursor, int64, error) {
 	if in.Cursor == nil {
-		return sdk.Cursor{}, nil
+		return sdk.Cursor{}, 0, nil
 	}
 	if !plan.OneBatch || in.Type == kindAll {
-		return sdk.Cursor{}, errors.New("cursor requires a single type and omitted page and limit")
+		return sdk.Cursor{}, 0, errors.New("cursor requires a single type and omitted page and limit")
 	}
 	binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Type))
 	if err != nil {
-		return sdk.Cursor{}, err
+		return sdk.Cursor{}, 0, err
 	}
-	return binding.Decode(in.Cursor)
+	return binding.DecodeSDK(in.Cursor)
 }
 
 func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv.Client, in recommendedIn, plan pagination.PagePlan, initial sdk.Cursor, out *outputs.Recommended) error {
@@ -435,9 +438,9 @@ func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv
 	if err != nil {
 		return err
 	}
-	items, more, next, err := toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		page, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{Cursor: cursor})
-		return page.Items, page.Next, err
+	items, more, next, err := toolhost.CollectPagesFrom(rawArtworkCtx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		page, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksOptions{Cursor: cursor})
+		return page.Items, page.Cursor, err
 	})
 	if err != nil {
 		return err
@@ -445,18 +448,18 @@ func (t pixivTools) recommendedArtworkStreams(ctx context.Context, client *pixiv
 	return appendRecommendedArtworks(ctx, out, plan, in, kindArtwork, items, more, next)
 }
 
-func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan pagination.PagePlan, in recommendedIn, kind string, items []pixiv.Artwork, more bool, next sdk.Cursor) error {
+func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, plan pagination.PagePlan, in recommendedIn, kind string, items []*pixiv.Artwork, more bool, next sdk.Cursor) error {
 	artworkCtx, err := filters.WithIllustFilter(ctx, artworkFilterForContentType(in.ContentType, in.IllustFilter))
 	if err != nil {
 		return err
 	}
 	filtered := filters.FilterPage(artworkCtx, items, make(map[string]struct{}))
-	recordItems, err := record.FromArtworks(filtered)
+	recordItems, err := record.FromSDKArtworks(filtered)
 	if err != nil {
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(filtered), more)
-	page.NextCursor, err = streamContinuation(in, kind, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kind, next)
 	if err != nil {
 		return err
 	}
@@ -473,22 +476,22 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 	if err != nil {
 		return err
 	}
-	items, more, next, err := toolhost.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsRequest{Cursor: c})
+	items, more, next, err := toolhost.CollectPagesFrom(novelCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]*pixiv.Novel, sdk.Cursor, error) {
+		r, e := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsOptions{Cursor: c})
 		if e != nil {
 			return nil, sdk.Cursor{}, e
 		}
-		return r.Items, r.Next, nil
+		return r.Items, r.Cursor, nil
 	})
 	if err != nil {
 		return err
 	}
-	recordItems, err := record.FromNovels(items)
+	recordItems, err := record.FromSDKNovels(items)
 	if err != nil {
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
-	page.NextCursor, err = streamContinuation(in, kindNovel, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kindNovel, next)
 	out.Novels = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
@@ -501,22 +504,22 @@ func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Cli
 	if err != nil {
 		return err
 	}
-	items, more, next, err := toolhost.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersRequest{Cursor: c})
+	items, more, next, err := toolhost.CollectPagesFrom(userCtx, plan, initial, func(ctx context.Context, c sdk.Cursor) ([]pixiv.UserRecommendation, sdk.Cursor, error) {
+		r, e := client.RecommendedUsers(ctx, pixiv.RecommendedUsersOptions{Cursor: c})
 		if e != nil {
 			return nil, sdk.Cursor{}, e
 		}
-		return r.Items, r.Next, nil
+		return r.Items, r.Cursor, nil
 	})
 	if err != nil {
 		return err
 	}
-	recordItems, err := record.FromUserPreviews(items)
+	recordItems, err := record.FromSDKRecommendations(items)
 	if err != nil {
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
-	page.NextCursor, err = streamContinuation(in, kindUser, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kindUser, next)
 	out.Users = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
@@ -538,7 +541,7 @@ func streamInput(in recommendedIn, kind string) recommendedIn {
 	return in
 }
 
-func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string, error) {
+func streamContinuation(ctx context.Context, in recommendedIn, kind string, next sdk.Cursor) (string, error) {
 	if next.IsZero() {
 		return "", nil
 	}
@@ -546,7 +549,7 @@ func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string,
 	if err != nil {
 		return "", err
 	}
-	return binding.Encode(next)
+	return binding.EncodeSDK(next, toolhost.SDKUserID(ctx, 0))
 }
 func (t pixivTools) registerTrendingTagsIllust(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: schemas.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
@@ -565,25 +568,29 @@ func trendingInputSchema() map[string]any {
 }
 
 func (t pixivTools) trendingTagsIllustHandler(ctx context.Context, _ trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
-		return client.TrendingArtworkTags(ctx, pixiv.TrendingArtworkTagsRequest{})
+	result, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) ([]pixiv.TrendingTag, error) {
+		return client.TrendingArtworkTags(ctx)
 	})
 	if err != nil {
 		return outputs.TrendingTagsError(err)
 	}
-	out := outputs.TrendingTags{Tags: []pixiv.TrendingTag{}}
+	out := outputs.TrendingTags{Tags: []legacysdk.TrendingTag{}}
 	if len(result) == 0 {
 		out.Text = "No trending tags found."
 		return outputs.TrendingTagsResult(out, false), out, nil
 	}
 	lines := make([]string, 0, len(result))
 	for _, tag := range result {
-		out.Tags = append(out.Tags, tag)
-		translated := tag.TranslatedName
+		artwork, err := record.ArtworkOutput(tag.Artwork, false)
+		if err != nil {
+			return outputs.TrendingTagsError(err)
+		}
+		out.Tags = append(out.Tags, legacysdk.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork})
+		translated := tag.Tag.TranslatedName
 		if translated == "" {
 			translated = "none"
 		}
-		lines = append(lines, fmt.Sprintf("- %s (translation: %s)", tag.Tag, translated))
+		lines = append(lines, fmt.Sprintf("- %s (translation: %s)", tag.Tag.Name, translated))
 	}
 	out.Text = "Trending tags:\n" + strings.Join(lines, "\n")
 	return outputs.TrendingTagsResult(out, false), out, nil

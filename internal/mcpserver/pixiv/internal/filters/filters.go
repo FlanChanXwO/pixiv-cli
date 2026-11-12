@@ -11,7 +11,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // IllustFilter 描述 artwork 列表的本地筛选条件；字段为零值时该条件不生效。
@@ -42,7 +43,7 @@ func IllustFilterSchema() map[string]any {
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"id":        map[string]any{"type": "integer", "minimum": 1},
-			"type":      map[string]any{"type": "string", "enum": []string{string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(pixiv.SearchContentTypeUgoira)}},
+			"type":      map[string]any{"type": "string", "enum": []string{string(pixiv.ContentTypeIllust), string(pixiv.ContentTypeManga), string(pixiv.ContentTypeUgoira)}},
 			"tags":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"min_views": map[string]any{"type": "integer", "minimum": 0},
 			"min_pages": map[string]any{"type": "integer", "minimum": 0},
@@ -139,7 +140,7 @@ func validateIllustFilter(filter *IllustFilter) error {
 	if filter.ID != nil && *filter.ID <= 0 {
 		return errors.New("illust_filter.id must be positive")
 	}
-	if filter.Type != "" && filter.Type != string(pixiv.SearchContentTypeIllust) && filter.Type != string(pixiv.SearchContentTypeManga) && filter.Type != string(pixiv.SearchContentTypeUgoira) {
+	if filter.Type != "" && filter.Type != string(pixiv.ContentTypeIllust) && filter.Type != string(pixiv.ContentTypeManga) && filter.Type != string(pixiv.ContentTypeUgoira) {
 		return errors.New("illust_filter.type must be one of: illust, manga, ugoira")
 	}
 	if filter.MinViews != nil && *filter.MinViews < 0 {
@@ -194,18 +195,35 @@ func FilterPage[T any](ctx context.Context, items []T, seen map[string]struct{})
 
 func match(item any, filters value) (string, bool) {
 	switch value := item.(type) {
-	case pixiv.Artwork:
+	case *pixiv.Artwork:
+		if !matchesSDKIllust(value, filters.illust) {
+			return "", false
+		}
+		return fmt.Sprintf("%s:%d", value.ContentType, value.ID), true
+	case *pixiv.Novel:
+		f := filters.novel
+		if f != nil && (f.ID != nil && value.ID != *f.ID || f.MinViews != nil && value.TotalViews < *f.MinViews || !hasSDKTags(value.Tags, f.Tags)) {
+			return "", false
+		}
+		return fmt.Sprintf("novel:%d", value.ID), true
+	case pixiv.UserRecommendation:
+		f := filters.user
+		return fmt.Sprintf("user:%d", value.User.ID), f == nil || f.ID == nil || value.User.ID == *f.ID
+	case *pixiv.User:
+		f := filters.user
+		return fmt.Sprintf("user:%d", value.ID), f == nil || f.ID == nil || value.ID == *f.ID
+	case legacysdk.Artwork:
 		if !MatchesIllust(value, filters.illust) {
 			return "", false
 		}
 		kind := string(value.ContentType)
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
-	case pixiv.Novel:
+	case legacysdk.Novel:
 		if !matchesNovel(value, filters.novel) {
 			return "", false
 		}
 		return fmt.Sprintf("novel:%d", value.ID), true
-	case pixiv.UserPreview:
+	case legacysdk.UserPreview:
 		if !matchesUser(value.User, filters.user) {
 			return "", false
 		}
@@ -216,7 +234,7 @@ func match(item any, filters value) (string, bool) {
 }
 
 // MatchesIllust 按条件匹配一条作品；filter 为 nil 时匹配所有作品。
-func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
+func MatchesIllust(item legacysdk.Artwork, filter *IllustFilter) bool {
 	if filter == nil {
 		return true
 	}
@@ -235,7 +253,7 @@ func MatchesIllust(item pixiv.Artwork, filter *IllustFilter) bool {
 	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesNovel(item pixiv.Novel, filter *NovelFilter) bool {
+func matchesNovel(item legacysdk.Novel, filter *NovelFilter) bool {
 	if filter == nil {
 		return true
 	}
@@ -248,11 +266,38 @@ func matchesNovel(item pixiv.Novel, filter *NovelFilter) bool {
 	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesUser(item pixiv.User, filter *UserFilter) bool {
+func matchesUser(item legacysdk.User, filter *UserFilter) bool {
 	return filter == nil || filter.ID == nil || item.ID == *filter.ID
 }
 
-func hasAllTags(tags []pixiv.Tag, wanted []string) bool {
+func hasAllTags(tags []legacysdk.Tag, wanted []string) bool {
+	for _, want := range wanted {
+		found := false
+		for _, tag := range tags {
+			if tag.Name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesSDKIllust(item *pixiv.Artwork, filter *IllustFilter) bool {
+	if filter == nil {
+		return true
+	}
+	if filter.ID != nil && item.ID != *filter.ID || filter.Type != "" && string(item.ContentType) != filter.Type ||
+		filter.MinViews != nil && item.TotalViews < *filter.MinViews || filter.MinPages != nil && item.PageCount < *filter.MinPages {
+		return false
+	}
+	return hasSDKTags(item.Tags, filter.Tags)
+}
+
+func hasSDKTags(tags []pixiv.Tag, wanted []string) bool {
 	for _, want := range wanted {
 		found := false
 		for _, tag := range tags {

@@ -55,6 +55,13 @@ type CredentialStore interface {
 	CompareAndSwap(ctx context.Context, expectedRevision int64, replacement Credentials) (bool, error)
 }
 
+// Credentials prepares usable credentials without a content request. It reads
+// the latest saved revision and commits any refresh before returning, using the
+// same credential gate and revision comparison as content operations.
+func (c *Client) Credentials(ctx context.Context) (Credentials, error) {
+	return c.credentials(ctx, Credentials{})
+}
+
 type memoryCredentials struct {
 	mu    sync.Mutex
 	value Credentials

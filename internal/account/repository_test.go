@@ -5,8 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"io"
 	"os"
 	"os/exec"
@@ -17,6 +15,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -133,21 +134,29 @@ func startRotationProcess(t *testing.T, directory string, index int) (*exec.Cmd,
 }
 
 func TestSchedulerFreezeCoversRetryAfter(t *testing.T) {
-	store, err := account.Open(t.Context(), t.TempDir())
-	require.NoError(t, err)
-	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
-	now := time.Unix(100, 500000000).UTC()
-	deadline := now.Add(11 * time.Second)
-	scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
-	err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
-		now = now.Add(10 * time.Second)
-		return sdk.NewError("pixiv", "read", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true, After: deadline}))
-	})
-	require.Error(t, err)
-	saved, err := store.GetPixiv(t.Context(), 42)
-	require.NoError(t, err)
-	require.NotNil(t, saved.Pool.FrozenUntil)
-	require.Equal(t, deadline.Truncate(time.Second).Add(time.Second), *saved.Pool.FrozenUntil, "freeze must round up Retry-After without adding request duration")
+	for _, generation := range []string{"legacy", "current"} {
+		t.Run(generation, func(t *testing.T) {
+			store, err := account.Open(t.Context(), t.TempDir())
+			require.NoError(t, err)
+			require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
+			now := time.Unix(100, 500000000).UTC()
+			deadline := now.Add(11 * time.Second)
+			scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
+			err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
+				now = now.Add(10 * time.Second)
+				if generation == "legacy" {
+					return legacysdk.NewError("pixiv", "read", legacysdk.RateLimited, legacysdk.WithRetry(legacysdk.RetryAdvice{Safe: true, HasAfter: true, After: deadline}))
+				}
+				wait := time.Second
+				return &sdk.Error{Operation: "read", Reason: sdk.RateLimited, RetryAfter: &wait}
+			})
+			require.Error(t, err)
+			saved, err := store.GetPixiv(t.Context(), 42)
+			require.NoError(t, err)
+			require.NotNil(t, saved.Pool.FrozenUntil)
+			require.Equal(t, deadline.Truncate(time.Second).Add(time.Second), *saved.Pool.FrozenUntil, "freeze must cover the response wait without adding request duration twice")
+		})
+	}
 }
 
 func TestRecreatedAccountRejectsPreviousRotation(t *testing.T) {

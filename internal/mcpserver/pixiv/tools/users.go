@@ -5,14 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -20,7 +20,7 @@ import (
 func (t pixivTools) registerUserArtworks(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_user_artworks", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Browse a user's artworks.", InputSchema: schemas.List(map[string]any{
 		"user_id":       schemas.PositiveInteger("Optional positive Pixiv user ID; defaults to the authenticated user."),
-		"type":          schemas.EnumString("Artwork type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(pixiv.SearchContentTypeUgoira)),
+		"type":          schemas.EnumString("Artwork type.", string(pixiv.ContentTypeIllust), string(pixiv.ContentTypeManga), string(pixiv.ContentTypeUgoira)),
 		"illust_filter": filters.IllustFilterSchema(),
 	}), OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input userArtworksIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.userArtworksHandler(ctx, input)
@@ -43,21 +43,20 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(in.Type), Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).Artworks(ctx, pixiv.UserArtworksOptions{Kind: pixiv.ContentType(in.Type), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -90,21 +89,20 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Error(errors.New("illust_filter requires type=artwork"))
 	}
 	if in.Type == kindNovel {
-		userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
-		if err != nil {
-			return outputs.Error(err)
+		if in.UserID < 0 {
+			return outputs.Error(errors.New("user_id must be positive when provided"))
 		}
-		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.UserNovelBookmarks(ctx, pixiv.UserNovelBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
+		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Novel, sdk.Cursor, error) {
+			result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			return result.Items, result.Cursor, nil
 		})
 		if err != nil {
 			return outputs.Error(err)
 		}
-		recordItems, err := record.FromNovels(items)
+		recordItems, err := record.FromSDKNovels(items)
 		if err != nil {
 			return outputs.Error(err)
 		}
@@ -112,26 +110,24 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Result(out), out, nil
 	}
 
-	userID := in.UserID
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err = toolhost.ResolveUserID(t.app, ctx, userID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworkBookmarks(ctx, pixiv.UserArtworkBookmarksRequest{UserID: userID, Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromArtworks(items)
+	recordItems, err := record.FromSDKArtworks(items)
 	if err != nil {
 		return outputs.Error(err)
 	}
@@ -166,13 +162,13 @@ func (t pixivTools) userDetailHandler(ctx context.Context, in userDetailIn) (*mc
 	if in.UserID <= 0 {
 		return outputs.DetailError(fmt.Errorf("user_id must be a positive integer"))
 	}
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.UserDetail, error) {
-		return client.User(ctx, pixiv.UserRequest{UserID: in.UserID})
+	userRecord, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (record.Record, error) {
+		profile, err := client.User(in.UserID).Profile(ctx)
+		if err != nil {
+			return record.Record{}, err
+		}
+		return record.RecordFromSDKProfile(profile)
 	})
-	if err != nil {
-		return outputs.DetailError(err)
-	}
-	userRecord, err := record.RecordFromUserDetail(result)
 	if err != nil {
 		return outputs.DetailError(err)
 	}
@@ -203,21 +199,20 @@ func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mc
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Novel, sdk.Cursor, error) {
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).Novels(ctx, pixiv.UserNovelsOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		return result.Items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
 	}
-	recordItems, err := record.FromNovels(items)
+	recordItems, err := record.FromSDKNovels(items)
 	if err != nil {
 		return outputs.Error(err)
 	}

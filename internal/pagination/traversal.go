@@ -3,8 +3,6 @@ package pagination
 import (
 	"context"
 	"errors"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 )
 
 // ErrExecuteNotConfigured 表示调用方没有提供可重放的 execute 函数。
@@ -28,26 +26,27 @@ type PagedReadResult[T any] struct {
 // Skip、Limit、OneBatch、cursor 循环检测和 HasMore 语义。返回的 PageResult
 // 携带引擎权威的 Returned 与 HasMore，包括上游批次内被 Limit 截断但上游
 // cursor 已为空的情形——此时仍有未返回的条目，HasMore 必须为 true。
-func TraverseWith[C any, T any](
+func TraverseWith[C any, T any, P Cursor](
 	ctx context.Context,
 	execute Execute[C],
 	plan PagePlan,
 	begin func() error,
-	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
+	fetch func(context.Context, C, P) ([]T, P, error),
 	consume func([]T) (committed bool, err error),
 ) (PageResult, error) {
-	return traverseWithFrom(ctx, execute, plan, sdk.Cursor{}, begin, fetch, consume)
+	var initial P
+	return traverseWithFrom(ctx, execute, plan, initial, begin, fetch, consume)
 }
 
 // traverseWithFrom 与 TraverseWith 相同，但从调用方已有的 opaque cursor 开始。
 // 这保持 cursor 的具体语义在 shared pagination 内，不让调用方解码或重建它。
-func traverseWithFrom[C any, T any](
+func traverseWithFrom[C any, T any, P Cursor](
 	ctx context.Context,
 	execute Execute[C],
 	plan PagePlan,
-	initial sdk.Cursor,
+	initial P,
 	begin func() error,
-	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
+	fetch func(context.Context, C, P) ([]T, P, error),
 	consume func([]T) (committed bool, err error),
 ) (PageResult, error) {
 	if execute == nil {
@@ -62,7 +61,7 @@ func traverseWithFrom[C any, T any](
 
 		committed := false
 		var err error
-		pageResult, err = traversePagesFrom(ctx, plan, initial, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		pageResult, err = traversePagesFrom(ctx, plan, initial, func(ctx context.Context, cursor P) ([]T, P, error) {
 			return fetch(ctx, client, cursor)
 		}, func(items []T) error {
 			published, err := consume(items)
@@ -75,12 +74,12 @@ func traverseWithFrom[C any, T any](
 }
 
 // CollectWithFrom 在可重放边界内，从调用方已有的 opaque cursor 收集逻辑页。
-func CollectWithFrom[C any, T any](
+func CollectWithFrom[C any, T any, P Cursor](
 	ctx context.Context,
 	execute Execute[C],
 	plan PagePlan,
-	initial sdk.Cursor,
-	fetch func(context.Context, C, sdk.Cursor) ([]T, sdk.Cursor, error),
+	initial P,
+	fetch func(context.Context, C, P) ([]T, P, error),
 ) (PagedReadResult[T], error) {
 	result := PagedReadResult[T]{Items: make([]T, 0)}
 
