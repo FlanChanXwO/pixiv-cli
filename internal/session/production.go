@@ -10,24 +10,26 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PixivSettings 保存一次请求翻译得到的 SDK 选项与只读会话缓存键。
 // 代理覆盖、节奏与语言都由组合根解析，本包不读取配置或 flag。
 type PixivSettings struct {
-	Options pixiv.Options
-	Network string
+	Options    legacysdk.Options
+	SDKOptions pixiv.Options
+	Network    string
 }
 
 // ReadSnapshot 是一次只读 SDK 会话及其失效通知。
 type ReadSnapshot struct {
-	Lease       *lifecycle.Lease[*pixiv.Client]
+	Lease       *lifecycle.Lease[*legacysdk.Client]
 	Version     string
 	Expires     time.Time
 	Invalidated <-chan struct{}
@@ -75,6 +77,7 @@ type Local struct {
 
 type pixivPorts struct {
 	database *database.DB
+	accounts *account.Service
 	reads    *account.ReadSessions
 	facade   *Pixiv
 }
@@ -184,6 +187,7 @@ func (l *Local) ports() (*pixivPorts, error) {
 		l.closeState.Add(reads.Close)
 		l.pixiv = &pixivPorts{
 			database: db,
+			accounts: service,
 			reads:    reads,
 			facade: NewPixiv(service, gate, l.loadPoolConfig, func(poolConfig PoolConfig) (PoolExecutor, error) {
 				return pool.Scheduler{
@@ -198,7 +202,7 @@ func (l *Local) ports() (*pixivPorts, error) {
 }
 
 // Execute 在账号池的重放边界内使用一次 Pixiv client。
-func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
 	ports, err := l.ports()
 	if err != nil {
 		return err
@@ -211,7 +215,7 @@ func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func
 }
 
 // OpenLease 打开一个显式账号的 Pixiv client 租约。
-func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error) {
+func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*legacysdk.Client], error) {
 	ports, err := l.ports()
 	if err != nil {
 		return nil, err
@@ -224,7 +228,7 @@ func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle
 }
 
 // Read 复用账号读取快照执行一次读取，并在失败时丢弃对应 generation。
-func (l *Local) Read(ctx context.Context, request ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
+func (l *Local) Read(ctx context.Context, request ProxyRequest, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
 	snapshot, err := l.ReadSession(ctx, request)
 	if err != nil {
 		return err

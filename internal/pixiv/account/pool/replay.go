@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 func retryAfterFor(err error, now time.Time) (time.Duration, bool) {
-	var typed *sdk.Error
-	if !errors.As(err, &typed) || typed.Reason != sdk.RateLimited || !typed.Retry.Safe || !typed.Retry.HasAfter {
+	var current *sdk.Error
+	if errors.As(err, &current) && current.Reason == sdk.RateLimited && current.RetryAfter != nil && *current.RetryAfter > 0 {
+		return *current.RetryAfter, true
+	}
+	var typed *legacysdk.Error
+	if !errors.As(err, &typed) || typed.Reason != legacysdk.RateLimited || !typed.Retry.Safe || !typed.Retry.HasAfter {
 		return 0, false
 	}
 	retryAfter := typed.Retry.After.Sub(now)
@@ -27,13 +32,13 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 		if errors.Is(err, ErrAccountPoolExhausted) {
 			return poolExhaustedError(lastRateLimit, nil, now)
 		}
-		return sdk.NewError("pixiv", "account_pool", sdk.LocalStateError, sdk.WithDetail("account_pool_state_error"), sdk.WithCause(err))
+		return legacysdk.NewError("pixiv", "account_pool", legacysdk.LocalStateError, legacysdk.WithDetail("account_pool_state_error"), legacysdk.WithCause(err))
 	}
 	switch selectionErr.Kind {
 	case account.PoolSelectionNoLocalAccount:
-		return sdk.NewError("pixiv", "account_pool", sdk.Unauthorized, sdk.WithDetail("account_pool_no_local_account"))
+		return legacysdk.NewError("pixiv", "account_pool", legacysdk.Unauthorized, legacysdk.WithDetail("account_pool_no_local_account"))
 	case account.PoolSelectionNoSchedulable:
-		return sdk.NewError("pixiv", "account_pool", sdk.LocalStateError, sdk.WithDetail("account_pool_no_schedulable_account"))
+		return legacysdk.NewError("pixiv", "account_pool", legacysdk.LocalStateError, legacysdk.WithDetail("account_pool_no_schedulable_account"))
 	case account.PoolSelectionAllFrozen:
 		return poolSelectionRateLimit("account_pool_all_frozen", selectionErr.EarliestFrozenUntil, nil, now)
 	case account.PoolSelectionExhausted:
@@ -43,26 +48,26 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 	}
 }
 
-func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) *sdk.Error {
-	opts := []sdk.ErrorOption{sdk.WithDetail(detail)}
+func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) *legacysdk.Error {
+	opts := []legacysdk.ErrorOption{legacysdk.WithDetail(detail)}
 	if retry, ok := poolRetryAdvice(earliest, now); ok {
-		opts = append(opts, sdk.WithRetry(retry))
+		opts = append(opts, legacysdk.WithRetry(retry))
 	}
 	if cause != nil {
-		opts = append(opts, sdk.WithCause(cause))
+		opts = append(opts, legacysdk.WithCause(cause))
 	}
-	return sdk.NewError("pixiv", "account_pool", sdk.RateLimited, opts...)
+	return legacysdk.NewError("pixiv", "account_pool", legacysdk.RateLimited, opts...)
 }
 
-func poolRetryAdvice(earliest *int64, now time.Time) (sdk.RetryAdvice, bool) {
+func poolRetryAdvice(earliest *int64, now time.Time) (legacysdk.RetryAdvice, bool) {
 	if earliest == nil {
-		return sdk.RetryAdvice{}, false
+		return legacysdk.RetryAdvice{}, false
 	}
 	after := time.Unix(*earliest, 0)
 	if !after.After(now) {
-		return sdk.RetryAdvice{}, false
+		return legacysdk.RetryAdvice{}, false
 	}
-	return sdk.RetryAdvice{Safe: true, After: after, HasAfter: true}, true
+	return legacysdk.RetryAdvice{Safe: true, After: after, HasAfter: true}, true
 }
 
 func poolExhaustedError(lastRateLimit error, earliest *int64, now time.Time) error {
@@ -73,7 +78,7 @@ func poolExhaustedError(lastRateLimit error, earliest *int64, now time.Time) err
 	return &accountPoolExhaustedError{classified: classified}
 }
 
-type accountPoolExhaustedError struct{ classified *sdk.Error }
+type accountPoolExhaustedError struct{ classified *legacysdk.Error }
 
 func (e *accountPoolExhaustedError) Error() string { return e.classified.Error() }
 

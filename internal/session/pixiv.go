@@ -149,12 +149,8 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 	if ctx == nil {
 		return lifecycle.ErrNilContext
 	}
-	config, err := f.loadPoolConfig()
-	if err != nil {
-		return err
-	}
-
-	useAttempt := func(ctx context.Context, request Request, attempt *lifecycle.Attempt) (err error) {
+	useAttempt := func(ctx context.Context, userID int64, attempt *lifecycle.Attempt) (err error) {
+		request.UserID = userID
 		lease, err := f.Open(ctx, request)
 		if err != nil {
 			return err
@@ -172,9 +168,17 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 		return err
 	}
 
-	// 显式账号属于调用快照，账号池不能改写身份或在错误后换号。
-	if request.UserID != 0 || !config.Enabled {
-		return useAttempt(ctx, request, &lifecycle.Attempt{})
+	return f.useAccount(ctx, request.UserID, useAttempt)
+}
+
+func (f *Pixiv) useAccount(ctx context.Context, userID int64, useAttempt func(context.Context, int64, *lifecycle.Attempt) error) error {
+	config, err := f.loadPoolConfig()
+	if err != nil {
+		return err
+	}
+	// 显式账号固定本次读写身份；省略账号时才交给账号池调度。
+	if userID != 0 || !config.Enabled {
+		return useAttempt(ctx, userID, &lifecycle.Attempt{})
 	}
 	pool, err := f.poolFactory(config)
 	if err != nil {
@@ -183,9 +187,5 @@ func (f *Pixiv) Use(ctx context.Context, request Request, callback func(context.
 	if pool == nil {
 		return poolExecutorNotConfigured
 	}
-	return pool.Run(ctx, func(ctx context.Context, userID int64, attempt *lifecycle.Attempt) error {
-		pooledRequest := request
-		pooledRequest.UserID = userID
-		return useAttempt(ctx, pooledRequest, attempt)
-	})
+	return pool.Run(ctx, useAttempt)
 }
