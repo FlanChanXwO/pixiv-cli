@@ -136,17 +136,18 @@ func TestSchedulerFreezeCoversRetryAfter(t *testing.T) {
 	store, err := account.Open(t.Context(), t.TempDir())
 	require.NoError(t, err)
 	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
-	now := time.Unix(100, 500000000)
-	deadline := now.Add(time.Second)
+	now := time.Unix(100, 500000000).UTC()
+	deadline := now.Add(11 * time.Second)
 	scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
 	err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
+		now = now.Add(10 * time.Second)
 		return sdk.NewError("pixiv", "read", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true, After: deadline}))
 	})
 	require.Error(t, err)
 	saved, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
 	require.NotNil(t, saved.Pool.FrozenUntil)
-	require.False(t, saved.Pool.FrozenUntil.Before(deadline), "freeze ended before Retry-After")
+	require.Equal(t, deadline.Truncate(time.Second).Add(time.Second), *saved.Pool.FrozenUntil, "freeze must round up Retry-After without adding request duration")
 }
 
 func TestRecreatedAccountRejectsPreviousRotation(t *testing.T) {
