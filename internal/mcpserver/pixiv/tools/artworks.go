@@ -366,11 +366,11 @@ func (t pixivTools) recommendedHandler(ctx context.Context, in recommendedIn) (*
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	initial, err := recommendedInitialCursor(in, plan)
+	initial, userID, err := recommendedInitialCursor(in, plan)
 	if err != nil {
 		return outputs.RecommendedError(err)
 	}
-	execute := t.app.SDKReadExecutor()
+	execute := t.app.SDKReadExecutor(userID)
 	if execute == nil {
 		return outputs.RecommendedError(errors.New("sdk pooled operation is not configured"))
 	}
@@ -416,16 +416,16 @@ func parseRecommendedRequest(in recommendedIn) (pagination.PagePlan, error) {
 	return plan, nil
 }
 
-func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.Cursor, error) {
+func recommendedInitialCursor(in recommendedIn, plan pagination.PagePlan) (sdk.Cursor, int64, error) {
 	if in.Cursor == nil {
-		return sdk.Cursor{}, nil
+		return sdk.Cursor{}, 0, nil
 	}
 	if !plan.OneBatch || in.Type == kindAll {
-		return sdk.Cursor{}, errors.New("cursor requires a single type and omitted page and limit")
+		return sdk.Cursor{}, 0, errors.New("cursor requires a single type and omitted page and limit")
 	}
 	binding, err := toolhost.BindCursor("recommended", streamInput(in, in.Type))
 	if err != nil {
-		return sdk.Cursor{}, err
+		return sdk.Cursor{}, 0, err
 	}
 	return binding.DecodeSDK(in.Cursor)
 }
@@ -459,7 +459,7 @@ func appendRecommendedArtworks(ctx context.Context, out *outputs.Recommended, pl
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(filtered), more)
-	page.NextCursor, err = streamContinuation(in, kind, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kind, next)
 	if err != nil {
 		return err
 	}
@@ -491,7 +491,7 @@ func (t pixivTools) recommendedNovelStream(ctx context.Context, client *pixiv.Cl
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
-	page.NextCursor, err = streamContinuation(in, kindNovel, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kindNovel, next)
 	out.Novels = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
@@ -519,7 +519,7 @@ func (t pixivTools) recommendedUserStream(ctx context.Context, client *pixiv.Cli
 		return err
 	}
 	page := toolhost.ListPagination(plan, in.Limit, len(items), more)
-	page.NextCursor, err = streamContinuation(in, kindUser, next)
+	page.NextCursor, err = streamContinuation(ctx, in, kindUser, next)
 	out.Users = &outputs.Records{Records: recordItems, Pagination: page}
 	return err
 }
@@ -541,7 +541,7 @@ func streamInput(in recommendedIn, kind string) recommendedIn {
 	return in
 }
 
-func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string, error) {
+func streamContinuation(ctx context.Context, in recommendedIn, kind string, next sdk.Cursor) (string, error) {
 	if next.IsZero() {
 		return "", nil
 	}
@@ -549,7 +549,7 @@ func streamContinuation(in recommendedIn, kind string, next sdk.Cursor) (string,
 	if err != nil {
 		return "", err
 	}
-	return binding.Encode(next)
+	return binding.EncodeSDK(next, toolhost.SDKUserID(ctx, 0))
 }
 func (t pixivTools) registerTrendingTagsIllust(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_trending_tags_illust", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Get currently trending illustration tags.", InputSchema: trendingInputSchema(), OutputSchema: schemas.TrendingTagsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input trendingTagsIllustIn) (*mcp.CallToolResult, outputs.TrendingTags, error) {

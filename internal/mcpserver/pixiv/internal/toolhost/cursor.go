@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
@@ -71,11 +72,15 @@ func (b CursorBinding) Decode(cursor *string) (legacysdk.Cursor, error) {
 	if cursor == nil {
 		return legacysdk.Cursor{}, nil
 	}
-	payload, err := b.payload(*cursor)
+	envelope, err := b.envelope(*cursor)
 	if err != nil {
 		return legacysdk.Cursor{}, err
 	}
-	return legacysdk.ParseCursor(payload)
+	payload, err := legacysdk.CursorPayload(envelope)
+	if err != nil {
+		return legacysdk.Cursor{}, err
+	}
+	return legacysdk.ParseCursor(string(payload))
 }
 
 // Encode 保留完整 SDK checkpoint；next 为零值时返回空串，表示没有下一页。
@@ -90,26 +95,47 @@ func (b CursorBinding) Encode(next pagination.Cursor) (string, error) {
 	return envelope.String(), nil
 }
 
-// DecodeSDK 复用 MCP envelope，保留新版 SDK cursor 的原始文本。
-func (b CursorBinding) DecodeSDK(token *string) (sdk.Cursor, error) {
-	if token == nil {
-		return sdk.Cursor{}, nil
+// EncodeSDK 保存实际选号，续页时复用同一账号；SDK 仍校验内部账号绑定。
+func (b CursorBinding) EncodeSDK(next sdk.Cursor, userID int64) (string, error) {
+	if next.IsZero() {
+		return "", nil
 	}
-	payload, err := b.payload(*token)
+	envelope, err := legacysdk.NewCursor("pixiv-mcp", b.operation, 1, b.query, []byte(next.String()), legacysdk.WithCursorIdentity(strconv.FormatInt(userID, 10)))
 	if err != nil {
-		return sdk.Cursor{}, err
+		return "", err
 	}
-	return sdk.ParseCursor(payload)
+	return envelope.String(), nil
 }
 
-func (b CursorBinding) payload(token string) (string, error) {
-	envelope, err := legacysdk.ParseCursor(token)
-	if err != nil {
-		return "", err
+// DecodeSDK 返回新版 SDK cursor 及其生成账号；nil 表示开始一次池调度。
+func (b CursorBinding) DecodeSDK(token *string) (sdk.Cursor, int64, error) {
+	if token == nil {
+		return sdk.Cursor{}, 0, nil
 	}
-	if err := legacysdk.ValidateCursor(envelope, "pixiv-mcp", b.operation, 1, b.query); err != nil {
-		return "", err
+	envelope, err := b.envelope(*token)
+	if err != nil {
+		return sdk.Cursor{}, 0, err
+	}
+	identity, _ := legacysdk.CursorIdentity(envelope)
+	userID, err := strconv.ParseInt(identity, 10, 64)
+	if err != nil || userID <= 0 {
+		return sdk.Cursor{}, 0, &sdk.Error{Reason: sdk.InvalidArgument, Operation: b.operation, Message: "cursor account is invalid"}
 	}
 	payload, err := legacysdk.CursorPayload(envelope)
-	return string(payload), err
+	if err != nil {
+		return sdk.Cursor{}, 0, err
+	}
+	cursor, err := sdk.ParseCursor(string(payload))
+	return cursor, userID, err
+}
+
+func (b CursorBinding) envelope(token string) (legacysdk.Cursor, error) {
+	envelope, err := legacysdk.ParseCursor(token)
+	if err != nil {
+		return legacysdk.Cursor{}, err
+	}
+	if err := legacysdk.ValidateCursor(envelope, "pixiv-mcp", b.operation, 1, b.query); err != nil {
+		return legacysdk.Cursor{}, err
+	}
+	return envelope, nil
 }

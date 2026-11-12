@@ -12,7 +12,7 @@ import (
 
 // CollectSDKWith 在新 SDK 的账号重放边界内收集一个逻辑页。
 func CollectSDKWith[T any](ctx context.Context, app *App, plan pagination.PagePlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
-	return collectFrom(ctx, app.SDKReadExecutor(), plan, sdk.Cursor{}, fetch)
+	return collectFrom(ctx, app.SDKReadExecutor(0), plan, sdk.Cursor{}, fetch)
 }
 
 // CollectSDKCursorWith 保留 MCP 外层查询绑定，SDK 自行校验内部账号与查询。
@@ -32,12 +32,13 @@ func CollectSDKCursorWith[T any](ctx context.Context, app *App, operation string
 	if err != nil {
 		return nil, PaginationOut{}, err
 	}
-	initial, err := binding.DecodeSDK(token)
+	initial, userID, err := binding.DecodeSDK(token)
 	if err != nil {
 		return nil, PaginationOut{}, err
 	}
 	var next sdk.Cursor
-	items, more, err := collectFrom(ctx, app.SDKReadExecutor(), plan, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+	items, more, err := collectFrom(ctx, app.SDKReadExecutor(userID), plan, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
+		userID = SDKUserID(ctx, 0)
 		items, continuation, err := fetch(ctx, client, cursor)
 		if err == nil && !continuation.IsZero() && continuation == cursor {
 			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
@@ -49,7 +50,7 @@ func CollectSDKCursorWith[T any](ctx context.Context, app *App, operation string
 		return nil, PaginationOut{}, err
 	}
 	page := ListPagination(plan, nil, len(items), more)
-	page.NextCursor, err = binding.Encode(next)
+	page.NextCursor, err = binding.EncodeSDK(next, userID)
 	return items, page, err
 }
 
@@ -57,7 +58,7 @@ func CollectSDKCursorWith[T any](ctx context.Context, app *App, operation string
 // 配置错误。traversal 每次 attempt 都重置聚合结果，失败 attempt 的部分结果不会带进
 // 后续安全重放。
 func CollectSDKStreamsWith[T any, C pagination.Cursor](ctx context.Context, app *App, plan pagination.PagePlan, streams func(*pixiv.Client) []pagination.Stream[T, C]) ([]T, bool, error) {
-	result, err := pagination.CollectStreamsWith(ctx, app.SDKReadExecutor(), pagination.PagePlan{
+	result, err := pagination.CollectStreamsWith(ctx, app.SDKReadExecutor(0), pagination.PagePlan{
 		Skip: plan.Skip, Limit: plan.Limit, OneBatch: plan.OneBatch,
 	}, streams)
 	if errors.Is(err, pagination.ErrExecuteNotConfigured) {

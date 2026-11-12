@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -20,8 +21,9 @@ func (a *App) resolveSDKAccount(ctx context.Context) (Account, error) {
 	return a.resolveAccount(ctx)
 }
 
-// SDKReadExecutor 保留 stdio 的池调度与 HTTP 的固定账号；SDK 对象只在 attempt 内使用。
-func (a *App) SDKReadExecutor() pagination.Execute[*pixiv.Client] {
+// SDKReadExecutor 在 userID 为零时保留池调度，续页固定生成账号并校验显式选择。
+// SDK 对象只在 attempt 内使用。
+func (a *App) SDKReadExecutor(userID int64) pagination.Execute[*pixiv.Client] {
 	if a.sdk.ExecuteSDK == nil {
 		return nil
 	}
@@ -29,6 +31,12 @@ func (a *App) SDKReadExecutor() pagination.Execute[*pixiv.Client] {
 		account, err := a.resolveSDKAccount(ctx)
 		if err != nil {
 			return err
+		}
+		if userID != 0 {
+			if account.UserID != 0 && account.UserID != userID {
+				return &sdk.Error{Reason: sdk.InvalidArgument, Operation: "pixiv.PagedRead", Message: "cursor does not match the selected account"}
+			}
+			account.UserID = userID
 		}
 		return a.sdk.ExecuteSDK(ctx, account, func(ctx context.Context, selected int64, client *pixiv.Client) (bool, error) {
 			return attempt(context.WithValue(ctx, sdkUserIDKey{}, selected), client)
@@ -39,7 +47,7 @@ func (a *App) SDKReadExecutor() pagination.Execute[*pixiv.Client] {
 // ReadSDK 在新 SDK 的完整读取边界成功后返回投影结果。
 func ReadSDK[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
 	var zero, result T
-	execute := a.SDKReadExecutor()
+	execute := a.SDKReadExecutor(0)
 	if execute == nil {
 		return zero, errors.New("sdk pooled operation is not configured")
 	}
