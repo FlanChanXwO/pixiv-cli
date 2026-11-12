@@ -426,7 +426,7 @@ flowchart LR
 
 ### Local account migration
 
-If an older `auth.json` is your only account source, export with that CLI version before upgrading: `pixiv auth export --all --output accounts.pxauth`. Keep the private export, upgrade, then restore with `pixiv auth import < accounts.pxauth` before using other account commands.
+To retain accounts from an older `auth.json`, export with that CLI version before upgrading, even if `pixiv-cli.db` also exists: `pixiv auth export --all --output accounts.pxauth`. Keep the private export and restore with `pixiv auth import < accounts.pxauth` after upgrading. Restoring a bundle replaces existing credentials for matching UIDs.
 
 On first account access, a missing `auth.json` or valid JSON with a different/missing schema is replaced by a read-only import of `pixiv-cli.db`, or an empty account file when no old database exists. The old database stays unchanged. Invalid JSON, damaged `pixiv-cli.auth` data and newer versions report errors while preserving the file content.
 

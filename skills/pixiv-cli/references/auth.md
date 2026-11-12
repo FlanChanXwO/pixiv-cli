@@ -82,9 +82,11 @@ pixiv auth import < /private/path/pixiv-auth.json
 pixiv auth export --all | ssh trusted-host pixiv auth import
 ```
 
-If an existing `auth.json` is your only account storage, export with the old
-CLI before upgrading: `pixiv auth export --all --output <private bundle>`.
-After upgrading, restore with `pixiv auth import < bundle.json`.
+To retain accounts from an older `auth.json`, export with the old CLI before
+upgrading, even if `pixiv-cli.db` also exists:
+`pixiv auth export --all --output <private bundle>`.
+After upgrading, restore with `pixiv auth import < bundle.json`. Restoring a
+bundle replaces existing credentials for matching UIDs.
 
 First account access initializes `~/.pixiv-cli/auth.json` by importing an
 existing `pixiv-cli.db` read-only, or creating an empty account file. The old
