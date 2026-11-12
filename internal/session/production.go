@@ -57,16 +57,14 @@ type Local struct {
 	accounts   *Accounts
 	login      LoginService
 
-	pixivOnce sync.Once
-	pixiv     *pixivPorts
-	pixivErr  error
+	pixivMu sync.Mutex
+	pixiv   *pixivPorts
 
 	fanboxAccountsMu sync.Mutex
 	fanboxAccounts   *FanboxAccounts
 
-	fanboxOnce sync.Once
-	fanbox     *Fanbox
-	fanboxErr  error
+	fanboxMu sync.Mutex
+	fanbox   *Fanbox
 }
 
 type pixivPorts struct {
@@ -85,12 +83,12 @@ func NewLocal(
 	return &Local{closeState: closeState, loadPixiv: loadPixiv, loadFanbox: loadFanbox, loadPoolConfig: loadPoolConfig}
 }
 
-func (l *Local) openAccounts() (*account.Store, error) {
+func (l *Local) openAccounts(ctx context.Context) (*account.Store, error) {
 	directory, err := config.AppDataDir()
 	if err != nil {
 		return nil, fmt.Errorf("determine home directory: %w", err)
 	}
-	store, err := account.Open(context.Background(), directory)
+	store, err := account.Open(ctx, directory)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +96,11 @@ func (l *Local) openAccounts() (*account.Store, error) {
 }
 
 // PixivAccounts 延迟打开 Pixiv 账号服务与登录服务；打开失败不缓存，后续调用可以重试。
-func (l *Local) PixivAccounts() (*Accounts, LoginService, error) {
+func (l *Local) PixivAccounts(ctx context.Context) (*Accounts, LoginService, error) {
 	l.accountsMu.Lock()
 	defer l.accountsMu.Unlock()
 	if l.accounts == nil {
-		store, err := l.openAccounts()
+		store, err := l.openAccounts(ctx)
 		if err != nil {
 			return nil, LoginService{}, err
 		}
@@ -114,7 +112,7 @@ func (l *Local) PixivAccounts() (*Accounts, LoginService, error) {
 
 // CurrentUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
 func (l *Local) CurrentUser(ctx context.Context) (*AccountSummary, error) {
-	service, _, err := l.PixivAccounts()
+	service, _, err := l.PixivAccounts(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +120,8 @@ func (l *Local) CurrentUser(ctx context.Context) (*AccountSummary, error) {
 }
 
 // FanboxAccounts 打开一个 FANBOX 账号服务；每次调用都按文件版本打开存储。
-func (l *Local) FanboxAccounts() (*FanboxAccounts, error) {
-	store, err := l.openAccounts()
+func (l *Local) FanboxAccounts(ctx context.Context) (*FanboxAccounts, error) {
+	store, err := l.openAccounts(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -131,33 +129,34 @@ func (l *Local) FanboxAccounts() (*FanboxAccounts, error) {
 }
 
 // Fanbox 延迟构造命令组共用的 FANBOX 会话。
-func (l *Local) Fanbox() (*Fanbox, error) {
-	l.fanboxOnce.Do(func() {
-		accounts, err := l.fanboxService()
+func (l *Local) Fanbox(ctx context.Context) (*Fanbox, error) {
+	l.fanboxMu.Lock()
+	defer l.fanboxMu.Unlock()
+	if l.fanbox == nil {
+		accounts, err := l.fanboxService(ctx)
 		if err != nil {
-			l.fanboxErr = err
-			return
+			return nil, err
 		}
 		l.fanbox = NewFanbox(accounts)
-	})
-	return l.fanbox, l.fanboxErr
+	}
+	return l.fanbox, nil
 }
 
 // NewFanbox 返回执行内共享账号服务的 FANBOX 会话，供 MCP 每次打开租约使用；
 // 账号服务在本次执行内复用，不按请求累积。
-func (l *Local) NewFanbox() (*Fanbox, error) {
-	accounts, err := l.fanboxService()
+func (l *Local) NewFanbox(ctx context.Context) (*Fanbox, error) {
+	accounts, err := l.fanboxService(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return NewFanbox(accounts), nil
 }
 
-func (l *Local) fanboxService() (*FanboxAccounts, error) {
+func (l *Local) fanboxService(ctx context.Context) (*FanboxAccounts, error) {
 	l.fanboxAccountsMu.Lock()
 	defer l.fanboxAccountsMu.Unlock()
 	if l.fanboxAccounts == nil {
-		service, err := l.FanboxAccounts()
+		service, err := l.FanboxAccounts(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -166,29 +165,27 @@ func (l *Local) fanboxService() (*FanboxAccounts, error) {
 	return l.fanboxAccounts, nil
 }
 
-func (l *Local) ports() (*pixivPorts, error) {
-	l.pixivOnce.Do(func() {
-		store, err := l.openAccounts()
-		if err != nil {
-			l.pixivErr = err
-			return
-		}
-		service := &Accounts{store: store, defaults: config.Store{Files: secretfile.ConfigFiles{}}}
-		gate := account.NewGate()
-		reads := account.NewReadSessions(store, gate)
-		l.closeState.Add(reads.Close)
-		l.pixiv = &pixivPorts{
-			store:  store,
-			reads:  reads,
-			facade: NewPixiv(service, gate, l.loadPoolConfig),
-		}
-	})
-	return l.pixiv, l.pixivErr
+func (l *Local) ports(ctx context.Context) (*pixivPorts, error) {
+	l.pixivMu.Lock()
+	defer l.pixivMu.Unlock()
+	if l.pixiv != nil {
+		return l.pixiv, nil
+	}
+	store, err := l.openAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	service := &Accounts{store: store, defaults: config.Store{Files: secretfile.ConfigFiles{}}}
+	gate := account.NewGate()
+	reads := account.NewReadSessions(store, gate)
+	l.closeState.Add(reads.Close)
+	l.pixiv = &pixivPorts{store: store, reads: reads, facade: NewPixiv(service, gate, l.loadPoolConfig)}
+	return l.pixiv, nil
 }
 
 // Execute 在账号池的重放边界内使用一次 Pixiv client。
 func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return err
 	}
@@ -201,7 +198,7 @@ func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func
 
 // OpenLease 打开一个显式账号的 Pixiv client 租约。
 func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +223,7 @@ func (l *Local) Read(ctx context.Context, request ProxyRequest, callback func(co
 
 // ReadSession 复用账号读取快照，并按请求选择代理覆写与请求节奏。
 func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnapshot, error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return ReadSnapshot{}, err
 	}
@@ -256,7 +253,7 @@ func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnap
 
 // LocalAccounts 读取本地账号摘要与显式默认账号，不读取凭据。
 func (l *Local) LocalAccounts(ctx context.Context) (LocalAccounts, error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return LocalAccounts{}, err
 	}

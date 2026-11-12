@@ -6,6 +6,8 @@
 package auth
 
 import (
+	"context"
+
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -21,9 +23,9 @@ func New(env environment.Env, support Support) *cobra.Command {
 // 由 environment.Env 提供。
 type Support struct {
 	// Account 延迟打开账号服务；只在执行账号子命令时调用。
-	Account func() (*session.Accounts, error)
+	Account func(context.Context) (*session.Accounts, error)
 	// Login 延迟打开登录服务，避免构造命令树时打开账号文件。
-	Login func() (session.LoginService, error)
+	Login func(context.Context) (session.LoginService, error)
 	// LoadRuntime 每次调用读取最新的运行时配置。
 	LoadRuntime func() (config.Config, error)
 	// WriteBundle 写出含凭据的 bundle；force 为 false 时不得覆盖已有文件。
@@ -32,14 +34,14 @@ type Support struct {
 
 // SupportFor 构造生产 Support：账号与登录服务延迟打开，配置按调用读取，bundle 写入
 // 复用 secretfile 的私有文件语义。
-func SupportFor(accounts func() (*session.Accounts, session.LoginService, error), loadRuntime func() (config.Config, error), writeBundle func(string, []byte, bool) error) Support {
+func SupportFor(accounts func(context.Context) (*session.Accounts, session.LoginService, error), loadRuntime func() (config.Config, error), writeBundle func(string, []byte, bool) error) Support {
 	return Support{
-		Account: func() (*session.Accounts, error) {
-			service, _, err := accounts()
+		Account: func(ctx context.Context) (*session.Accounts, error) {
+			service, _, err := accounts(ctx)
 			return service, err
 		},
-		Login: func() (session.LoginService, error) {
-			_, login, err := accounts()
+		Login: func(ctx context.Context) (session.LoginService, error) {
+			_, login, err := accounts(ctx)
 			return login, err
 		},
 		LoadRuntime: loadRuntime,

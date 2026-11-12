@@ -90,7 +90,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if err != nil {
 		return err
 	}
-	login, err := a.loginService()
+	login, err := a.loginService(cmd.Context())
 	if err != nil {
 		return err
 	}
