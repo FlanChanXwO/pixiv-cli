@@ -196,17 +196,21 @@ func RunUsers(ctx context.Context, runner session.Runner, request session.ProxyR
 }
 
 func runPixivList[T any](ctx context.Context, runner session.Runner, request session.ProxyRequest, plan pagination.PagePlan, format Format, errOut io.Writer, list List[T], fetch func(*pixiv.Client, context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), postFilter func([]T) []T) error {
-	w := newWriter(runner.Out, format, plan.Skip, list)
-	defer w.closeSpool()
-	result, err := pagination.TraverseWith(ctx, runner.Execute(request), plan, w.begin,
+	return runList(ctx, runner.Out, errOut, runner.Execute(request), plan, format, list,
 		func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 			return fetch(client, ctx, cursor)
-		}, func(items []T) (bool, error) {
-			if postFilter != nil {
-				items = postFilter(items)
-			}
-			return w.consume(items)
-		})
+		}, postFilter)
+}
+
+func runList[E any, T any, C pagination.Cursor](ctx context.Context, out, errOut io.Writer, execute pagination.Execute[E], plan pagination.PagePlan, format Format, list List[T], fetch func(context.Context, E, C) ([]T, C, error), postFilter func([]T) []T) error {
+	w := newWriter(out, format, plan.Skip, list)
+	defer w.closeSpool()
+	result, err := pagination.TraverseWith(ctx, execute, plan, w.begin, fetch, func(items []T) (bool, error) {
+		if postFilter != nil {
+			items = postFilter(items)
+		}
+		return w.consume(items)
+	})
 	if err != nil {
 		return err
 	}

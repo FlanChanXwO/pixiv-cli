@@ -131,7 +131,7 @@ func (a *app) newRootCommand() *cobra.Command {
 func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		search.New(env, exec, reverseSearch),
+		search.New(env, exec, a.local.ExecuteSDK, reverseSearch),
 		search.NewNovel(env, exec, reverseSearch),
 		detail.New(env, exec, a.local.ExecuteSDK),
 		ranking.New(env, exec),
@@ -140,9 +140,9 @@ func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra
 		recommended.New(env, exec),
 		timeline.New(env, exec),
 		mypixiv.New(env, exec),
-		user.New(env, session.NewRunner(env.Out, exec), func() *cobra.Command { return follow.New(env, exec) }),
+		user.New(env, a.local.ExecuteSDK, func() *cobra.Command { return follow.New(env, a.local.ExecuteSDK) }),
 		bookmark.New(env, exec),
-		follow.New(env, exec),
+		follow.New(env, a.local.ExecuteSDK),
 	}
 }
 

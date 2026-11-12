@@ -65,11 +65,12 @@ type commandRunner struct {
 	runner        session.Runner
 	exec          session.Executor
 	reverseSearch ReverseSearchPort
+	executeSDK    session.SDKExecutor
 }
 
 // New 构造根级 `pixiv search` 命令，覆盖作品、小说、用户和反向搜图入口。
-func New(env environment.Env, exec session.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func New(env environment.Env, exec session.Executor, executeSDK session.SDKExecutor, reverseSearch ReverseSearchPort) *cobra.Command {
+	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec, executeSDK: executeSDK, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
 		sortMode:    string(pixiv.SortModeDateDesc),
@@ -223,7 +224,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		})
 	}
 	if entity == string(target.NamespaceUser) {
-		return user.RunSearch(cmd, a.env, a.runner, args, user.SearchOptions{
+		return user.RunSearch(cmd, a.env, a.executeSDK, args, user.SearchOptions{
 			Options: opts.Options,
 			NDJSON:  opts.ndjson,
 			Limit:   opts.limit,

@@ -44,3 +44,43 @@ func ReadSDK[T any](a *App, ctx context.Context, invoke func(context.Context, *p
 	}
 	return result, nil
 }
+
+// WriteSDK 从进入修改回调起按已提交处理，防止写入跨账号重放。
+func WriteSDK(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) error) error {
+	if a.sdk.ExecuteSDK == nil {
+		return errors.New("sdk pooled operation is not configured")
+	}
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return err
+	}
+	return a.sdk.ExecuteSDK(ctx, account, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+		return true, invoke(ctx, client)
+	})
+}
+
+// ResolveSDKUserID 在 SDK 操作前使用同一账号快照补齐省略的用户 ID。
+func ResolveSDKUserID(a *App, ctx context.Context, requested int64) (int64, error) {
+	if requested > 0 {
+		return requested, nil
+	}
+	if requested < 0 {
+		return 0, errors.New("user_id must be positive when provided")
+	}
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if account.UserID > 0 {
+		return account.UserID, nil
+	}
+	if a.sdk.ExecuteSDK == nil {
+		return 0, errors.New("sdk pooled operation is not configured")
+	}
+	var id int64
+	err = a.sdk.ExecuteSDK(ctx, account, func(_ context.Context, selected int64, _ *pixiv.Client) (bool, error) {
+		id = selected
+		return false, nil
+	})
+	return id, err
+}

@@ -209,6 +209,9 @@ func match(item any, filters value) (string, bool) {
 	case pixiv.UserRecommendation:
 		f := filters.user
 		return fmt.Sprintf("user:%d", value.User.ID), f == nil || f.ID == nil || value.User.ID == *f.ID
+	case *pixiv.User:
+		f := filters.user
+		return fmt.Sprintf("user:%d", value.ID), f == nil || f.ID == nil || value.ID == *f.ID
 	case legacysdk.Artwork:
 		if !MatchesIllust(value, filters.illust) {
 			return "", false

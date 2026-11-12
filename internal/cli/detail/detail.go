@@ -252,8 +252,14 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		}
 		return display.PrintNovelDetail(a.env.Out, result)
 	case string(target.NamespaceUser):
-		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.UserDetail, error) {
-			return client.User(ctx, legacysdk.UserRequest{UserID: id})
+		var result legacysdk.UserDetail
+		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+			profile, err := client.User(id).Profile(ctx)
+			if err != nil {
+				return false, err
+			}
+			result, err = record.UserDetailOutput(profile)
+			return false, err
 		})
 		if err != nil {
 			return err

@@ -88,11 +88,10 @@ func FromSDKNovels(items []*pixiv.Novel) ([]Record, error) {
 // FromSDKRecommendations 保留推荐用户及其样例作品的记录形状。
 func FromSDKRecommendations(items []pixiv.UserRecommendation) ([]Record, error) {
 	return recordsFrom(items, func(r pixiv.UserRecommendation) (Record, error) {
-		u, err := UserOutput(r.User)
+		out, err := UserPreviewOutput(r.User)
 		if err != nil {
 			return Record{}, err
 		}
-		out := legacysdk.UserPreview{User: u, Illusts: []legacysdk.Artwork{}, Novels: []legacysdk.Novel{}}
 		for _, a := range r.Artworks {
 			value, err := ArtworkOutput(a, false)
 			if err != nil {
