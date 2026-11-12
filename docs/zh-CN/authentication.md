@@ -143,7 +143,7 @@ pixiv auth export --all --output accounts.pxauth [--force]
 | `--all`，无 `--output` | 仅版本化 JSON bundle | 无 |
 | 任意选择 + `--output PATH` | 输出路径 + 账号数（从不含 secret） | — |
 
-- 严格本地：读取已保存凭据，保持 token 与配置原值，跳过启动时的待更新清理与自动更新检查。首次访问账号时可通过[本地迁移](cli-reference.md#配置-toml-路径)初始化 `auth.json`。
+- 严格本地：读取已保存凭据，保持 token 与配置原值，跳过启动时的待更新清理与自动更新检查。首次访问账号时可通过[本地迁移](cli-reference.md#本地账号迁移)初始化 `auth.json`。
 - `--all` 不能与 UID 同用；`--force` 需要 `--output`；没有 JSON/代理参数。
 - `--output` 默认拒绝已存在的目标，除非 `--force`。Unix：文件 `0600`，不改父目录权限/属主。Windows：设置 owner 与受保护 DACL，只授予当前用户、LocalSystem 与内置 Administrators 完全控制（有 CI 测试；不声称本版本已在真实 Windows 文件系统验证）。
 - bundle 是**未加密的时间点 secret 备份**，不是实时同步；token 轮换会让旧副本失效。

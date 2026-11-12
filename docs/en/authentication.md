@@ -143,7 +143,7 @@ pixiv auth export --all --output accounts.pxauth [--force]
 | `--all`, no `--output` | versioned JSON bundle only | none |
 | any selection + `--output PATH` | output path + account count (never secrets) | — |
 
-- Strictly local: reads stored credentials without token refresh or Pixiv requests; leaves configuration unchanged and skips startup pending-update cleanup and automatic update checks. First account access may initialize `auth.json` through the [local migration](cli-reference.md#configuration-toml-paths).
+- Strictly local: reads stored credentials without token refresh or Pixiv requests; leaves configuration unchanged and skips startup pending-update cleanup and automatic update checks. First account access may initialize `auth.json` through the [local migration](cli-reference.md#local-account-migration).
 - `--all` cannot combine with a UID; `--force` requires `--output`; no JSON/proxy flags.
 - `--output` refuses an existing destination unless `--force`. Unix: file `0600`, existing parent permissions/ownership unchanged. Windows: owner + protected DACL granting full control only to the current user, LocalSystem and builtin Administrators (CI-tested; not claimed as validated on a real Windows filesystem for this release).
 - The bundle is an **unencrypted point-in-time secret backup**, not live sync; token rotation can make older copies stale.

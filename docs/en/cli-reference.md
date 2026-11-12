@@ -423,7 +423,10 @@ flowchart LR
 - Update checks use only the general network fallback; they never consume FANBOX service or solver settings.
 - `[account_pool]` stores only `enabled` and `strategy`; per-account membership (`pool.enabled`), freeze and last-selection state live in `auth.json`. A leftover `account_pool.accounts` is undeclared and ignored; delete it from the file or leave it, and `pixiv config unset account_pool.accounts` reports an unknown key. The historical `data/account-pool.json` is not read, migrated or deleted. Never put a refresh token in `config.toml`.
 - `[logging].level` (`debug|info|warn|error`) and `[logging].format` (`text|json`) are live; `PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` override them. Logs are stderr-only, omit query strings, headers, cookies, tokens, response bodies and signed URLs, and never create log files. `debug` adds request and decision records. Text records render as `[HH:MM:SS.mmm] [operation] [LEVEL] [parent/file:line]: message key=value`; the operation bracket is omitted outside a bound call. JSON records include `source`. Failures keep the `error: <message>` stderr line. JSON logs also emit an ERROR `Command failed` record; text logs emit it at DEBUG only. The record includes `operation`, `call_id`, `error`, and the SDK error creation site as `origin=parent/file:line` when available. DEBUG `Request failed` records include typed network `op`, `net`, remote `address` (host:port), and known `errno` names, including OAuth token exchange failures. `config` management and secret export stay quiet. MCP JSON-RPC uses stdout in stdio mode and HTTP with `--port`.
-- On first account access, a missing `auth.json` or valid JSON with a different/missing schema is replaced by a read-only import of `pixiv-cli.db`, or an empty account file when no old database exists. The old database stays unchanged. Invalid JSON, damaged `pixiv-cli.auth` data and newer versions report errors while preserving the file content.
+
+### Local account migration
+
+On first account access, a missing `auth.json` or valid JSON with a different/missing schema is replaced by a read-only import of `pixiv-cli.db`, or an empty account file when no old database exists. The old database stays unchanged. Invalid JSON, damaged `pixiv-cli.auth` data and newer versions report errors while preserving the file content.
 
 ### Environment variables
 

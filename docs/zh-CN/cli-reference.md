@@ -423,7 +423,10 @@ flowchart LR
 - 更新检查只使用通用网络 fallback；从不读取 FANBOX 服务或 solver 设置。
 - `[account_pool]` 只存 `enabled` 与 `strategy`；每个账号的成员资格（`pool.enabled`）、冻结与上次选择状态在 `auth.json`。残留的 `account_pool.accounts` 属于未声明键，加载时忽略；`pixiv config unset account_pool.accounts` 会报告未知键。历史上的 `data/account-pool.json` 不会被读取、迁移或删除。不要把 refresh token 放进 `config.toml`。
 - `[logging].level`（`debug|info|warn|error`）与 `[logging].format`（`text|json`）生效；`PIXIV_LOG_LEVEL` / `PIXIV_LOG_FORMAT` 可覆盖。日志只写 stderr，省略 query string、header、Cookie、token、响应体与签名 URL，从不创建日志文件。`debug` 增加请求与决策记录。文本记录格式为 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]: 消息 key=value`；没有调用上下文时省略 operation 方括号。JSON 记录带 `source`。失败保留 stderr 的 `error: <message>` 行。JSON 日志额外写 ERROR 级别的 `Command failed`；文本日志仅在 DEBUG 级别写该记录。记录带 `operation`、`call_id`、`error`，存在 SDK 错误时还带真正创建位置 `origin=上级目录/文件:行号`。DEBUG 的 `Request failed` 记录提供 typed cause 中的网络 `op`、`net`、远端 `address`（host:port）与已知 `errno` 名称，覆盖 OAuth 换 token 失败。`config` 管理与 secret 导出保持安静。MCP JSON-RPC 在 stdio 模式用 stdout，`--port` 时用 HTTP。
-- 首次访问账号时，缺失的 `auth.json` 或 schema 缺失/不同的合法 JSON 会被 `pixiv-cli.db` 的只读导入结果替换；无旧库时生成空账号文件。旧数据库保持原样。非法 JSON、损坏的 `pixiv-cli.auth` 数据与更新版本均报错并保留原文。
+
+### 本地账号迁移
+
+首次访问账号时，缺失的 `auth.json` 或 schema 缺失/不同的合法 JSON 会被 `pixiv-cli.db` 的只读导入结果替换；无旧库时生成空账号文件。旧数据库保持原样。非法 JSON、损坏的 `pixiv-cli.auth` 数据与更新版本均报错并保留原文。
 
 ### 环境变量
 
