@@ -58,43 +58,22 @@ func (s *Accounts) ImportAccount(ctx context.Context, refreshToken string, setDe
 
 // ListAccounts 返回按显示顺序排列的 Pixiv 账号。
 func (s *Accounts) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
-	poolStatus, err := s.store.ListPixivPoolStatus(ctx, time.Now().UTC().Unix())
-	if err != nil {
-		return nil, err
-	}
 	accounts, err := s.store.ListPixiv(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defaultID, explicit, err := s.defaults.ReadPixivDefaultUserID()
+	if err != nil {
+		return nil, err
+	}
+	if !explicit && len(accounts) > 0 {
+		defaultID = accounts[0].UserID
+	}
 	out := make([]AccountSummary, 0, len(accounts))
-	for _, account := range accounts {
-		isDefault, err := s.isDefault(ctx, account.UserID)
-		if err != nil {
-			return nil, err
-		}
-		poolAccount := poolStatusByUserID(poolStatus, account.UserID)
-		out = append(out, AccountSummary{
-			UserID:           account.UserID,
-			Username:         account.Username,
-			Default:          isDefault,
-			Premium:          account.PremiumStatus,
-			Schedulable:      poolAccount.Schedulable,
-			PoolFrozenUntil:  poolAccount.PoolFrozenUntil,
-			PoolLastSelected: poolAccount.PoolLastSelected,
-			Eligible:         poolAccount.Eligible,
-			PoolStatusKnown:  true,
-		})
+	for _, saved := range accounts {
+		out = append(out, accountSummary(saved, saved.UserID == defaultID, saved.PoolLastSelected))
 	}
 	return out, nil
-}
-
-func poolStatusByUserID(status []account.PoolCandidate, userID int64) account.PoolCandidate {
-	for _, account := range status {
-		if account.UserID == userID {
-			return account
-		}
-	}
-	return account.PoolCandidate{UserID: userID}
 }
 
 // SetPoolSchedulable 原子更新一组已存在的本地账号；未知 UID 会使整批失败。
@@ -119,6 +98,9 @@ func (s *Accounts) RemoveAccount(ctx context.Context, userID int64) error {
 		}
 	}
 	if err := s.store.RemovePixiv(ctx, userID); err != nil {
+		if explicit && defaultID == userID {
+			return errors.Join(err, s.defaults.SetPixivDefaultUserID(defaultID))
+		}
 		return err
 	}
 	return nil
@@ -191,14 +173,18 @@ func (s *Accounts) completeLogin(ctx context.Context, saved account.Pixiv, setDe
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {
-		return AccountSummary{}, fmt.Errorf("read pixiv default account: %w", err)
+		return accountSummary(saved, false, false), fmt.Errorf("read pixiv default account: %w", err)
 	}
 	if setDefault || !hasDefault {
 		if err := s.defaults.SetPixivDefaultUserID(saved.UserID); err != nil {
-			return AccountSummary{}, fmt.Errorf("set pixiv default account: %w", err)
+			return accountSummary(saved, false, false), fmt.Errorf("set pixiv default account: %w", err)
 		}
 	}
-	return s.summary(ctx, saved.UserID)
+	summary, err := s.summary(ctx, saved.UserID)
+	if err != nil {
+		return accountSummary(saved, false, false), err
+	}
+	return summary, nil
 }
 
 // AccountsWithTokens 返回全部账号及其 refresh token，仅用于显式 auth export。

@@ -132,13 +132,6 @@ func (d *document) poolStatus(now int64) []PoolCandidate {
 	return status
 }
 
-// ListPixivPoolStatus 在同一事务内清理过期冻结并返回完整调度状态。
-func (s *Store) ListPixivPoolStatus(ctx context.Context, now int64) ([]PoolCandidate, error) {
-	var status []PoolCandidate
-	err := s.update(ctx, func(doc *document) error { status = doc.poolStatus(now); return nil })
-	return status, err
-}
-
 // SelectPixiv 在文件锁内选择账号、清理过期冻结并提交 marker；选择失败时整批回滚。
 func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, choose Chooser) (Pixiv, error) {
 	var selected Pixiv

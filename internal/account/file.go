@@ -106,7 +106,7 @@ func (d document) validate() error {
 	seen := make(map[int64]bool, len(d.Pixiv))
 	markerFound := d.LastUserID == 0
 	for _, a := range d.Pixiv {
-		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || !utf8.Valid(a.Credential.Copy()) {
+		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || a.Credential.Empty() || !utf8.Valid(a.Credential.Copy()) {
 			return errors.New("account: invalid or duplicate Pixiv account")
 		}
 		if !utcTime(a.CreatedAt) || !utcTime(a.UpdatedAt) || (a.PremiumCheckedAt != nil && !utcTime(*a.PremiumCheckedAt)) || (a.Pool.FrozenUntil != nil && !utcTime(*a.Pool.FrozenUntil)) {
@@ -120,7 +120,7 @@ func (d document) validate() error {
 	}
 	seen = make(map[int64]bool, len(d.Fanbox))
 	for _, a := range d.Fanbox {
-		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || !utf8.Valid(a.Credential.Copy()) {
+		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || a.Credential.Empty() || !utf8.Valid(a.Credential.Copy()) {
 			return errors.New("account: invalid or duplicate FANBOX account")
 		}
 		if !utcTime(a.CreatedAt) || !utcTime(a.UpdatedAt) || !utcTime(a.ValidatedAt) {

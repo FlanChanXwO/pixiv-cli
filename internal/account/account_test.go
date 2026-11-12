@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,4 +170,30 @@ func TestExistingAccountFileKeepsPrivatePermissions(t *testing.T) {
 	after, err := os.ReadFile(path)
 	require.NoError(t, err)
 	require.Equal(t, body, after)
+}
+
+func TestEmptyCredentialsPreserveFile(t *testing.T) {
+	for _, product := range []string{"pixiv", "fanbox"} {
+		t.Run(product, func(t *testing.T) {
+			directory := t.TempDir()
+			store, err := account.Open(t.Context(), directory)
+			require.NoError(t, err)
+			require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
+			require.NoError(t, store.SaveFanboxCredential(t.Context(), account.Fanbox{UserID: 84, Credential: credential.New([]byte("synthetic")), ValidatedAt: time.Now().UTC()}))
+			path := filepath.Join(directory, "auth.json")
+			body, err := os.ReadFile(path)
+			require.NoError(t, err)
+			field := "refresh_token"
+			if product == "fanbox" {
+				field = "session_id"
+			}
+			body = bytes.Replace(body, []byte("\""+field+"\": \"synthetic\""), []byte("\""+field+"\": \"\""), 1)
+			require.NoError(t, os.WriteFile(path, body, 0600))
+			_, err = account.Open(t.Context(), directory)
+			require.Error(t, err)
+			after, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, body, after)
+		})
+	}
 }
