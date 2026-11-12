@@ -88,10 +88,16 @@ jobs:
       - name: Test platform OAuth callback integration
         shell: bash
         run: go test ./internal/urlscheme -count=1
-      - name: Test the Windows legacy account import
+      - name: Test the Windows account storage path
         if: ${{ matrix.goos == 'windows' }}
         shell: bash
-        run: go test ./internal/account -run '^TestOpenOnWindowsAcceptsForwardSlashFileURI$' -count=1
+        run: |
+          set -euo pipefail
+          account_package=./internal/storage/database
+          if [ -d ./internal/account ]; then
+            account_package=./internal/account
+          fi
+          go test "$account_package" -run '^TestOpenOnWindowsAcceptsForwardSlashFileURI$' -count=1
       - name: Build and package the platform binary
         shell: bash
         run: |
