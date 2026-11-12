@@ -133,7 +133,7 @@ stateDiagram-v2
 | handler 执行后失败 | 保留工具的结构化结果，`isError=true`；实体读取返回空 `records` |
 | 正常空页 | 成功，绝不转成错误 |
 
-已迁移的作品/用户/收藏/关注 handler 使用新 SDK 的操作路径与受控错误摘要，诊断文本可能与旧 handler 有差异。上游身份、图片页、用户资料和收藏可见性缺失或不一致时，明确报告 malformed-response 失败。已迁移 handler 在访问账号前校验非法分页，因此分页与认证同时无效时可能先报告分页错误。
+已迁移的作品/用户/收藏/关注 handler 使用新 SDK 的操作路径与受控错误摘要，诊断文本可能与旧 handler 有差异。小说、评论、文字搜索、排行榜、推荐、动态与 MyPixiv 工具同样使用该诊断格式。上游身份、图片页、用户资料和收藏可见性缺失或不一致时，明确报告 malformed-response 失败。已迁移 handler 在访问账号前校验非法分页，因此分页与认证同时无效时可能先报告分页错误。
 
 **列表工具**接受 `page` 与 `limit`：
 
@@ -159,7 +159,7 @@ flowchart LR
 - 信封绑定原始参数（查询/策略、作品 ID、排行模式/日期、筛选），携带 SDK 续读状态而非凭据——是编码，不是加密或授权。SDK 每次都会重新校验操作/查询/账号绑定。
 - 参数改变、账号不兼容、格式错误或立即重复的 cursor 都会明确失败。一个批次在前进前消费全部返回项，包括越过筛选后为空的上游批次。正数 limit 的逻辑分页不变。
 - `pixiv_recommended`：`{artworks, novels, users}` 只包含已请求的分区，各为 `{records, pagination}`。默认批次可在各分区的 `pagination` 中返回 `next_cursor`；续读时选择匹配的单一 `type`，保持 `content_type` 与适用筛选，省略 `page`/`limit`。作品在选定上游窗口后筛选。失败或重放时丢弃先前全部分区。
-- 新 SDK 迁移会改变 `pixiv_illust_related`、`pixiv_illust_ranking`、`pixiv_illust_recommended` 与 `pixiv_recommended` 各分区的续读编码。请丢弃迁移前保存的 cursor，用原始参数重新开始查询，此后使用新返回的 `next_cursor`。绑定查询的信封与逻辑 page/limit 语义保持。
+- 新 SDK 迁移会改变 `pixiv_search_illust`、`pixiv_illust_related`、`pixiv_illust_ranking`、`pixiv_illust_recommended` 与 `pixiv_recommended` 各分区的续读编码。请丢弃迁移前保存的 cursor，用原始参数重新开始查询，此后使用新返回的 `next_cursor`。绑定查询的信封与逻辑 page/limit 语义保持。
 - 这些已迁移的 cursor 保存首批实际选择的账号。stdio 池请求照常调度首批，后续 cursor 调用固定使用该账号。HTTP 续读要求显式选择仍为同一账号，切换后会拒绝原 cursor。开始新查询时省略 `cursor`；空字符串会被拒绝。
 
 **`pixiv_comments`** —— 封闭输入 `{type, id, page, limit}`，必填 `type=artwork|novel`、正整数 `id`。输出 `{comments, pagination}`，以及可选 `total` / `access_control`（上游未提供时省略）。作品与小说使用各自当前的评论操作。opaque 数值 `comment_access_control` 保留为 `access_control.comment_access_control`——不推断 `can_comment`/`is_locked`。没有写操作专用的 `stamp_id`；没有单独的 `stamps` 工具。
