@@ -148,6 +148,7 @@ CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.
 
 | 目录 | 理由 |
 | --- | --- |
+| `sdk/pixiv` | `pixiv_test.go` 通过 `httptest` 调用私有 `getJSON` 验证凭据持久化与版本冲突，并调用 `credentials` 填充 access token 缓存，验证诊断输出的凭据隐私。 |
 | `internal/urlscheme` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
 | `internal/media/ugoira` | 保留的 native CI 测试观察私有解码、量化与 GIF/APNG 编码状态。 |
 | `scripts/release` | 保留的 release CI 测试运行命令包及私有发布/产物操作。 |

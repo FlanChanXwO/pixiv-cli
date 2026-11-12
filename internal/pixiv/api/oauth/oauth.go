@@ -36,13 +36,14 @@ type Client struct {
 	refreshToken string
 	// refreshTokenErr 只保存本地输入校验错误；Refresh 会直接返回它，确保 Cookie
 	// 不会因被清空而伪装成普通的“缺少 token”错误。
-	refreshTokenErr error
-	accessToken     string
-	userID          int64
-	userName        string
-	expiresAt       time.Time
-	log             *slog.Logger
-	mu              sync.RWMutex
+	refreshTokenErr        error
+	accessToken            string
+	userID                 int64
+	userName               string
+	expiresAt              time.Time
+	log                    *slog.Logger
+	preferConfiguredLogger bool
+	mu                     sync.RWMutex
 }
 
 // Config 提供 OAuth 客户端的连接配置；零值使用默认 HTTP client。
@@ -52,6 +53,8 @@ type Config struct {
 	OwnHTTPClient bool
 	// Logger 记录 token 轮换结果；nil 时不输出。
 	Logger *slog.Logger
+	// PreferConfiguredLogger 让失败日志使用 Logger，保留旧调用方默认的上下文路由。
+	PreferConfiguredLogger bool
 }
 
 // New 构造 OAuth client；refreshToken 只在本地校验，不发起网络请求。
@@ -63,11 +66,12 @@ func New(refreshToken string, cfg Config) *Client {
 	}
 	logger := cmp.Or(cfg.Logger, slog.New(slog.DiscardHandler))
 	return &Client{
-		httpClient:      httpClient,
-		ownsHTTP:        cfg.OwnHTTPClient,
-		refreshToken:    refreshToken,
-		refreshTokenErr: refreshTokenErr,
-		log:             logger,
+		httpClient:             httpClient,
+		ownsHTTP:               cfg.OwnHTTPClient,
+		refreshToken:           refreshToken,
+		refreshTokenErr:        refreshTokenErr,
+		log:                    logger,
+		preferConfiguredLogger: cfg.PreferConfiguredLogger,
 	}
 }
 
@@ -186,7 +190,7 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 		if err != nil {
 			attrs := []slog.Attr{slog.String(logging.AttrSDKOperation, operation), slog.String(logging.AttrError, err.Error())}
 			logger := c.log
-			if logging.HasLogger(ctx) {
+			if !c.preferConfiguredLogger && logging.HasLogger(ctx) {
 				logger = logging.From(ctx)
 			}
 			logger.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, details...)...)
@@ -216,7 +220,8 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 		return authResponse{}, api.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return authResponse{}, api.HTTPStatus(resp.StatusCode)
+		retryAfter, present := api.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
+		return authResponse{}, api.HTTPStatusWithRetryAfter(resp.StatusCode, retryAfter, present)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return authResponse{}, api.MalformedResponse()

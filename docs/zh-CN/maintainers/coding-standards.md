@@ -22,7 +22,7 @@
 | 不重复包名已经给出的上下文 | `session.PixivSession`、`filename.FilenameData` | `session.Pixiv`、`filename.Fields` |
 | 同一种能力只用一个名字 | `UsageError` 与 `Usage`、`PrintJSON` 与 `WriteJSON` 并存 | 统一为 `environment.Env` 上的一个名字 |
 
-以下补充规则只约束新增代码（2026-10-26 起）。现有名字不为此改名，SDK 公开名也不再为此破坏一次。
+以下规则约束新增代码（2026-10-26 起）。本轮 SDK 重写在 `sdk/` 中从头设计，全面采用这些命名规则。`internal/legacy/sdk/` 只供查阅上游行为，新 API 的结构与命名重新设计。其他现有名字按任务需要调整。SDK 的破坏性变更在重写完成时统一写入 changelog。
 
 - 新类型和字段不用 `Kind`、`Type`（作为万能区分字段时）、`Item`、`Object`、`Misc` 做名字或后缀，改用说明具体角色的词：`Phase`、`Mode`、`Source`、`Status`、`Registry`、`Store`。上游协议本身的字段名，例如 Pixiv 的 `type`，在映射层保持原样。
 - 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（`ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
@@ -31,6 +31,24 @@
 只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`、`account`）。
 
 例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivapi`、`fanboxapi`。`internal/cli` 组合根用 `fanboxauth` 与 Pixiv 的 `auth` 区分。CLI 组合根还将命令包 `internal/cli/config` 导入为 `configcmd`，与配置 owner `internal/config` 同时使用。其他情况不加 import 别名，也不写与包名相同的多余别名。
+
+## SDK 调用约定
+
+新 SDK 提供纯 API 调用和按页下载。调用方通过各包的 `Options` 传入连接设置，负责配置与账号选择，并通过 `CredentialStore` 提供 Pixiv 凭据存储。SDK 提供内存实现，自动刷新 token，并在按版本号比较保存成功后使用新凭据。
+
+| 约定 | 规则 |
+| --- | --- |
+| 上下文 | 所有会发网络请求的 SDK 操作，第一个参数都是 `ctx context.Context`。每次调用显式传入，结构体不持有 context，省去无 `ctx` 的变体。标准 `http.RoundTripper` 实现按接口要求从请求中取得 context。 |
+| 参数 | 必填参数直接传入；可选参数集中在一个 `Options` 或 `XxxRequest` 结构体中，零值使用默认设置。无参数的操作省略参数结构体。 |
+| 入口 | 每个产品包只有一个主入口 `New` 或 `Search`，省去 `OpenWith`、`NewWith` 等变体。Pixiv 的独立 PKCE 登录通过 `BeginLogin` 开始。 |
+| 日志 | 使用事件发生时的 slog 默认 logger，通过 `slog.DebugContext(ctx, …)` 等 Context 函数记录日志，入口省去 logger 参数。限速等待、重试过程等常规细节用 Debug；被限流后等待等真正的警告用 Warn。新 SDK 代码不直接 import `internal/logging`。 |
+| 错误 | 统一公开 `sdk.Error`，用 `Reason` 分类，支持 `sdk.ReasonOf` 和 `errors.As`。错误构造函数保持私有。 |
+| 注释 | `sdk/` 的全部注释与文档注释使用英文；每个导出符号都有文档注释。 |
+| 依赖 | 根模块的生产构建保持纯 Go，race 插桩按[开发流程](development.md#ugoira-go-encoder)执行。新 SDK 对 `tls-client` 的引用集中在 `sdk/internal/cloudflare`。 |
+
+过渡期间，Pixiv 使用模块级 `internal/pixiv/api` 协议层，保留其中的日志间接依赖。现有两份 Cloudflare 实现在调用方迁移后删除；新的 FANBOX 与 ascii2d SDK 共用 `sdk/internal/cloudflare`。架构与 SDK 参考页仍描述旧客户端及其 `Options.Logger`；新 API 以新包的 Go 文档为准。
+
+列表请求通过不透明的 `sdk.Cursor` 续页。消费当前页后保存 `page.Cursor.String()`，恢复时用 `sdk.ParseCursor` 解析，放回原列表请求的 `Cursor` 字段，并保持原查询条件与同一账号。空游标表示末页，将空游标传回列表入口会开始新查询。查询条件或账号不一致时，在内容请求前返回 `InvalidArgument`。当前页的 `Next(ctx)` 保留绑定；JSON 解码后的非末页通过原列表入口恢复绑定。
 
 ## 声明放置与文件命名
 

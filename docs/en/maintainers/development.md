@@ -148,6 +148,7 @@ Use at most one `x_test.go` beside its production owner `x.go`; platform-specifi
 
 | Directory | Reason |
 | --- | --- |
+| `sdk/pixiv` | `pixiv_test.go` drives private `getJSON` through `httptest` to verify credential persistence and revision conflicts, and `credentials` to populate the access cache for diagnostic-privacy coverage. |
 | `internal/urlscheme` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
 | `internal/media/ugoira` | Preserved native CI tests inspect private decoding, quantization and GIF/APNG encoding state. |
 | `scripts/release` | Preserved release CI tests exercise the command package and private release/artifact operations. |
