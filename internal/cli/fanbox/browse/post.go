@@ -25,11 +25,11 @@ import (
 
 type commandRunner struct {
 	env  environment.Env
-	open func() (*session.Fanbox, error)
+	open func(context.Context) (*session.Fanbox, error)
 }
 
 // Commands 返回 FANBOX 内容叶子命令；open 延迟到实际执行时才打开账号。
-func Commands(env environment.Env, open func() (*session.Fanbox, error)) []*cobra.Command {
+func Commands(env environment.Env, open func(context.Context) (*session.Fanbox, error)) []*cobra.Command {
 	a := commandRunner{env: env, open: open}
 	leaves := []*cobra.Command{
 		a.newCreatorsCommand(),

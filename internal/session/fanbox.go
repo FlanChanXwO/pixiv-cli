@@ -13,8 +13,7 @@ var nilClient = errors.New("fanbox account service returned a nil client")
 
 // AccountOpener 定义 account leaf 为 Fanbox 提供的最窄打开端口。
 //
-// account.Service 实现此接口，并负责默认账号选择以及通过其
-// LoadOptionsFunc 加载 public sdk/fanbox.Options。ProxyOverride 只作用于
+// FanboxAccounts 实现此接口，在调用方解析默认账号与连接选项。ProxyOverride 只作用于
 // 当前调用，不改变持久化配置或其他连接策略。
 type AccountOpener interface {
 	OpenClient(context.Context, *string) (*fanbox.Client, error)

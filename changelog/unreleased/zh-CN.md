@@ -4,6 +4,7 @@
 
 ## 变更
 
+- 本地账号改存 `auth.json`；首次初始化账号文件时自动迁移已有 `pixiv-cli.db`；已有有效的当前格式 `auth.json` 时直接使用，保持原有账号内容；旧数据库保留原位，内容与修改时间保持原样。
 - `pixiv config get/set/unset` 改用 TOML 路径，例如将 `download_path` 改为 `download.path`。命令可管理已声明的配置字段，包括服务网络、登录和默认账号设置。配置文件中的现有路径保持一致，废弃键继续被忽略。
 - 新建的 `config.toml` 使用带英文注释和默认值的模板，已有文件保持原样。
 - `pixiv config set reverse_search.saucenao_api_key VALUE` 支持通过参数传入 API key；`config get` 直接输出生效值，包括环境变量覆盖的值，原来的 `<redacted>` 隐藏行为已移除。

@@ -1,0 +1,44 @@
+package credential_test
+
+import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/stretchr/testify/require"
+)
+
+func TestAccountFormattingKeepsCredentialsPrivate(t *testing.T) {
+	const secret = "credential-canary"
+	cookie := credential.New([]byte(secret))
+	saved := account.Pixiv{UserID: 42, Username: "artist", Credential: cookie}
+	for _, value := range []any{saved, &saved, session.AccountWithToken{UserID: 42, Username: "artist", Default: true, Credential: cookie}, account.Fanbox{UserID: 42, DisplayName: "artist", CreatorID: "creator", Credential: cookie}, cookie} {
+		var output bytes.Buffer
+		for _, format := range []string{"%v", "%+v", "%#v"} {
+			fmt.Fprintf(&output, format, value)
+		}
+		for _, handler := range []slog.Handler{slog.NewTextHandler(&output, nil), slog.NewJSONHandler(&output, nil)} {
+			slog.New(handler).Info("credential", slog.Any("value", value))
+		}
+		for _, format := range []string{logging.FormatText, logging.FormatJSON} {
+			logger, err := logging.New(&output, "info", format)
+			require.NoError(t, err)
+			logger.Info("credential", slog.Any("value", value))
+		}
+		if _, isSecret := value.(credential.Secret); !isSecret {
+			require.Contains(t, output.String(), "artist")
+		}
+		// %#v 的切片类型名随值所在位置变化，只检查字节内容。
+		for _, leaked := range []string{secret, fmt.Sprint([]byte(secret)), strings.TrimPrefix(fmt.Sprintf("%#v", []byte(secret)), "[]byte"), base64.StdEncoding.EncodeToString([]byte(secret))} {
+			require.NotContains(t, output.String(), leaked)
+		}
+	}
+	require.Equal(t, slog.StringValue("<redacted>"), slog.Any("cookie", cookie).Value.Resolve())
+}

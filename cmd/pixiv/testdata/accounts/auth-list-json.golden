@@ -1,0 +1,24 @@
+{
+  "accounts": [
+    {
+      "user_id": 42,
+      "username": "fixture-artist",
+      "default": true,
+      "premium_status": true,
+      "schedulable": true
+    },
+    {
+      "user_id": 99,
+      "username": "fixture-second",
+      "default": false,
+      "schedulable": false
+    },
+    {
+      "user_id": 7,
+      "username": "fixture-third",
+      "default": false,
+      "schedulable": true,
+      "pool_frozen_until": "2100-01-01T00:00:00Z"
+    }
+  ]
+}

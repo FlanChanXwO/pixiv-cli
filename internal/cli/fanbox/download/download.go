@@ -24,13 +24,13 @@ import (
 
 type commandRunner struct {
 	env          environment.Env
-	open         func() (*session.Fanbox, error)
+	open         func(context.Context) (*session.Fanbox, error)
 	downloadPath func() (string, error)
 }
 
 // New 构造 `pixiv fanbox download` 命令。downloadPath 只在命令执行时读取，
 // 构造命令树不会打开配置文件。
-func New(env environment.Env, open func() (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
+func New(env environment.Env, open func(context.Context) (*session.Fanbox, error), downloadPath func() (string, error)) *cobra.Command {
 	a := commandRunner{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
 		Use:   "download SOURCE...",

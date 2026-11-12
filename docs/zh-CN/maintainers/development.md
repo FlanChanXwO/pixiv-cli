@@ -93,10 +93,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 - owner OAuth 授权与 Pixiv/FANBOX 凭据相互独立；一次性 owner secret 请私下保存（不要出现在测试输出或聊天中）。云 connector 需要公开 HTTPS 反向代理（[HTTP 启动](../cli-reference.md#mcp-http-server)）。
 - CLI 下载保留自己的设置；stdio 下载工具复用 CLI 设置；HTTP 从不暴露文件系统写入。
-- 状态位于 `~/.pixiv-cli`（`%USERPROFILE%\.pixiv-cli`）：`pixiv-cli.db`（Pixiv UID / FANBOX UID 为键；内嵌迁移到 schema v3，旧 v1 原地升级，已存在的后续列只记录不重放 DDL，未知的更新 schema fail closed）、`config.toml`、callback bridge、Release 检查缓存、callback helper。Unix `0700`/`0600`；Windows 首次创建继承父目录 ACL、替换时保留目标 ACL，不修改 DACL。
-
-> [!WARNING]
-> 新版本从不读取或删除旧的 `auth.json`。迁移方式：旧版本执行 `pixiv auth export --all --output <private bundle>`，新版本执行 `pixiv auth import < bundle.json`。
+- 状态位于 `~/.pixiv-cli`（`%USERPROFILE%\.pixiv-cli`）：`auth.json`（有序 Pixiv/FANBOX 账号、凭据、revision 与池状态）、`config.toml`、callback bridge、Release 检查缓存与 callback helper。首次访问账号时只读导入已有 `pixiv-cli.db`，或创建空账号文件；旧库保留原位，内容与修改时间保持原样。详见[账号存储契约](architecture.md#internalaccount)。Unix `0700`/`0600`；Windows 首次创建继承父目录 ACL、替换时保留目标 ACL，不修改 DACL。
 
 **配置** —— `pixiv config get/set/unset` 使用已声明的 TOML 叶子路径，例如 `download.path`、`logging.level`、`account_pool.enabled`、`reverse_search.network.proxy_url`；`--help` 列出可用键。`config get` 直接输出值（含 API key）。`internal/config` 先取 `Default()` 再原生解码 TOML，忽略未知文件键，并显式应用环境覆盖。首次创建时原样写出带英文注释的内嵌 `default.toml`，已有文件保持原样。新增设置时同步 Config 字段、默认值、字段映射/校验、模板与双语文档；遵循[配置契约](architecture.md#原生-toml-配置)和测试准入规则。
 
@@ -107,7 +104,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## 查找协议与日志实现
 
-- Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixiviapi-internalfanboxapi)。
+- Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixivapiinternalfanboxapi)。
 - `internal/cli/root.go` 经 `internal/logging` 创建 stderr logger；`internal/session/options.go` 与 `internal/cli/mcp/runtime.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。CLI 共用机制位于模块级 owner（`internal/environment`、`internal/pagination`、`internal/record`、`internal/session`、`internal/display`），`internal/cli` 只保留命令目录与根包组合文件。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
 - 本地排查使用 `pixiv config set logging.level debug`，需要结构化字段时再设置 `pixiv config set logging.format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
 
@@ -147,15 +144,13 @@ CI 选中测试的准确库存与保留规则见[编码规范](coding-standards.
 
 ### 测试文件布局
 
-生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。CLI 契约测试放在 `cmd/pixiv`，用临时 HOME、真实 SQLite 账号库与本地 HTTP 夹具通过 `cli.Run` 做黑盒测试；`internal/cli` 下没有测试文件。需要访问固定 Pixiv 主机的夹具使用 CONNECT 代理加 `SSL_CERT_FILE`，因为 CLI 不提供测试专用注入点。新测试使用外部包（`X_test`），CI 豁免文件按[手册测试规则](coding-standards.md#测试提交规则)保留所需布局。同包例外如下：
+生产 owner `x.go` 同目录最多对应一个 `x_test.go`；平台专用测试使用 `x_<platform>_test.go`。CLI 契约测试放在 `cmd/pixiv`，用临时 HOME、真实 `auth.json` 账号存储与本地 HTTP 夹具通过 `cli.Run` 做黑盒测试；`internal/cli` 下没有测试文件。需要访问固定 Pixiv 主机的夹具使用 CONNECT 代理加 `SSL_CERT_FILE`，因为 CLI 不提供测试专用注入点。新测试使用外部包（`X_test`），CI 豁免文件按[手册测试规则](coding-standards.md#测试提交规则)保留所需布局。同包例外如下：
 
 | 目录 | 理由 |
 | --- | --- |
 | `sdk/pixiv` | `pixiv_test.go` 通过 `httptest` 调用私有 `getJSON` 验证凭据持久化与版本冲突，并调用 `credentials` 填充 access token 缓存，验证诊断输出的凭据隐私。 |
-| `internal/pixiv/account` | `pixiv_test.go` 调用私有 `newAccountWithToken` 检查凭据格式化/slog 脱敏；轮换测试使用外部包。 |
 | `internal/urlscheme` | 保留的 native CI 测试观察私有 callback、handoff 与平台 installer 状态。 |
 | `internal/media/ugoira` | 保留的 native CI 测试观察私有解码、量化与 GIF/APNG 编码状态。 |
-| `internal/storage/database` | 保留的 Windows 点名 CI 测试沿用原 package 声明；其他数据库测试使用外部包。 |
 | `scripts/release` | 保留的 release CI 测试运行命令包及私有发布/产物操作。 |
 
 新增同包例外须在此记录具体私有符号与理由。用 `go list` 查看当前选中文件；分别设置 `GOOS=darwin`、`windows`、`linux` 核对平台差异：

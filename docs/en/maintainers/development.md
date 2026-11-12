@@ -93,10 +93,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 - The owner OAuth grant is separate from Pixiv/FANBOX credentials; keep the one-time owner secret private (never in test output or chat). Cloud connectors need a public HTTPS reverse proxy ([HTTP startup](../cli-reference.md#mcp-http-server)).
 - CLI downloads keep their own settings; stdio download tools reuse CLI settings; HTTP never exposes filesystem writes.
-- State lives in `~/.pixiv-cli` (`%USERPROFILE%\.pixiv-cli`): `pixiv-cli.db` (Pixiv UID / FANBOX UID keys; embedded migrations through schema v3, legacy v1 upgraded in place, later columns already present recorded without duplicate DDL, unknown newer schemas fail closed), `config.toml`, callback bridge, release-check cache, callback helper. Unix `0700`/`0600`; Windows inherits parent ACL on creation and keeps target ACL on replacement, no DACL changes.
-
-> [!WARNING]
-> New versions never read or delete legacy `auth.json`. Migrate with `pixiv auth export --all --output <private bundle>` on the old version, then `pixiv auth import < bundle.json` on the new one.
+- State lives in `~/.pixiv-cli` (`%USERPROFILE%\.pixiv-cli`): `auth.json` (ordered Pixiv/FANBOX accounts, credentials, revisions and pool state), `config.toml`, callback bridge, release-check cache and callback helper. First account access imports an existing `pixiv-cli.db` read-only or creates an empty account file; the old database stays in place with its bytes and modification time unchanged. See the [account storage contract](architecture.md#internalaccount). Unix `0700`/`0600`; Windows inherits parent ACL on creation and keeps target ACL on replacement, no DACL changes.
 
 **Configuration** — `pixiv config get/set/unset` uses the declared TOML leaf paths, such as `download.path`, `logging.level`, `account_pool.enabled` and `reverse_search.network.proxy_url`; `--help` lists them. `config get` prints values directly, including API keys. `internal/config` loads `Default()` before native TOML decoding, ignores unknown file keys and applies explicit environment overrides. On first creation it writes the embedded English-commented `default.toml` unchanged. Existing files are preserved. For a new setting, update the Config field, default, field mapping/validation, template and paired docs; follow the [configuration contract](architecture.md#native-toml-configuration) and test admission rules.
 
@@ -107,7 +104,7 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## Finding protocol and logging code
 
-- Pixiv protocol code lives in `internal/pixiv/api/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanbox/api/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixiviapi-internalfanboxapi).
+- Pixiv protocol code lives in `internal/pixiv/api/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanbox/api/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixivapi-internalfanboxapi).
 - `internal/cli/root.go` creates the stderr logger through `internal/logging`; `internal/session/options.go` and `internal/cli/mcp/runtime.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. CLI-wide mechanisms live at their module-level owners (`internal/environment`, `internal/pagination`, `internal/record`, `internal/session`, `internal/display`); `internal/cli` keeps only command directories and root composition files. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
 - For local diagnosis, run `pixiv config set logging.level debug`; add `pixiv config set logging.format json` when structured fields help. Settings apply on the next invocation. Text logs show the operation in the second bracket and other context as `key=value`; JSON logs keep `operation`, and MCP calls add `call_id`; data stays on stdout.
 
@@ -147,15 +144,13 @@ See the [coding standards](coding-standards.md#test-submission-rules) for the ex
 
 ### Test file layout
 
-Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. CLI contract tests live in `cmd/pixiv` and drive `cli.Run` as a black box with a temporary HOME, a real SQLite account store and local HTTP fixtures; `internal/cli` carries no test files. Fixtures that must reach the fixed Pixiv hosts use a CONNECT proxy plus `SSL_CERT_FILE`, because the CLI has no test-only injection point. New tests use the external package (`X_test`). Existing CI-exempt files retain their required layout under the [handbook's test rules](coding-standards.md#test-submission-rules). The same-package exceptions are:
+Use at most one `x_test.go` beside its production owner `x.go`; platform-specific cases use `x_<platform>_test.go`. CLI contract tests live in `cmd/pixiv` and drive `cli.Run` as a black box with a temporary HOME, a real `auth.json` account store and local HTTP fixtures; `internal/cli` carries no test files. Fixtures that must reach the fixed Pixiv hosts use a CONNECT proxy plus `SSL_CERT_FILE`, because the CLI has no test-only injection point. New tests use the external package (`X_test`). Existing CI-exempt files retain their required layout under the [handbook's test rules](coding-standards.md#test-submission-rules). The same-package exceptions are:
 
 | Directory | Reason |
 | --- | --- |
 | `sdk/pixiv` | `pixiv_test.go` drives private `getJSON` through `httptest` to verify credential persistence and revision conflicts, and `credentials` to populate the access cache for diagnostic-privacy coverage. |
-| `internal/pixiv/account` | `pixiv_test.go` calls private `newAccountWithToken` to check credential formatting/slog privacy; the rotation test uses the external package. |
 | `internal/urlscheme` | Preserved native CI tests inspect private callback, handoff and platform-installer state. |
 | `internal/media/ugoira` | Preserved native CI tests inspect private decoding, quantization and GIF/APNG encoding state. |
-| `internal/storage/database` | The preserved Windows named CI test retains its original package declaration; other database tests use the external package. |
 | `scripts/release` | Preserved release CI tests exercise the command package and private release/artifact operations. |
 
 Register any new same-package exception here with the exact private symbol and reason. Inspect selected files with `go list`; repeat under `GOOS=darwin`, `windows` and `linux` for platform differences:

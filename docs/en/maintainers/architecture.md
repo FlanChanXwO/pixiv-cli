@@ -30,7 +30,7 @@ flowchart LR
 | What a package may or may not do | [Package responsibilities](#package-responsibilities) |
 | MCP server, OAuth, media proxy, Gallery jobs | [MCP server architecture](architecture-mcp.md) |
 | Release trust root and signing | [Release assets and trust boundary](#release-assets-and-trust-boundary) |
-| Local state, config, path permissions | [internal/config](#internalconfig), [internal/storage](#internalstorageatomicfilefilelocksecretfile) |
+| Local state, config, path permissions | [internal/account](#internalaccount), [internal/config](#internalconfig), [internal/storage](#internalstorageatomicfilefilelocksecretfile) |
 | Hard constraint list | [Known constraints](#known-constraints) |
 
 ## Overall flow
@@ -45,12 +45,12 @@ flowchart TD
     H -->|fanbox| FB["FANBOX mode"]
     H -->|mcp| MCP["unified stdio (default) /<br/>Streamable HTTP (--port)"]
     CMD & FB & MCP --> RES["per-owner production resources"]
-    RES --> DB["~/.pixiv-cli/pixiv-cli.db<br/>(SQLite accounts)"]
+    RES --> DB["~/.pixiv-cli/auth.json<br/>(local accounts)"]
     RES --> CFG["~/.pixiv-cli/config.toml<br/>+ public env overrides"]
 ```
 
 - `auth import` handles direct token import or bundle restore; `auth export` the local secret snapshot. `pixiv fanbox mcp` is removed.
-- Windows paths use `%USERPROFILE%\.pixiv-cli\`. Legacy `auth.json` is never read automatically — users explicitly export/import a bundle.
+- Windows paths use `%USERPROFILE%\.pixiv-cli\`. On first account access, `auth.json` is created by importing the local `pixiv-cli.db` when present; the old database stays unchanged.
 - No anonymous Web fallback: content needs an authenticated local account or explicit credentials. A leftover `web_fallback_enabled` is an undeclared key and is ignored.
 
 ## Frontend source and embedded pages
@@ -115,8 +115,8 @@ One owner per concern; no other layer implements it again.
 | HTTP client, proxy, retry, Retry-After, request interval | `internal/pixiv/api`, `internal/fanbox/api` | once at construction | one transport field |
 | Signed-URL cache, resource host allowlist | `pixiv/api` resource transport | same | no field |
 | Resource release (`Close`, `CloseIdleConnections`) | creator; `lifecycle` provides `Lease` | returned close function or `Lease` | no extra field |
-| Database connection, file lock, transaction | `internal/storage/database` | `withLock` inside methods | repository interface only |
-| Local credential rotation persistence | `internal/pixiv/account` | new SDK: account-bound `CredentialStore`; legacy SDK: `session.Pixiv.Open` / `Use` | new client construction is offline; refreshed credentials are saved before content requests |
+| Account snapshot, file lock, atomic update | `internal/account` | `Store` methods lock and reread `auth.json` | one store dependency |
+| Local credential rotation persistence | `internal/account` | new SDK: account-bound `CredentialStore`; legacy SDK: `session.Pixiv.Open` / `Use` | new client construction is offline; refreshed credentials are saved before content requests |
 | Configuration | composition root, read once | named field value at construction | value field, no `settings.Store` |
 | stdout output (text, JSON, NDJSON) | CLI command layer | the command holds the writer | business code returns data |
 
@@ -154,13 +154,13 @@ New SDK events use the current slog default handler, including protocol events t
 
 ### Business sessions, accounts and pool
 
-- `internal/session` owns both account-bound SDK sessions: `session.Pixiv` aggregates `pixiv/account` (local accounts, login completion, default, credential identity/rotation, management) and `pixiv/account/pool` (selection, freezing, Gate, safe replay, error semantics); `session.Fanbox` aggregates `fanbox/account` and client lifecycle. The two live in `pixiv.go` and `fanbox.go` of one package; FANBOX sessions share no type or lifecycle with Pixiv refresh tokens and have no pool strategy.
-- During S11, the current SQLite account owner supplies new `sdk/pixiv` clients through `OpenSDKClient` and legacy clients through its existing open methods. Its `CredentialStore.Load` reads the latest saved revision; `CompareAndSwap` uses the repository's revision comparison and returns `false, nil` on conflict. OAuth runs between store calls, outside storage locks; the SDK reloads after a conflict and propagates save failures before content access. `Client.Credentials(ctx)` uses this same gate and persistence flow to prepare credentials for account validation without fetching content. The final `internal/account`/auth.json integration depends on S04 landing.
+- `internal/account` owns ordered Pixiv/FANBOX account snapshots, credential persistence, login completion, the rotation gate, read-session cache and Pixiv pool selection/freezing/safe replay. It receives its directory, network options and pool strategy from callers; default-account configuration stays in `internal/session`.
+- `session.Local` assembles the shared store, `Accounts`, `FanboxAccounts`, `Pixiv`, `Fanbox` and read sessions. `Accounts`/`FanboxAccounts` combine local snapshots with `internal/config` defaults and provide the command-facing summaries, import/export and restore orchestration. Pixiv clients use either SDK generation; FANBOX clients retain `internal/legacy/sdk`; FANBOX credentials and lifecycle remain independent of Pixiv and have no pool strategy.
+- `Store.OpenSDKClient` supplies new `sdk/pixiv` clients; `OpenAccountClient` retains legacy clients. The account-bound `CredentialStore.Load` reads the latest saved revision and pins the account creation time; `CompareAndSwap` compares both before saving, returning `false, nil` on a revision conflict. OAuth runs outside storage locks; the SDK reloads after a conflict and propagates save failures before content access. `Client.Credentials(ctx)` prepares credentials through the same flow without fetching content.
 - `session.PixivOptions` supplies matching connection settings for both client generations. `Local.ExecuteSDK` shares the existing pool and gate and provides the selected UID separately: `Client.UserID()` may still be zero before credential loading. Resolve an omitted target inside each attempt; MCP fetch callbacks use `SDKUserID`. Stdio `ResolveSDKAccount` preserves the original request for pool scheduling; HTTP uses the persisted `ResolveAccount` snapshot. Bound SDK objects remain inside the operation.
 - S11 migrates auth, whoami, artwork/user detail, user (including delegated user search), follow and bookmark CLI paths and the corresponding account/artwork/user/bookmark/related MCP handlers, including novel branches and aggregates inside those handlers. Independent novel, artwork/novel search, timeline and comment entry points, media/download, FANBOX and reverse search retain legacy clients for S12–S15. The full SDK reference rewrite remains with S16; current APIs are documented in the [SDK package GoDoc](../../../sdk/pixiv/pixiv.go).
-- Sessions depend only on leaf-module Ports, the config snapshot, protocol-agnostic shared modules and the public SDK — not on `internal/storage/database` concretely; the SDK never imports them. No CLI/MCP filters, records, schemas or output adaptation inside sessions.
-- An explicit nonzero `Request.UserID` pins reads and writes to that account even with the pool on; open/business errors never switch accounts; requests without a UID keep pool scheduling; the CLI default is unchanged.
-- Native TOML `Config`, `config.toml` path/get/set/unset, the default template and app-managed paths live in `internal/config`; month truncation in `internal/pixiv/searchfilter`. CLI/MCP use the sessions via owner-local Seams and MCP runtime `SDKPorts`.
+- `Request.Selection` uses `SelectionFixed` with a positive UID or `SelectionPool`. Fixed reads/writes keep that identity; safe uncommitted reads may replay through the pool. The caller reads `enabled`/`strategy` from `internal/config`; `account` imports no config package and resolves no CLI default. With the pool disabled, session resolves the configured default or the first stored account.
+- CLI/MCP use owner-local ports and MCP runtime `SDKPorts`; filtering, records, schemas and output rendering stay in their adapters. SDK packages keep local account storage outside their dependency graph.
 
 **Login relay** — `internal/loginrelay` owns both the pure renderer, which consumes `frontend` templates/CSS without a CLI, store, browser or listener dependency, and the reusable HTTP handler/session: accepts the OAuth session validator and delivers one callback; never listens, exchanges or persists. CLI keeps listener/TLS/terminal. A host mux may mount it with its prefix stripped; production MCP mounts it at canonical base + `/pixiv-login/`, behind the same Host/Origin checks but authenticated by hand-off proof, not MCP bearer. Escaped prefixes are preserved in URLs and dispatch. A cancelled relay session returns HTTP 410 and rechecks cancellation before accepting a validated callback. The callback allowlist, start-response wire type and result URL header live in `loginrelay` and are reused by the CLI relay and desktop helper.
 
@@ -204,21 +204,22 @@ flowchart LR
 - It loads a regular file or HTTP(S) source into one private snapshot, hashes it and removes it afterwards. Deliberate source policy permits any readable regular file and private, loopback or link-local URLs; under single-owner OAuth authorize only trusted connectors — paths are the MCP server's filesystem and URLs use the server network. Only source kind/hash, safe provider summaries/errors, domain evidence and canonical `artwork`/`user` records are publishable.
 - Three network surfaces: standard source/SauceNAO client, dedicated ascii2d browser client, FlareSolverr JSON control client. The service proxy may override only ascii2d; a command-level override applies to both native clients; the standard client otherwise follows the global route. The ascii2d UA pairs with the `Chrome_146` TLS profile and matching Chromium hints (omitted for non-Chromium UAs). FlareSolverr's upstream proxy is used only by browser `sessions.create`; control traffic stays independent; the image always uses native ascii2d multipart. Solver state is process/client-scoped, not persisted.
 
-### `internal/storage/database`
+### `internal/account`
 
-- Use GORM with `github.com/ncruces/go-sqlite3` and its `gormlite` driver; keep SQL-file migrations and the ledger. Do not use `AutoMigrate`, `gorm.Model`, soft deletion, or implicit timestamps. The SQL pool has one connection: close every `Rows` and scan every `QueryRow` before issuing another query. SQL logging stays disabled to protect credentials.
-- SQLite authority for local account state: schema, migration ledger and repository for `pixiv-cli.db`; identity/credentials keyed by `user_id`; Pixiv rotation and FANBOX session replacement use `credential_revision` compare-and-swap.
-- Forward-only migrations through schema v3; legacy v1 databases upgrade with v2/v3 changes; final columns already present in this tree's initial schema are recognized without replaying DDL. Legacy `auth.json` and `account_pool.accounts` are not in the startup migration path.
-- Private DB/journal permissions (Unix `0700`/`0600`). Auth export reads only the default, an exact UID or all accounts — no environment tokens, refresh, network or mutation.
-- **Lock:** owners coordinate initialization, short account/pool transactions and complete snapshot reads through the private `pixiv-cli.db.lock` sidecar (no credentials, no account data change; never covers OAuth or content requests; external SQL writers and older processes don't participate). Non-cancellable contexts keep native waiting; cancellable ones poll the same non-blocking lock every 10 ms and wake immediately on cancellation, closing the handle. No overall deadline or transaction replay. The account owner cancels its lifecycle before taking the session mutex so lock waits during watcher validation don't block shutdown.
-- Migration from old CLIs: old version `pixiv auth export --all --output <private bundle>`, new version `pixiv auth import < bundle.json`; failures return the reason; the old file is not auto-deleted.
+- `Store` owns `auth.json` with `schema: "pixiv-cli.auth"` and `version: 1`. Ordered `pixiv`/`fanbox` arrays hold product-local UID identities, plaintext credentials and positive `revision` values. Array order is display order; new accounts append, updates keep their position. Pixiv `premium` is nullable, timestamps are UTC, and `pixiv_pool_last_user_id` records the single last pool choice (0 means no history).
+- First access to a missing file, or valid JSON with a different/missing schema, runs migration 1. It imports `pixiv-cli.db` when present or writes an empty account file. Invalid JSON, a damaged own-schema document and a newer version return errors while preserving the file content. A valid current document is authoritative on later reads.
+- Migration uses only `database/sql` and the existing `ncruces/go-sqlite3` driver in read-only mode. It checks `application_id=0x50495843`, schema versions 1–3 and a continuous migration ledger matching `user_version`. Import preserves account order, UIDs, names, revisions, premium and pool state. The old database's bytes and modification time stay unchanged; it is retained in place.
+- Every read and update holds `auth.json.lock` and rereads the file. Updates validate the entire new snapshot and use `storage/secretfile` for atomic private replacement. Migration additionally holds `pixiv-cli.db.lock`, always after the JSON lock. Locks cover local snapshots and writes; OAuth and content requests run outside them. Cancellable lock waits use the existing `storage/filelock` cancellation behavior.
+- Credential rotation performs OAuth outside the lock, then compares the stored revision and creation time and atomically saves the new token with an incremented revision. A conflict discards that client and reopens using the newer saved credential; a persistence failure returns an error before handing out a client.
+- `ReadSessions` checks revision and creation time before cache reuse, before publishing a rotated client and before each content request. Detected replacement/removal invalidates that generation; metadata-only changes keep it. The creation time distinguishes a deleted and recreated UID. Account cache coherence uses these reads, with no filesystem watcher.
+- Unix account directories/files use `0700`/`0600`; Windows atomic replacement follows the shared storage ACL policy. Credential values remain redacted in ordinary JSON, fmt and slog; only file encoding and explicit credential flows expand them. Auth export reads stored credentials locally, without token refresh or config changes.
 
 ### `internal/config`
 
 | Store | Holds |
 | --- | --- |
-| `pixiv-cli.db` | Account identity and credentials (`pixiv_account` / `fanbox_account`), file `0600` |
-| `config.toml` | Global keys including `pixiv.auth.default_user_id` and `fanbox.auth.default_user_id`; Unix `0600`. Without a default, the account owner selects the first by `sort_order` |
+| `auth.json` | Ordered Pixiv/FANBOX account identity, credentials, revisions and pool state; Unix `0600` |
+| `config.toml` | Global keys including `pixiv.auth.default_user_id` and `fanbox.auth.default_user_id`; Unix `0600`. Without a default, session selects the first account in array order |
 
 #### Native TOML configuration
 
@@ -229,7 +230,7 @@ flowchart LR
 - `values.go` maps TOML leaf paths to `Config` field pointers and owns field validation. `Keys()` supplies the CLI help list. `config get/set/unset` accepts these paths, including service and default-account settings. `get` prints the effective value directly, including API keys; `set` accepts a value argument or stdin and validates the target field.
 - `document.go` uses `tomledit` to edit the target value, preserving its comments and other keys, including obsolete keys. It handles ordinary sections, dotted keys and inline tables, then checks TOML semantics and the edited solver group before writing. Unrelated invalid settings can still be repaired individually. `unset` retains section comments even when a section becomes empty.
 - `default.toml` is embedded with `go:embed` and written unchanged on first creation. Its English comments include optional service/solver/account examples. The template-decoding test compares it with `Default()`.
-- Default-account read/write methods remain here. Standalone readers validate the selected UID without validating unrelated settings; `Config` represents the optional UID fields as `*int64`. `AccountPool` contains only `Enabled` and `Strategy`; schedulable membership, freeze state and the scheduling marker stay with the account/database owner.
+- Default-account read/write methods remain here. Standalone readers validate the selected UID without validating unrelated settings; `Config` represents the optional UID fields as `*int64`. `AccountPool` contains only `Enabled` and `Strategy`; schedulable membership, freeze state and the scheduling marker stay with `internal/account`.
 - `paths.go` owns app-managed paths, `AppDataDirName` and Unix private permission constants. `HTTPClient` creates an independent transport for the selected proxy, with an empty value selecting direct access. Config parsing has no storage-package dependency: the composition root injects `secretfile.ConfigFiles` through `FileStore`, reusing the existing private-file write protocol.
 
 To add a setting, update its `Config` field and native tag, `Default()`, the CLI field mapping and relevant validation, the embedded template and both public locale references. Add explicit environment assignments only for supported variables. Use the existing precedence/empty-value test where applicable under the [test submission rules](coding-standards.md#test-submission-rules).
@@ -377,5 +378,5 @@ Protocol-free helpers live with their callers: positive-integer parsing and stdi
 - `internal/pixiv/api`, its `oauth` subpackage, and resource transport use the caller/SDK HTTP client; the default client is per SDK client with no fixed whole-request timeout; cancellation/deadline flow through context; explicit clients keep the caller's policy.
 - `pixiv mcp` defaults to stdio; explicit `--port` enables HTTP and needs initialized owner state; `pixiv` alone shows help. Configure HTTP with `--port`, `--host`, `--base-url`, not removed address settings ([startup](../cli-reference.md#mcp-http-server)).
 - No persistent account import/export MCP tool; session-scoped MCP auth tools and wire contracts unchanged.
-- Credentials sit unencrypted (BLOB) in SQLite `pixiv-cli.db`; Unix DB/journal `0600`. Anyone with the user's file access can read them; automatic backups are prohibited.
+- Credentials sit unencrypted in `auth.json`; Unix account files use `0600`. Anyone with the user's file access can read them; automatic backups are prohibited. The retained legacy database also contains plaintext credentials.
 - `config.toml` first creation writes the embedded commented template with defaults. Later edits change only the target key.

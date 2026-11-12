@@ -10,10 +10,11 @@ usually the answer. Never mask an error with retries or silent fallbacks.
   `references/install.md`; otherwise do not install it or guess a method.
 - Config/auth file locations: `pixiv config path` prints the config file path
   and creates a baseline config if missing; the authoritative credential store
-  is the sibling `pixiv-cli.db`. The new runtime never reads or migrates a
-  legacy `auth.json`; use the old CLI to run `pixiv auth export --all --output
-  <private bundle>`, then use shell redirection or a pipe to run
-  `pixiv auth import < bundle.json`. Never read credential-store contents directly.
+  is the sibling `auth.json`. First account access imports an existing
+  `pixiv-cli.db` read-only or creates an empty account file. The old database
+  remains unchanged. Invalid JSON, damaged own-schema data and newer versions
+  report errors and preserve the file content. Never read credential-store
+  contents directly; use a private export bundle for authorized transfers.
 
 ## Authentication
 

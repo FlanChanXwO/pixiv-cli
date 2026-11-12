@@ -45,7 +45,7 @@ func ProxyOverride(cmd *cobra.Command) (*string, error) {
 }
 
 // Open 为当前命令打开一个 FANBOX 客户端租约；session 延迟解析，构造命令树时不打开账号库。
-func Open(ctx context.Context, open func() (*session.Fanbox, error), cmd *cobra.Command) (*lifecycle.Lease[*fanbox.Client], error) {
+func Open(ctx context.Context, open func(context.Context) (*session.Fanbox, error), cmd *cobra.Command) (*lifecycle.Lease[*fanbox.Client], error) {
 	proxyOverride, err := ProxyOverride(cmd)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func Open(ctx context.Context, open func() (*session.Fanbox, error), cmd *cobra.
 }
 
 // UseClient 让租约只覆盖一次命令回调；回调和关闭的错误都会保留并合并返回。
-func UseClient(cmd *cobra.Command, open func() (*session.Fanbox, error), use func(*fanbox.Client) error) error {
+func UseClient(cmd *cobra.Command, open func(context.Context) (*session.Fanbox, error), use func(*fanbox.Client) error) error {
 	proxyOverride, err := ProxyOverride(cmd)
 	if err != nil {
 		return err
