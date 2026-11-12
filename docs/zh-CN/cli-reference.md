@@ -426,6 +426,8 @@ flowchart LR
 
 ### 本地账号迁移
 
+如果旧版 `auth.json` 是唯一账号来源，升级前先用该版本执行 `pixiv auth export --all --output accounts.pxauth`。保管好私密导出文件，升级后先执行 `pixiv auth import < accounts.pxauth` 恢复账号，再使用其他账号命令。
+
 首次访问账号时，缺失的 `auth.json` 或 schema 缺失/不同的合法 JSON 会被 `pixiv-cli.db` 的只读导入结果替换；无旧库时生成空账号文件。旧数据库保持原样。非法 JSON、损坏的 `pixiv-cli.auth` 数据与更新版本均报错并保留原文。
 
 ### 环境变量
