@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -28,8 +29,8 @@ func (t pixivTools) novelBookmarkDetailHandler(ctx context.Context, in novelBook
 	if in.NovelID <= 0 {
 		return outputs.BookmarkDetailError(errors.New("novel_id must be a positive integer"))
 	}
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelBookmarkDetail, error) {
-		return client.NovelBookmark(ctx, pixiv.NovelBookmarkRequest{NovelID: in.NovelID})
+	result, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelBookmarkDetail, error) {
+		return client.Novel(in.NovelID).Bookmark(ctx)
 	})
 	if err != nil {
 		return outputs.BookmarkDetailError(err)
@@ -51,9 +52,13 @@ func (t pixivTools) novelContentHandler(ctx context.Context, in novelContentIn) 
 	if in.NovelID <= 0 {
 		return outputs.NovelContentError(errors.New("novel_id must be a positive integer"))
 	}
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
-		return client.NovelContent(ctx, pixiv.NovelContentRequest{NovelID: in.NovelID})
+	result, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.NovelContent, error) {
+		return client.Novel(in.NovelID).Content(ctx)
 	})
+	if sdk.ReasonOf(err) == sdk.ContentUnavailable {
+		// 保留既有 MCP 正文不可用诊断，同时沿用新 SDK 的错误分类与原因链。
+		err = &sdk.Error{Operation: "pixiv:NovelContent", Reason: sdk.ContentUnavailable, Message: "novel content is unsupported by the v1 App API", Err: err}
+	}
 	if err != nil {
 		return outputs.NovelContentError(err)
 	}
@@ -74,13 +79,17 @@ func (t pixivTools) novelDetailHandler(ctx context.Context, in novelDetailIn) (*
 	if in.NovelID <= 0 {
 		return outputs.DetailError(errors.New("novel_id must be a positive integer"))
 	}
-	result, err := toolhost.Read(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (pixiv.Novel, error) {
-		return client.Novel(ctx, pixiv.NovelRequest{NovelID: in.NovelID})
+	novelRecord, err := toolhost.ReadSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) (record.Record, error) {
+		result, err := client.Novel(in.NovelID).Get(ctx)
+		if err != nil {
+			return record.Record{}, err
+		}
+		novel, err := record.NovelOutput(result)
+		if err != nil {
+			return record.Record{}, err
+		}
+		return record.RecordFromNovel(novel)
 	})
-	if err != nil {
-		return outputs.DetailError(err)
-	}
-	novelRecord, err := record.RecordFromNovel(result)
 	if err != nil {
 		return outputs.DetailError(err)
 	}
@@ -106,20 +115,31 @@ func (t pixivTools) novelSeriesHandler(ctx context.Context, in novelSeriesIn) (*
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	var series pixiv.NovelSeries
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.NovelSeries(ctx, pixiv.NovelSeriesRequest{SeriesID: in.SeriesID, Cursor: cursor})
+	var series legacysdk.NovelSeries
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		result, err := client.NovelSeries(in.SeriesID).Get(ctx, pixiv.NovelSeriesOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
 		if cursor.IsZero() {
-			series = result.Series
+			series, err = record.NovelSeriesOutput(result)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
 		}
-		return result.Novels.Items, result.Novels.Next, nil
+		novels := make([]legacysdk.Novel, len(result.Novels.Items))
+		for i, novel := range result.Novels.Items {
+			novels[i], err = record.NovelOutput(novel)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return novels, result.Novels.Cursor, nil
 	})
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
+
 	recordItems, err := record.FromNovels(items)
 	if err != nil {
 		return outputs.NovelSeriesError(err)

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -44,15 +46,12 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 			Text:    fmt.Sprintf("Created comment on novel %d.", in.ID),
 		}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				result, err := client.PostNovelComment(ctx, pixiv.PostNovelCommentRequest{
-					NovelID: in.ID,
-					Comment: in.Comment,
-				})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.Novel(in.ID).PostComment(ctx, pixiv.CommentOptions{Text: in.Comment})
 				if err != nil {
 					return err
 				}
-				out.CommentID = result.CommentID
+				out.CommentID = result.ID
 				return nil
 			})
 		})
@@ -64,15 +63,12 @@ func (t pixivTools) commentCreateHandler(ctx context.Context, in commentCreateIn
 		Text:     fmt.Sprintf("Created comment on artwork %d.", in.ID),
 	}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			result, err := client.PostArtworkComment(ctx, pixiv.PostArtworkCommentRequest{
-				ArtworkID: in.ID,
-				Comment:   in.Comment,
-			})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.Artwork(in.ID).PostComment(ctx, pixiv.CommentOptions{Text: in.Comment})
 			if err != nil {
 				return err
 			}
-			out.CommentID = result.CommentID
+			out.CommentID = result.ID
 			return nil
 		})
 	})
@@ -98,8 +94,8 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 			Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
 		}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				return client.DeleteNovelComment(ctx, pixiv.DeleteNovelCommentRequest{CommentID: in.CommentID})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				return client.NovelComment(in.CommentID).Delete(ctx)
 			})
 		})
 	}
@@ -110,8 +106,8 @@ func (t pixivTools) commentDeleteHandler(ctx context.Context, in commentDeleteIn
 		Text:      fmt.Sprintf("Deleted comment %d.", in.CommentID),
 	}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: in.CommentID})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			return client.ArtworkComment(in.CommentID).Delete(ctx)
 		})
 	})
 }
@@ -147,16 +143,12 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 			Text:    fmt.Sprintf("Replied to comment %d on novel %d.", in.ParentCommentID, in.ID),
 		}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				result, err := client.ReplyNovelComment(ctx, pixiv.ReplyNovelCommentRequest{
-					NovelID:         in.ID,
-					Comment:         in.Comment,
-					ParentCommentID: in.ParentCommentID,
-				})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.Novel(in.ID).Comment(in.ParentCommentID).Reply(ctx, pixiv.CommentOptions{Text: in.Comment})
 				if err != nil {
 					return err
 				}
-				out.CommentID = result.CommentID
+				out.CommentID = result.ID
 				return nil
 			})
 		})
@@ -168,16 +160,12 @@ func (t pixivTools) commentReplyHandler(ctx context.Context, in commentReplyIn) 
 		Text:     fmt.Sprintf("Replied to comment %d on artwork %d.", in.ParentCommentID, in.ID),
 	}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			result, err := client.ReplyArtworkComment(ctx, pixiv.ReplyArtworkCommentRequest{
-				ArtworkID:       in.ID,
-				Comment:         in.Comment,
-				ParentCommentID: in.ParentCommentID,
-			})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.Artwork(in.ID).Comment(in.ParentCommentID).Reply(ctx, pixiv.CommentOptions{Text: in.Comment})
 			if err != nil {
 				return err
 			}
-			out.CommentID = result.CommentID
+			out.CommentID = result.ID
 			return nil
 		})
 	})
@@ -214,16 +202,12 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 			Text:    fmt.Sprintf("Added stamp comment to novel %d.", in.ID),
 		}
 		return outputs.RunMutation(&out, func() error {
-			return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-				result, err := client.StampNovelComment(ctx, pixiv.StampNovelCommentRequest{
-					NovelID: in.ID,
-					Comment: in.Comment,
-					StampID: in.StampID,
-				})
+			return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+				result, err := client.Novel(in.ID).PostComment(ctx, pixiv.CommentOptions{Text: in.Comment, StampID: in.StampID})
 				if err != nil {
 					return err
 				}
-				out.CommentID = result.CommentID
+				out.CommentID = result.ID
 				return nil
 			})
 		})
@@ -235,16 +219,12 @@ func (t pixivTools) commentStampHandler(ctx context.Context, in commentStampIn) 
 		Text:     fmt.Sprintf("Added stamp comment to artwork %d.", in.ID),
 	}
 	return outputs.RunMutation(&out, func() error {
-		return toolhost.Write(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
-			result, err := client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
-				ArtworkID: in.ID,
-				Comment:   in.Comment,
-				StampID:   in.StampID,
-			})
+		return toolhost.WriteSDK(t.app, ctx, func(ctx context.Context, client *pixiv.Client) error {
+			result, err := client.Artwork(in.ID).PostComment(ctx, pixiv.CommentOptions{Text: in.Comment, StampID: in.StampID})
 			if err != nil {
 				return err
 			}
-			out.CommentID = result.CommentID
+			out.CommentID = result.ID
 			return nil
 		})
 	})
@@ -274,13 +254,13 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 		return result, out, nil
 	}
 	metadata := commentMetadata{}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
 		if in.Type == kindNovel {
-			page, err = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: in.ID, Cursor: cursor})
+			page, err = client.Novel(in.ID).Comments(ctx, pixiv.CommentsOptions{Cursor: cursor})
 		} else {
-			page, err = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: in.ID, Cursor: cursor})
+			page, err = client.Artwork(in.ID).Comments(ctx, pixiv.CommentsOptions{Cursor: cursor})
 		}
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -289,14 +269,21 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 			metadata = commentMetadata{}
 		}
 		metadata.Set(page)
-		return page.Page.Items, page.Page.Next, nil
+		comments := make([]legacysdk.Comment, len(page.Page.Items))
+		for i, comment := range page.Page.Items {
+			comments[i], err = record.CommentOutput(comment)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return comments, page.Page.Cursor, nil
 	})
 	if err != nil {
 		result, out, _ := outputs.CommentsError(err)
 		return result, out, nil
 	}
 	if items == nil {
-		items = []pixiv.Comment{}
+		items = []legacysdk.Comment{}
 	}
 	out := outputs.Comments{Comments: items, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more), Total: metadata.Total, AccessControl: metadata.Access}
 	return outputs.CommentsResult(out, false, ""), out, nil
