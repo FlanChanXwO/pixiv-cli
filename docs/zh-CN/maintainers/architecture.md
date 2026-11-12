@@ -110,13 +110,13 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 
 | 关注点 | 归属层 | 传入方式 | 业务对象中的形态 |
 | --- | --- | --- | --- |
-| 日志、诊断事件 | `pixiv/api`、`fanbox/api`（请求与内部决策）；执行边界（最终结果） | SDK：构造时经 `Options.Logger`；内部：`context.Context` | 无字段 |
+| 日志、诊断事件 | `pixiv/api`、`fanbox/api`（请求与内部决策）；执行边界（最终结果） | 新 SDK：当前 slog 默认 logger；旧 SDK：`Options.Logger`；内部调用信息：`context.Context` | 无 logger 字段 |
 | 取消、超时、调用关联 | 执行边界 | `context.Context` | 方法参数 |
 | HTTP client、代理、重试、Retry-After、请求间隔 | `internal/pixiv/api`、`internal/fanbox/api` | 构造时传入一次 | 一个 transport 字段 |
 | 签名 URL 缓存、资源域名白名单 | `pixiv/api` 资源传输层 | 同上 | 无字段 |
 | 资源释放（`Close`、`CloseIdleConnections`） | 创建者；`lifecycle` 包提供 `Lease` | 构造函数返回关闭函数或 `Lease` | 无额外字段 |
 | 数据库连接、文件锁、事务 | `internal/storage/database` | 方法内部 `withLock` | 业务只看到 repository 接口 |
-| 本地凭据轮换的持久化 | `internal/pixiv/account` | `session.Pixiv.Open` / `Use` 经账号端口调用 | CLI/MCP 回调在持久化成功后取得 client |
+| 本地凭据轮换的持久化 | `internal/pixiv/account` | 新 SDK：按账号绑定的 `CredentialStore`；旧 SDK：`session.Pixiv.Open` / `Use` | 新 client 离线构造；刷新后的凭据先保存，再发内容请求 |
 | 配置 | 组合根读取一次 | 以具名字段的值传入构造函数 | 值字段，不持有 `settings.Store` |
 | stdout 输出（文本/JSON/NDJSON） | CLI 命令层 | 命令持有 writer | 业务返回数据 |
 
@@ -127,35 +127,40 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 | 位置 | 负责 |
 | --- | --- |
 | `internal/logging/` | 文本 handler 输出 `[HH:MM:SS.mmm] [operation] [LEVEL] [上级目录/文件:行号]`，按终端决定是否着色，转义不可打印文本并缩进多行值；JSON handler 带 `source`；ctx 调用信息与共享属性键也在本包；内部恢复点经 `logging.From(ctx)` 取得 logger  SDK 创建位置通过私有字段传递；传输属性只提取 typed cause 的 `op`、`net`、`address` 与已知 `errno` 名，不读取原始错误文本。 |
-| `internal/cli/root.go` | 经 `internal/logging` 创建 stderr logger 和调用上下文；JSON 以 ERROR、文本以 DEBUG 记录 `Command failed`，存在 SDK 错误时附加私有 `origin`；保留 stderr 错误输出 |
-| `internal/cli/mcp/runtime.go`、`internal/session/options.go` | 将同一 logger 传给两个 SDK 的 `Options.Logger` 和 MCP 端口 |
+| `internal/cli/root.go` | 经 `internal/logging` 创建 stderr logger 和调用上下文，启动时用 `slog.SetDefault` 安装，命令清理完成后恢复原默认值；JSON 以 ERROR、文本以 DEBUG 记录 `Command failed`，旧 SDK 错误存在私有 `origin` 时附加该字段；保留 stderr 错误输出 |
+| `internal/cli/mcp/runtime.go`、`internal/session/options.go` | 将同一 logger 传给旧 SDK 的 `Options.Logger` 和 MCP 端口；新 Pixiv SDK 选项只携带连接设置 |
 | `internal/mcpserver/toolrun/toolrun.go` | 共用的 `Scope` / `AddTool` 包装，绑定工具名与调用 ID；错误或 `isError` 结果记录一次受控的失败摘要 |
 | `internal/pixiv/api/`（含 `oauth/`）、`internal/fanbox/api/` | 持有构造时传入的 logger，在实际请求与决策处记录结果 |
 
-SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；业务 `Client` 不持有 logger。`operation` 表示 CLI 命令路径或 MCP 工具名，`call_id` 区分并发工具调用。CLI/MCP 日志只写 stderr，数据 stdout 与 JSON-RPC 通道保持纯净；公开 SDK 的 nil logger 保持静默。
+新 SDK 事件使用当前 slog 默认 handler，协议事件经现有适配器转交。旧 SDK 方法通过 `logging.WithOperation` 登记 `sdk_operation`，nil logger 保持静默。新 SDK 错误省略旧版私有 `origin`，部分事件也没有旧版 `sdk_operation`。`operation` 表示 CLI 命令路径或 MCP 工具名，`call_id` 区分并发工具调用，`source` 标明日志位置。CLI/MCP 日志只写 stderr，数据 stdout 与 JSON-RPC 通道保持纯净。
 
 ### 共享机制
 
 | 包 | 负责 | 不得 |
 | --- | --- | --- |
 | `internal/version` | linker 注入的 `Version`（默认 `dev`；只有 `dev` 构建拒绝自更新） | — |
-| `internal/record` | CLI/MCP 共享的稳定 Pixiv record 投影：保留 SDK 模型未知字段，固定 `id`/`type`/`url`，JSON 规范化、版本元数据清理、基于 record 字段的本地筛选；CLI 的 NDJSON 消费与逐行诊断、列表 JSON 暂存和合并后的 Pixiv/FANBOX 列表输出 | 依赖 CLI、MCP 或适配器；变成杂物箱（MCP schema 与输出信封留在 `internal/mcpserver/pixiv/internal/{records,outputs}`） |
+| `internal/record` | CLI/MCP 共享的稳定 Pixiv record 投影：新绑定对象投影为现有输出值，固定 `id`/`type`/`url`，JSON 规范化、版本元数据清理、基于 record 字段的本地筛选；CLI 的 NDJSON 消费与逐行诊断、列表 JSON 暂存和合并后的 Pixiv/FANBOX 列表输出 | 依赖 CLI、MCP 或适配器；变成杂物箱（MCP schema 与输出信封留在 `internal/mcpserver/pixiv/internal/{records,outputs}`） |
 | `internal/environment` | 只供 CLI 的执行环境：流、stdin codec、flag 绑定、usage 标记、生命周期标注 | 产品协议或账号语义；导入 `internal/mcpserver` |
 | `internal/display` | 只供 CLI 的终端文本：实体列表行、详情卡片、`用户名 (UID)`、上游转义；并入原 `plaintext` | JSON/NDJSON 输出；只服务一个命令的渲染 |
 | `internal/pixiv/searchfilter` | 作品本地分级/内容类型规范化，客户端侧 `x_restrict` 与类型匹配，隐藏原始值的 cursor 上下文 | 把分级映射为未确认的上游 `x_restrict` 参数；持有 client、凭据或适配器（字段可用性与已确认的 wire 参数由各命令负责） |
 | `internal/lifecycle` | 与协议无关的生命周期、`Lease`、`Attempt`、`CloseState` | 负责账号选择、凭据或重放策略 |
 | `internal/pagination` | 单流与有序聚合流的逻辑分页：筛选先于全局 skip/limit 预算，`OneBatch` 在首个匹配批次停止，批次截断通过来源位置 checkpoint 续读；`StreamState` = 当前流 + 各流 cursor（owner 与查询/账号/子类型绑定一起编码） | 产品语义 |
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
-| `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count、origin、op、net、address、errno；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 只接受一个 `Options.Logger`，nil 时静默 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
+| `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count、origin、op、net、address、errno；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 路由遵循上方日志入口 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
-**账号池读取：** `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。命令 owner 负责流式 NDJSON、分页与部分交付；`pagination` 和 `lifecycle` 负责共享遍历与重放机制。MCP 工具不使用这层包装，而是直接接收 `Execute`/`OpenLease` 端口。
+**账号池读取：** 旧路径的 `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。新 CLI 路径使用 `Local.ExecuteSDK`；MCP 经 `SDKPorts.ExecuteSDK` 使用 `ReadSDK`、`WriteSDK`、`SDKReadExecutor` 与新收集器，`WriteSDK` 在进入回调时提交。命令 owner 负责流式 NDJSON、分页与部分交付；JSON 结果暂存到成功后输出，可见的文本/NDJSON 输出会提交当前尝试。`pagination` 接受两代 cursor，安全重放前清除未提交结果。旧 MCP 消费方保留 `Execute`/`Read`/`OpenLease` 端口。
+
+**输出过渡：** `record/pixiv_output.go` 与 `pixiv_user_output.go` 在本次尝试内把新 SDK 对象投影为旧输出 DTO。`pixiv_resource.go` 保留媒体工具消费的旧 `ResourceRef` 身份，可用 URL 和请求头留在 SDK 绑定对象内。`pixiv/target` 经新 SDK 解析 URL，再投影为现有目标描述符。S16 将这些旧输出、资源和目标类型与剩余消费者一并迁移。
 
 ### 业务会话、账号与账号池
 
 - `internal/session` 同时拥有两个按账号打开 SDK 会话的对象：`session.Pixiv` 聚合 `pixiv/account`（本地账号、登录完成、默认账号、凭据身份/轮换、管理）与 `pixiv/account/pool`（选择、冻结、Gate、安全重放、相关错误语义）；`session.Fanbox` 聚合 `fanbox/account` 与 client 生命周期。两者位于同一个包的 `pixiv.go` 与 `fanbox.go`；FANBOX 会话与 Pixiv refresh token 不共享类型或生命周期，也没有账号池策略。
+- S11 期间，当前 SQLite 账号 owner 经 `OpenSDKClient` 交出新 `sdk/pixiv` client，经原有打开方法交出旧 client。其 `CredentialStore.Load` 读取最新保存的 revision，`CompareAndSwap` 使用仓库的 revision 比较，冲突时返回 `false, nil`。OAuth 在两次存储调用之间执行，存储锁已释放；SDK 冲突后重新加载，保存失败会在内容请求前传播。`Client.Credentials(ctx)` 复用相同的门与持久化流程，为账号校验准备凭据。最终 `internal/account`/auth.json 接入依赖 S04 落地。
+- `session.PixivOptions` 为两代 client 装配一致的连接设置。`Local.ExecuteSDK` 复用现有账号池与 gate，单独交出已选 UID；加载凭据前，`Client.UserID()` 仍可能为零。缺省目标在每次尝试内解析，MCP fetch 回调使用 `SDKUserID`。stdio 的 `ResolveSDKAccount` 保留原始请求用于池调度，HTTP 使用持久化的 `ResolveAccount` 快照。SDK 绑定对象在本次操作内使用。
+- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。独立小说/作品搜索/小说搜索/动态/评论入口、媒体/下载、FANBOX 与反向搜图保留旧 client，随 S12–S15 迁移。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
 - 会话对象只依赖叶模块 Port、配置快照、与协议无关的共享模块与公开 SDK——不依赖 `internal/storage/database` 的具体实现；SDK 从不导入它们。会话中没有 CLI/MCP 的筛选、record、schema 或输出适配。
 - 显式非零 `Request.UserID` 把读写固定到该账号，即使账号池开启；打开/业务错误从不切换账号；无 UID 的请求保留账号池调度；CLI 默认账号不变。
-- 原生 TOML `Config`、`config.toml` 的 path/get/set/unset、默认模板与应用管理路径位于 `internal/config`；按月截断位于 `internal/pixiv/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。`internal/account` 已删除，不保留别名。
+- 原生 TOML `Config`、`config.toml` 的 path/get/set/unset、默认模板与应用管理路径位于 `internal/config`；按月截断位于 `internal/pixiv/searchfilter`。CLI/MCP 经 owner-local Seam 与 MCP runtime `SDKPorts` 使用会话对象。
 
 **登录 relay** —— `internal/loginrelay` 同时负责纯渲染器（消费 `frontend` 模板/CSS，不依赖 CLI、账号库、浏览器或 listener）与可复用的 HTTP handler/session：接收 OAuth 会话校验器并交付一次回调；从不监听、交换或持久化。CLI 保留 listener/TLS/终端编排。宿主 mux 可剥离前缀后挂载；生产 MCP 将其挂在 canonical base + `/pixiv-login/`，位于相同的 Host/Origin 检查之后，但以 hand-off 证明而非 MCP bearer 认证。转义前缀在 URL 与分发中保留。已取消的 relay 会话返回 HTTP 410，并在接受已校验回调前再次检查取消。回调 allowlist、启动响应 wire 类型与结果 URL header 位于 `loginrelay`，由 CLI relay 与桌面 helper 复用。
 
@@ -172,10 +177,11 @@ SDK 业务方法只用 `logging.WithOperation` 在 ctx 登记 `sdk_operation`；
 | `internal/pixiv/api/resource.go` | 签名 URL 缓存、媒体域名白名单、资源读取与重定向检查 |
 | `internal/pixiv/api/oauth/` | PKCE、授权码交换、refresh token 轮换与 token 状态 |
 | `internal/fanbox/api/` | FANBOX 会话 Cookie、原生传输、身份缓存、Cloudflare 挑战与 solver、媒体地址缓存和 URL 策略 |
-| `sdk/pixiv/` | `artwork.go`、`artwork_search.go`、`novel.go`、`user.go`、`bookmark.go`、`comment.go`、`mutation.go` 中的端点行为；`cursor.go` 的游标绑定；`models.go` 的公开模型；`artwork_wire.go` 与 `response.go` 的响应结构 |
+| `sdk/pixiv/` | 按账号绑定的引用与对象；`credentials.go`、`refresh.go` 中的凭据加载/刷新/持久化；对应领域文件中的端点请求、响应校验与绑定查询的分页 |
+| `internal/legacy/sdk/` | 待迁移消费者使用的 client 与输出 DTO；过渡期保留旧 cursor 和资源契约 |
 | `sdk/fanbox/` | `creator.go`、`post.go` 中的路由、请求、响应校验与映射；`pagination.go` 的分页；`resource.go` 的公开资源操作 |
 
-两个产品的 SDK `Client` 各持有一个协议 client。`RequiredList` / `RequiredObject` 共享字段存在性解码：`null` 为 Present true、Valid false；缺失字段不调用解码器。调用方处理解码错误、检查 Valid，并在复用外层响应结构前重置状态；领域层继续检查响应完整性。
+旧产品 client 各持有一个协议 client，新 Pixiv 请求从当前凭据快照构造协议 client。`RequiredList` / `RequiredObject` 共享字段存在性解码：`null` 为 Present true、Valid false；缺失字段不调用解码器。调用方处理解码错误、检查 Valid，并在复用外层响应结构前重置状态；领域层继续检查响应完整性。
 
 ### reverse-search service 例外
 
