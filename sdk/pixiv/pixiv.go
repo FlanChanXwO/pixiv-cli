@@ -3,6 +3,7 @@
 // [New] accepts a caller-owned [CredentialStore] and connection [Options]. The
 // client reads current credentials before refreshing, performs OAuth outside
 // storage locks, and saves through a revision comparison before using new tokens.
+// [Client.Credentials] prepares OAuth state for account validation without fetching content.
 // [NewMemoryCredentials] supplies storage for applications that need no file.
 // [Client.Novel] constructs a reference without I/O; [NovelRef.Get] loads its
 // metadata and [UserRef.Novels] lists an author's novels. [NovelRef.Content]

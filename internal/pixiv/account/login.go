@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // LoginService 将浏览器交互同 public SDK 的一次性 LoginSession 连接起来。应用层不再
@@ -14,9 +14,9 @@ type LoginService struct {
 }
 
 // LoginRequest 保存 login 的本地请求值；连接策略由调用方转换为 public SDK
-// 的 LoginOptions，业务服务不读取配置或创建 proxy transport。
+// 的 Options，业务服务不读取配置或创建 proxy transport。
 type LoginRequest struct {
-	Options pixiv.LoginOptions
+	Options pixiv.Options
 }
 
 // LoginStart 保存一次浏览器登录的不透明 SDK session 与授权 URL。

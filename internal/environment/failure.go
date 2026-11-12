@@ -9,7 +9,8 @@ import (
 	"unicode"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -76,27 +77,36 @@ func ErrorText(err error) (text string) {
 	if errors.Is(err, context.Canceled) {
 		return "operation canceled; run the command again when ready"
 	}
-	var failure *sdk.Error
-	if !errors.As(err, &failure) {
-		return err.Error()
-	}
-	switch failure.Reason {
-	case sdk.Unauthorized, sdk.CredentialsExpired:
-		login := "pixiv auth login"
-		if failure.Product == "fanbox" {
+	var current *sdk.Error
+	var legacy *legacysdk.Error
+	var reason sdk.Reason
+	var detail string
+	var httpStatus int
+	login := "pixiv auth login"
+	switch {
+	case errors.As(err, &current):
+		reason, detail, httpStatus = current.Reason, current.Message, current.HTTPStatus
+	case errors.As(err, &legacy):
+		reason, detail, httpStatus = sdk.Reason(legacy.Reason), legacy.Detail, legacy.HTTPStatus
+		if legacy.Product == "fanbox" {
 			login = "pixiv fanbox auth import"
 		}
+	default:
+		return err.Error()
+	}
+	switch reason {
+	case sdk.Unauthorized, sdk.CredentialsExpired:
 		return fmt.Sprintf("not logged in; run %q", login)
-	case sdk.InvalidArgument, sdk.InvalidCursor:
-		if failure.HTTPStatus == 0 {
-			if failure.Detail == "" {
+	case sdk.InvalidArgument, sdk.Reason(legacysdk.InvalidCursor):
+		if httpStatus == 0 {
+			if detail == "" {
 				return "invalid argument; check the command's --help"
 			}
-			return "invalid argument: " + failure.Detail + "; check the command's --help"
+			return "invalid argument: " + detail + "; check the command's --help"
 		}
 	}
-	if failure.HTTPStatus != 0 {
-		return fmt.Sprintf("upstream returned HTTP %d (%s); check service availability and account access before trying again", failure.HTTPStatus, http.StatusText(failure.HTTPStatus))
+	if httpStatus != 0 {
+		return fmt.Sprintf("upstream returned HTTP %d (%s); check service availability and account access before trying again", httpStatus, http.StatusText(httpStatus))
 	}
 	return err.Error()
 }

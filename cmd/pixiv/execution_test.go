@@ -50,11 +50,12 @@ func TestCommandFailureLogging(t *testing.T) {
 				} else {
 					require.Contains(t, text, "Command failed")
 					require.Contains(t, text, "call_id")
-					require.Regexp(t, `origin["=:]+[" ]*pixiv/pixiv.go:[0-9]+`, text)
 					if format == "json" {
 						require.Contains(t, text, `"level":"ERROR"`)
+						require.Regexp(t, `"source":\{[^\n]+/cli/root.go"`, text)
 					} else {
 						require.Contains(t, text, "[DBUG]")
+						require.Regexp(t, `\[cli/root.go:[0-9]+\]`, text)
 					}
 				}
 			})

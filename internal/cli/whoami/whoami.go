@@ -12,8 +12,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +27,7 @@ func New(env environment.Env, current func(context.Context) (*account.AccountSum
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			account, err := current(cmd.Context())
 			if err != nil {
-				if sdk.IsReason(err, sdk.Unauthorized) {
+				if sdk.ReasonOf(err) == sdk.Unauthorized {
 					return errors.New(`not logged in; run "pixiv auth login"`)
 				}
 				return err

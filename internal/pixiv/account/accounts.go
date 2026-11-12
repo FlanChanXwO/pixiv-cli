@@ -7,8 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // Service 提供 Pixiv 账号导入、选择、检查、凭据轮换与 client 打开。
@@ -38,7 +39,7 @@ type AccountSummary struct {
 // OpenClient 选择默认账号，执行一次 refresh rotation，持久化 rotated
 // credentials，并返回持有新 access token 的 Client。rotation 持久化失败时
 // 不发起任何内容请求。
-func (s *Service) OpenClient(ctx context.Context, options pixiv.Options) (*pixiv.Client, error) {
+func (s *Service) OpenClient(ctx context.Context, options legacysdk.Options) (*legacysdk.Client, error) {
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -48,17 +49,17 @@ func (s *Service) OpenClient(ctx context.Context, options pixiv.Options) (*pixiv
 
 // OpenAccountClient 打开指定账号（不改变默认），执行一次 refresh rotation 并
 // 持久化 rotated credentials。
-func (s *Service) OpenAccountClient(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
+func (s *Service) OpenAccountClient(ctx context.Context, userID int64, options legacysdk.Options) (*legacysdk.Client, error) {
 	session, err := s.openReadSession(ctx, userID, options)
 	return session.Client, err
 }
 
-func (s *Service) openReadSession(ctx context.Context, userID int64, options pixiv.Options) (ReadSession, error) {
+func (s *Service) openReadSession(ctx context.Context, userID int64, options legacysdk.Options) (ReadSession, error) {
 	account, err := s.repo.GetPixiv(ctx, userID)
 	if err != nil {
 		return ReadSession{}, fmt.Errorf("select pixiv account: %w", err)
 	}
-	client, credentials, err := pixiv.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
+	client, credentials, err := legacysdk.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
 	if err != nil {
 		return ReadSession{}, err
 	}
@@ -76,26 +77,20 @@ func (s *Service) ImportAccount(ctx context.Context, refreshToken string, setDef
 	if refreshToken == "" {
 		return AccountSummary{}, errors.New("pixiv refresh token is required")
 	}
-	client, credentials, err := pixiv.OpenWith(ctx, refreshToken, options)
+	store, err := pixiv.NewMemoryCredentials(pixiv.NewCredentials(refreshToken))
+	if err != nil {
+		return AccountSummary{}, err
+	}
+	client, err := pixiv.New(store, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer client.CloseIdleConnections()
-	account := New(credentials.UserID, credentials.Username, []byte(credentials.RefreshToken()))
-	account.CredentialRevision = 1
-	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
-		return AccountSummary{}, fmt.Errorf("save pixiv account: %w", err)
-	}
-	hasDefault, err := s.hasDefault()
+	credentials, err := client.Credentials(ctx)
 	if err != nil {
-		return AccountSummary{}, fmt.Errorf("read pixiv default account: %w", err)
+		return AccountSummary{}, err
 	}
-	if setDefault || !hasDefault {
-		if err := s.setDefaultUserID(credentials.UserID); err != nil {
-			return AccountSummary{}, fmt.Errorf("set pixiv default account: %w", err)
-		}
-	}
-	return s.summary(ctx, credentials.UserID)
+	return s.completeLogin(ctx, credentials, setDefault, false)
 }
 
 // ListAccounts 返回按 sort_order 排列的 Pixiv 账号。
@@ -206,30 +201,31 @@ func (s *Service) CheckAccount(ctx context.Context, userID int64, options pixiv.
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	client, credentials, err := pixiv.OpenWith(ctx, string(account.RefreshTokenCopy()), options)
+	client, err := pixiv.New(savedCredentials{repository: s.repo, userID: account.UserID}, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer client.CloseIdleConnections()
-	if err := rotateCredential(ctx, s.repo, account.UserID, credentials.UserID, account.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
-		return AccountSummary{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
+	credentials, err := client.Credentials(ctx)
+	if err != nil {
+		return AccountSummary{}, err
 	}
-	return AccountSummary{UserID: credentials.UserID, Username: credentials.Username}, nil
+	return AccountSummary{UserID: credentials.UserID, Username: credentials.DisplayName}, nil
 }
 
 // RefreshAccount 刷新指定账号的凭据并强制读取当前 profile，把会员资格快照写回
 // database，最后返回账号摘要。
 func (s *Service) RefreshAccount(ctx context.Context, userID int64, options pixiv.Options) (AccountSummary, error) {
-	client, err := s.OpenAccountClient(ctx, userID, options)
+	client, err := s.OpenSDKClient(ctx, userID, options)
 	if err != nil {
 		return AccountSummary{}, err
 	}
 	defer client.CloseIdleConnections()
-	detail, err := client.CurrentUser(ctx, pixiv.CurrentUserRequest{})
+	detail, err := client.CurrentUser(ctx)
 	if err != nil {
 		return AccountSummary{}, err
 	}
-	premium := detail.Profile.IsPremium
+	premium := detail.IsPremium
 	if err := s.setPremiumStatus(ctx, userID, &premium); err != nil {
 		return AccountSummary{}, err
 	}
@@ -237,7 +233,7 @@ func (s *Service) RefreshAccount(ctx context.Context, userID int64, options pixi
 }
 
 func (s *Service) completeLogin(ctx context.Context, credentials pixiv.Credentials, setDefault, preserveDefault bool) (AccountSummary, error) {
-	account := New(credentials.UserID, credentials.Username, []byte(credentials.RefreshToken()))
+	account := New(credentials.UserID, credentials.DisplayName, credentials.RefreshToken.Copy())
 	account.CredentialRevision = 1
 	if err := s.repo.SavePixivCredential(ctx, account); err != nil {
 		return AccountSummary{}, fmt.Errorf("save pixiv account: %w", err)
@@ -411,7 +407,7 @@ func (s *Service) selectedUserID(ctx context.Context) (int64, error) {
 		}
 		return userID, nil
 	}
-	return 0, sdk.NewError("pixiv", "auth", sdk.Unauthorized, sdk.WithDetail("no pixiv account is authenticated"))
+	return 0, &sdk.Error{Operation: "pixiv:auth", Reason: sdk.Unauthorized, Message: "no pixiv account is authenticated"}
 }
 
 // defaultUserID 返回当前默认账号：优先显式配置，否则回退到 sort_order 最小的
@@ -483,7 +479,7 @@ func rotateCredential(ctx context.Context, repository interface {
 // verifyAccountIdentity 在轮换或内容请求前拒绝认证 UID 与所选本地账号不一致的凭据。
 func verifyAccountIdentity(selectedUserID, authenticatedUserID int64) error {
 	if selectedUserID <= 0 || authenticatedUserID <= 0 || selectedUserID != authenticatedUserID {
-		return sdk.NewError("pixiv", "OpenAccountClient", sdk.LocalStateError, sdk.WithDetail("credential identity does not match selected account"))
+		return &sdk.Error{Operation: "pixiv:OpenAccountClient", Reason: sdk.LocalStateError, Message: "credential identity does not match selected account"}
 	}
 	return nil
 }

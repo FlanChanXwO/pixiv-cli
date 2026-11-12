@@ -13,7 +13,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
@@ -567,7 +566,7 @@ func pixivPostRedirectReturnTo(rawURL string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if !pixiv.IsOfficialOAuthStartURL(target.String()) {
+	if !strings.EqualFold(target.Scheme, "https") || !strings.EqualFold(target.Host, "app-api.pixiv.net") || target.Path != "/web/v1/users/auth/pixiv/start" {
 		return "", false
 	}
 	return returnTo, true
