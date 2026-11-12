@@ -36,13 +36,12 @@ type Options struct {
 
 type commandRunner struct {
 	env        environment.Env
-	runner     session.Runner
 	executeSDK session.SDKExecutor
 }
 
 // New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
-func New(env environment.Env, exec session.Executor, executeSDK session.SDKExecutor) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), executeSDK: executeSDK}
+func New(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, executeSDK: executeSDK}
 	options := Options{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
@@ -215,27 +214,14 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		}
 		return display.PrintArtworkDetail(a.env.Out, result)
 	case string(target.NamespaceNovel):
-		if opts.content {
-			result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.NovelContent, error) {
-				return client.NovelContent(ctx, legacysdk.NovelContentRequest{NovelID: id})
-			})
+		var result legacysdk.Novel
+		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+			novel, err := client.Novel(id).Get(ctx)
 			if err != nil {
-				return err
+				return false, err
 			}
-			if ndjson || (jsonOut && opts.input.Mode() == environment.RecordMode) {
-				value, err := record.RecordFromNovelContent(result)
-				if err != nil {
-					return err
-				}
-				return a.writeRecord(value)
-			}
-			if jsonOut {
-				return a.env.PrintJSON(result)
-			}
-			return display.PrintNovelContent(a.env.Out, result)
-		}
-		result, err := session.Read(a.runner, ctx, request, func(ctx context.Context, client *legacysdk.Client) (legacysdk.Novel, error) {
-			return client.Novel(ctx, legacysdk.NovelRequest{NovelID: id})
+			result, err = record.NovelOutput(novel)
+			return false, err
 		})
 		if err != nil {
 			return err

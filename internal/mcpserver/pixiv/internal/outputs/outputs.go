@@ -104,10 +104,10 @@ func TrendingTagsError(err error) (*mcp.CallToolResult, TrendingTags, error) {
 
 // Comments 承载评论工具的输出；Total 与 AccessControl 可能缺失。
 type Comments struct {
-	Comments      []legacysdk.Comment             `json:"comments"`
-	Pagination    toolhost.PaginationOut          `json:"pagination"`
-	Total         *int64                          `json:"total,omitempty"`
-	AccessControl *legacysdk.CommentAccessControl `json:"access_control,omitempty"`
+	Comments      []legacysdk.Comment         `json:"comments"`
+	Pagination    toolhost.PaginationOut      `json:"pagination"`
+	Total         *int64                      `json:"total,omitempty"`
+	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
 }
 
 // CommentsResult 生成评论摘要，message 为空时报告返回条数。
@@ -126,7 +126,7 @@ func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
 
 // NovelContent 承载 novel_content 工具的输出。
 type NovelContent struct {
-	Content legacysdk.NovelContent `json:"content"`
+	Content pixiv.NovelContent `json:"content"`
 }
 
 // NovelContentResult 生成小说正文的文本摘要。
@@ -136,7 +136,7 @@ func NovelContentResult(novelID int64) *mcp.CallToolResult {
 
 // NovelContentError 返回 isError 的正文结果，blocks 为空数组。
 func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
-	out := NovelContent{Content: legacysdk.NovelContent{Blocks: []legacysdk.NovelBlock{}}}
+	out := NovelContent{Content: pixiv.NovelContent{Blocks: []pixiv.NovelBlock{}}}
 	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: errorMessage(err)}}}, out, nil
 }
 

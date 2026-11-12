@@ -8,10 +8,11 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -27,8 +28,8 @@ type novelOptions struct {
 
 // NewNovel 构造 `pixiv novel` 命令组，其 search 叶子与 `pixiv search --type novel`
 // 共用同一套执行逻辑。
-func NewNovel(env environment.Env, exec session.Executor, reverseSearch ReverseSearchPort) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec, reverseSearch: reverseSearch}
+func NewNovel(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())
 	a.env.BindNoInput(cmd)
@@ -97,16 +98,26 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 		}
 	}
 	word := strings.Join(args, " ")
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, searchErr := client.SearchNovels(ctx, pixiv.SearchNovelsRequest{
-			Word: word, Target: target, Sort: pixiv.SortMode(opts.sortMode), Duration: period, Cursor: cursor,
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		result, searchErr := client.SearchNovels(ctx, word, pixiv.NovelSearchOptions{
+			Target: target, Sort: pixiv.SortMode(opts.sortMode), Duration: period, Cursor: cursor,
 		})
 		if searchErr != nil {
 			return nil, sdk.Cursor{}, searchErr
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Novel, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.NovelOutput(item)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunNovels(cmd.Context(), a.runner, request, plan, record.FormatOf(jsonOut, opts.ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[legacysdk.Novel]{
+		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+	}, fetch)
 }
 
 // resolveNovelSearchBy 将小说搜索 target 限定为 v1 合同支持的三种值，避免复用

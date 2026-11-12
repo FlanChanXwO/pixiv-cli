@@ -11,12 +11,13 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -42,14 +43,13 @@ type stampsOptions struct {
 }
 
 type commandRunner struct {
-	env    environment.Env
-	runner session.Runner
-	exec   session.Executor
+	env  environment.Env
+	exec session.SDKExecutor
 }
 
 // New 构造 `pixiv comment` 命令及其增删改子命令；ID 统一由请求解析器确定作品或小说。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec), exec: exec}
+func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "comment ID",
@@ -173,22 +173,22 @@ func (a commandRunner) runCreate(cmd *cobra.Command, arg string, opts mutationOp
 	if err != nil {
 		return err
 	}
-	var result pixiv.CommentMutationResult
-	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	var result *pixiv.CommentRef
+	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		switch resolved.TargetKind {
 		case target.NamespaceArtwork:
-			result, err = client.PostArtworkComment(ctx, pixiv.PostArtworkCommentRequest{ArtworkID: resolved.ID, Comment: opts.comment})
+			result, err = client.Artwork(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment})
 		case target.NamespaceNovel:
-			result, err = client.PostNovelComment(ctx, pixiv.PostNovelCommentRequest{NovelID: resolved.ID, Comment: opts.comment})
+			result, err = client.Novel(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment})
 		default:
-			return errors.New("comment target must be artwork or novel")
+			return true, errors.New("comment target must be artwork or novel")
 		}
-		return err
+		return true, err
 	})
 	if err != nil {
 		return err
 	}
-	return a.writeMutationResult(jsonOut, result)
+	return a.writeMutationResult(jsonOut, result.ID)
 }
 
 func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOptions) error {
@@ -207,14 +207,14 @@ func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOp
 	if err != nil {
 		return err
 	}
-	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		switch opts.typ {
 		case string(target.NamespaceArtwork):
-			return client.DeleteArtworkComment(ctx, pixiv.DeleteArtworkCommentRequest{CommentID: resolved.ID})
+			return true, client.ArtworkComment(resolved.ID).Delete(ctx)
 		case string(target.NamespaceNovel):
-			return client.DeleteNovelComment(ctx, pixiv.DeleteNovelCommentRequest{CommentID: resolved.ID})
+			return true, client.NovelComment(resolved.ID).Delete(ctx)
 		default:
-			return errors.New("type must be one of artwork, novel")
+			return true, errors.New("type must be one of artwork, novel")
 		}
 	})
 	if err != nil {
@@ -245,30 +245,22 @@ func (a commandRunner) runReply(cmd *cobra.Command, arg string, opts mutationOpt
 	if err != nil {
 		return err
 	}
-	var result pixiv.CommentMutationResult
-	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	var result *pixiv.CommentRef
+	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		switch resolved.TargetKind {
 		case target.NamespaceArtwork:
-			result, err = client.ReplyArtworkComment(ctx, pixiv.ReplyArtworkCommentRequest{
-				ArtworkID:       resolved.ID,
-				Comment:         opts.comment,
-				ParentCommentID: opts.parentCommentID,
-			})
+			result, err = client.Artwork(resolved.ID).Comment(opts.parentCommentID).Reply(ctx, pixiv.CommentOptions{Text: opts.comment})
 		case target.NamespaceNovel:
-			result, err = client.ReplyNovelComment(ctx, pixiv.ReplyNovelCommentRequest{
-				NovelID:         resolved.ID,
-				Comment:         opts.comment,
-				ParentCommentID: opts.parentCommentID,
-			})
+			result, err = client.Novel(resolved.ID).Comment(opts.parentCommentID).Reply(ctx, pixiv.CommentOptions{Text: opts.comment})
 		default:
-			return errors.New("comment target must be artwork or novel")
+			return true, errors.New("comment target must be artwork or novel")
 		}
-		return err
+		return true, err
 	})
 	if err != nil {
 		return err
 	}
-	return a.writeMutationResult(jsonOut, result)
+	return a.writeMutationResult(jsonOut, result.ID)
 }
 
 func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOptions) error {
@@ -291,30 +283,22 @@ func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOpt
 	if err != nil {
 		return err
 	}
-	var result pixiv.CommentMutationResult
-	err = a.runner.Write(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) error {
+	var result *pixiv.CommentRef
+	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		switch resolved.TargetKind {
 		case target.NamespaceArtwork:
-			result, err = client.StampArtworkComment(ctx, pixiv.StampArtworkCommentRequest{
-				ArtworkID: resolved.ID,
-				Comment:   opts.comment,
-				StampID:   opts.stampID,
-			})
+			result, err = client.Artwork(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment, StampID: opts.stampID})
 		case target.NamespaceNovel:
-			result, err = client.StampNovelComment(ctx, pixiv.StampNovelCommentRequest{
-				NovelID: resolved.ID,
-				Comment: opts.comment,
-				StampID: opts.stampID,
-			})
+			result, err = client.Novel(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment, StampID: opts.stampID})
 		default:
-			return errors.New("comment target must be artwork or novel")
+			return true, errors.New("comment target must be artwork or novel")
 		}
-		return err
+		return true, err
 	})
 	if err != nil {
 		return err
 	}
-	return a.writeMutationResult(jsonOut, result)
+	return a.writeMutationResult(jsonOut, result.ID)
 }
 
 func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
@@ -333,8 +317,20 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	stamps, err := session.Read(a.runner, cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) ([]pixiv.Stamp, error) {
-		return client.Stamps(ctx, pixiv.StampsRequest{})
+	var stamps []legacysdk.Stamp
+	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+		items, err := client.Stamps(ctx)
+		if err != nil {
+			return false, err
+		}
+		stamps = make([]legacysdk.Stamp, len(items))
+		for i, item := range items {
+			stamps[i], err = record.StampOutput(item)
+			if err != nil {
+				return false, err
+			}
+		}
+		return false, nil
 	})
 	if err != nil {
 		return err
@@ -387,8 +383,8 @@ func commentWorkContract(operation string) target.Contract {
 	return target.Contract{
 		Operation: operation,
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceComment, BareReferenceKind: pixiv.ReferenceKindArtwork},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceComment, BareReferenceKind: pixiv.ReferenceKindNovel},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceComment, BareReferenceKind: legacysdk.ReferenceKindArtwork},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceComment, BareReferenceKind: legacysdk.ReferenceKindNovel},
 		},
 	}
 }
@@ -403,11 +399,11 @@ func commentDeleteContract() target.Contract {
 	}
 }
 
-func (a commandRunner) writeMutationResult(jsonOut bool, result pixiv.CommentMutationResult) error {
+func (a commandRunner) writeMutationResult(jsonOut bool, commentID int64) error {
 	if jsonOut {
-		return a.env.PrintJSON(commentMutationOut{CommentID: result.CommentID})
+		return a.env.PrintJSON(commentMutationOut{CommentID: commentID})
 	}
-	_, err := fmt.Fprintf(a.env.Out, "Posted comment %d\n", result.CommentID)
+	_, err := fmt.Fprintf(a.env.Out, "Posted comment %d\n", commentID)
 	return err
 }
 
@@ -459,17 +455,17 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 
-	return a.exec(cmd.Context(), request, func(ctx context.Context, client *pixiv.Client) (bool, error) {
+	return a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		var metadata commentPageMetadata
-		var comments []pixiv.Comment
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]pixiv.Comment, sdk.Cursor, error) {
+		var comments []legacysdk.Comment
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Comment, sdk.Cursor, error) {
 			var page pixiv.CommentPage
 			var pageErr error
 			switch resolved.TargetKind {
 			case target.NamespaceArtwork:
-				page, pageErr = client.ArtworkComments(ctx, pixiv.ArtworkCommentsRequest{ArtworkID: resolved.ID, Cursor: cursor})
+				page, pageErr = client.Artwork(resolved.ID).Comments(ctx, pixiv.CommentsOptions{Cursor: cursor})
 			case target.NamespaceNovel:
-				page, pageErr = client.NovelComments(ctx, pixiv.NovelCommentsRequest{NovelID: resolved.ID, Cursor: cursor})
+				page, pageErr = client.Novel(resolved.ID).Comments(ctx, pixiv.CommentsOptions{Cursor: cursor})
 			default:
 				return nil, sdk.Cursor{}, errors.New("comment target must be artwork or novel")
 			}
@@ -477,9 +473,16 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 				return nil, sdk.Cursor{}, pageErr
 			}
 			metadata.set(page)
-			return page.Page.Items, page.Page.Next, nil
+			items := make([]legacysdk.Comment, len(page.Page.Items))
+			for i, item := range page.Page.Items {
+				items[i], pageErr = record.CommentOutput(item)
+				if pageErr != nil {
+					return nil, sdk.Cursor{}, pageErr
+				}
+			}
+			return items, page.Page.Cursor, nil
 		}
-		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []pixiv.Comment) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []legacysdk.Comment) error {
 			comments = append(comments, items...)
 			return nil
 		})

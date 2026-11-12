@@ -120,7 +120,7 @@ func (a *app) newRootCommand() *cobra.Command {
 	cmd.AddCommand(a.newAuthCommand())
 	cmd.AddCommand(whoami.New(env, a.local.CurrentUser))
 	cmd.AddCommand(configcmd.New(env, config.Store{Files: secretfile.ConfigFiles{}}))
-	cmd.AddCommand(a.pixivCommands(env, exec)...)
+	cmd.AddCommand(a.pixivCommands(env)...)
 	cmd.AddCommand(download.New(env, exec, download.RuntimeFrom(a.runtimeConfig), downloader.NewService))
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	cmd.AddCommand(mcp.New(env, a.runPixivMCP, mcp.InitAuth))
@@ -128,18 +128,18 @@ func (a *app) newRootCommand() *cobra.Command {
 	return cmd
 }
 
-func (a *app) pixivCommands(env environment.Env, exec session.Executor) []*cobra.Command {
+func (a *app) pixivCommands(env environment.Env) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		search.New(env, exec, a.local.ExecuteSDK, reverseSearch),
-		search.NewNovel(env, exec, reverseSearch),
-		detail.New(env, exec, a.local.ExecuteSDK),
-		ranking.New(env, exec),
-		series.New(env, exec),
-		comment.New(env, exec),
-		recommended.New(env, exec),
-		timeline.New(env, exec),
-		mypixiv.New(env, exec),
+		search.New(env, a.local.ExecuteSDK, reverseSearch),
+		search.NewNovel(env, a.local.ExecuteSDK),
+		detail.New(env, a.local.ExecuteSDK),
+		ranking.New(env, a.local.ExecuteSDK),
+		series.New(env, a.local.ExecuteSDK),
+		comment.New(env, a.local.ExecuteSDK),
+		recommended.New(env, a.local.ExecuteSDK),
+		timeline.New(env, a.local.ExecuteSDK),
+		mypixiv.New(env, a.local.ExecuteSDK),
 		user.New(env, a.local.ExecuteSDK, func() *cobra.Command { return follow.New(env, a.local.ExecuteSDK) }),
 		bookmark.New(env, a.local.ExecuteSDK),
 		follow.New(env, a.local.ExecuteSDK),

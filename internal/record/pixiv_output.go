@@ -48,7 +48,7 @@ func UserOutput(u *pixiv.User) (legacysdk.User, error) {
 	return legacysdk.User{ID: u.ID, Name: u.Name, Account: u.Account, Comment: u.Comment, IsFollowed: u.IsFollowed, ProfileImage: image}, err
 }
 
-// NovelOutput 为聚合推荐和收藏保留小说输出；独立小说命令继续使用旧入口。
+// NovelOutput 将小说绑定对象投影为 CLI/MCP 共用的既有输出值。
 func NovelOutput(n *pixiv.Novel) (legacysdk.Novel, error) {
 	u, err := UserOutput(n.Author)
 	if err != nil {
@@ -85,26 +85,35 @@ func FromSDKNovels(items []*pixiv.Novel) ([]Record, error) {
 	})
 }
 
+// RecommendationOutput 保留推荐用户及其作品、小说样例的输出形状。
+func RecommendationOutput(r pixiv.UserRecommendation) (legacysdk.UserPreview, error) {
+	out, err := UserPreviewOutput(r.User)
+	if err != nil {
+		return legacysdk.UserPreview{}, err
+	}
+	for _, a := range r.Artworks {
+		value, err := ArtworkOutput(a, false)
+		if err != nil {
+			return legacysdk.UserPreview{}, err
+		}
+		out.Illusts = append(out.Illusts, value)
+	}
+	for _, n := range r.Novels {
+		value, err := NovelOutput(n)
+		if err != nil {
+			return legacysdk.UserPreview{}, err
+		}
+		out.Novels = append(out.Novels, value)
+	}
+	return out, nil
+}
+
 // FromSDKRecommendations 保留推荐用户及其样例作品的记录形状。
 func FromSDKRecommendations(items []pixiv.UserRecommendation) ([]Record, error) {
 	return recordsFrom(items, func(r pixiv.UserRecommendation) (Record, error) {
-		out, err := UserPreviewOutput(r.User)
+		out, err := RecommendationOutput(r)
 		if err != nil {
 			return Record{}, err
-		}
-		for _, a := range r.Artworks {
-			value, err := ArtworkOutput(a, false)
-			if err != nil {
-				return Record{}, err
-			}
-			out.Illusts = append(out.Illusts, value)
-		}
-		for _, n := range r.Novels {
-			value, err := NovelOutput(n)
-			if err != nil {
-				return Record{}, err
-			}
-			out.Novels = append(out.Novels, value)
 		}
 		return RecordFromUserPreview(out)
 	})
@@ -125,4 +134,10 @@ func outputImage(image pixiv.Image, kind string, id int64, page int, variant str
 	}
 	resource, err := outputResource(kind, id, page, variant)
 	return legacysdk.ImageResource{Resource: resource, Variant: variant, Width: image.Width, Height: image.Height}, err
+}
+
+// NovelSeriesOutput 保留系列元数据的 user 字段，不序列化绑定对象与分页状态。
+func NovelSeriesOutput(series *pixiv.NovelSeries) (legacysdk.NovelSeries, error) {
+	user, err := UserOutput(series.Author)
+	return legacysdk.NovelSeries{ID: series.ID, Title: series.Title, Caption: series.Caption, User: user, IsConcluded: series.IsConcluded}, err
 }
