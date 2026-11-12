@@ -99,7 +99,7 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 				}
 				userID = parsed
 			}
-			service, err := a.accountService()
+			service, err := a.accountService(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -147,7 +147,7 @@ func (a controller) newAccountListCommand() *cobra.Command {
 }
 
 func (a controller) accountList(ctx context.Context, jsonOut bool) error {
-	service, err := a.accountService()
+	service, err := a.accountService(ctx)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 		Short: "Show account pool scheduling status",
 		Args:  a.env.ExactArgs(0, "pixiv auth pool status [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service, err := a.accountService()
+			service, err := a.accountService(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -273,7 +273,7 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			service, err := a.accountService()
+			service, err := a.accountService(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -345,7 +345,7 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 }
 
 func (a controller) accountRemove(ctx context.Context, args []string, opts accountRemoveOptions) error {
-	service, err := a.accountService()
+	service, err := a.accountService(ctx)
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 }
 
 func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool) error {
-	service, err := a.accountService()
+	service, err := a.accountService(ctx)
 	if err != nil {
 		return err
 	}
@@ -451,7 +451,7 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 	if err != nil {
 		return err
 	}
-	service, err := a.accountService()
+	service, err := a.accountService(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -507,7 +507,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	if err != nil {
 		return err
 	}
-	service, err := a.accountService()
+	service, err := a.accountService(cmd.Context())
 	if err != nil {
 		return err
 	}

@@ -2,19 +2,15 @@ package session
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	fanboxaccount "github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account/pool"
-	"github.com/FlanChanXwO/pixiv-cli/internal/storage/database"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
@@ -47,10 +43,10 @@ type LocalAccounts struct {
 	DefaultUserID int64
 }
 
-// Local 装配 CLI 与 MCP 共用的本地账号数据库、Pixiv 账号池和 FANBOX 会话。
+// Local 装配 CLI 与 MCP 共用的本地账号文件、Pixiv 账号池和 FANBOX 会话。
 //
-// 数据库与各子系统都在第一次使用时才打开，help、version 不会提前创建它们；
-// 打开的数据库、读取会话登记到构造时传入的 [lifecycle.CloseState]。
+// 账号存储与各子系统都在第一次使用时才打开，help、version 不会提前创建它们；
+// 读取会话登记到构造时传入的 [lifecycle.CloseState]。
 type Local struct {
 	closeState     *lifecycle.CloseState
 	loadPixiv      func(ProxyRequest) (PixivSettings, error)
@@ -58,25 +54,23 @@ type Local struct {
 	loadPoolConfig func() (PoolConfig, error)
 
 	accountsMu sync.Mutex
-	accounts   *account.Service
-	login      account.LoginService
+	accounts   *Accounts
+	login      LoginService
 
-	pixivOnce sync.Once
-	pixiv     *pixivPorts
-	pixivErr  error
+	pixivMu sync.Mutex
+	pixiv   *pixivPorts
 
 	fanboxAccountsMu sync.Mutex
-	fanboxAccounts   *fanboxaccount.Service
+	fanboxAccounts   *FanboxAccounts
 
-	fanboxOnce sync.Once
-	fanbox     *Fanbox
-	fanboxErr  error
+	fanboxMu sync.Mutex
+	fanbox   *Fanbox
 }
 
 type pixivPorts struct {
-	database *database.DB
-	reads    *account.ReadSessions
-	facade   *Pixiv
+	store  *account.Store
+	reads  *account.ReadSessions
+	facade *Pixiv
 }
 
 // NewLocal 构造按需打开的本地账号装配；三个 loader 由组合根提供。
@@ -89,80 +83,80 @@ func NewLocal(
 	return &Local{closeState: closeState, loadPixiv: loadPixiv, loadFanbox: loadFanbox, loadPoolConfig: loadPoolConfig}
 }
 
-func (l *Local) openDatabase() (*database.DB, error) {
+func (l *Local) openAccounts(ctx context.Context) (*account.Store, error) {
 	directory, err := config.AppDataDir()
 	if err != nil {
 		return nil, fmt.Errorf("determine home directory: %w", err)
 	}
-	db, err := database.Open(directory)
+	store, err := account.Open(ctx, directory)
 	if err != nil {
 		return nil, err
 	}
-	l.closeState.Add(db.Close)
-	return db, nil
+	return store, nil
 }
 
 // PixivAccounts 延迟打开 Pixiv 账号服务与登录服务；打开失败不缓存，后续调用可以重试。
-func (l *Local) PixivAccounts() (*account.Service, account.LoginService, error) {
+func (l *Local) PixivAccounts(ctx context.Context) (*Accounts, LoginService, error) {
 	l.accountsMu.Lock()
 	defer l.accountsMu.Unlock()
 	if l.accounts == nil {
-		db, err := l.openDatabase()
+		store, err := l.openAccounts(ctx)
 		if err != nil {
-			return nil, account.LoginService{}, err
+			return nil, LoginService{}, err
 		}
-		l.accounts = account.NewService(db, config.Store{Files: secretfile.ConfigFiles{}})
-		l.login = account.LoginService{Pixiv: l.accounts}
+		l.accounts = &Accounts{store: store, defaults: config.Store{Files: secretfile.ConfigFiles{}}}
+		l.login = LoginService{Pixiv: l.accounts}
 	}
 	return l.accounts, l.login, nil
 }
 
 // CurrentUser 只读取当前选中的账号摘要；不创建 Pixiv client，也不轮换凭据。
-func (l *Local) CurrentUser(ctx context.Context) (*account.AccountSummary, error) {
-	service, _, err := l.PixivAccounts()
+func (l *Local) CurrentUser(ctx context.Context) (*AccountSummary, error) {
+	service, _, err := l.PixivAccounts(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return service.CurrentUser(ctx)
 }
 
-// FanboxAccounts 打开一个 FANBOX 账号服务；每次调用都使用独立数据库句柄。
-func (l *Local) FanboxAccounts() (*fanboxaccount.Service, error) {
-	db, err := l.openDatabase()
+// FanboxAccounts 打开一个 FANBOX 账号服务；每次调用都按文件版本打开存储。
+func (l *Local) FanboxAccounts(ctx context.Context) (*FanboxAccounts, error) {
+	store, err := l.openAccounts(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return fanboxaccount.NewService(db, config.Store{Files: secretfile.ConfigFiles{}}, l.loadFanbox), nil
+	return &FanboxAccounts{store: store, defaults: config.Store{Files: secretfile.ConfigFiles{}}, loadOptions: l.loadFanbox}, nil
 }
 
 // Fanbox 延迟构造命令组共用的 FANBOX 会话。
-func (l *Local) Fanbox() (*Fanbox, error) {
-	l.fanboxOnce.Do(func() {
-		accounts, err := l.fanboxService()
+func (l *Local) Fanbox(ctx context.Context) (*Fanbox, error) {
+	l.fanboxMu.Lock()
+	defer l.fanboxMu.Unlock()
+	if l.fanbox == nil {
+		accounts, err := l.fanboxService(ctx)
 		if err != nil {
-			l.fanboxErr = err
-			return
+			return nil, err
 		}
 		l.fanbox = NewFanbox(accounts)
-	})
-	return l.fanbox, l.fanboxErr
+	}
+	return l.fanbox, nil
 }
 
 // NewFanbox 返回执行内共享账号服务的 FANBOX 会话，供 MCP 每次打开租约使用；
-// 数据库句柄在本次执行内只打开一次，不按请求累积。
-func (l *Local) NewFanbox() (*Fanbox, error) {
-	accounts, err := l.fanboxService()
+// 账号服务在本次执行内复用，不按请求累积。
+func (l *Local) NewFanbox(ctx context.Context) (*Fanbox, error) {
+	accounts, err := l.fanboxService(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return NewFanbox(accounts), nil
 }
 
-func (l *Local) fanboxService() (*fanboxaccount.Service, error) {
+func (l *Local) fanboxService(ctx context.Context) (*FanboxAccounts, error) {
 	l.fanboxAccountsMu.Lock()
 	defer l.fanboxAccountsMu.Unlock()
 	if l.fanboxAccounts == nil {
-		service, err := l.FanboxAccounts()
+		service, err := l.FanboxAccounts(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -171,35 +165,27 @@ func (l *Local) fanboxService() (*fanboxaccount.Service, error) {
 	return l.fanboxAccounts, nil
 }
 
-func (l *Local) ports() (*pixivPorts, error) {
-	l.pixivOnce.Do(func() {
-		db, err := l.openDatabase()
-		if err != nil {
-			l.pixivErr = err
-			return
-		}
-		service := account.NewService(db, config.Store{Files: secretfile.ConfigFiles{}})
-		gate := pool.NewGate()
-		reads := account.NewReadSessions(service, gate)
-		l.closeState.Add(reads.Close)
-		l.pixiv = &pixivPorts{
-			database: db,
-			reads:    reads,
-			facade: NewPixiv(service, gate, l.loadPoolConfig, func(poolConfig PoolConfig) (PoolExecutor, error) {
-				return pool.Scheduler{
-					Config: config.AccountPoolConfig{Enabled: poolConfig.Enabled, Strategy: config.AccountPoolStrategy(poolConfig.Strategy)},
-					State:  db,
-					Now:    time.Now,
-				}, nil
-			}),
-		}
-	})
-	return l.pixiv, l.pixivErr
+func (l *Local) ports(ctx context.Context) (*pixivPorts, error) {
+	l.pixivMu.Lock()
+	defer l.pixivMu.Unlock()
+	if l.pixiv != nil {
+		return l.pixiv, nil
+	}
+	store, err := l.openAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	service := &Accounts{store: store, defaults: config.Store{Files: secretfile.ConfigFiles{}}}
+	gate := account.NewGate()
+	reads := account.NewReadSessions(store, gate)
+	l.closeState.Add(reads.Close)
+	l.pixiv = &pixivPorts{store: store, reads: reads, facade: NewPixiv(service, gate, l.loadPoolConfig)}
+	return l.pixiv, nil
 }
 
 // Execute 在账号池的重放边界内使用一次 Pixiv client。
 func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func(context.Context, *pixiv.Client) (bool, error)) error {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return err
 	}
@@ -207,12 +193,12 @@ func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func
 	if err != nil {
 		return err
 	}
-	return ports.facade.Use(ctx, Request{UserID: request.UserID, Options: settings.Options}, callback)
+	return ports.facade.Use(ctx, Request{Selection: selectionFor(request.UserID), Options: settings.Options}, callback)
 }
 
 // OpenLease 打开一个显式账号的 Pixiv client 租约。
 func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +206,7 @@ func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle
 	if err != nil {
 		return nil, err
 	}
-	return ports.facade.Open(ctx, Request{UserID: request.UserID, Options: settings.Options})
+	return ports.facade.Open(ctx, Request{Selection: selectionFor(request.UserID), Options: settings.Options})
 }
 
 // Read 复用账号读取快照执行一次读取，并在失败时丢弃对应 generation。
@@ -237,7 +223,7 @@ func (l *Local) Read(ctx context.Context, request ProxyRequest, callback func(co
 
 // ReadSession 复用账号读取快照，并按请求选择代理覆写与请求节奏。
 func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnapshot, error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return ReadSnapshot{}, err
 	}
@@ -245,8 +231,14 @@ func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnap
 	if err != nil {
 		return ReadSnapshot{}, err
 	}
-	networkID := sha256.Sum256([]byte(settings.Network))
-	snapshot, err := ports.reads.Open(ctx, request.UserID, fmt.Sprintf("%x", networkID), settings.Options)
+	userID := request.UserID
+	if userID == 0 {
+		userID, err = ports.facade.accounts.selectedUserID(ctx)
+		if err != nil {
+			return ReadSnapshot{}, err
+		}
+	}
+	snapshot, err := ports.reads.Open(ctx, userID, settings.Network, settings.Options)
 	if err != nil {
 		return ReadSnapshot{}, err
 	}
@@ -255,26 +247,17 @@ func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnap
 		Version:     fmt.Sprint(snapshot.Version),
 		Expires:     snapshot.Expires,
 		Invalidated: snapshot.Invalidated,
-		Invalidate:  func(err error) { ports.reads.Invalidate(request.UserID, snapshot.Version, err) },
+		Invalidate:  func(err error) { ports.reads.Invalidate(userID, snapshot.Version, err) },
 	}, nil
-}
-
-// WatchReadSessions 监听本地凭据变化，刷新或丢弃只读会话。
-func (l *Local) WatchReadSessions(ctx context.Context) error {
-	ports, err := l.ports()
-	if err != nil {
-		return err
-	}
-	return ports.reads.Watch(ctx, ports.database.Path())
 }
 
 // LocalAccounts 读取本地账号摘要与显式默认账号，不读取凭据。
 func (l *Local) LocalAccounts(ctx context.Context) (LocalAccounts, error) {
-	ports, err := l.ports()
+	ports, err := l.ports(ctx)
 	if err != nil {
 		return LocalAccounts{}, err
 	}
-	records, err := ports.database.ListPixiv(ctx)
+	records, err := ports.store.ListPixiv(ctx)
 	if err != nil {
 		return LocalAccounts{}, err
 	}
@@ -287,7 +270,15 @@ func (l *Local) LocalAccounts(ctx context.Context) (LocalAccounts, error) {
 		local.DefaultUserID = defaultID
 	}
 	for _, record := range records {
-		local.Accounts = append(local.Accounts, LocalAccount{UserID: record.UserID, Username: record.Username, HasCredentials: record.HasRefreshToken()})
+		local.Accounts = append(local.Accounts, LocalAccount{UserID: record.UserID, Username: record.Username, HasCredentials: !record.Credential.Empty()})
 	}
 	return local, nil
+}
+
+// selectionFor 将外部请求的可选 UID 翻译为账号 owner 的显式选择值。
+func selectionFor(userID int64) account.Selection {
+	if userID != 0 {
+		return account.Selection{Mode: account.SelectionFixed, UserID: userID}
+	}
+	return account.Selection{Mode: account.SelectionPool}
 }

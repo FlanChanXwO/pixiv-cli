@@ -69,7 +69,7 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 
 func (a controller) accountImport(cmd *cobra.Command, args []string, opts accountImportOptions, input authImportInput) error {
 	if len(input.bundle) > 0 {
-		service, err := a.accountService()
+		service, err := a.accountService(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -100,7 +100,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	if err != nil {
 		return err
 	}
-	service, err := a.accountService()
+	service, err := a.accountService(cmd.Context())
 	if err != nil {
 		return err
 	}

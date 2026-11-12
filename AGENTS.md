@@ -24,12 +24,12 @@ Use the relevant checked-in maintenance skill for the workflow and its linked ha
 
 ## Hard constraints
 
-- Keep credentials and other secrets out of logs, errors, fixtures, pull requests, and artifacts; never inspect the SQLite account store as a debugging shortcut. An explicitly requested `pixiv auth export [UID]`, `pixiv auth export --all`, or local `pixiv mcp auth init [--reset]` may emit its documented secret to stdout. `pixiv config get` prints configuration values directly, including API keys and their environment overrides. Other credential exports use the documented private-output or transfer path.
+- Keep credentials and other secrets out of logs, errors, fixtures, pull requests, and artifacts; never inspect the `auth.json` account store as a debugging shortcut. An explicitly requested `pixiv auth export [UID]`, `pixiv auth export --all`, or local `pixiv mcp auth init [--reset]` may emit its documented secret to stdout. `pixiv config get` prints configuration values directly, including API keys and their environment overrides. Other credential exports use the documented private-output or transfer path.
 - Explain network access and material side effects before execution. Real Pixiv/FANBOX calls, browser-credential access, image uploads, and account writes require explicit scope and authorization.
 - Obtain approval before adding a dependency or installing a tool.
 - Keep production builds permanently CGO-free and use only pure-Go dependencies. Race instrumentation follows the development guide's C-toolchain requirement.
 - A pull request does not authorize merging, force-pushing, tagging, publishing, changing branch protection, or using production secrets. Release authorization is separate and version-specific.
-- Preserve the App-only boundary: content operations require an authenticated local account or an eligible database-managed pool account, and errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their explicit credential contracts.
+- Preserve the App-only boundary: content operations require an authenticated local account or an eligible locally stored pool account, and errors never select an anonymous Web path. Data commands do not accept `--uid` or `--refresh-token`; the public SDK and MCP retain their explicit credential contracts.
 - Keep CLI machine output clean, reserve MCP stdio stdout for JSON-RPC, and require OAuth bearer authorization for HTTP. Preserve MCP runtime `isError=true` and report cancellation, transport, authentication, upstream, and persistence failures instead of returning success-shaped empty data.
 - Perform Git write operations in an independent worktree and preserve existing changes.
 

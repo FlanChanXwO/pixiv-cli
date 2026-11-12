@@ -10,7 +10,7 @@ import (
 
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/account"
+	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -95,7 +95,7 @@ func readSessionInput(r io.Reader) (string, error) {
 }
 
 func (a commandRunner) importSession(cmd *cobra.Command, value string, setDefault, jsonOut bool) error {
-	service, err := a.accounts()
+	service, err := a.accounts(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -133,11 +133,11 @@ func (a commandRunner) runList(cmd *cobra.Command, jsonOut bool) error {
 	if _, err := fanboxcli.ProxyOverride(cmd); err != nil {
 		return err
 	}
-	service, err := a.accounts()
+	service, err := a.accounts(cmd.Context())
 	if err != nil {
 		return err
 	}
-	accounts, err := service.ListAccounts(context.Background())
+	accounts, err := service.ListAccounts(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -177,8 +177,8 @@ func (a commandRunner) newUseCommand() *cobra.Command {
 		Use:   "use [UID]",
 		Short: "Set the default FANBOX account",
 		Args:  a.env.MaxArgs(1, "pixiv fanbox auth use [UID] | --auto"),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return a.runUse(args, opts)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runUse(cmd.Context(), args, opts)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.auto, "auto", false, "clear the explicit default and use the first stored account")
@@ -187,11 +187,11 @@ func (a commandRunner) newUseCommand() *cobra.Command {
 	return cmd
 }
 
-func (a commandRunner) runUse(args []string, opts useOptions) error {
+func (a commandRunner) runUse(ctx context.Context, args []string, opts useOptions) error {
 	if opts.auto && len(args) != 0 {
 		return errors.New("--auto cannot be combined with a UID")
 	}
-	service, err := a.accounts()
+	service, err := a.accounts(ctx)
 	if err != nil {
 		return err
 	}
@@ -212,13 +212,13 @@ func (a commandRunner) runUse(args []string, opts useOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := service.UseAccount(context.Background(), userID); err != nil {
+	if err := service.UseAccount(ctx, userID); err != nil {
 		return err
 	}
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]any{"default_user_id": userID, "auto": false})
 	}
-	summary, err := service.Status(context.Background())
+	summary, err := service.Status(ctx)
 	if err != nil {
 		return fmt.Errorf("default account changed; read selected account identity: %w", err)
 	}
@@ -232,8 +232,8 @@ func (a commandRunner) newRemoveCommand() *cobra.Command {
 		Use:   "remove UID",
 		Short: "Remove a FANBOX account",
 		Args:  a.env.ExactArgs(1, "pixiv fanbox auth remove UID"),
-		RunE: func(_ *cobra.Command, args []string) error {
-			return a.runRemove(args, opts)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.runRemove(cmd.Context(), args, opts)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
@@ -242,12 +242,12 @@ func (a commandRunner) newRemoveCommand() *cobra.Command {
 	return cmd
 }
 
-func (a commandRunner) runRemove(args []string, opts removeOptions) error {
+func (a commandRunner) runRemove(ctx context.Context, args []string, opts removeOptions) error {
 	userID, err := parseUID(args[0])
 	if err != nil {
 		return err
 	}
-	service, err := a.accounts()
+	service, err := a.accounts(ctx)
 	if err != nil {
 		return err
 	}
@@ -262,12 +262,12 @@ func (a commandRunner) runRemove(args []string, opts removeOptions) error {
 	}
 	identity := ""
 	if !opts.jsonOut {
-		identity, err = fanboxIdentity(service, userID)
+		identity, err = fanboxIdentity(ctx, service, userID)
 		if err != nil {
 			return err
 		}
 	}
-	if err := service.RemoveAccount(context.Background(), userID); err != nil {
+	if err := service.RemoveAccount(ctx, userID); err != nil {
 		return err
 	}
 	if opts.jsonOut {
@@ -296,11 +296,11 @@ func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool
 	if _, err := fanboxcli.ProxyOverride(cmd); err != nil {
 		return err
 	}
-	service, err := a.accounts()
+	service, err := a.accounts(cmd.Context())
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
+	ctx := cmd.Context()
 	if len(args) == 1 {
 		userID, err := parseUID(args[0])
 		if err != nil {
@@ -324,7 +324,7 @@ func (a commandRunner) runStatus(cmd *cobra.Command, args []string, jsonOut bool
 	return a.printSummary(*summary, jsonOut)
 }
 
-func (a commandRunner) printSummary(summary account.AccountSummary, jsonOut bool) error {
+func (a commandRunner) printSummary(summary session.FanboxAccountSummary, jsonOut bool) error {
 	if jsonOut {
 		return a.env.PrintJSON(accountOutFrom(summary.UserID, summary.DisplayName, summary.CreatorID, summary.Default))
 	}
@@ -344,8 +344,8 @@ func parseUID(raw string) (int64, error) {
 	return userID, nil
 }
 
-func fanboxIdentity(service *account.Service, userID int64) (string, error) {
-	accounts, err := service.ListAccounts(context.Background())
+func fanboxIdentity(ctx context.Context, service *session.FanboxAccounts, userID int64) (string, error) {
+	accounts, err := service.ListAccounts(ctx)
 	if err != nil {
 		return "", err
 	}

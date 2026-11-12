@@ -28,9 +28,9 @@
 - 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（`ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
 - 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题，例外见下。
 
-只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`、`account`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`）。
+只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`、`account`）。
 
-例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivaccount`、`fanboxaccount`。`internal/cli` 组合根与 `internal/storage/database` 属于这种情况。CLI 组合根还将命令包 `internal/cli/config` 导入为 `configcmd`，与配置 owner `internal/config` 同时使用。其他情况不加 import 别名，也不写与包名相同的多余别名。
+例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivapi`、`fanboxapi`。`internal/cli` 组合根用 `fanboxauth` 与 Pixiv 的 `auth` 区分。CLI 组合根还将命令包 `internal/cli/config` 导入为 `configcmd`，与配置 owner `internal/config` 同时使用。其他情况不加 import 别名，也不写与包名相同的多余别名。
 
 ## SDK 调用约定
 
@@ -54,7 +54,7 @@
 
 | 声明的使用范围 | 放置位置 | 示例 |
 | --- | --- | --- |
-| 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/models.go`（公开实体）、`sdk/pixiv/artwork_wire.go`（作品响应结构）、`sdk/pixiv/response.go`（多个领域共用的响应结构）、`internal/storage/database/rows.go`（行结构）、`errors.go`（错误码） |
+| 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/models.go`（公开实体）、`sdk/pixiv/artwork_wire.go`（作品响应结构）、`sdk/pixiv/response.go`（多个领域共用的响应结构）、`errors.go`（错误码） |
 | 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/record/list.go` 中的 `ArtworkList` |
 | 类型自身的方法（`String`、`Valid`、`MarshalJSON` 等） | 和类型放在同一个文件 | `sdk/resource.go` 中的 `Resource.MarshalJSON` |
 
@@ -82,7 +82,7 @@
 | 枚举取值（日志级别、输出格式、restrict、作品类型等） | 具名类型 + 常量，例如 `config.LogLevelDebug`、`pixiv.RestrictPublic` | 与该类型放在同一文件 |
 | 上游 API 路径、query/form 参数名、请求头名 | 导出常量，例如 `api.PathUserFollower`、`api.ParamUserID`；包位于 `internal/` 下，模块外部无法引用 | `internal/pixiv/api/api.go`、`internal/fanbox/api/api.go` |
 | MCP tool 名称 | 未导出常量，例如 `toolUserDetail` | 与该 tool 的注册代码放在同一文件 |
-| Go 代码中引用的数据库列名 | 未导出常量，例如 `colCredentialRevision` | `internal/storage/database/rows.go`，紧挨行结构 |
+| Go 代码中引用的数据库列名 | 未导出常量，例如 `legacySchedulableColumn` | `internal/account/migrate.go`，紧挨导入器 |
 | JSON 输出键（struct tag 以外），例如 `illusts` | 未导出常量 | 与使用它的输出代码放在同一文件 |
 
 长度、上限、超时、间隔、退出码、文件名、地址和服务名等有含义的值同样写成命名常量。契约规定的值放在负责执行它的包里。同一个值只定义一次，别处引用常量或从它推导（例如字符串形式用 `strconv.Itoa` 生成）。没有业务含义的 `0`、`1` 等值，以及标准库契约要求的参数（如 `net.Dial("tcp", ...)`）不用命名。这条规则约束新增和触及的代码，现有字面量的统一清理属于独立工作。
@@ -141,7 +141,7 @@ const (
 | P-h | 注释引用仓库中不存在的文档编号 | 改为直接写出原因，或删除 |
 | P-i | 中转层：只在结构相同的类型之间转换，或原样转发调用 | 删除中转层，两侧共用一个类型或直接调用 |
 | P-j | 碎片化：一个概念被拆进多个必须一起读才能看懂的小包或小文件 | 合并为一个包或文件 |
-| P-k | 为假想扩展预留的间接层：同一层内照抄某个具体类型方法集的接口、每个包各声明一份的相同接口、只注册一项的注册表、没有第二种取值的选项 | 去掉间接层，直接使用具体类型。测试替身不算第二种生产实现；通过 `httptest` 或临时目录测试真实边界。由使用方定义、只含其所需方法、用来切断存储/网络/系统依赖的窄端口（例如 `session` 的 `AccountService`、MCP `toolhost.SDKPorts`）是真实边界，保留 |
+| P-k | 为假想扩展预留的间接层：同一层内照抄某个具体类型方法集的接口、每个包各声明一份的相同接口、只注册一项的注册表、没有第二种取值的选项 | 去掉间接层，直接使用具体类型。测试替身不算第二种生产实现；通过 `httptest` 或临时目录测试真实边界。由使用方定义、只含其所需方法、用来切断存储/网络/系统依赖的窄端口（例如 `session` 的 `AccountOpener`、MCP `toolhost.SDKPorts`）是真实边界，保留 |
 | P-l | 兼容层：旧入口与新入口并存、旧名别名、source-compatible 包装、为旧版本自身组件保留的分支、已删除配置键的墓碑、以往改名遗留的输入别名 | 删除，只保留新入口。上游（Pixiv/FANBOX API、浏览器 Cookie）格式本身的差异不是兼容层；让用户已有的数据库、配置文件仍能打开的读取逻辑保留 |
 | P-m | 过度防御：对内部调用方已经保证的前提重复校验；对构造时一定会设置的字段或依赖判 nil；Go 本身已经安全的判断（读 nil map、对 nil 切片取 `len` 或遍历）；遇到不可能出现的状态时悄悄降级、返回零值或吞掉错误；没有共享修改风险的防御性拷贝；“以防万一”的 `recover` | 删除，校验只留在最外层的那一次。确需防住的内部不变量，让它立即失败（返回明确错误或 panic），不伪装成成功 |
 
@@ -281,8 +281,8 @@ type Budget struct {
 | 契约 | 归属 |
 | --- | --- |
 | 凭据不泄露：账号与 Cookie 类型在 `%v`、`%+v`、`%#v`、slog 中不输出凭据；日志不含 query、token、Cookie、签名 URL；MCP tool 输出不含签名 URL 与 Cookie | 账号与 Cookie 类型、请求日志、MCP 输出 |
-| 账号存储：revision 冲突、事务回滚、v1.2.x 数据库可打开、文件权限；原子替换与文件锁 | `internal/storage/*` |
-| 凭据轮换后新 token 在返回 client 前写入存储 | `internal/pixiv/account` 或 `internal/session` |
+| 账号存储：revision 冲突、事务回滚、v1.2.x 数据库只读导入、文件权限；原子替换与文件锁 | `internal/account`、`internal/storage/*` |
+| 凭据轮换后新 token 在返回 client 前写入存储 | `internal/account` |
 | 上游响应异常时返回错误；取消向上传播 | `sdk/pixiv`、`sdk/fanbox` |
 | 对外契约快照：MCP `tools/list` 一份 golden；一个 CLI 命令的 text、JSON、NDJSON；用法错误的退出码；stdio stdout 只有 JSON-RPC；HTTP 必须带 bearer | `internal/mcpserver`、`internal/cli` |
 | 环境变量优先于文件、文件优先于默认值，包括显式空值 | `internal/config` |
@@ -302,7 +302,7 @@ type Budget struct {
 - 使用 `httptest`、临时目录和真实 store。不新建测试辅助包、fixture 构造器、mock 层级，不为测试导出生产符号。
 - 每类契约只在自己的归属层断言；CLI 或 MCP 输出测试检查呈现契约，不再重复 SDK 映射。
 - 清理测试时保持 workflow 及其步骤不变。workflow 选中的测试连同支撑代码和 fixture 原样保留，不计入文件/函数/用例上限与 `testdata` 限制。宽泛的 `go test ./...` 选择器不会豁免整个仓库。同一文件同时包含选中测试和其他测试时，原样保留选中测试、注释及其必要声明；其他测试仍按本清单处理。重写测试前按 workflow 重新核对选择器；选择器匹配不到测试时报告缺口，不宣称通过。
-- 按原样保留 CI 选中的清单：整包 `scripts/citest`（platform-smoke、container-smoke 和 release 运行）、`scripts/release`（release workflow）、`internal/urlscheme`、`internal/media/ugoira/...`；点名测试 `cmd/pixiv/TestPixivBinaryPackagedSmoke` 与 `internal/storage/database/TestOpenOnWindowsAcceptsForwardSlashFileURI`。清理测试前，按当前 workflow selector 复核测试名与包路径。
+- 按原样保留 CI 选中的清单：整包 `scripts/citest`（platform-smoke、container-smoke 和 release 运行）、`scripts/release`（release workflow）、`internal/urlscheme`、`internal/media/ugoira/...`；点名测试 `cmd/pixiv/TestPixivBinaryPackagedSmoke` 与 `internal/account/TestOpenOnWindowsAcceptsForwardSlashFileURI`。清理测试前，按当前 workflow selector 复核测试名与包路径。
 - 删除重复断言、getter 与纯转发测试、测试辅助代码或测试框架本身的测试、已完成迁移的对比/特征测试，以及清单外测试。同步删除孤儿辅助函数、fixture 和只为测试存在的生产入口；保留 v1.2.x 数据库可打开的证据。真实环境测试改为手动，不保留长期测试文件。
 - 清单外调查放在被忽略的 `tmp/test/_probe/`；显式运行该包，并将探测输出留在该目录中，这样普通 `go test ./...` 不会发现它。使用合成凭据；不添加长期 live 测试文件或 opt-in live harness。
 - 行为变更先观察失败测试，再实现通过，最后保留回归。导入或工具链错误不算 Red。纯结构调整使用改动前后的特征测试。

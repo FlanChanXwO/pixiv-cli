@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
@@ -20,7 +21,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 )
@@ -39,11 +39,11 @@ type Runtime struct {
 	// Local 提供 Pixiv 重放执行、只读会话与本地账号摘要。
 	Local *session.Local
 	// Fanbox 返回执行内共享账号库的 FANBOX 会话；每次调用只新建租约。
-	Fanbox func() (*session.Fanbox, error)
+	Fanbox func(context.Context) (*session.Fanbox, error)
 	// ReverseSearch 是启动时固定配置的反向搜图端口。
 	ReverseSearch pixivmcpserver.ReverseSearchPorts
 	// PixivAccounts 延迟打开账号与登录服务，供 HTTP 登录接力复用。
-	PixivAccounts func() (*account.Service, account.LoginService, error)
+	PixivAccounts func(context.Context) (*session.Accounts, session.LoginService, error)
 	// CloseState 登记 MCP 打开的反向搜图 client。
 	CloseState *lifecycle.CloseState
 }
@@ -80,7 +80,7 @@ func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) 
 	fanboxPorts := fanboxmcpserver.SDKPorts{
 		Logger: r.Logger(),
 		OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*fanbox.Client], error) {
-			service, err := r.Fanbox()
+			service, err := r.Fanbox(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -114,9 +114,6 @@ func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts 
 
 // runHTTP 在显式 --port 时启动共享账号选择、登录 relay 与媒体代理。
 func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts pixivmcpserver.SDKPorts, fanboxPorts fanboxmcpserver.SDKPorts, request Request) (result error) {
-	if err := r.Local.WatchReadSessions(ctx); err != nil {
-		return err
-	}
 	listenAddr, baseURL := *request.ListenAddr, *request.BaseURL
 	filename, err := config.UserDataFile(config.AppDataDirName, mcpStateFileName)
 	if err != nil {
@@ -257,10 +254,10 @@ func InitAuth(ctx context.Context, reset bool) (string, error) {
 
 func (r Runtime) newLogin(ctx context.Context, baseURL string, selection accounts.Selection, proxy *string) (*accounts.Login, error) {
 	// 登录启动串行执行；成功后保留同一个账号服务，后续完成步骤复用它。
-	var service *account.LoginService
+	var service *session.LoginService
 	return accounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (accounts.LoginAttempt, error) {
 		if service == nil {
-			_, loaded, err := r.PixivAccounts()
+			_, loaded, err := r.PixivAccounts(ctx)
 			if err != nil {
 				return accounts.LoginAttempt{}, err
 			}
@@ -286,7 +283,7 @@ func (r Runtime) newLogin(ctx context.Context, baseURL string, selection account
 				if options.HTTPClient != nil {
 					defer options.HTTPClient.CloseIdleConnections()
 				}
-				account, err := service.Complete(ctx, start, account.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
+				account, err := service.Complete(ctx, start, session.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
 				result := accounts.LoginResult{Account: accounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
 				if err != nil {
 					return result, err
