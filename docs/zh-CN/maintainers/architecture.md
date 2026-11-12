@@ -204,8 +204,8 @@ flowchart LR
 - 首次访问缺失文件或 schema 缺失/不同的合法 JSON 时执行迁移 1：存在 `pixiv-cli.db` 则导入，否则写空账号文件。非法 JSON、自有 schema 损坏、更新的版本均返回错误并保留原文。有效的当前格式文件成为后续读取的权威。
 - 迁移仅通过 `database/sql` 与已有 `ncruces/go-sqlite3` 驱动只读导入，检查 `application_id=0x50495843`、schema 版本 1–3，以及连续且与 `user_version` 一致的迁移账本。导入保留账号顺序、UID、名称、revision、会员与池状态；旧库内容和修改时间保持原样，文件保留原位。
 - 每次读取和更新均持有 `auth.json.lock` 并重读文件。更新校验完整新快照，再经 `storage/secretfile` 原子替换私有文件。迁移额外持有 `pixiv-cli.db.lock`，顺序始终为 JSON 锁在先。锁覆盖本地快照与写入；OAuth 和内容请求在锁外执行。可取消的锁等待沿用 `storage/filelock` 的取消语义。
-- 凭据轮换先在锁外执行 OAuth，再比较存储中的 revision，将新 token 与递增的 revision 原子保存。冲突时丢弃本次 client，使用最新已保存的凭据重新打开；持久化失败时直接返回错误；交出 client 以保存成功为前提。
-- `ReadSessions` 在缓存复用前、轮换 client 发布前、每次内容请求前检查 revision。发现凭据替换/删除时作废对应代际；仅元数据变化保留原代际。账号缓存通过这些读取保持一致，无文件系统 watcher。
+- 凭据轮换先在锁外执行 OAuth，再比较存储中的 revision 与创建时间，将新 token 与递增的 revision 原子保存。冲突时丢弃本次 client，使用最新已保存的凭据重新打开；持久化失败时直接返回错误；交出 client 以保存成功为前提。
+- `ReadSessions` 在缓存复用前、轮换 client 发布前、每次内容请求前检查 revision 与创建时间。创建时间区分同一 UID 删除后重建的账号。发现凭据替换/删除时作废对应代际；仅元数据变化保留原代际。账号缓存通过这些读取保持一致，无文件系统 watcher。
 - Unix 账号目录/文件权限为 `0700`/`0600`；Windows 原子替换沿用共享存储 ACL 策略。普通 JSON、fmt、slog 中的凭据值保持脱敏，仅在文件编码和显式凭据流程展开。auth export 本地读取已保存凭据，保持 token 与配置原值。
 
 ### `internal/config`

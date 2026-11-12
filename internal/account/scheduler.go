@@ -67,7 +67,13 @@ func (s Scheduler) Run(ctx context.Context, selection Selection, attempt func(co
 		lastRateLimit = attemptErr
 		attempted = append(attempted, userID)
 		freezeNow := s.Now()
-		if err := s.State.Freeze(ctx, userID, freezeNow.Add(retryAfter).UTC().Unix()); err != nil {
+		// 旧池接口以整秒保存截止时间，向上取整避免提前解冻。
+		deadline := freezeNow.Add(retryAfter).UTC()
+		frozenUntil := deadline.Unix()
+		if deadline.Nanosecond() != 0 {
+			frozenUntil++
+		}
+		if err := s.State.Freeze(ctx, userID, frozenUntil); err != nil {
 			return err
 		}
 		logging.From(ctx).WarnContext(ctx, "Account pool froze rate-limited account",

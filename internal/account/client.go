@@ -37,14 +37,14 @@ func (s *Store) openReadSession(ctx context.Context, userID int64, options pixiv
 			client.CloseIdleConnections()
 			return ReadSession{}, err
 		}
-		if err := s.RotatePixivCredentials(ctx, userID, a.CredentialRevision, []byte(credentials.RefreshToken())); err != nil {
+		if err := s.RotatePixivCredentials(ctx, a, []byte(credentials.RefreshToken())); err != nil {
 			client.CloseIdleConnections()
 			if errors.Is(err, ErrCredentialConflict) {
 				continue
 			}
 			return ReadSession{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
 		}
-		return ReadSession{Client: client, Revision: a.CredentialRevision + 1, Expires: credentials.ExpiresAt}, nil
+		return ReadSession{Client: client, Revision: a.CredentialRevision + 1, createdAt: a.CreatedAt, Expires: credentials.ExpiresAt}, nil
 	}
 }
 

@@ -28,7 +28,7 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 		}
 		return sdk.NewError("pixiv", "account_pool", sdk.LocalStateError, sdk.WithDetail("account_pool_state_error"), sdk.WithCause(err))
 	}
-	switch selectionErr.Kind {
+	switch selectionErr.Reason {
 	case PoolSelectionNoLocalAccount:
 		return sdk.NewError("pixiv", "account_pool", sdk.Unauthorized, sdk.WithDetail("account_pool_no_local_account"))
 	case PoolSelectionNoSchedulable:
@@ -38,7 +38,7 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 	case PoolSelectionExhausted:
 		return poolExhaustedError(lastRateLimit, selectionErr.EarliestFrozenUntil, now)
 	default:
-		return fmt.Errorf("account pool state store returned unknown selection kind %q", selectionErr.Kind)
+		return fmt.Errorf("account pool state store returned unknown selection reason %q", selectionErr.Reason)
 	}
 }
 

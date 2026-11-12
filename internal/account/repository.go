@@ -113,18 +113,18 @@ func (s *Store) UpdatePixivMetadata(ctx context.Context, userID int64, username 
 	})
 }
 
-// RotatePixivCredentials 只在持锁读取到 expectedRevision 时保存新 token 并递增 revision。
-func (s *Store) RotatePixivCredentials(ctx context.Context, userID, expectedRevision int64, refreshToken []byte) error {
-	if userID <= 0 || expectedRevision <= 0 || len(refreshToken) == 0 {
+// RotatePixivCredentials 比较读取快照的 revision 与创建时间，防止删除重建后接受旧轮换。
+func (s *Store) RotatePixivCredentials(ctx context.Context, expected Pixiv, refreshToken []byte) error {
+	if expected.UserID <= 0 || expected.CredentialRevision <= 0 || len(refreshToken) == 0 {
 		return errors.New("account: invalid rotation input")
 	}
 	return s.update(ctx, func(doc *document) error {
 		for i := range doc.Pixiv {
 			a := &doc.Pixiv[i]
-			if a.UserID != userID {
+			if a.UserID != expected.UserID {
 				continue
 			}
-			if a.CredentialRevision != expectedRevision {
+			if a.CredentialRevision != expected.CredentialRevision || !a.CreatedAt.Equal(expected.CreatedAt) {
 				return ErrCredentialConflict
 			}
 			a.Credential = credential.New(refreshToken)

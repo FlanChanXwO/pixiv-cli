@@ -62,7 +62,12 @@ func TestRotationConflictUsesLatestCredential(t *testing.T) {
 			if token != "initial" {
 				t.Error("unexpected first token")
 			}
-			if err := store.RotatePixivCredentials(r.Context(), 42, 1, []byte("concurrent")); err != nil {
+			current, err := store.GetPixiv(r.Context(), 42)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if err := store.RotatePixivCredentials(r.Context(), current, []byte("concurrent")); err != nil {
 				t.Error(err)
 			}
 		} else if token != "concurrent" {
@@ -99,7 +104,9 @@ func TestReadLeaseChecksRevisionBeforeRequest(t *testing.T) {
 	defer reads.Close()
 	snapshot, err := reads.Open(t.Context(), 42, "network", pixiv.Options{HTTPClient: oauthClient(api)})
 	require.NoError(t, err)
-	require.NoError(t, store.RotatePixivCredentials(t.Context(), 42, 2, []byte("changed")))
+	current, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NoError(t, store.RotatePixivCredentials(t.Context(), current, []byte("changed")))
 	_, err = snapshot.Client.CurrentUser(t.Context(), pixiv.CurrentUserRequest{})
 	require.Error(t, err)
 	require.Zero(t, contentRequests.Load())
@@ -152,7 +159,9 @@ func TestReadCacheReusesAndReloadsByRevision(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, first.Version, cached.Version)
 	require.EqualValues(t, 1, requests.Load())
-	require.NoError(t, store.RotatePixivCredentials(t.Context(), 42, 2, []byte("external")))
+	current, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NoError(t, store.RotatePixivCredentials(t.Context(), current, []byte("external")))
 	latest, err := reads.Open(t.Context(), 42, "network", options)
 	require.NoError(t, err)
 	require.NotEqual(t, first.Version, latest.Version)
@@ -163,4 +172,28 @@ func TestReadCacheReusesAndReloadsByRevision(t *testing.T) {
 	default:
 		t.Error("replaced generation was not cancelled")
 	}
+}
+
+func TestRecreatedAccountInvalidatesReadLease(t *testing.T) {
+	store, err := account.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("old"))}))
+	var requests atomic.Int32
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		fmt.Fprint(w, `{"access_token":"access","refresh_token":"fresh","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
+	}))
+	defer api.Close()
+	reads := account.NewReadSessions(store, account.NewGate())
+	defer reads.Close()
+	lease, err := reads.Open(t.Context(), 42, "network", pixiv.Options{HTTPClient: oauthClient(api)})
+	require.NoError(t, err)
+	require.NoError(t, store.RemovePixiv(t.Context(), 42))
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("replacement"))}))
+	current, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NoError(t, store.RotatePixivCredentials(t.Context(), current, []byte("replacement-rotated")))
+	_, err = lease.Client.CurrentUser(t.Context(), pixiv.CurrentUserRequest{})
+	require.Error(t, err)
+	require.EqualValues(t, 1, requests.Load(), "stale lease reached the upstream")
 }

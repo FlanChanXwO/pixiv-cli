@@ -54,29 +54,29 @@ type PoolSnapshot struct {
 // Chooser 在持锁的快照内选择一个候选 UID，不执行 I/O。
 type Chooser func(PoolSnapshot) (int64, error)
 
-// PoolSelectionKind 区分候选不足的实际原因。
-type PoolSelectionKind string
+// PoolSelectionReason 区分候选不足的实际原因。
+type PoolSelectionReason string
 
 const (
 	// PoolSelectionNoLocalAccount 表示本地尚无账号。
-	PoolSelectionNoLocalAccount PoolSelectionKind = "no_local_account"
+	PoolSelectionNoLocalAccount PoolSelectionReason = "no_local_account"
 	// PoolSelectionNoSchedulable 表示没有启用的池成员。
-	PoolSelectionNoSchedulable PoolSelectionKind = "no_schedulable_account"
+	PoolSelectionNoSchedulable PoolSelectionReason = "no_schedulable_account"
 	// PoolSelectionAllFrozen 表示全部池成员仍在冻结。
-	PoolSelectionAllFrozen PoolSelectionKind = "all_frozen"
+	PoolSelectionAllFrozen PoolSelectionReason = "all_frozen"
 	// PoolSelectionExhausted 表示本次操作已用尽合格候选。
-	PoolSelectionExhausted PoolSelectionKind = "exhausted"
+	PoolSelectionExhausted PoolSelectionReason = "exhausted"
 )
 
 // PoolSelectionError 携带无可用账号的原因与最早解冻时间。
 type PoolSelectionError struct {
-	Kind                PoolSelectionKind
+	Reason              PoolSelectionReason
 	EarliestFrozenUntil *int64
 }
 
 // Error 返回池选择失败的原因。
 func (e *PoolSelectionError) Error() string {
-	return "pixiv account pool selection failed: " + string(e.Kind)
+	return "pixiv account pool selection failed: " + string(e.Reason)
 }
 
 // SetPixivSchedulable 原子修改一组账号的池成员资格；任一 UID 不存在时整批保留原值。
@@ -137,7 +137,7 @@ func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, c
 	var selected Pixiv
 	err := s.update(ctx, func(doc *document) error {
 		if len(doc.Pixiv) == 0 {
-			return &PoolSelectionError{Kind: PoolSelectionNoLocalAccount}
+			return &PoolSelectionError{Reason: PoolSelectionNoLocalAccount}
 		}
 		status := doc.poolStatus(now)
 		snapshot := PoolSnapshot{Candidates: []PoolCandidate{}}
@@ -162,13 +162,13 @@ func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, c
 			}
 		}
 		if enabled == 0 {
-			return &PoolSelectionError{Kind: PoolSelectionNoSchedulable}
+			return &PoolSelectionError{Reason: PoolSelectionNoSchedulable}
 		}
 		if eligible == 0 {
-			return &PoolSelectionError{Kind: PoolSelectionAllFrozen, EarliestFrozenUntil: snapshot.EarliestFrozenUntil}
+			return &PoolSelectionError{Reason: PoolSelectionAllFrozen, EarliestFrozenUntil: snapshot.EarliestFrozenUntil}
 		}
 		if len(snapshot.Candidates) == 0 {
-			return &PoolSelectionError{Kind: PoolSelectionExhausted, EarliestFrozenUntil: snapshot.EarliestFrozenUntil}
+			return &PoolSelectionError{Reason: PoolSelectionExhausted, EarliestFrozenUntil: snapshot.EarliestFrozenUntil}
 		}
 		id, err := choose(snapshot)
 		if err != nil {

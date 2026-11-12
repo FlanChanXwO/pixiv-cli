@@ -2,14 +2,18 @@ package account_test
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
+	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
@@ -22,8 +26,8 @@ func TestCredentialRevisionRejectsStaleRotation(t *testing.T) {
 	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Username: "artist", Credential: credential.New([]byte("old"))}))
 	first, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
-	require.NoError(t, store.RotatePixivCredentials(t.Context(), 42, first.CredentialRevision, []byte("rotated")))
-	err = store.RotatePixivCredentials(t.Context(), 42, first.CredentialRevision, []byte("stale"))
+	require.NoError(t, store.RotatePixivCredentials(t.Context(), first, []byte("rotated")))
+	err = store.RotatePixivCredentials(t.Context(), first, []byte("stale"))
 	require.ErrorIs(t, err, account.ErrCredentialConflict)
 	saved, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
@@ -100,7 +104,7 @@ func TestRotationProcess(t *testing.T) {
 	fmt.Println("ready")
 	_, err = bufio.NewReader(os.Stdin).ReadString('\n')
 	require.NoError(t, err)
-	err = store.RotatePixivCredentials(t.Context(), 42, snapshot.CredentialRevision, []byte("process-"+os.Getenv("S04_ROTATION_VALUE")))
+	err = store.RotatePixivCredentials(t.Context(), snapshot, []byte("process-"+os.Getenv("S04_ROTATION_VALUE")))
 	if errors.Is(err, account.ErrCredentialConflict) {
 		fmt.Println("conflict")
 		return
@@ -126,4 +130,36 @@ func startRotationProcess(t *testing.T, directory string, index int) (*exec.Cmd,
 	require.NoError(t, err)
 	require.Equal(t, "ready\n", ready)
 	return cmd, input, reader
+}
+
+func TestSchedulerFreezeCoversRetryAfter(t *testing.T) {
+	store, err := account.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
+	now := time.Unix(100, 500000000)
+	deadline := now.Add(time.Second)
+	scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
+	err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
+		return sdk.NewError("pixiv", "read", sdk.RateLimited, sdk.WithRetry(sdk.RetryAdvice{Safe: true, HasAfter: true, After: deadline}))
+	})
+	require.Error(t, err)
+	saved, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, saved.Pool.FrozenUntil)
+	require.False(t, saved.Pool.FrozenUntil.Before(deadline), "freeze ended before Retry-After")
+}
+
+func TestRecreatedAccountRejectsPreviousRotation(t *testing.T) {
+	store, err := account.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("old"))}))
+	previous, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NoError(t, store.RemovePixiv(t.Context(), 42))
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("replacement"))}))
+	err = store.RotatePixivCredentials(t.Context(), previous, []byte("stale"))
+	require.ErrorIs(t, err, account.ErrCredentialConflict)
+	saved, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.Equal(t, "replacement", saved.Credential.Value())
 }

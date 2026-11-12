@@ -16,6 +16,7 @@ import (
 // ReadSession 关联短期 SDK client 与已保存的凭据版本；Invalidated 通知该代次失效。
 type ReadSession struct {
 	Client      *pixiv.Client
+	createdAt   time.Time
 	Revision    int64
 	Expires     time.Time
 	Version     uint64
@@ -58,7 +59,7 @@ func (m *ReadSessions) cached(ctx context.Context, uid int64, network string) (R
 		return ReadSession{}, false, cancelled
 	}
 	entry, ok := m.sessions[uid]
-	if ok && err == nil && entry.network == network && entry.session.Revision == a.CredentialRevision && time.Now().Before(entry.session.Expires) {
+	if ok && err == nil && entry.network == network && entry.session.Revision == a.CredentialRevision && entry.session.createdAt.Equal(a.CreatedAt) && time.Now().Before(entry.session.Expires) {
 		return entry.session, true, nil
 	}
 	if ok {
@@ -116,7 +117,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	}
 	// 其他进程可在轮换后再次提交凭据；发布缓存前复核 revision。
 	account, err := m.store.GetPixiv(ctx, uid)
-	if err == nil && account.CredentialRevision != session.Revision {
+	if err == nil && (account.CredentialRevision != session.Revision || !account.CreatedAt.Equal(session.createdAt)) {
 		err = ErrCredentialConflict
 	}
 	if err != nil {
@@ -129,6 +130,7 @@ func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, opti
 	session.Version = m.generation
 	session.Invalidated = generationCtx.Done()
 	transport.version.Store(session.Version)
+	transport.createdAt = session.createdAt
 	transport.revision.Store(session.Revision)
 	m.sessions[uid] = readEntry{session, network, options.HTTPClient, cancelGeneration}
 	return session, nil
@@ -175,12 +177,13 @@ func (e readEntry) close() {
 // 原始读取租约（例如媒体 tool）在上游 401 时同样作废当前代次，不重试失败请求，
 // 也不改变 SDK 的错误分类。
 type readSessionTransport struct {
-	inner    http.RoundTripper
-	owner    *ReadSessions
-	userID   int64
-	version  atomic.Uint64
-	revision atomic.Int64
-	ctx      context.Context
+	inner     http.RoundTripper
+	owner     *ReadSessions
+	userID    int64
+	version   atomic.Uint64
+	revision  atomic.Int64
+	createdAt time.Time // 在发布 revision 前写入，此后只读。
+	ctx       context.Context
 }
 
 func (t *readSessionTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -189,7 +192,7 @@ func (t *readSessionTransport) RoundTrip(r *http.Request) (*http.Response, error
 	// 发布前的 OAuth 请求尚无 revision；发布后的每次内容请求均复核本地凭据。
 	if revision := t.revision.Load(); revision > 0 {
 		a, err := t.owner.store.GetPixiv(ctx, t.userID)
-		if err == nil && a.CredentialRevision != revision {
+		if err == nil && (a.CredentialRevision != revision || !a.CreatedAt.Equal(t.createdAt)) {
 			err = ErrCredentialConflict
 		}
 		if err != nil {
