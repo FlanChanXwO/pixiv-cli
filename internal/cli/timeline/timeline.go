@@ -4,16 +4,17 @@ package timeline
 import (
 	"context"
 	"errors"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -30,13 +31,13 @@ type options struct {
 }
 
 type commandRunner struct {
-	env environment.Env
-	run session.Runner
+	env  environment.Env
+	exec session.SDKExecutor
 }
 
 // New 构造 `pixiv timeline` 命令组；following 与 latest 共用分页、代理覆盖和输出判定。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, run: session.NewRunner(env.Out, exec)}
+func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, exec: exec}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
 	cmd.AddCommand(a.newFollowingCommand(), a.newLatestCommand())
 	env.BindNoInput(cmd)
@@ -58,7 +59,7 @@ func (a commandRunner) newFollowingCommand() *cobra.Command {
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
-	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.SearchContentTypeAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
+	cmd.Flags().StringVar(&opts.artworkType, "content-type", string(pixiv.ArtworkCategoryAll), "artwork subtype: all, illust-and-ugoira, illust, manga, ugoira")
 	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility: public or private")
 	a.env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
@@ -66,7 +67,7 @@ func (a commandRunner) newFollowingCommand() *cobra.Command {
 }
 
 func (a commandRunner) newLatestCommand() *cobra.Command {
-	opts := options{artworkType: string(pixiv.SearchContentTypeIllust)}
+	opts := options{artworkType: string(pixiv.ArtworkCategoryIllust)}
 	cmd := &cobra.Command{
 		Use:   "latest",
 		Short: "Browse Pixiv's latest works",
@@ -114,25 +115,44 @@ func (a commandRunner) runFollowing(cmd *cobra.Command, opts options) error {
 		return err
 	}
 	if entity == string(target.NamespaceArtwork) {
-		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-			result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
+		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+			result, err := client.FollowingArtworks(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			// following upstream 只提供 restrict，没有 content_type；必须在保留
-			// upstream cursor 的同时本地筛选，才能让 logical limit 跨批次补足。
-			return filterFollowingArtworks(result.Items, artworkFilter), result.Next, nil
+			items := make([]legacysdk.Artwork, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.ArtworkOutput(item, false)
+				if err != nil {
+					return nil, sdk.Cursor{}, err
+				}
+			}
+			// 关注动态的子类型先本地筛选，逻辑 limit 才能跨批次补足。
+			return filterFollowingArtworks(items, artworkFilter), result.Cursor, nil
 		}
-		return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
+			RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+			Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+		}, fetch)
 	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		result, err := client.FollowingNovels(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(opts.restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Novel, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.NovelOutput(item)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
+		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+	}, fetch)
 }
 
 func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
@@ -150,7 +170,7 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 	if entity == string(target.NamespaceNovel) && cmd.Flags().Changed("content-type") {
 		return errors.New("--content-type is only supported when --type artwork")
 	}
-	if entity == string(target.NamespaceArtwork) && opts.artworkType != string(pixiv.SearchContentTypeIllust) && opts.artworkType != string(pixiv.SearchContentTypeManga) {
+	if entity == string(target.NamespaceArtwork) && opts.artworkType != string(pixiv.ArtworkCategoryIllust) && opts.artworkType != string(pixiv.ArtworkCategoryManga) {
 		return errors.New("content-type must be one of: illust, manga")
 	}
 	plan, request, jsonOut, ndjson, err := a.resolve(cmd, opts)
@@ -158,23 +178,43 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 		return err
 	}
 	if entity == string(target.NamespaceNovel) {
-		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
+		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsOptions{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			items := make([]legacysdk.Novel, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.NovelOutput(item)
+				if err != nil {
+					return nil, sdk.Cursor{}, err
+				}
+			}
+			return items, result.Cursor, nil
 		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
+			RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+			Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		}, fetch)
 	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: pixiv.SearchContentType(opts.artworkType), Cursor: cursor})
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksOptions{Category: pixiv.ArtworkCategory(opts.artworkType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
+		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+	}, fetch)
 }
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
@@ -201,11 +241,11 @@ func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pagination.Pag
 	return plan, request, jsonOut, a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut), nil
 }
 
-func filterFollowingArtworks(items []pixiv.Artwork, filter searchfilter.Filter) []pixiv.Artwork {
+func filterFollowingArtworks(items []legacysdk.Artwork, filter searchfilter.Filter) []legacysdk.Artwork {
 	if filter.ContentType == "" || filter.ContentType == searchfilter.ContentTypeAll {
 		return items
 	}
-	filtered := make([]pixiv.Artwork, 0, len(items))
+	filtered := make([]legacysdk.Artwork, 0, len(items))
 	for _, item := range items {
 		if filter.Matches(item.XRestrict, string(item.ContentType)) {
 			filtered = append(filtered, item)

@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -52,12 +53,19 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.FollowingNovels(ctx, pixiv.FollowingNovelsRequest{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			result, err := client.FollowingNovels(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			items := make([]legacysdk.Novel, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.NovelOutput(item)
+				if err != nil {
+					return nil, sdk.Cursor{}, err
+				}
+			}
+			return items, result.Cursor, nil
 		})
 		if err != nil {
 			return outputs.Error(err)
@@ -74,12 +82,19 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.FollowingArtworks(ctx, pixiv.FollowingArtworksRequest{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		result, err := client.FollowingArtworks(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)
@@ -93,15 +108,15 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 }
 func (t pixivTools) registerTimelineLatest(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_timeline_latest", Description: "Browse latest illustrations, manga or novels.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)},
-		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required entity type.", string(pixiv.SearchContentTypeIllust), string(pixiv.SearchContentTypeManga), string(contentNovel))}, "content_type"),
+		InputSchema:  schemas.List(map[string]any{"illust_filter": filters.IllustFilterSchema(), "novel_filter": filters.NovelFilterSchema(), "content_type": schemas.EnumString("Required entity type.", string(pixiv.ArtworkCategoryIllust), string(pixiv.ArtworkCategoryManga), kindNovel)}, "content_type"),
 		OutputSchema: schemas.RecordsOutputSchema()}, func(ctx context.Context, request *mcp.CallToolRequest, input timelineLatestIn) (*mcp.CallToolResult, outputs.Records, error) {
 		return t.timelineLatestHandler(ctx, input)
 	})
 }
 
-// timelineLatestIn 的 type 选择插画、漫画或小说；输出统一为 records envelope。
+// timelineLatestIn 的 content_type 选择插画、漫画或小说；输出统一为 records envelope。
 type timelineLatestIn struct {
-	ContentType pixiv.SearchContentType `json:"content_type"`
+	ContentType string `json:"content_type"`
 
 	IllustFilter *filters.IllustFilter `json:"illust_filter,omitempty"`
 	NovelFilter  *filters.NovelFilter  `json:"novel_filter,omitempty"`
@@ -113,23 +128,30 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 	if err != nil {
 		return outputs.Error(err)
 	}
-	if in.ContentType != contentNovel && in.NovelFilter != nil {
+	if in.ContentType != kindNovel && in.NovelFilter != nil {
 		return outputs.Error(errors.New("novel_filter requires content_type=novel"))
 	}
-	if in.ContentType == contentNovel && in.IllustFilter != nil {
+	if in.ContentType == kindNovel && in.IllustFilter != nil {
 		return outputs.Error(errors.New("illust_filter is not valid for novels"))
 	}
-	if in.ContentType == contentNovel {
+	if in.ContentType == kindNovel {
 		ctx, err = filters.WithNovelFilter(ctx, in.NovelFilter)
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsRequest{Cursor: cursor})
+		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsOptions{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			items := make([]legacysdk.Novel, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.NovelOutput(item)
+				if err != nil {
+					return nil, sdk.Cursor{}, err
+				}
+			}
+			return items, result.Cursor, nil
 		})
 		if err != nil {
 			return outputs.Error(err)
@@ -142,19 +164,26 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 		return outputs.Result(out), out, nil
 	}
 
-	if in.ContentType != pixiv.SearchContentTypeIllust && in.ContentType != pixiv.SearchContentTypeManga {
+	if in.ContentType != string(pixiv.ArtworkCategoryIllust) && in.ContentType != string(pixiv.ArtworkCategoryManga) {
 		return outputs.Error(errors.New("content_type must be one of: illust, manga"))
 	}
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksRequest{ContentType: in.ContentType, Cursor: cursor})
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksOptions{Category: pixiv.ArtworkCategory(in.ContentType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	})
 	if err != nil {
 		return outputs.Error(err)

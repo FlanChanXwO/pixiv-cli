@@ -7,11 +7,12 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -26,14 +27,14 @@ type options struct {
 }
 
 type commandRunner struct {
-	env environment.Env
-	run session.Runner
+	env  environment.Env
+	exec session.SDKExecutor
 }
 
 // New 构造 `pixiv mypixiv` 命令组；用户与作品两个子命令共用同一个执行端口，
 // 但各自执行时都会重新选择账号。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, run: session.NewRunner(env.Out, exec)}
+func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, exec: exec}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}
 	cmd.AddCommand(a.newUsersCommand(), a.newWorksCommand())
 	env.BindNoInput(cmd)
@@ -98,30 +99,24 @@ func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 			return err
 		}
 	}
-	var userID int64
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.UserPreview, sdk.Cursor, error) {
-		if userID == 0 {
-			var err error
-			userID, err = currentUserID(client)
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+		result, err := client.MyPixivUsers(ctx, pixiv.MyPixivOptions{Cursor: cursor})
+		if err != nil {
+			return nil, sdk.Cursor{}, err
+		}
+		items := make([]legacysdk.UserPreview, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.UserPreviewOutput(item)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 		}
-		result, err := client.MyPixivUsers(ctx, pixiv.MyPixivUsersRequest{Cursor: cursor})
-		if err != nil {
-			return nil, sdk.Cursor{}, err
-		}
-		return result.Items, result.Next, nil
+		return items, result.Cursor, nil
 	}
-	return record.RunUsers(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, opts.ndjson), a.env.Err, record.UserList{Fetch: fetch, Print: func(items []pixiv.UserPreview) error { return display.PrintUserPreviews(a.env.Out, items) }})
-}
-
-func currentUserID(client *pixiv.Client) (int64, error) {
-	if id := client.UserID(); id > 0 {
-		return id, nil
-	}
-	return 0, sdk.NewError("pixiv", "MyPixivUsers", sdk.Unauthorized,
-		sdk.WithDetail("cannot determine current user id"))
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[legacysdk.UserPreview]{
+		RecordValue: func(item legacysdk.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
+		Print:       func(items []legacysdk.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
+	}, fetch)
 }
 
 func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options) error {
@@ -132,19 +127,16 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	var userID int64
 	if len(args) == 0 {
 		if opts.contentType != string(pixiv.ContentTypeIllust) && opts.contentType != string(target.NamespaceNovel) {
-			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
-				sdk.WithDetail("type without USER_ID must be one of: artwork, novel"))
+			return &sdk.Error{Operation: "pixiv:mypixiv works", Reason: sdk.InvalidArgument, Message: "type without USER_ID must be one of: artwork, novel"}
 		}
 	} else {
 		if opts.contentType != string(pixiv.ContentTypeIllust) && opts.contentType != string(pixiv.ContentTypeManga) && opts.contentType != string(target.NamespaceNovel) {
-			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
-				sdk.WithDetail("type with USER_ID must be one of: artwork, manga, novel"))
+			return &sdk.Error{Operation: "pixiv:mypixiv works", Reason: sdk.InvalidArgument, Message: "type with USER_ID must be one of: artwork, manga, novel"}
 		}
 		var err error
 		userID, err = environment.PositiveInt64(args[0], "user_id")
 		if err != nil {
-			return sdk.NewError("pixiv", "mypixiv works", sdk.InvalidArgument,
-				sdk.WithDetail("user_id must be a positive integer"))
+			return &sdk.Error{Operation: "pixiv:mypixiv works", Reason: sdk.InvalidArgument, Message: "user_id must be a positive integer"}
 		}
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
@@ -167,42 +159,54 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	if len(args) == 0 {
-		if opts.contentType == string(pixiv.ContentTypeIllust) {
-			fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-				result, err := client.MyPixivArtworks(ctx, pixiv.MyPixivArtworksRequest{Cursor: cursor})
+	if opts.contentType == string(target.NamespaceNovel) {
+		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			var result sdk.Page[*pixiv.Novel]
+			var err error
+			if len(args) == 0 {
+				result, err = client.MyPixivNovels(ctx, pixiv.MyPixivOptions{Cursor: cursor})
+			} else {
+				result, err = client.User(userID).Novels(ctx, pixiv.UserNovelsOptions{Cursor: cursor})
+			}
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+			items := make([]legacysdk.Novel, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.NovelOutput(item)
 				if err != nil {
 					return nil, sdk.Cursor{}, err
 				}
-				return result.Items, result.Next, nil
 			}
-			return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+			return items, result.Cursor, nil
 		}
-		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.MyPixivNovels(ctx, pixiv.MyPixivNovelsRequest{Cursor: cursor})
-			if err != nil {
-				return nil, sdk.Cursor{}, err
-			}
-			return result.Items, result.Next, nil
-		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
+			RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+			Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		}, fetch)
 	}
-	if opts.contentType == string(target.NamespaceNovel) {
-		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.UserNovels(ctx, pixiv.UserNovelsRequest{UserID: userID, Cursor: cursor})
-			if err != nil {
-				return nil, sdk.Cursor{}, err
-			}
-			return result.Items, result.Next, nil
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		var result sdk.Page[*pixiv.Artwork]
+		var err error
+		if len(args) == 0 {
+			result, err = client.MyPixivArtworks(ctx, pixiv.MyPixivOptions{Cursor: cursor})
+		} else {
+			result, err = client.User(userID).Artworks(ctx, pixiv.UserArtworksOptions{Kind: pixiv.ContentType(opts.contentType), Cursor: cursor})
 		}
-		return record.RunNovels(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.NovelList{Fetch: fetch, Print: func(items []pixiv.Novel) error { return display.PrintNovels(a.env.Out, items) }})
-	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.UserArtworks(ctx, pixiv.UserArtworksRequest{UserID: userID, Kind: pixiv.ContentType(opts.contentType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.run, request, plan, record.FormatOf(jsonOut, ndjson), a.env.Err, record.ArtworkList{Fetch: fetch, Print: func(items []pixiv.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) }})
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
+		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+	}, fetch)
 }
