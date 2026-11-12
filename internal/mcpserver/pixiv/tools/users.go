@@ -43,12 +43,11 @@ func (t pixivTools) userArtworksHandler(ctx context.Context, in userArtworksIn) 
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
 	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.User(userID).Artworks(ctx, pixiv.UserArtworksOptions{Kind: pixiv.ContentType(in.Type), Cursor: cursor})
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).Artworks(ctx, pixiv.UserArtworksOptions{Kind: pixiv.ContentType(in.Type), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
@@ -90,12 +89,11 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Error(errors.New("illust_filter requires type=artwork"))
 	}
 	if in.Type == kindNovel {
-		userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-		if err != nil {
-			return outputs.Error(err)
+		if in.UserID < 0 {
+			return outputs.Error(errors.New("user_id must be positive when provided"))
 		}
 		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.User(userID).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
+			result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
@@ -112,17 +110,15 @@ func (t pixivTools) userBookmarksHandler(ctx context.Context, in userBookmarksIn
 		return outputs.Result(out), out, nil
 	}
 
-	userID := in.UserID
 	ctx, err = filters.WithIllustFilter(ctx, in.IllustFilter)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err = toolhost.ResolveSDKUserID(t.app, ctx, userID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
 	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{Restrict: pixiv.Restrict(in.Restrict), Tag: in.Tag, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
@@ -203,12 +199,11 @@ func (t pixivTools) userNovelsHandler(ctx context.Context, in userNovelsIn) (*mc
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
 	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]*pixiv.Novel, sdk.Cursor, error) {
-		result, err := client.User(userID).Novels(ctx, pixiv.UserNovelsOptions{Cursor: cursor})
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).Novels(ctx, pixiv.UserNovelsOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}

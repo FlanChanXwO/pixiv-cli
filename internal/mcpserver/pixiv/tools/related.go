@@ -33,15 +33,14 @@ type blockedUsersIn struct {
 }
 
 func (t pixivTools) blockedUsersHandler(ctx context.Context, in blockedUsersIn) (*mcp.CallToolResult, outputs.Records, error) {
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
 	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
 		return outputs.Error(err)
 	}
-	return t.listUserRelations(ctx, "blocked", userID, in.Restrict, plan, in.Limit)
+	return t.listUserRelations(ctx, "blocked", in.UserID, in.Restrict, plan, in.Limit)
 }
 func (t pixivTools) registerFollowUser(server *mcp.Server) {
 	toolhost.AddTool(t.app, server, &mcp.Tool{Name: "pixiv_follow_user", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: new(false), IdempotentHint: true, OpenWorldHint: new(true)}, Description: "Follow a Pixiv user."}, func(ctx context.Context, request *mcp.CallToolRequest, input followUserIn) (*mcp.CallToolResult, outputs.Mutation, error) {
@@ -208,11 +207,10 @@ func (t pixivTools) userRelationsHandler(ctx context.Context, in userRelationsIn
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
-	return t.listUserRelations(ctx, in.Relation, userID, in.Restrict, plan, in.Limit)
+	return t.listUserRelations(ctx, in.Relation, in.UserID, in.Restrict, plan, in.Limit)
 }
 
 // listUserRelations 在账号池重放边界内收集关注者、关注中、相关或屏蔽用户，输出统一的
@@ -223,13 +221,13 @@ func (t pixivTools) listUserRelations(ctx context.Context, kind string, userID i
 		var err error
 		switch kind {
 		case "followers":
-			result, err = client.User(userID).Followers(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+			result, err = client.User(toolhost.SDKUserID(ctx, userID)).Followers(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(restrict), Cursor: cursor})
 		case "following":
-			result, err = client.User(userID).Following(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(restrict), Cursor: cursor})
+			result, err = client.User(toolhost.SDKUserID(ctx, userID)).Following(ctx, pixiv.RelationshipOptions{Restrict: pixiv.Restrict(restrict), Cursor: cursor})
 		case "related":
-			result, err = client.User(userID).Related(ctx, pixiv.RelatedUsersOptions{Cursor: cursor})
+			result, err = client.User(toolhost.SDKUserID(ctx, userID)).Related(ctx, pixiv.RelatedUsersOptions{Cursor: cursor})
 		case "blocked":
-			result, err = client.User(userID).BlockedUsers(ctx, pixiv.BlockedUsersOptions{Cursor: cursor})
+			result, err = client.User(toolhost.SDKUserID(ctx, userID)).BlockedUsers(ctx, pixiv.BlockedUsersOptions{Cursor: cursor})
 		default:
 			return nil, sdk.Cursor{}, errors.New("unknown user relation")
 		}

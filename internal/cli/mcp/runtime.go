@@ -102,7 +102,10 @@ func pixivRequest(account pixivmcpserver.Account) session.ProxyRequest {
 func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts pixivmcpserver.SDKPorts, fanboxPorts fanboxmcpserver.SDKPorts, request Request) error {
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
 	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: r.Downloads, Path: settings.Download.Path, FilenameTemplate: settings.Download.FilenameTemplate, DirectoryTemplate: settings.Download.DirectoryTemplate}
-	// 只经本地 Facade 解析一次身份，后续阶段固定使用同一账号，避免并发请求各选到不同账号。
+	sdkPorts.ResolveSDKAccount = func(_ context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
+		return account, nil
+	}
+	// 旧领域仍只解析一次身份，媒体的多个阶段固定使用同一账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		err := r.Local.ExecuteSDK(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
 			account.UserID = userID

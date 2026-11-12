@@ -8,21 +8,30 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// SDKExecutor 在固定账号的池重放边界内交出新 client 与已选 UID。
+// SDKExecutor 在账号池重放边界内交出新 client 与本次尝试的已选 UID。
 type SDKExecutor func(context.Context, Account, func(context.Context, int64, *pixiv.Client) (bool, error)) error
 
-// SDKReadExecutor 复用本次工具的账号快照；SDK 对象只在 attempt 内使用。
+type sdkUserIDKey struct{}
+
+func (a *App) resolveSDKAccount(ctx context.Context) (Account, error) {
+	if a.sdk.ResolveSDKAccount != nil {
+		return a.sdk.ResolveSDKAccount(ctx, a.sdkAccount)
+	}
+	return a.resolveAccount(ctx)
+}
+
+// SDKReadExecutor 保留 stdio 的池调度与 HTTP 的固定账号；SDK 对象只在 attempt 内使用。
 func (a *App) SDKReadExecutor() pagination.Execute[*pixiv.Client] {
 	if a.sdk.ExecuteSDK == nil {
 		return nil
 	}
 	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		account, err := a.resolveAccount(ctx)
+		account, err := a.resolveSDKAccount(ctx)
 		if err != nil {
 			return err
 		}
-		return a.sdk.ExecuteSDK(ctx, account, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
-			return attempt(ctx, client)
+		return a.sdk.ExecuteSDK(ctx, account, func(ctx context.Context, selected int64, client *pixiv.Client) (bool, error) {
+			return attempt(context.WithValue(ctx, sdkUserIDKey{}, selected), client)
 		})
 	}
 }
@@ -50,7 +59,7 @@ func WriteSDK(a *App, ctx context.Context, invoke func(context.Context, *pixiv.C
 	if a.sdk.ExecuteSDK == nil {
 		return errors.New("sdk pooled operation is not configured")
 	}
-	account, err := a.resolveAccount(ctx)
+	account, err := a.resolveSDKAccount(ctx)
 	if err != nil {
 		return err
 	}
@@ -59,28 +68,10 @@ func WriteSDK(a *App, ctx context.Context, invoke func(context.Context, *pixiv.C
 	})
 }
 
-// ResolveSDKUserID 在 SDK 操作前使用同一账号快照补齐省略的用户 ID。
-func ResolveSDKUserID(a *App, ctx context.Context, requested int64) (int64, error) {
-	if requested > 0 {
-		return requested, nil
+// SDKUserID 在读取回调内把省略的用户 ID 解析为本次尝试的账号。
+func SDKUserID(ctx context.Context, requested int64) int64 {
+	if requested != 0 {
+		return requested
 	}
-	if requested < 0 {
-		return 0, errors.New("user_id must be positive when provided")
-	}
-	account, err := a.resolveAccount(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if account.UserID > 0 {
-		return account.UserID, nil
-	}
-	if a.sdk.ExecuteSDK == nil {
-		return 0, errors.New("sdk pooled operation is not configured")
-	}
-	var id int64
-	err = a.sdk.ExecuteSDK(ctx, account, func(_ context.Context, selected int64, _ *pixiv.Client) (bool, error) {
-		id = selected
-		return false, nil
-	})
-	return id, err
+	return ctx.Value(sdkUserIDKey{}).(int64)
 }

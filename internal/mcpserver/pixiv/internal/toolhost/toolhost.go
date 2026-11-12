@@ -1,5 +1,5 @@
-// Package toolhost 是 Pixiv MCP 的执行宿主：它持有 SDK 窄端口，把一次工具调用绑定到
-// 固定账号，并在该账号的池重放边界内执行读、写和 client lease 操作。
+// Package toolhost 是 Pixiv MCP 的执行宿主：它持有 SDK 窄端口，在账号池重放边界内
+// 执行 stdio 读写，并固定 HTTP 调用与 client lease 的账号。
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
@@ -44,8 +44,11 @@ type LocalDownloads struct {
 type SDKPorts struct {
 	// ExecuteSDK 为已迁移的工具装配新 SDK；其余工具保留旧端口。
 	ExecuteSDK SDKExecutor
-	Downloads  *LocalDownloads
-	Media      *mediaproxy.Service
+	// ResolveSDKAccount 保留 stdio 的池选择；HTTP 沿用 ResolveAccount 的固定快照。
+	// shortcut: 新旧工具的账号选择入口并存，旧工具迁移完成后统一。
+	ResolveSDKAccount func(context.Context, Account) (Account, error)
+	Downloads         *LocalDownloads
+	Media             *mediaproxy.Service
 	// Accounts 供 ResolveAccount 读取本地账号选择，所有连接器共享。
 	Accounts accounts.Selection
 	// Login 与 HTTP 登录接力共享，生命周期归 server 所有。

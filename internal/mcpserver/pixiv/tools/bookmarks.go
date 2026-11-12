@@ -123,15 +123,14 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 	if err != nil {
 		return outputs.Error(err)
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.Error(err)
+	if in.UserID < 0 {
+		return outputs.Error(errors.New("user_id must be positive when provided"))
 	}
 
 	items, more, err := toolhost.CollectSDKStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkItem, bookmarkCursor] {
 		return []pagination.Stream[bookmarkItem, bookmarkCursor]{
-			artworkStream(client, userID, in.Restrict, in.Tag),
-			novelStream(client, userID, in.Restrict, in.Tag),
+			artworkStream(client, in.UserID, in.Restrict, in.Tag),
+			novelStream(client, in.UserID, in.Restrict, in.Tag),
 		}
 	})
 	if err != nil {
@@ -168,7 +167,7 @@ func (t pixivTools) bookmarkListAllHandler(ctx context.Context, in bookmarkListA
 func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
 	return pagination.Stream[bookmarkItem, bookmarkCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkCursor) ([]bookmarkItem, bookmarkCursor, error) {
-			page, err := client.User(userID).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{
+			page, err := client.User(toolhost.SDKUserID(ctx, userID)).ArtworkBookmarks(ctx, pixiv.ArtworkBookmarksOptions{
 				Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
@@ -187,7 +186,7 @@ func artworkStream(client *pixiv.Client, userID int64, restrict, tag string) pag
 func novelStream(client *pixiv.Client, userID int64, restrict, tag string) pagination.Stream[bookmarkItem, bookmarkCursor] {
 	return pagination.Stream[bookmarkItem, bookmarkCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkCursor) ([]bookmarkItem, bookmarkCursor, error) {
-			page, err := client.User(userID).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{
+			page, err := client.User(toolhost.SDKUserID(ctx, userID)).NovelBookmarks(ctx, pixiv.NovelBookmarksOptions{
 				Restrict: pixiv.Restrict(restrict), Tag: tag, Cursor: cursor.upstream,
 			})
 			if err != nil {
@@ -280,9 +279,8 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	if in.Type != "" && in.Type != kindArtwork && in.Type != kindNovel {
 		return outputs.BookmarkTagsError(errors.New("kind must be artwork or novel"))
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.BookmarkTagsError(err)
+	if in.UserID < 0 {
+		return outputs.BookmarkTagsError(errors.New("user_id must be positive when provided"))
 	}
 	plan, err := toolrun.ParseListPlan(in.ListIn)
 	if err != nil {
@@ -290,13 +288,13 @@ func (t pixivTools) bookmarkTagsHandler(ctx context.Context, in bookmarkTagsIn) 
 	}
 	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]pixiv.BookmarkTag, sdk.Cursor, error) {
 		if in.Type == kindNovel {
-			result, err := client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+			result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
 			return result.Items, result.Cursor, nil
 		}
-		result, err := client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
+		result, err := client.User(toolhost.SDKUserID(ctx, in.UserID)).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
@@ -372,7 +370,7 @@ type bookmarkTagItem struct {
 func artworkTagStream(client *pixiv.Client, userID int64, restrict string) pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkTagsCursor) ([]bookmarkTagItem, bookmarkTagsCursor, error) {
-			page, err := client.User(userID).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{
+			page, err := client.User(toolhost.SDKUserID(ctx, userID)).ArtworkBookmarkTags(ctx, pixiv.ArtworkBookmarkTagsOptions{
 				Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
@@ -391,7 +389,7 @@ func artworkTagStream(client *pixiv.Client, userID int64, restrict string) pagin
 func novelTagStream(client *pixiv.Client, userID int64, restrict string) pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 	return pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
 		Fetch: func(ctx context.Context, cursor bookmarkTagsCursor) ([]bookmarkTagItem, bookmarkTagsCursor, error) {
-			page, err := client.User(userID).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{
+			page, err := client.User(toolhost.SDKUserID(ctx, userID)).NovelBookmarkTags(ctx, pixiv.NovelBookmarkTagsOptions{
 				Restrict: pixiv.Restrict(restrict), Cursor: cursor.upstream,
 			})
 			if err != nil {
@@ -419,15 +417,14 @@ func (t pixivTools) bookmarkTagsAllHandler(ctx context.Context, in bookmarkTagsA
 	if err != nil {
 		return outputs.BookmarkTagsAllError(err)
 	}
-	userID, err := toolhost.ResolveSDKUserID(t.app, ctx, in.UserID)
-	if err != nil {
-		return outputs.BookmarkTagsAllError(err)
+	if in.UserID < 0 {
+		return outputs.BookmarkTagsAllError(errors.New("user_id must be positive when provided"))
 	}
 
 	items, more, err := toolhost.CollectSDKStreamsWith(ctx, t.app, plan, func(client *pixiv.Client) []pagination.Stream[bookmarkTagItem, bookmarkTagsCursor] {
 		return []pagination.Stream[bookmarkTagItem, bookmarkTagsCursor]{
-			artworkTagStream(client, userID, in.Restrict),
-			novelTagStream(client, userID, in.Restrict),
+			artworkTagStream(client, in.UserID, in.Restrict),
+			novelTagStream(client, in.UserID, in.Restrict),
 		}
 	})
 	if err != nil {
