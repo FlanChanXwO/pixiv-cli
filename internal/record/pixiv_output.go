@@ -85,26 +85,35 @@ func FromSDKNovels(items []*pixiv.Novel) ([]Record, error) {
 	})
 }
 
+// RecommendationOutput 保留推荐用户及其作品、小说样例的输出形状。
+func RecommendationOutput(r pixiv.UserRecommendation) (legacysdk.UserPreview, error) {
+	out, err := UserPreviewOutput(r.User)
+	if err != nil {
+		return legacysdk.UserPreview{}, err
+	}
+	for _, a := range r.Artworks {
+		value, err := ArtworkOutput(a, false)
+		if err != nil {
+			return legacysdk.UserPreview{}, err
+		}
+		out.Illusts = append(out.Illusts, value)
+	}
+	for _, n := range r.Novels {
+		value, err := NovelOutput(n)
+		if err != nil {
+			return legacysdk.UserPreview{}, err
+		}
+		out.Novels = append(out.Novels, value)
+	}
+	return out, nil
+}
+
 // FromSDKRecommendations 保留推荐用户及其样例作品的记录形状。
 func FromSDKRecommendations(items []pixiv.UserRecommendation) ([]Record, error) {
 	return recordsFrom(items, func(r pixiv.UserRecommendation) (Record, error) {
-		out, err := UserPreviewOutput(r.User)
+		out, err := RecommendationOutput(r)
 		if err != nil {
 			return Record{}, err
-		}
-		for _, a := range r.Artworks {
-			value, err := ArtworkOutput(a, false)
-			if err != nil {
-				return Record{}, err
-			}
-			out.Illusts = append(out.Illusts, value)
-		}
-		for _, n := range r.Novels {
-			value, err := NovelOutput(n)
-			if err != nil {
-				return Record{}, err
-			}
-			out.Novels = append(out.Novels, value)
 		}
 		return RecordFromUserPreview(out)
 	})

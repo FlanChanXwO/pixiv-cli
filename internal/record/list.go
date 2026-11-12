@@ -67,6 +67,8 @@ func WriteJSONValue(out io.Writer, value any) error {
 
 // List 描述一次分页列表的输出方式；JSON 与 NDJSON 共用记录投影。
 type List[T any] struct {
+	// PostFilter 只筛选已经解析的分页窗口，不额外获取上游结果。
+	PostFilter func([]T) []T
 	// Print 输出一批文本结果；offset 是本批在整体结果中的起点。
 	Print func(items []T, offset int) error
 	// RecordValue 把一项转成 JSON/NDJSON 共用记录。

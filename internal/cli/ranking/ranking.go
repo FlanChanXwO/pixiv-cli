@@ -8,11 +8,12 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -27,13 +28,13 @@ type options struct {
 }
 
 type commandRunner struct {
-	env    environment.Env
-	runner session.Runner
+	env  environment.Env
+	exec session.SDKExecutor
 }
 
 // New 构造 `pixiv ranking` 命令，作品和小说排行共用同一套分页与输出。
-func New(env environment.Env, exec session.Executor) *cobra.Command {
-	a := commandRunner{env: env, runner: session.NewRunner(env.Out, exec)}
+func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+	a := commandRunner{env: env, exec: exec}
 	options := options{typ: string(target.NamespaceArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
@@ -92,41 +93,54 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	format := record.FormatOf(jsonOut, ndjson)
 	if opts.typ == string(target.NamespaceNovel) {
-		fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Novel, sdk.Cursor, error) {
-			result, err := client.NovelRanking(ctx, pixiv.NovelRankingRequest{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
+		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+			result, err := client.NovelRanking(ctx, pixiv.NovelRankingOptions{Mode: pixiv.RankingMode(opts.mode), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			return result.Items, result.Next, nil
+			items := make([]legacysdk.Novel, len(result.Items))
+			for i, item := range result.Items {
+				items[i], err = record.NovelOutput(item)
+				if err != nil {
+					return nil, sdk.Cursor{}, err
+				}
+			}
+			return items, result.Cursor, nil
 		}
-		position := plan.Skip
-		return record.RunNovels(cmd.Context(), a.runner, request, plan, format, a.env.Err, record.NovelList{
-			Fetch: fetch,
-			Print: func(items []pixiv.Novel) error {
-				for _, item := range items {
-					position++
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[legacysdk.Novel]{
+			RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+			Print: func(items []legacysdk.Novel, start int) error {
+				for i, item := range items {
+					position := start + i + 1
 					if _, err := fmt.Fprintf(a.env.Out, "#%d ", position); err != nil {
 						return err
 					}
-					if err := display.PrintNovels(a.env.Out, []pixiv.Novel{item}); err != nil {
+					if err := display.PrintNovels(a.env.Out, []legacysdk.Novel{item}); err != nil {
 						return err
 					}
 				}
 				return nil
 			},
-		})
+		}, fetch)
 	}
-	fetch := func(client *pixiv.Client, ctx context.Context, cursor sdk.Cursor) ([]pixiv.Artwork, sdk.Cursor, error) {
-		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingRequest{Mode: pixiv.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		result, err := client.ArtworkRanking(ctx, pixiv.ArtworkRankingOptions{Mode: pixiv.RankingMode(opts.mode), Date: opts.date, Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		return result.Items, result.Next, nil
+		items := make([]legacysdk.Artwork, len(result.Items))
+		for i, item := range result.Items {
+			items[i], err = record.ArtworkOutput(item, false)
+			if err != nil {
+				return nil, sdk.Cursor{}, err
+			}
+		}
+		return items, result.Cursor, nil
 	}
-	return record.RunArtworks(cmd.Context(), a.runner, request, plan, format, a.env.Err, record.ArtworkList{
-		Fetch: fetch,
-		Print: func(items []pixiv.Artwork, start int) error {
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[legacysdk.Artwork]{
+		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print: func(items []legacysdk.Artwork, start int) error {
 			return display.PrintArtworksRanked(a.env.Out, items, start)
 		},
-	})
+	}, fetch)
 }

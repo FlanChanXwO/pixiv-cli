@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"math"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 )
 
 // 校验失败的原因；调用方按自己的输出契约翻译其中需要改写的文本。
@@ -69,7 +67,7 @@ func ListPagination(plan PagePlan, limit *int, returned int, hasMore bool) Pagin
 }
 
 // PageItems 把分页计划交给共享遍历，供自带内联读取的命令使用。
-func PageItems[T any](ctx context.Context, plan PagePlan, fetch func(context.Context, sdk.Cursor) ([]T, sdk.Cursor, error), consume func([]T) error) error {
+func PageItems[T any, C Cursor](ctx context.Context, plan PagePlan, fetch func(context.Context, C) ([]T, C, error), consume func([]T) error) error {
 	_, err := TraversePages(ctx, plan, fetch, consume)
 	return err
 }
