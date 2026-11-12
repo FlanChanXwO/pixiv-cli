@@ -36,19 +36,6 @@ func (l *Local) ExecuteSDK(ctx context.Context, request ProxyRequest, callback f
 	})
 }
 
-// OpenSDKLease 固定账号与网络配置，返回新 SDK client 和已选 UID；调用方负责关闭租约。
-func (l *Local) OpenSDKLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*pixiv.Client], int64, error) {
-	ports, err := l.ports()
-	if err != nil {
-		return nil, 0, err
-	}
-	settings, err := l.loadPixiv(request)
-	if err != nil {
-		return nil, 0, err
-	}
-	return openSDKLease(ctx, ports, request.UserID, settings.SDKOptions)
-}
-
 func openSDKLease(ctx context.Context, ports *pixivPorts, userID int64, options pixiv.Options) (lease *lifecycle.Lease[*pixiv.Client], selectedID int64, err error) {
 	// 配置加载函数交出的传输归本次操作；SDK 只释放它自己创建的空闲连接。
 	defer func() {
