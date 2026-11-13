@@ -94,7 +94,7 @@ func (m *ReadSessions) OpenSDK(ctx context.Context, uid int64, network string, o
 		if err != nil {
 			return ReadSession{}, err
 		}
-		client, err := pixiv.New(savedCredentials{store: m.store, userID: uid, createdAt: account.CreatedAt}, options)
+		client, err := pixiv.New(readCredentials{savedCredentials: savedCredentials{store: m.store, userID: uid, createdAt: account.CreatedAt}, transport: httpClient.Transport.(*readSessionTransport)}, options)
 		if err != nil {
 			return ReadSession{}, err
 		}
@@ -223,6 +223,7 @@ type readSessionTransport struct {
 	userID    int64
 	version   atomic.Uint64
 	revision  atomic.Int64
+	rejected  atomic.Bool
 	createdAt time.Time // 在发布 revision 前写入，此后只读。
 	ctx       context.Context
 }
@@ -251,6 +252,9 @@ func (t *readSessionTransport) RoundTrip(r *http.Request) (*http.Response, error
 	}
 	response, err := t.inner.RoundTrip(r.Clone(ctx))
 	if response != nil && response.StatusCode == http.StatusUnauthorized {
+		if t.version.Load() != 0 {
+			t.rejected.Store(true)
+		}
 		// 返回本次 401 的完整正文；失效只主动取消同一代次的其他传输。
 		stop()
 		t.owner.discard(t.userID, t.version.Load())
@@ -287,4 +291,17 @@ func (s ReadSession) closeIdleConnections() {
 	} else {
 		s.Client.CloseIdleConnections()
 	}
+}
+
+// readCredentials 让已遭上游拒绝的代次明确返回认证失败，阻止 SDK 在同一代次刷新重放。
+type readCredentials struct {
+	savedCredentials
+	transport *readSessionTransport
+}
+
+func (s readCredentials) Load(ctx context.Context) (pixiv.Credentials, error) {
+	if s.transport.rejected.Load() {
+		return pixiv.Credentials{}, &sdk.Error{Operation: "pixiv.ReadSession", Reason: sdk.CredentialsExpired, HTTPStatus: http.StatusUnauthorized, Message: "read session was rejected by upstream"}
+	}
+	return s.savedCredentials.Load(ctx)
 }

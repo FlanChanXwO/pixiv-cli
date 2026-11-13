@@ -27,6 +27,10 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 		// 1. Read the current revision before using or renewing its access token.
 		latest, err := c.store.Load(ctx)
 		if err != nil {
+			// A caller-owned store may expire an account-bound lease with a classified error.
+			if sdk.ReasonOf(err) != "" {
+				return Credentials{}, err
+			}
 			return Credentials{}, newError("credentials.Load", sdk.LocalStateError, "credential read failed", err)
 		}
 		if err := validateCredentials(latest); err != nil {
