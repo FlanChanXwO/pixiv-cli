@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -18,46 +19,17 @@ import (
 )
 
 const imageSniffBytes = 512 // http.DetectContentType examines at most this many bytes.
-const unknownMediaType = "application/octet-stream"
-
-func imageForQuality(image pixiv.Image, quality Quality) (pixiv.Image, error) {
-	if quality == QualityOriginal {
-		return image, nil
-	}
-	original, err := url.Parse(image.URL)
-	if err != nil {
-		return pixiv.Image{}, invalidArgument("invalid original image URL")
-	}
-	const originalMarker = "/img-original/img/"
-	_, relative, ok := strings.Cut(original.Path, originalMarker)
-	if !ok || original.Scheme != "https" {
-		return pixiv.Image{}, invalidArgument("image quality variant is unavailable")
-	}
-	var crop, suffix string
-	switch quality {
-	case QualityRegular:
-		crop, suffix = "1200x1200", "_master1200"
-	case QualitySmall:
-		crop, suffix = "540x540_70", "_master1200"
-	case QualityThumb:
-		crop, suffix = "250x250_80_a2", "_square1200"
-	case QualityMini:
-		crop, suffix = "48x48", "_square1200"
-	}
-	// Keep the account binding while applying the same CDN convention as the Pixiv client.
-	original.Path = "/c/" + crop + "/img-master/img/" + strings.TrimSuffix(relative, path.Ext(relative)) + suffix + ".jpg"
-	original.RawPath, original.RawQuery, original.Fragment = "", "", ""
-	image.URL = original.String()
-	return image, nil
-}
 
 func saveImage(ctx context.Context, image pixiv.Image, base, name string) (output string, returnErr error) {
-	body, err := image.Open(ctx)
+	response, err := image.OpenResponse(ctx)
 	if err != nil {
 		return "", err
 	}
-	defer func() { returnErr = errors.Join(returnErr, body.Close()) }()
-	reader := bufio.NewReader(body)
+	defer func() { returnErr = errors.Join(returnErr, response.Body.Close()) }()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return "", &sdk.Error{Operation: "download.Save", Reason: sdk.UpstreamError, HTTPStatus: response.StatusCode, Message: "resource returned a non-success status"}
+	}
+	reader := bufio.NewReader(response.Body)
 	header, err := reader.Peek(imageSniffBytes)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
@@ -66,25 +38,14 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 	if err != nil {
 		return "", invalidArgument("invalid image URL")
 	}
-	var extension string
-	mediaType := http.DetectContentType(header)
-	switch mediaType {
-	case "image/jpeg":
-		extension = ".jpg"
-		if strings.EqualFold(path.Ext(locator.Path), ".jpeg") {
-			extension = path.Ext(locator.Path)
-		}
-	case "image/png":
-		extension = ".png"
-	case "image/gif":
-		extension = ".gif"
-	case "image/webp":
-		extension = ".webp"
-	default:
-		if mediaType != unknownMediaType {
-			return "", &sdk.Error{Operation: "download.Save", Reason: sdk.MalformedUpstreamResponse, Message: "resource is not a supported image"}
-		}
-		// Image.Open exposes bytes without headers; retain the old URL-extension fallback.
+	// Preserve the response MIME preference used by the CLI; sniff only when it
+	// has no supported image type, and use the URL suffix only without a declaration.
+	reported := strings.ToLower(strings.TrimSpace(strings.SplitN(response.ContentType, ";", 2)[0]))
+	extension := imageExtension(reported)
+	if extension == "" {
+		extension = imageExtension(http.DetectContentType(header))
+	}
+	if extension == "" && reported == "" {
 		extension = filename.Sanitize(path.Ext(locator.Path))
 		extension = strings.TrimRight(strings.Map(func(r rune) rune {
 			if r < 0x20 || r == 0x7f {
@@ -92,10 +53,41 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 			}
 			return r
 		}, extension), ". ")
+		if imageExtensionBySuffix(extension) == "" {
+			extension = ""
+		}
+	}
+	if extension == "" {
+		return "", &sdk.Error{Operation: "download.Save", Reason: sdk.MalformedUpstreamResponse, Message: fmt.Sprintf("unsupported image content type %q", reported)}
+	}
+	if extension == ".jpg" && strings.EqualFold(path.Ext(locator.Path), ".jpeg") {
+		extension = path.Ext(locator.Path)
 	}
 	output = filepath.Join(base, name+extension)
 	if _, err := atomicfile.AtomicWrite(ctx, output, reader); err != nil {
 		return "", err
 	}
 	return output, nil
+}
+func imageExtension(mediaType string) string {
+	switch mediaType {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
+	}
+	return ""
+}
+func imageExtensionBySuffix(extension string) string {
+	switch strings.ToLower(extension) {
+	case ".jpg", ".jpeg":
+		return ".jpg"
+	case ".png", ".gif", ".webp":
+		return strings.ToLower(extension)
+	}
+	return ""
 }

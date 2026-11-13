@@ -67,7 +67,7 @@ func savePage(ctx context.Context, options Options, base string, page pixiv.Artw
 		path, err := saveUgoira(ctx, art, base, name, options.UgoiraFormat)
 		return path, warnings, err
 	}
-	image, err := imageForQuality(page.Original, options.Quality)
+	image, err := page.Original.Quality(string(options.Quality))
 	if err != nil {
 		return "", warnings, err
 	}

@@ -4,6 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/url"
+	"path"
+	"strconv"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -64,4 +68,69 @@ func (c *Client) coverImage(w imageURLsWire, width, height int) (Image, error) {
 		}
 	}
 	return c.image("", width, height)
+}
+
+// Image constructs a client-bound image for an allowed CDN URL without I/O.
+// Open and Save retain the client's credential and resource policies.
+func (c *Client) Image(rawURL string) (Image, error) {
+	return c.image(rawURL, 0, 0)
+}
+
+// Quality selects a derived artwork size while retaining the account binding.
+// Original returns the image unchanged; other sizes require an original artwork URL.
+func (i Image) Quality(quality string) (Image, error) {
+	if quality == "" || quality == "original" {
+		return i, nil
+	}
+	original, err := url.Parse(i.URL)
+	if err != nil {
+		return Image{}, newError("Image.Quality", sdk.InvalidArgument, "invalid original image URL", nil)
+	}
+	_, relative, ok := strings.Cut(original.Path, "/img-original/img/")
+	if !ok || original.Scheme != "https" {
+		return Image{}, newError("Image.Quality", sdk.InvalidArgument, "image quality variant is unavailable", nil)
+	}
+	var crop, suffix string
+	switch quality {
+	case "regular":
+		crop, suffix = "1200x1200", "_master1200"
+	case "small":
+		crop, suffix = "540x540_70", "_master1200"
+	case "thumb", "square_medium":
+		crop, suffix = "250x250_80_a2", "_square1200"
+	case "mini":
+		crop, suffix = "48x48", "_square1200"
+	default:
+		return Image{}, newError("Image.Quality", sdk.InvalidArgument, "image quality variant is unavailable", nil)
+	}
+	original.Path = "/c/" + crop + "/img-master/img/" + strings.TrimSuffix(relative, path.Ext(relative)) + suffix + ".jpg"
+	original.RawPath, original.RawQuery, original.Fragment = "", "", ""
+	i.variant = quality
+	i.URL = original.String()
+	return i, nil
+}
+
+// ImageResponse exposes media metadata without credentials or a resolved URL.
+// The caller owns Body, including for a non-success StatusCode.
+type ImageResponse struct {
+	StatusCode    int
+	ContentType   string
+	ContentLength int64 // -1 when the upstream did not declare a valid length.
+	Body          io.ReadCloser
+}
+
+// OpenResponse opens the same policy-checked stream as Open and retains its HTTP
+// status and media headers for streaming proxies and download filename selection.
+func (i Image) OpenResponse(ctx context.Context) (*ImageResponse, error) {
+	response, err := i.client.openResource(ctx, i.URL)
+	if err != nil {
+		return nil, err
+	}
+	length := int64(-1)
+	if raw := response.Header.Get("Content-Length"); raw != "" {
+		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n >= 0 {
+			length = n
+		}
+	}
+	return &ImageResponse{StatusCode: response.StatusCode, ContentType: response.Header.Get("Content-Type"), ContentLength: length, Body: response.Body}, nil
 }
