@@ -62,7 +62,7 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 							return report, ctx.Err()
 						}
 						url, _ := ref.CanonicalURL()
-						report.Failures = append(report.Failures, DownloadFailure{URL: url, Type: string(kind), Message: downloadError("UserArtworks", err).Error(), Cause: err})
+						report.Failures = append(report.Failures, DownloadFailure{URL: url, ContentType: string(kind), Message: downloadError("UserArtworks", err).Error(), Cause: err})
 					}
 				}
 			default:
@@ -128,7 +128,7 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 			err = saveReference(ctx, client, ref, path)
 		}
 		if err == nil {
-			report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
+			report.Items = append(report.Items, DownloadedArtwork{ContentType: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
 			report.Committed = true
 		}
 		if ctx.Err() != nil {
@@ -155,7 +155,7 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 			}
 		}
 		if err == nil {
-			report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
+			report.Items = append(report.Items, DownloadedArtwork{ContentType: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
 			report.Committed = true
 		}
 		if ctx.Err() != nil {
@@ -163,7 +163,7 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 		}
 		if err != nil {
 			err = downloadError("SaveResourceURL", err)
-			report.Failures = append(report.Failures, DownloadFailure{URL: redactedDownloadSource, Type: downloadedResourceType, Message: err.Error(), Cause: err})
+			report.Failures = append(report.Failures, DownloadFailure{URL: redactedDownloadSource, ContentType: downloadedResourceType, Message: err.Error(), Cause: err})
 			continue
 		}
 	}
@@ -201,12 +201,12 @@ func saveArtwork(ctx context.Context, art *pixiv.Artwork, request Request, repor
 			}
 		}
 	}
-	item := DownloadedArtwork{IllustID: art.ID, Title: art.Title, Author: art.Author.Name, Type: string(art.ContentType)}
+	item := DownloadedArtwork{IllustID: art.ID, Title: art.Title, Author: art.Author.Name, ContentType: string(art.ContentType)}
 	saver := download.New(options)
 	for _, page := range selected {
 		saved, err := saver.Save(ctx, page)
 		for _, warning := range saved.Warnings {
-			report.Warnings = append(report.Warnings, DownloadWarning{IllustID: art.ID, Type: string(art.ContentType), Message: warning.Message})
+			report.Warnings = append(report.Warnings, DownloadWarning{IllustID: art.ID, ContentType: string(art.ContentType), Message: warning.Message})
 		}
 		for _, file := range saved.Files {
 			item.Files = append(item.Files, DownloadedFile{Path: file.Path, Page: file.PageIndex + 1})

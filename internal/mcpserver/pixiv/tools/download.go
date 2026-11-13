@@ -224,14 +224,14 @@ func buildDownloadOut(delivery string, artworks []saving.DownloadedArtwork) (dow
 			IllustID: artwork.IllustID,
 			Title:    artwork.Title,
 			Author:   artwork.Author,
-			Type:     artwork.Type,
+			Type:     artwork.ContentType,
 			Files:    []downloadFileOut{},
 		}
 		if artwork.IllustID > 0 {
 			item.URL = "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.IllustID, 10)
-			lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.Type))
+			lines = append(lines, fmt.Sprintf("Artwork %d - %q / Author: %s / Type: %s", artwork.IllustID, artwork.Title, artwork.Author, artwork.ContentType))
 		} else {
-			lines = append(lines, fmt.Sprintf("Resource download / Type: %s", artwork.Type))
+			lines = append(lines, fmt.Sprintf("Resource download / Type: %s", artwork.ContentType))
 		}
 		for _, file := range artwork.Files {
 			info, err := os.Stat(file.Path)
@@ -266,19 +266,19 @@ func buildDownloadReportOut(delivery string, report saving.DownloadReport) (down
 	}
 	for _, warning := range report.Warnings {
 		out.Warnings = append(out.Warnings, downloadWarningOut{
-			IllustID: warning.IllustID, Type: warning.Type, Message: warning.Message,
+			IllustID: warning.IllustID, Type: warning.ContentType, Message: warning.Message,
 		})
 		if warning.IllustID > 0 {
 			out.Text += fmt.Sprintf("\nWarning artwork %d: %s", warning.IllustID, warning.Message)
-		} else if warning.Type != "" {
-			out.Text += fmt.Sprintf("\nWarning %s: %s", warning.Type, warning.Message)
+		} else if warning.ContentType != "" {
+			out.Text += fmt.Sprintf("\nWarning %s: %s", warning.ContentType, warning.Message)
 		} else {
 			out.Text += "\nWarning: " + warning.Message
 		}
 	}
 	for _, failure := range report.Failures {
 		out.Failures = append(out.Failures, downloadFailureOut{
-			URL: failure.URL, IllustID: failure.IllustID, Type: failure.Type, Message: failure.Message,
+			URL: failure.URL, IllustID: failure.IllustID, Type: failure.ContentType, Message: failure.Message,
 		})
 		out.Text += fmt.Sprintf("\nFailed %s: %s", failure.URL, failure.Message)
 	}

@@ -204,8 +204,8 @@ func ReportWarnings(w io.Writer, report saving.DownloadReport) error {
 		if warning.IllustID > 0 {
 			label = fmt.Sprintf("artwork %d", warning.IllustID)
 		}
-		if warning.Type != "" {
-			label += " (" + warning.Type + ")"
+		if warning.ContentType != "" {
+			label += " (" + warning.ContentType + ")"
 		}
 		if _, err := fmt.Fprintf(w, "warning: %s: %s\n", label, warning.Message); err != nil {
 			return err
