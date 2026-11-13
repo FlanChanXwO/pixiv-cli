@@ -116,12 +116,12 @@ func (a *app) newRootCommand() *cobra.Command {
 	// --help 与 --version 提供内置帮助/版本入口。
 	cmd.SetHelpCommand(&cobra.Command{Use: "_help [command]", Hidden: true})
 	cmd.CompletionOptions.DisableDefaultCmd = true
-	env, exec := a.commandEnv(), a.local.Execute
+	env := a.commandEnv()
 	cmd.AddCommand(a.newAuthCommand())
 	cmd.AddCommand(whoami.New(env, a.local.CurrentUser))
 	cmd.AddCommand(configcmd.New(env, config.Store{Files: secretfile.ConfigFiles{}}))
 	cmd.AddCommand(a.pixivCommands(env)...)
-	cmd.AddCommand(download.New(env, exec, download.RuntimeFrom(a.runtimeConfig), downloader.NewService))
+	cmd.AddCommand(download.New(env, a.local.ExecuteSDK, download.RuntimeFrom(a.runtimeConfig)))
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	cmd.AddCommand(mcp.New(env, a.runPixivMCP, mcp.InitAuth))
 	cmd.AddCommand(update.New(env, a.runtimeConfig))
