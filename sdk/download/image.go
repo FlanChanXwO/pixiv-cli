@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -20,7 +21,15 @@ import (
 
 const imageSniffBytes = 512 // http.DetectContentType examines at most this many bytes.
 
-func saveImage(ctx context.Context, image pixiv.Image, base, name string) (output string, returnErr error) {
+func saveImage(ctx context.Context, image pixiv.Image, quality Quality, base, name string) (output string, returnErr error) {
+	locator, err := url.Parse(image.URL)
+	if err != nil {
+		return "", invalidArgument("invalid image URL")
+	}
+	image, err = image.Quality(string(quality))
+	if err != nil {
+		return "", err
+	}
 	response, err := image.OpenResponse(ctx)
 	if err != nil {
 		return "", err
@@ -34,10 +43,13 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	locator, err := url.Parse(image.URL)
-	if err != nil {
-		return "", invalidArgument("invalid image URL")
-	}
+	suffix := filename.Sanitize(path.Ext(locator.Path))
+	suffix = strings.TrimRight(strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '_'
+		}
+		return r
+	}, suffix), ". ")
 	// Preserve the response MIME preference used by the CLI; sniff only when it
 	// has no supported image type, and use the URL suffix only without a declaration.
 	reported := strings.ToLower(strings.TrimSpace(strings.SplitN(response.ContentType, ";", 2)[0]))
@@ -46,13 +58,7 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 		extension = imageExtension(http.DetectContentType(header))
 	}
 	if extension == "" && reported == "" {
-		extension = filename.Sanitize(path.Ext(locator.Path))
-		extension = strings.TrimRight(strings.Map(func(r rune) rune {
-			if r < 0x20 || r == 0x7f {
-				return '_'
-			}
-			return r
-		}, extension), ". ")
+		extension = suffix
 		if imageExtensionBySuffix(extension) == "" {
 			extension = ""
 		}
@@ -60,12 +66,23 @@ func saveImage(ctx context.Context, image pixiv.Image, base, name string) (outpu
 	if extension == "" {
 		return "", &sdk.Error{Operation: "download.Save", Reason: sdk.MalformedUpstreamResponse, Message: fmt.Sprintf("unsupported image content type %q", reported)}
 	}
-	if extension == ".jpg" && strings.EqualFold(path.Ext(locator.Path), ".jpeg") {
-		extension = path.Ext(locator.Path)
+	if strings.EqualFold(suffix, extension) || extension == ".jpg" && strings.EqualFold(suffix, ".jpeg") {
+		extension = suffix
+	}
+	source := filepath.Join(base, name+suffix)
+	if _, err := atomicfile.AtomicWrite(ctx, source, reader); err != nil {
+		return "", err
 	}
 	output = filepath.Join(base, name+extension)
-	if _, err := atomicfile.AtomicWrite(ctx, output, reader); err != nil {
-		return "", err
+	if source == output {
+		return output, nil
+	}
+	// A detected suffix change must not overwrite a different existing file.
+	if err := os.Link(source, output); err != nil {
+		return "", errors.Join(fmt.Errorf("publish detected image extension: %w", err), os.Remove(source))
+	}
+	if err := os.Remove(source); err != nil {
+		return "", errors.Join(fmt.Errorf("remove mismatched image path: %w", err), os.Remove(output))
 	}
 	return output, nil
 }

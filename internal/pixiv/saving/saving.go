@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
 	"slices"
 	"strconv"
 	"strings"
@@ -235,6 +234,13 @@ func downloadError(operation string, err error) error {
 	}
 	if failure.Operation == "download.Save" && (failure.Reason == sdk.InvalidArgument || failure.Reason == sdk.MalformedUpstreamResponse) {
 		return outputError{failure.Message, err}
+	}
+	if failure.Operation == "download.Save" && failure.Reason == sdk.LocalStateError {
+		var pathError *os.PathError
+		var linkError *os.LinkError
+		if errors.As(failure.Err, &pathError) || errors.As(failure.Err, &linkError) {
+			return outputError{failure.Err.Error(), err}
+		}
 	}
 	text := "pixiv:" + operation + ": " + string(failure.Reason)
 	if (operation == "SaveResource" || operation == "SaveResourceURL") && failure.HTTPStatus != 0 {
