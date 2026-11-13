@@ -28,7 +28,7 @@ func saveImage(ctx context.Context, image pixiv.Image, quality Quality, base, na
 	if err != nil {
 		return "", invalidArgument("invalid image URL")
 	}
-	image, err = image.Quality(string(quality))
+	image, err = image.Quality(pixiv.ImageQuality(quality))
 	if err != nil {
 		return "", err
 	}

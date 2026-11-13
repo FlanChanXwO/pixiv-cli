@@ -100,14 +100,11 @@ func (a *App) OpenSDKClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client
 	return a.sdk.OpenSDKLease(ctx, account)
 }
 
-// Artwork 复用 grant 范围的 Gallery 元数据；stdio 读取走同一账号选择边界。
-func (a *App) Artwork(ctx context.Context, id int64) (*pixiv.Artwork, error) {
-	if a.sdk.Media.HasReadSessions() {
-		account, err := a.resolveAccount(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return a.sdk.Media.Artwork(ctx, account.UserID, id)
+// Artwork 在 Gallery 的固定账号与 grant 范围内读取元数据及实际原图页号。
+func (a *App) Artwork(ctx context.Context, id int64) (*pixiv.Artwork, []int, error) {
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
-	return ReadSDK(a, ctx, func(ctx context.Context, c *pixiv.Client) (*pixiv.Artwork, error) { return c.Artwork(id).Get(ctx) })
+	return a.sdk.Media.Artwork(ctx, account.UserID, id)
 }

@@ -180,8 +180,13 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (*art
 			return nil, err
 		}
 		snapshot := &artworkMetadata{Artwork: value, PageImages: map[int]map[string]pixiv.Image{}}
+		for _, page := range value.Pages {
+			if value.ContentType != pixiv.ContentTypeUgoira || page.Original.Variant() == "original" {
+				snapshot.OriginalPages = append(snapshot.OriginalPages, page.PageIndex)
+			}
+		}
 		if value.ContentType == pixiv.ContentTypeUgoira {
-			snapshot.Thumbnail, err = value.Cover.Quality("square_medium")
+			snapshot.Thumbnail, err = value.Cover.Quality(pixiv.ImageQualitySquareMedium)
 			if err != nil && sdk.ReasonOf(err) != sdk.InvalidArgument {
 				return nil, err
 			}
@@ -190,7 +195,7 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (*art
 			for _, page := range value.Pages {
 				variants := map[string]pixiv.Image{"original": page.Original}
 				for _, quality := range []string{"regular", "thumb"} {
-					image, variantErr := page.Original.Quality(quality)
+					image, variantErr := page.Original.Quality(pixiv.ImageQuality(quality))
 					if variantErr == nil {
 						variants[quality] = image
 					} else if sdk.ReasonOf(variantErr) != sdk.InvalidArgument {
@@ -257,46 +262,44 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (*art
 }
 
 // Artwork 复用 Gallery 元数据缓存前重新校验当前 grant；缓存里不保存会变的收藏状态。
-func (s *Service) Artwork(ctx context.Context, account, artwork int64) (*pixiv.Artwork, error) {
+func (s *Service) Artwork(ctx context.Context, account, artwork int64) (*pixiv.Artwork, []int, error) {
 	info := sdkauth.TokenInfoFromContext(ctx)
 	if info == nil {
-		return nil, errCapability
+		return nil, nil, errCapability
 	}
 	grant, _ := info.Extra["grant_id"].(string)
 	c := claims{Grant: grant, Account: account, Artwork: artwork, Expires: info.Expiration}
 	if err := s.authorized(ctx, c); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	session, err := s.session(ctx, account)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer session.Lease.Close()
 	metadata, err := s.metadata(ctx, c, session)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return metadata.Artwork, nil
+	return metadata.Artwork, metadata.OriginalPages, nil
 }
 
 // ConcurrentReads 返回固定的 Gallery 查询并发数。
 func (s *Service) ConcurrentReads() int { return readConcurrency }
 
-// HasReadSessions 报告 Configure 是否安装了带缓存的读取路径。
-func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
-
 // artworkMetadata 把选中的封面缩略图与作品数据一起计入序列化缓存预算。
 type artworkMetadata struct {
-	Artwork    *pixiv.Artwork                 `json:"artwork"`
-	Thumbnail  pixiv.Image                    `json:"thumbnail"`
-	PageImages map[int]map[string]pixiv.Image `json:"page_images"`
+	OriginalPages []int                          `json:"original_pages"`
+	Artwork       *pixiv.Artwork                 `json:"artwork"`
+	Thumbnail     pixiv.Image                    `json:"thumbnail"`
+	PageImages    map[int]map[string]pixiv.Image `json:"page_images"`
 }
 
 // 收藏状态随实时工具读取；账号绑定在资源打开处重新建立。
 func marshalArtwork(value *artworkMetadata) ([]byte, error) {
 	snapshot := *value.Artwork
 	snapshot.IsBookmarked = nil
-	return json.Marshal(&artworkMetadata{Artwork: &snapshot, Thumbnail: value.Thumbnail, PageImages: value.PageImages})
+	return json.Marshal(&artworkMetadata{Artwork: &snapshot, Thumbnail: value.Thumbnail, PageImages: value.PageImages, OriginalPages: value.OriginalPages})
 }
 
 func (s *Service) cachedArtwork(key string) (*artworkMetadata, bool, error) {

@@ -12,6 +12,28 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+// ImageQuality identifies an artwork size or an upstream-named image alternative.
+type ImageQuality string
+
+const (
+	// ImageQualityOriginal keeps the original image locator.
+	ImageQualityOriginal ImageQuality = "original"
+	// ImageQualityRegular selects the 1200px artwork variant.
+	ImageQualityRegular ImageQuality = "regular"
+	// ImageQualitySmall selects the 540px artwork variant.
+	ImageQualitySmall ImageQuality = "small"
+	// ImageQualityThumb selects the 250px square artwork variant.
+	ImageQualityThumb ImageQuality = "thumb"
+	// ImageQualityMini selects the 48px square artwork variant.
+	ImageQualityMini ImageQuality = "mini"
+	// ImageQualityLarge selects the upstream large alternative.
+	ImageQualityLarge ImageQuality = "large"
+	// ImageQualityMedium selects the upstream medium alternative.
+	ImageQualityMedium ImageQuality = "medium"
+	// ImageQualitySquareMedium selects the upstream square_medium alternative.
+	ImageQualitySquareMedium ImageQuality = "square_medium"
+)
+
 // Image exposes a client-bound media locator. Open and Save require that binding.
 // JSON preserves the locator and dimensions, while omitting the client.
 type Image struct {
@@ -20,7 +42,7 @@ type Image struct {
 	Height    int    `json:"height"`
 	client    *Client
 	variant   string
-	qualities map[string]string
+	qualities map[ImageQuality]string
 }
 
 // Variant reports the upstream size role selected for a cover or original image.
@@ -81,15 +103,15 @@ func (c *Client) Image(rawURL string) (Image, error) {
 // Quality selects a derived artwork size while retaining the account binding.
 // Original returns the image unchanged. Other sizes use upstream-named alternatives
 // when available, or derive artwork sizes from an original artwork URL.
-func (i Image) Quality(quality string) (Image, error) {
-	if quality == "" || quality == "original" {
+func (i Image) Quality(quality ImageQuality) (Image, error) {
+	if quality == "" || quality == ImageQualityOriginal {
 		return i, nil
 	}
 	if raw := i.qualities[quality]; raw != "" {
 		if err := i.client.app(Credentials{}).ValidateResourceURL(raw); err != nil {
 			return Image{}, newError("Image.Quality", sdk.ResourceForbidden, "resource URL is not allowed", nil)
 		}
-		i.URL, i.variant = raw, quality
+		i.URL, i.variant = raw, string(quality)
 		return i, nil
 	}
 	original, err := url.Parse(i.URL)
@@ -102,20 +124,20 @@ func (i Image) Quality(quality string) (Image, error) {
 	}
 	var crop, suffix string
 	switch quality {
-	case "regular":
+	case ImageQualityRegular:
 		crop, suffix = "1200x1200", "_master1200"
-	case "small":
+	case ImageQualitySmall:
 		crop, suffix = "540x540_70", "_master1200"
-	case "thumb", "square_medium":
+	case ImageQualityThumb:
 		crop, suffix = "250x250_80_a2", "_square1200"
-	case "mini":
+	case ImageQualityMini:
 		crop, suffix = "48x48", "_square1200"
 	default:
 		return Image{}, newError("Image.Quality", sdk.InvalidArgument, "image quality variant is unavailable", nil)
 	}
 	original.Path = "/c/" + crop + "/img-master/img/" + strings.TrimSuffix(relative, path.Ext(relative)) + suffix + ".jpg"
 	original.RawPath, original.RawQuery, original.Fragment = "", "", ""
-	i.variant = quality
+	i.variant = string(quality)
 	i.URL = original.String()
 	return i, nil
 }
@@ -145,6 +167,6 @@ func (i Image) OpenResponse(ctx context.Context) (*ImageResponse, error) {
 	return &ImageResponse{StatusCode: response.StatusCode, ContentType: response.Header.Get("Content-Type"), ContentLength: length, Body: response.Body}, nil
 }
 
-func (w imageURLsWire) qualities() map[string]string {
-	return map[string]string{"original": w.Original, "large": w.Large, "medium": w.Medium, "square_medium": w.SquareMedium}
+func (w imageURLsWire) qualities() map[ImageQuality]string {
+	return map[ImageQuality]string{ImageQualityOriginal: w.Original, ImageQualityLarge: w.Large, ImageQualityMedium: w.Medium, ImageQualitySquareMedium: w.SquareMedium}
 }

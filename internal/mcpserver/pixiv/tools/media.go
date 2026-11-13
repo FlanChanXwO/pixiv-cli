@@ -382,7 +382,7 @@ func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn
 }
 
 func readPage(ctx context.Context, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {
-	image, err := page.Original.Quality(variant)
+	image, err := page.Original.Quality(pixiv.ImageQuality(variant))
 	if err != nil {
 		return nil, "", 0, err
 	}
@@ -612,12 +612,12 @@ func (t pixivTools) forEachGalleryItem(ctx context.Context, count int, read, can
 
 func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGalleryIn) galleryOut {
 	out := galleryOut{}
-	artwork, err := t.app.Artwork(ctx, id)
+	artwork, originalPages, err := t.app.Artwork(ctx, id)
 	if err != nil {
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "artwork_unavailable"})
 		return out
 	}
-	rec, err := record.RecordFromMediaArtwork(artwork)
+	rec, err := record.RecordFromMediaArtwork(artwork, originalPages)
 	if err != nil {
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "invalid_metadata"})
 		return out

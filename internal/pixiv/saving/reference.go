@@ -17,7 +17,7 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 		return errors.New("pixiv:SaveResource: invalid_argument: invalid resource reference")
 	}
 	var identity struct {
-		Kind    string `json:"k"`
+		Source  string `json:"k"`
 		ID      int64  `json:"id"`
 		Page    int    `json:"p"`
 		Variant string `json:"v"`
@@ -26,7 +26,7 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 		return errors.New("pixiv:SaveResource: invalid_argument: invalid resource reference")
 	}
 	var image pixiv.Image
-	switch identity.Kind {
+	switch identity.Source {
 	case "artwork":
 		art, err := client.Artwork(identity.ID).Get(ctx)
 		if err != nil {
@@ -40,7 +40,7 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 			image = art.Pages[identity.Page].Original
 		}
 		if identity.Variant != "" && identity.Variant != "original" && identity.Variant != image.Variant() {
-			image, err = image.Quality(identity.Variant)
+			image, err = image.Quality(pixiv.ImageQuality(identity.Variant))
 			if err != nil {
 				return downloadError("SaveResource", err)
 			}
@@ -58,7 +58,7 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 		}
 		image = novel.Cover
 		if identity.Variant != "" && identity.Variant != image.Variant() {
-			image, err = image.Quality(identity.Variant)
+			image, err = image.Quality(pixiv.ImageQuality(identity.Variant))
 			if err != nil {
 				return downloadError("SaveResource", err)
 			}
