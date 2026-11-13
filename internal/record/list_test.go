@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	legacypixiv "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -19,10 +18,10 @@ import (
 )
 
 func TestRunPagesKeepsDocumentAndRecordShapes(t *testing.T) {
-	pages := []legacysdk.Page[map[string]any]{
-		{Items: []map[string]any{{"id": 1}, {"id": 2}}, Next: legacysdk.Cursor{}},
+	pages := []sdk.Page[map[string]any]{
+		{Items: []map[string]any{{"id": 1}, {"id": 2}}, Cursor: sdk.Cursor{}},
 	}
-	fetch := func(context.Context, legacysdk.Cursor) (legacysdk.Page[map[string]any], error) {
+	fetch := func(context.Context, sdk.Cursor) (sdk.Page[map[string]any], error) {
 		return pages[0], nil
 	}
 	item := func(value map[string]any) any { return value }

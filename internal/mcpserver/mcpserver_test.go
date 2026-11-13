@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
@@ -21,6 +20,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	pixivsdk "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -70,7 +70,7 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, api.Listener.Addr().String())
 	}
-	client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: "session-canary"}, fanbox.Options{HTTPClient: httpClient})
+	client, err := fanbox.New("session-canary", fanbox.Options{HTTPClient: httpClient})
 	require.NoError(t, err)
 	server := mcpserver.New(pixiv.SDKPorts{}, pixiv.Account{}, tools.SDKPorts{OpenLease: func(context.Context, tools.Account) (*lifecycle.Lease[*fanbox.Client], error) {
 		return lifecycle.NewLease(client, func() error { client.CloseIdleConnections(); return nil }), nil

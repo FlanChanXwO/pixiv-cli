@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -65,7 +66,7 @@ type PostOut struct {
 }
 
 // PostOutFrom 丢弃 Body 中的下载地址，只保留资源 ref；Assets 总是非 nil。
-func PostOutFrom(post fanbox.Post) PostOut {
+func PostOutFrom(post *fanbox.Post) PostOut {
 	published := ""
 	if !post.PublishedAt.IsZero() {
 		published = post.PublishedAt.UTC().Format(time.RFC3339)
@@ -85,7 +86,7 @@ func PostOutFrom(post fanbox.Post) PostOut {
 	if post.Body == nil {
 		return out
 	}
-	for _, asset := range post.Body.Assets {
+	for _, asset := range record.FanboxAssets(post) {
 		out.Assets = append(out.Assets, PostAssetOut{
 			ID:        asset.ID,
 			Kind:      string(asset.Kind),

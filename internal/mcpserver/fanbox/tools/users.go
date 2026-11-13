@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -30,13 +30,13 @@ func (t fanboxTools) currentUserHandler(ctx context.Context, _ currentUserIn) (*
 	empty := currentUserOut{}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	user, err := client.CurrentUser(ctx, fanbox.CurrentUserRequest{})
+	user, err := client.CurrentUser(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
 	}
 	out := currentUserOut{
 		UserID:        user.UserID,

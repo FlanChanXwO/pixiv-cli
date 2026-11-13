@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 // nilClient 表示账号叶服务成功返回了 nil client。
@@ -47,7 +47,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 	client, err := f.accounts.OpenClient(ctx, request.ProxyOverride)
 	if err != nil {
 		if client != nil {
-			client.CloseIdleConnections()
+			err = errors.Join(err, client.Close(context.WithoutCancel(ctx)))
 		}
 		return nil, err
 	}
@@ -55,8 +55,7 @@ func (f *Fanbox) Open(ctx context.Context, request OpenRequest) (*lifecycle.Leas
 		return nil, nilClient
 	}
 	return lifecycle.NewLease(client, func() error {
-		client.CloseIdleConnections()
-		return nil
+		return client.Close(context.WithoutCancel(ctx))
 	}), nil
 }
 

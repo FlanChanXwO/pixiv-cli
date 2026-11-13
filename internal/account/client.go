@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -89,25 +90,25 @@ func (s *Store) savePixivLogin(ctx context.Context, credentials pixiv.Credential
 	return saved, nil
 }
 
-// OpenFanboxClient 打开指定本地账号的旧 SDK client，不读取默认账号或网络配置。
+// OpenFanboxClient 打开指定本地账号的 SDK client，不读取默认账号或网络配置。
 func (s *Store) OpenFanboxClient(ctx context.Context, userID int64, options fanbox.Options) (*fanbox.Client, error) {
 	a, err := s.GetFanbox(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("select fanbox account: %w", err)
 	}
-	return fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: a.Credential.Value()}, options)
+	return fanbox.New(a.Credential.Value(), options)
 }
 
 // ImportFanbox 在线校验显式 session 并保存；Pixiv 凭据始终独立。
-func (s *Store) ImportFanbox(ctx context.Context, session string, options fanbox.Options) (Fanbox, error) {
-	client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: session}, options)
+func (s *Store) ImportFanbox(ctx context.Context, session string, options fanbox.Options) (result Fanbox, err error) {
+	client, err := fanbox.New(session, options)
 	if err != nil {
 		return Fanbox{}, err
 	}
-	defer client.CloseIdleConnections()
-	user, err := client.CurrentUser(ctx, fanbox.CurrentUserRequest{})
+	defer func() { err = errors.Join(err, client.Close(context.WithoutCancel(ctx))) }()
+	user, err := client.CurrentUser(ctx)
 	if err != nil {
-		return Fanbox{}, err
+		return Fanbox{}, report.Wrap(err)
 	}
 	a := Fanbox{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Credential: credential.New([]byte(session)), ValidatedAt: time.Now().UTC()}
 	if err := s.SaveFanboxCredential(ctx, a); err != nil {

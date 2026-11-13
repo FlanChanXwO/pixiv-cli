@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -39,13 +41,13 @@ func (t fanboxTools) creatorHandler(ctx context.Context, input creatorIn) (*mcp.
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	creator, err := client.Creator(ctx, fanbox.CreatorRequest{CreatorID: input.CreatorID})
+	creator, err := client.Creator(input.CreatorID).Get(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
 	}
 	creatorOut := creatorOut{
 		ID:                creator.ID,
@@ -54,8 +56,8 @@ func (t fanboxTools) creatorHandler(ctx context.Context, input creatorIn) (*mcp.
 		IsFollowing:       creator.IsFollowing,
 		PlanFee:           creator.PlanFee,
 		HasSupportingPlan: creator.HasSupportingPlan,
-		Icon:              outputs.ResourceOutFrom(creator.Icon.Resource),
-		Cover:             outputs.ResourceOutFrom(creator.Cover.Resource),
+		Icon:              outputs.ResourceOutFrom(record.FanboxImageResource(record.FanboxCreatorIcon, creator.ID, "", "", creator.Icon.URL)),
+		Cover:             outputs.ResourceOutFrom(record.FanboxImageResource(record.FanboxCreatorCover, creator.ID, "", "", creator.Cover.URL)),
 	}
 	return outputs.Result(false, fmt.Sprintf("Retrieved creator %s.", creatorOut.ID)), creatorOut, nil
 }
@@ -74,7 +76,7 @@ func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPosts
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	if input.CreatorID == "" {
 		return outputs.Result(true, "Error: creator_id is required"), out, nil
@@ -84,16 +86,17 @@ func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPosts
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
 	creatorID := input.CreatorID
-	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
+	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 		if input.Tag != nil {
-			return client.TaggedPosts(ctx, fanbox.TaggedPostsRequest{CreatorID: creatorID, Tag: *input.Tag, Cursor: cursor})
+			page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Tag: *input.Tag, Cursor: cursor})
+			return page, report.TaggedPostsError(err)
 		}
-		return client.CreatorPosts(ctx, fanbox.CreatorPostsRequest{CreatorID: creatorID, Cursor: cursor})
+		return client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
 	})
 }
 
@@ -131,30 +134,30 @@ type creatorsOut struct {
 func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mcp.CallToolResult, creatorsOut, error) {
 	creatorsOut := creatorsOut{Creators: []creatorSummaryOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
-	kind := fanbox.CreatorListKind(input.Relation)
+	kind := fanbox.CreatorRelation(input.Relation)
 	if input.Relation == "" {
-		kind = fanbox.CreatorListSupporting
+		kind = fanbox.CreatorSupporting
 	}
-	if err == nil && kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
+	if err == nil && kind != fanbox.CreatorSupporting && kind != fanbox.CreatorFollowing {
 		err = errors.New("relation must be one of: supporting, following")
 	}
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorsOut, nil
 	}
 	lease, openErr := t.openClient(ctx)
 	if openErr != nil {
-		return outputs.Result(true, "Error: "+openErr.Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(openErr).Error()), creatorsOut, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	items, hasMore, fetchErr := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
-		return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
+	items, hasMore, fetchErr := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Creator], error) {
+		return client.Creators(ctx, fanbox.CreatorsRequest{Relation: kind, Cursor: cursor})
 	})
 	if fetchErr != nil {
-		return outputs.Result(true, "Error: "+fetchErr.Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(fetchErr).Error()), creatorsOut, nil
 	}
 	for _, item := range items {
-		creatorsOut.Creators = append(creatorsOut.Creators, creatorSummaryOut{ID: item.ID, Name: item.Name, Icon: outputs.ResourceOutFrom(item.Icon.Resource)})
+		creatorsOut.Creators = append(creatorsOut.Creators, creatorSummaryOut{ID: item.ID})
 	}
 	creatorsOut.Pagination = pagination.ListPagination(plan, input.Limit, len(creatorsOut.Creators), hasMore)
 	return outputs.Result(false, fmt.Sprintf("Retrieved %d creators.", len(creatorsOut.Creators))), creatorsOut, nil
@@ -187,13 +190,13 @@ func (t fanboxTools) creatorTagsHandler(ctx context.Context, input creatorTagsIn
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), creatorTagsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorTagsOut, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	tags, err := client.CreatorTags(ctx, fanbox.CreatorTagsRequest{CreatorID: input.CreatorID})
+	tags, err := client.Creator(input.CreatorID).Tags(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), creatorTagsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorTagsOut, nil
 	}
 	for _, tag := range tags {
 		creatorTagsOut.Tags = append(creatorTagsOut.Tags, tagOut{Name: tag.Name, URL: tag.URL})
@@ -215,22 +218,22 @@ func (t fanboxTools) feedHandler(ctx context.Context, input feedIn) (*mcp.CallTo
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	if input.Source != "home" && input.Source != "supporting" {
 		return outputs.Result(true, "Error: source must be home or supporting"), out, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
+	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 		if input.Source == "supporting" {
-			return client.Supporting(ctx, fanbox.SupportingRequest{Cursor: cursor})
+			return client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
 		}
-		return client.Home(ctx, fanbox.HomeRequest{Cursor: cursor})
+		return client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
 	})
 }
 
@@ -260,13 +263,13 @@ func (t fanboxTools) postHandler(ctx context.Context, input postIn) (*mcp.CallTo
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	post, err := client.Post(ctx, fanbox.PostRequest{PostID: input.PostID})
+	post, err := client.Post(input.PostID).Get(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	out = outputs.PostOutFrom(post)
 	return outputs.Result(false, fmt.Sprintf("Retrieved post %s.", out.ID)), out, nil
@@ -296,15 +299,26 @@ func (t fanboxTools) resolveURLHandler(ctx context.Context, input resolveURLIn) 
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), result, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), result, nil
 	}
 	defer lease.Close()
 	client := lease.Value()
-	ref, err := client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: input.URL})
+	ref, err := client.ParseURL(input.URL)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), result, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), result, nil
 	}
-	result = resolveURLOut{Kind: string(ref.Kind), CreatorID: ref.CreatorID, PostID: ref.PostID, Tag: ref.Tag}
+	switch ref := ref.(type) {
+	case *fanbox.CreatorRef:
+		result = resolveURLOut{Kind: "creator", CreatorID: ref.ID}
+	case *fanbox.PostRef:
+		result = resolveURLOut{Kind: "post", CreatorID: ref.CreatorID, PostID: ref.ID}
+	case *fanbox.CreatorPostsRef:
+		result = resolveURLOut{Kind: "creator_posts", CreatorID: ref.ID}
+		if ref.Tag != "" {
+			result.Kind = "tag"
+			result.Tag = ref.Tag
+		}
+	}
 	return outputs.Result(false, fmt.Sprintf("Resolved URL as %s.", result.Kind)), result, nil
 }
 
@@ -313,11 +327,11 @@ type resolveURLIn struct {
 }
 
 // postList 让 traversal 负责分页，同时保留 FANBOX 自己的列表 envelope。
-func postList(ctx context.Context, limit *int, plan pagination.PagePlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) (*mcp.CallToolResult, outputs.PostsOut, error) {
+func postList(ctx context.Context, limit *int, plan pagination.PagePlan, fetch func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error)) (*mcp.CallToolResult, outputs.PostsOut, error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	items, more, err := collectPages(ctx, plan, fetch)
 	if err != nil {
-		return outputs.Result(true, "Error: "+err.Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
 	}
 	for _, post := range items {
 		out.Posts = append(out.Posts, outputs.PostOutFrom(post))
@@ -332,7 +346,7 @@ func collectPages[T any](ctx context.Context, plan pagination.PagePlan, fetch fu
 			return nil, sdk.Cursor{}, err
 		}
 		page, err := fetch(ctx, cursor)
-		return page.Items, page.Next, err
+		return page.Items, page.Cursor, err
 	})
 	// 共享 traversal 保留 cursor 诊断，FANBOX 的线上输出不暴露 cursor。
 	if err != nil && strings.HasPrefix(err.Error(), "pagination cursor repeated: ") {
