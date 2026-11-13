@@ -42,7 +42,7 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 		if identity.Variant != "" && identity.Variant != "original" && identity.Variant != image.Variant() {
 			image, err = image.Quality(identity.Variant)
 			if err != nil {
-				return err
+				return downloadError("SaveResource", err)
 			}
 		}
 	case "user_profile":
@@ -57,14 +57,24 @@ func saveReference(ctx context.Context, client *pixiv.Client, ref resourceRefere
 			return downloadError("SaveResource", err)
 		}
 		image = novel.Cover
+		if identity.Variant != "" && identity.Variant != image.Variant() {
+			image, err = image.Quality(identity.Variant)
+			if err != nil {
+				return downloadError("SaveResource", err)
+			}
+		}
 	case "ugoira_archive":
 		metadata, err := client.Artwork(identity.ID).UgoiraMetadata(ctx)
 		if err != nil {
 			return downloadError("SaveResource", err)
 		}
+		quality := identity.Variant
+		if quality == "" {
+			quality = string(SelectUgoiraArchive(metadata).Quality)
+		}
 		found := false
 		for _, archive := range metadata.Archives {
-			if string(archive.Quality) == identity.Variant || identity.Variant == "" {
+			if string(archive.Quality) == quality {
 				image = archive.Image
 				found = true
 				break

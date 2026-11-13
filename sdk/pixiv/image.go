@@ -79,7 +79,8 @@ func (c *Client) Image(rawURL string) (Image, error) {
 }
 
 // Quality selects a derived artwork size while retaining the account binding.
-// Original returns the image unchanged; other sizes require an original artwork URL.
+// Original returns the image unchanged. Other sizes use upstream-named alternatives
+// when available, or derive artwork sizes from an original artwork URL.
 func (i Image) Quality(quality string) (Image, error) {
 	if quality == "" || quality == "original" {
 		return i, nil
@@ -145,5 +146,5 @@ func (i Image) OpenResponse(ctx context.Context) (*ImageResponse, error) {
 }
 
 func (w imageURLsWire) qualities() map[string]string {
-	return map[string]string{"original": w.Original, "regular": w.Large, "small": w.Medium, "thumb": w.SquareMedium, "square_medium": w.SquareMedium}
+	return map[string]string{"original": w.Original, "large": w.Large, "medium": w.Medium, "regular": w.Large, "small": w.Medium, "thumb": w.SquareMedium, "square_medium": w.SquareMedium}
 }
