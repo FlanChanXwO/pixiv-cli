@@ -372,6 +372,8 @@ Same server, schemas via `tools/list`, FANBOX-specific credentials.
 | `fanbox_resolve_url` | Local URL parsing into a typed reference. |
 | `fanbox_open_resource` | Opens an opaque `ref`; GET delivers bytes + safe metadata, HEAD metadata only. |
 
+`fanbox_resolve_url`, `pixiv fanbox posts` and `pixiv fanbox download` accept creator/page URLs on `fanbox.cc` and `www.fanbox.cc`, plus creator subdomains. The service origins `api.fanbox.cc` and `downloads.fanbox.cc` are rejected with `invalid_argument`. Entity tools report SDK lease shutdown failures with `isError=true` and keep their structured envelope.
+
 ### FANBOX resource content
 
 | Aspect | Contract |
@@ -380,8 +382,8 @@ Same server, schemas via `tools/list`, FANBOX-specific credentials.
 | GET content | Static images → `ImageContent`; GIF/APNG and other attachments → embedded-resource blobs. PNG vs APNG by the animation-control chunk, not just Content-Type. Valid non-image MIME kept; absent/malformed MIME detected from bytes. No server files, no byte cap |
 | Fields | Existing `ref`, `status_code`, `content_type`, advertised `content_length`; `size` = actual bytes, `content_index`, `delivered` (bytes in this response), `complete` (request/cleanup success). HEAD: `delivered=false`, no index |
 | URIs | Embedded resource URIs are content-hash URNs, not server paths or a resources/read endpoint |
-| `filename` | GET and HEAD return it when file metadata has a name (extension included, no duplicated suffix). SDK owns name resolution; MCP never decodes refs or guesses from URLs, and applies CLI filename normalization (separators/reserved punctuation → `_`). A suggestion, not a trusted path; missing names stay absent |
-| Failures | Non-success status, read/close errors, cancellation, lease-close errors stay structured; SDK categories kept without raw bodies, locations or invalid input. `status_code=0` = SDK exposed no status (a classified forbidden error gets no invented status). Schema → `invalid_request`; local ref/method → `invalid_ref` / `invalid_method`. Local synthetic tests only — not real account or host acceptance |
+| `filename` | GET and HEAD return it when file metadata has a name (extension included, no duplicated suffix). The tool decodes the ref’s stable identity and loads the bound SDK media object for its current name; it applies CLI filename normalization (separators/reserved punctuation → `_`). A suggestion, not a trusted path; missing names stay absent |
+| Failures | Non-success status, read/close errors, cancellation, lease-close errors stay structured; FANBOX presentation categories are retained without raw bodies, locations or invalid input. `status_code=0` means no media response was obtained; metadata or solver failures retain this value. Schema → `invalid_request`; local ref/method → `invalid_ref` / `invalid_method`. Local synthetic tests only — not real account or host acceptance |
 
 ## Authentication and fallback
 
