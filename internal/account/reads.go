@@ -228,6 +228,10 @@ type readSessionTransport struct {
 }
 
 func (t *readSessionTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	// 已失效的代次在 SDK 准备认证重放前停下，避免取消回调与新请求起跑竞争。
+	if err := t.ctx.Err(); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(r.Context())
 	stop := context.AfterFunc(t.ctx, cancel)
 	// 发布前的 OAuth 请求尚无 revision；发布后的每次内容请求均复核本地凭据。
