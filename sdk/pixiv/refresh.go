@@ -55,6 +55,9 @@ func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credent
 			// A concurrent process can rotate the token while OAuth rejects ours.
 			current, loadErr := c.store.Load(ctx)
 			if loadErr != nil {
+				if sdk.ReasonOf(loadErr) != "" {
+					return Credentials{}, errors.Join(loadErr, err)
+				}
 				return Credentials{}, newError("credentials.Load", sdk.LocalStateError, "could not reload credentials after refresh failed", errors.Join(err, loadErr))
 			}
 			if current.Revision > latest.Revision {
