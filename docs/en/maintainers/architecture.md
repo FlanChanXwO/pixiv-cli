@@ -120,7 +120,7 @@ One owner per concern; no other layer implements it again.
 | Configuration | composition root, read once | named field value at construction | value field, no `settings.Store` |
 | stdout output (text, JSON, NDJSON) | CLI command layer | the command holds the writer | business code returns data |
 
-Infrastructure packages themselves — `pixiv/api`, `fanbox/api`, `storage/*`, `media/downloader`, `mcpserver/pixiv/mediaproxy` — are not business objects. They own concurrency, caching, files, and network by design; the rule requires only a narrow interface and no leaked internals.
+Infrastructure packages themselves — `pixiv/api`, `fanbox/api`, `storage/*`, `pixiv/saving`, `mcpserver/pixiv/mediaproxy` — are not business objects. They own concurrency, caching, files, and network by design; the rule requires only a narrow interface and no leaked internals.
 
 ### Logging entry points
 
@@ -156,6 +156,7 @@ New SDK events use the current slog default handler, including protocol events t
 
 - `internal/account` owns ordered Pixiv/FANBOX account snapshots, credential persistence, login completion, the rotation gate, read-session cache and Pixiv pool selection/freezing/safe replay. It receives its directory, network options and pool strategy from callers; default-account configuration stays in `internal/session`.
 - `session.Local` assembles the shared store, `Accounts`, `FanboxAccounts`, `Pixiv`, `Fanbox` and read sessions. `Accounts`/`FanboxAccounts` combine local snapshots with `internal/config` defaults and provide the command-facing summaries, import/export and restore orchestration. Pixiv clients use either SDK generation; FANBOX clients retain `internal/legacy/sdk`; FANBOX credentials and lifecycle remain independent of Pixiv and have no pool strategy.
+- Read sessions share valid in-memory access credentials and one invalidation generation across legacy and new SDK clients. Constructing the other client preserves the verified account identity without another OAuth rotation; every content request still checks the saved revision. The legacy token constructor accepts that caller-verified identity for this transition.
 - `Store.OpenSDKClient` supplies new `sdk/pixiv` clients; `OpenAccountClient` retains legacy clients. The account-bound `CredentialStore.Load` reads the latest saved revision and pins the account creation time; `CompareAndSwap` compares both before saving, returning `false, nil` on a revision conflict. OAuth runs outside storage locks; the SDK reloads after a conflict and propagates save failures before content access. `Client.Credentials(ctx)` prepares credentials through the same flow without fetching content.
 - `session.PixivOptions` supplies matching connection settings for both client generations. `Local.ExecuteSDK` shares the existing pool and gate and provides the selected UID separately: `Client.UserID()` may still be zero before credential loading. Resolve an omitted target inside each attempt; MCP fetch callbacks use `SDKUserID`. Stdio `ResolveSDKAccount` preserves the original request for pool scheduling; HTTP uses the persisted `ResolveAccount` snapshot. Bound SDK objects remain inside the operation.
 - S11 migrates auth, whoami, artwork/user detail, user (including delegated user search), follow and bookmark CLI paths and the corresponding account/artwork/user/bookmark/related MCP handlers, including novel branches and aggregates inside those handlers. S12 migrates the independent novel, comment, text-search, ranking, recommendation, series, timeline and MyPixiv entry points. CLI downloads expand sources through `internal/pixiv/saving` and save pages with `sdk/download`; MCP downloads and media also use the new SDK; FANBOX and reverse search retain their separate transition paths. The full SDK reference rewrite remains with S16; current APIs are documented in the [SDK package GoDoc](../../../sdk/pixiv/pixiv.go).
@@ -318,7 +319,7 @@ See [MCP server architecture](architecture-mcp.md). Each product's tools live in
 
 Expands CLI and stdio MCP download sources and groups page saves into the existing artwork report. Page ranges are parsed by the caller; bounds are checked before indexing. `sdk/download` owns file publishing, templates and animation encoding. Input resource identities are resolved through bound SDK objects.
 
-Artwork IDs are deduplicated and sorted. Each artwork stops at its first failed page, retaining published files and warnings in the report. Directory `{num}` uses page index 0; filename `{num}` uses the selected page. Single-page files use the download root; multipage and animated artworks use a per-artwork directory unless a directory template is set. Static extensions prefer a supported response MIME, then sniffed image bytes, then a known URL suffix when no MIME is declared. Ugoira requires original quality and no explicit page selection, and outputs GIF or APNG.
+Artwork IDs are deduplicated and sorted. Each artwork stops at its first failed page, retaining published files and warnings in the report. Directory `{num}` uses page index 0; filename `{num}` uses the selected page. Without a directory template, single-page files use the download root and multipage or animated artworks use a per-artwork directory. A directory template applies to every artwork, including single-page works. Static extensions prefer a supported response MIME, then sniffed image bytes, then a known URL suffix when no MIME is declared. Ugoira requires original quality and no explicit page selection, and outputs GIF or APNG.
 
 ### `internal/media/ugoira`
 
@@ -350,12 +351,12 @@ Atomic write/replace, file locking and private-file writes live in these package
 
 ### Test and helper owners
 
-Protocol-free helpers live with their callers: positive-integer parsing and stdin codecs in `internal/environment`, string safety and terminal rendering in `internal/display`, URL path/file-URI helpers in `internal/media/downloader`, and month truncation in `internal/pixiv/searchfilter`.
+Protocol-free helpers live with their callers: positive-integer parsing and stdin codecs in `internal/environment`, string safety and terminal rendering in `internal/display`, URL path/file-URI helpers in `internal/pixiv/saving`, and month truncation in `internal/pixiv/searchfilter`.
 
 | Moved responsibility | Owner |
 | --- | --- |
 | filename cleaning, template expansion | `internal/media/filename` |
-| ID dedup, media MIME types | `internal/media/downloader` |
+| Download ID dedup, media MIME types | `internal/pixiv/saving` |
 | refresh-token validation | `internal/pixiv/api/oauth` |
 | paths, permissions | `internal/config` |
 | atomic write and replace | `internal/storage/atomicfile` |
