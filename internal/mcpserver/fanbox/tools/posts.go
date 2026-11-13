@@ -34,20 +34,20 @@ type creatorOut struct {
 	Cover             *outputs.ResourceOut `json:"cover,omitempty"`
 }
 
-func (t fanboxTools) creatorHandler(ctx context.Context, input creatorIn) (*mcp.CallToolResult, creatorOut, error) {
+func (t fanboxTools) creatorHandler(ctx context.Context, input creatorIn) (callResult *mcp.CallToolResult, output creatorOut, handlerErr error) {
 	empty := creatorOut{}
 	if input.CreatorID == "" {
 		return outputs.Result(true, "Error: creator_id is required"), empty, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), empty, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	creator, err := client.Creator(input.CreatorID).Get(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "Creator").Error()), empty, nil
 	}
 	creatorOut := creatorOut{
 		ID:                creator.ID,
@@ -72,11 +72,11 @@ func (t fanboxTools) registerCreatorPosts(server *mcp.Server) {
 	})
 }
 
-func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPostsIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
+func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPostsIn) (callResult *mcp.CallToolResult, output outputs.PostsOut, handlerErr error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
 	if input.CreatorID == "" {
 		return outputs.Result(true, "Error: creator_id is required"), out, nil
@@ -86,17 +86,18 @@ func (t fanboxTools) creatorPostsHandler(ctx context.Context, input creatorPosts
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	creatorID := input.CreatorID
 	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 		if input.Tag != nil {
 			page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Tag: *input.Tag, Cursor: cursor})
-			return page, report.TaggedPostsError(err)
+			return page, report.Wrap(err, "TaggedPosts")
 		}
-		return client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+		page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+		return page, report.Wrap(err, "CreatorPosts")
 	})
 }
 
@@ -131,7 +132,7 @@ type creatorsOut struct {
 	Pagination pagination.PaginationOut `json:"pagination"`
 }
 
-func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mcp.CallToolResult, creatorsOut, error) {
+func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (callResult *mcp.CallToolResult, output creatorsOut, handlerErr error) {
 	creatorsOut := creatorsOut{Creators: []creatorSummaryOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	kind := fanbox.CreatorRelation(input.Relation)
@@ -142,19 +143,19 @@ func (t fanboxTools) creatorsHandler(ctx context.Context, input creatorsIn) (*mc
 		err = errors.New("relation must be one of: supporting, following")
 	}
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), creatorsOut, nil
 	}
 	lease, openErr := t.openClient(ctx)
 	if openErr != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(openErr).Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(openErr, "").Error()), creatorsOut, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	items, hasMore, fetchErr := collectPages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Creator], error) {
 		return client.Creators(ctx, fanbox.CreatorsRequest{Relation: kind, Cursor: cursor})
 	})
 	if fetchErr != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(fetchErr).Error()), creatorsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(fetchErr, "Creators").Error()), creatorsOut, nil
 	}
 	for _, item := range items {
 		creatorsOut.Creators = append(creatorsOut.Creators, creatorSummaryOut{ID: item.ID})
@@ -183,20 +184,20 @@ type creatorTagsOut struct {
 	Tags []tagOut `json:"tags"`
 }
 
-func (t fanboxTools) creatorTagsHandler(ctx context.Context, input creatorTagsIn) (*mcp.CallToolResult, creatorTagsOut, error) {
+func (t fanboxTools) creatorTagsHandler(ctx context.Context, input creatorTagsIn) (callResult *mcp.CallToolResult, output creatorTagsOut, handlerErr error) {
 	creatorTagsOut := creatorTagsOut{Tags: []tagOut{}}
 	if input.CreatorID == "" {
 		return outputs.Result(true, "Error: creator_id is required"), creatorTagsOut, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorTagsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), creatorTagsOut, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	tags, err := client.Creator(input.CreatorID).Tags(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), creatorTagsOut, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "CreatorTags").Error()), creatorTagsOut, nil
 	}
 	for _, tag := range tags {
 		creatorTagsOut.Tags = append(creatorTagsOut.Tags, tagOut{Name: tag.Name, URL: tag.URL})
@@ -214,26 +215,28 @@ func (t fanboxTools) registerFeed(server *mcp.Server) {
 	})
 }
 
-func (t fanboxTools) feedHandler(ctx context.Context, input feedIn) (*mcp.CallToolResult, outputs.PostsOut, error) {
+func (t fanboxTools) feedHandler(ctx context.Context, input feedIn) (callResult *mcp.CallToolResult, output outputs.PostsOut, handlerErr error) {
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	plan, err := toolrun.ParseListPlan(input.ListIn)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
 	if input.Source != "home" && input.Source != "supporting" {
 		return outputs.Result(true, "Error: source must be home or supporting"), out, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	return postList(ctx, input.Limit, plan, func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 		if input.Source == "supporting" {
-			return client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
+			page, err := client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
+			return page, report.Wrap(err, "Supporting")
 		}
-		return client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
+		page, err := client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
+		return page, report.Wrap(err, "Home")
 	})
 }
 
@@ -256,20 +259,20 @@ func (t fanboxTools) registerPost(server *mcp.Server) {
 	})
 }
 
-func (t fanboxTools) postHandler(ctx context.Context, input postIn) (*mcp.CallToolResult, outputs.PostOut, error) {
+func (t fanboxTools) postHandler(ctx context.Context, input postIn) (callResult *mcp.CallToolResult, output outputs.PostOut, handlerErr error) {
 	out := outputs.PostOut{Assets: []outputs.PostAssetOut{}}
 	if input.PostID == "" {
 		return outputs.Result(true, "Error: post_id is required"), out, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	post, err := client.Post(input.PostID).Get(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "Post").Error()), out, nil
 	}
 	out = outputs.PostOutFrom(post)
 	return outputs.Result(false, fmt.Sprintf("Retrieved post %s.", out.ID)), out, nil
@@ -292,20 +295,20 @@ type resolveURLOut struct {
 	Tag       string `json:"tag,omitempty"`
 }
 
-func (t fanboxTools) resolveURLHandler(ctx context.Context, input resolveURLIn) (*mcp.CallToolResult, resolveURLOut, error) {
+func (t fanboxTools) resolveURLHandler(ctx context.Context, input resolveURLIn) (callResult *mcp.CallToolResult, output resolveURLOut, handlerErr error) {
 	result := resolveURLOut{}
 	if strings.TrimSpace(input.URL) == "" {
 		return outputs.Result(true, "Error: url is required"), result, nil
 	}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), result, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), result, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	ref, err := client.ParseURL(input.URL)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), result, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), result, nil
 	}
 	switch ref := ref.(type) {
 	case *fanbox.CreatorRef:
@@ -331,7 +334,7 @@ func postList(ctx context.Context, limit *int, plan pagination.PagePlan, fetch f
 	out := outputs.PostsOut{Posts: []outputs.PostOut{}}
 	items, more, err := collectPages(ctx, plan, fetch)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), out, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), out, nil
 	}
 	for _, post := range items {
 		out.Posts = append(out.Posts, outputs.PostOutFrom(post))

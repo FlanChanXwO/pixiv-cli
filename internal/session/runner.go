@@ -83,8 +83,8 @@ func Open(ctx context.Context, open func(context.Context) (*Fanbox, error), requ
 func Use(ctx context.Context, open func(context.Context) (*Fanbox, error), request OpenRequest, use func(*fanbox.Client) error) error {
 	lease, err := Open(ctx, open, request)
 	if err != nil {
-		return report.Wrap(err)
+		return report.Wrap(err, "")
 	}
 	useErr := use(lease.Value())
-	return errors.Join(report.Wrap(useErr), lease.Close())
+	return errors.Join(report.Wrap(useErr, ""), lease.Close())
 }

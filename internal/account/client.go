@@ -108,7 +108,7 @@ func (s *Store) ImportFanbox(ctx context.Context, session string, options fanbox
 	defer func() { err = errors.Join(err, client.Close(context.WithoutCancel(ctx))) }()
 	user, err := client.CurrentUser(ctx)
 	if err != nil {
-		return Fanbox{}, report.Wrap(err)
+		return Fanbox{}, report.Wrap(err, "CurrentUser")
 	}
 	a := Fanbox{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Credential: credential.New([]byte(session)), ValidatedAt: time.Now().UTC()}
 	if err := s.SaveFanboxCredential(ctx, a); err != nil {

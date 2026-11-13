@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
@@ -126,7 +127,7 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 		out.Error = "resource_read_failed"
 		var typed *sdk.Error
 		if errors.As(err, &typed) {
-			out.Error = string(typed.Reason)
+			out.Error = string(report.ReasonOf(err))
 		}
 		if errors.Is(err, context.Canceled) {
 			out.Error = "canceled"
@@ -174,6 +175,9 @@ func openResource(ctx context.Context, client *fanbox.Client, ref legacysdk.Reso
 	request := fanbox.OpenRequest{Method: method}
 	switch identity.Role {
 	case record.FanboxCreatorIcon, record.FanboxCreatorCover:
+		if identity.Creator == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "creator resource reference is missing creator id"}
+		}
 		creator, err := client.Creator(identity.Creator).Get(ctx)
 		if err != nil {
 			return nil, err
@@ -182,8 +186,14 @@ func openResource(ctx context.Context, client *fanbox.Client, ref legacysdk.Reso
 		if identity.Role == record.FanboxCreatorCover {
 			image = creator.Cover
 		}
+		if image.URL == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "creator resource is unavailable"}
+		}
 		return image.Open(ctx, request)
 	case record.FanboxPostImage, record.FanboxPostFile:
+		if identity.Post == "" || identity.Asset == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "post resource reference is missing post or attachment id"}
+		}
 		post, err := client.Post(identity.Post).Get(ctx)
 		if err != nil {
 			return nil, err

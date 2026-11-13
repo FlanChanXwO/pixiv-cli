@@ -26,17 +26,17 @@ type currentUserOut struct {
 	IsCreator     bool   `json:"is_creator"`
 }
 
-func (t fanboxTools) currentUserHandler(ctx context.Context, _ currentUserIn) (*mcp.CallToolResult, currentUserOut, error) {
+func (t fanboxTools) currentUserHandler(ctx context.Context, _ currentUserIn) (callResult *mcp.CallToolResult, output currentUserOut, handlerErr error) {
 	empty := currentUserOut{}
 	lease, err := t.openClient(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "").Error()), empty, nil
 	}
-	defer lease.Close()
+	defer closeClient(lease, &callResult)
 	client := lease.Value()
 	user, err := client.CurrentUser(ctx)
 	if err != nil {
-		return outputs.Result(true, "Error: "+report.Wrap(err).Error()), empty, nil
+		return outputs.Result(true, "Error: "+report.Wrap(err, "CurrentUser").Error()), empty, nil
 	}
 	out := currentUserOut{
 		UserID:        user.UserID,

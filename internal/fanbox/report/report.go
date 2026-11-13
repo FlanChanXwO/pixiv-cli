@@ -9,7 +9,10 @@ import (
 )
 
 // Error 为 FANBOX 的呈现边界保留产品身份和既有会话、挑战错误文本。
-type Error struct{ Err error }
+type Error struct {
+	Err       error
+	operation string
+}
 
 // Error 输出受控诊断，不读取 SDK 错误的原始外部载荷。
 func (e *Error) Error() string {
@@ -17,7 +20,10 @@ func (e *Error) Error() string {
 	if !errors.As(e.Err, &failure) {
 		return e.Err.Error()
 	}
-	operation := failure.Operation
+	operation := e.operation
+	if operation == "" {
+		operation = failure.Operation
+	}
 	switch operation {
 	case "Post.Get":
 		operation = "Post"
@@ -30,6 +36,7 @@ func (e *Error) Error() string {
 	case "ParseURL":
 		operation = "ResolveURL"
 	}
+	reason := ReasonOf(failure)
 	message := failure.Message
 	switch failure.Reason {
 	case sdk.CredentialsExpired:
@@ -37,7 +44,17 @@ func (e *Error) Error() string {
 	case sdk.ChallengeRequired:
 		message = "fanbox: challenge required"
 	}
-	text := "fanbox:" + operation + ": " + string(failure.Reason)
+	if failure.Operation == "cloudflare.Solve" {
+		switch reason {
+		case sdk.ChallengeRequired:
+			message = "fanbox: FlareSolverr could not solve challenge"
+		case sdk.MalformedUpstreamResponse:
+			message = "fanbox: malformed FlareSolverr response"
+		case sdk.UpstreamUnavailable:
+			message = "fanbox: FlareSolverr service unavailable"
+		}
+	}
+	text := "fanbox:" + operation + ": " + string(reason)
 	if message != "" {
 		text += ": " + message
 	}
@@ -47,8 +64,9 @@ func (e *Error) Error() string {
 // Unwrap 保留取消、HTTP 状态与 SDK 分类。
 func (e *Error) Unwrap() error { return e.Err }
 
-// Wrap 在应用边界标记 FANBOX 错误；nil 与已标记的错误保持原样。
-func Wrap(err error) error {
+// Wrap 在应用边界标记 FANBOX 错误；operation 保留产品调用名称，空值沿用 SDK 名称。
+// nil 与已标记的错误保持原样，底层分类与联合错误的全部原因保留。
+func Wrap(err error, operation string) error {
 	if err == nil {
 		return nil
 	}
@@ -56,7 +74,7 @@ func Wrap(err error) error {
 		causes := joined.Unwrap()
 		wrapped := make([]error, len(causes))
 		for i, cause := range causes {
-			wrapped[i] = Wrap(cause)
+			wrapped[i] = Wrap(cause, operation)
 		}
 		return errors.Join(wrapped...)
 	}
@@ -68,7 +86,7 @@ func Wrap(err error) error {
 	if errors.As(err, &reported) {
 		return err
 	}
-	return &Error{Err: err}
+	return &Error{Err: err, operation: operation}
 }
 
 // IsAuthentication 判断已标记错误是否需要重新导入 FANBOX 会话。
@@ -77,13 +95,14 @@ func (e *Error) IsAuthentication() bool {
 	return reason == sdk.Unauthorized || reason == sdk.CredentialsExpired
 }
 
-// TaggedPostsError 为使用标签的创作者列表保留原诊断名称。
-func TaggedPostsError(err error) error {
+// ReasonOf 保留工具的既有求解失败分类；原 SDK 错误及 HTTP 状态仍可通过 Unwrap 检查。
+func ReasonOf(err error) sdk.Reason {
 	var failure *sdk.Error
-	if errors.As(err, &failure) && failure.Operation == "Creator.Posts" {
-		copy := *failure
-		copy.Operation = "TaggedPosts"
-		return &copy
+	if !errors.As(err, &failure) {
+		return ""
 	}
-	return err
+	if failure.Operation == "cloudflare.Solve" && failure.HTTPStatus != 0 {
+		return sdk.ChallengeRequired
+	}
+	return failure.Reason
 }

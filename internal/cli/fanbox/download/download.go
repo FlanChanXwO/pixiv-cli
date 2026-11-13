@@ -15,6 +15,7 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -107,7 +108,7 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 			return nil
 		}
 		if err := write(ctx, path); err != nil {
-			return err
+			return report.Wrap(err, "OpenResource")
 		}
 		seen[path] = struct{}{}
 		return nil

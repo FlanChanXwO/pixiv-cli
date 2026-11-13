@@ -78,7 +78,8 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind str
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Creator], error) {
-			return client.Creators(ctx, fanbox.CreatorsRequest{Relation: kind, Cursor: cursor})
+			page, err := client.Creators(ctx, fanbox.CreatorsRequest{Relation: kind, Cursor: cursor})
+			return page, report.Wrap(err, "Creators")
 		}
 		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Creator) error {
 			return printCreators(a.env.Out, items)
@@ -139,14 +140,15 @@ func PostsFetch(ctx context.Context, client *fanbox.Client, source string) (func
 			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 				page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Tag: tag, Cursor: cursor})
 				if tag != "" {
-					err = report.TaggedPostsError(err)
+					err = report.Wrap(err, "TaggedPosts")
 				}
-				return page, err
+				return page, report.Wrap(err, "CreatorPosts")
 			}, nil
 		default:
 			creatorID := ref.(*fanbox.CreatorRef).ID
 			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
-				return client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+				page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+				return page, report.Wrap(err, "CreatorPosts")
 			}, nil
 		}
 	case isNumericID(source):
@@ -154,7 +156,8 @@ func PostsFetch(ctx context.Context, client *fanbox.Client, source string) (func
 	default:
 		creatorID := source
 		return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
-			return client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+			page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+			return page, report.Wrap(err, "CreatorPosts")
 		}, nil
 	}
 }
@@ -166,7 +169,7 @@ func singlePostFetch(client *fanbox.Client, postID string) func(context.Context,
 		}
 		post, err := client.Post(postID).Get(ctx)
 		if err != nil {
-			return sdk.Page[*fanbox.Post]{}, err
+			return sdk.Page[*fanbox.Post]{}, report.Wrap(err, "Post")
 		}
 		return sdk.Page[*fanbox.Post]{Items: []*fanbox.Post{post}}, nil
 	}
@@ -212,7 +215,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		tags, err := client.Creator(args[0]).Tags(cmd.Context())
 		if err != nil {
-			return err
+			return report.Wrap(err, "CreatorTags")
 		}
 		out := make([]tagOut, 0, len(tags))
 		for _, tag := range tags {
@@ -252,7 +255,8 @@ func (a commandRunner) newHomeCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
-					return client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
+					page, err := client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
+					return page, report.Wrap(err, "Home")
 				}
 			})
 		},
@@ -271,7 +275,8 @@ func (a commandRunner) newSupportingCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
-					return client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
+					page, err := client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
+					return page, report.Wrap(err, "Supporting")
 				}
 			})
 		},
@@ -320,7 +325,7 @@ func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts options) 
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		post, err := client.Post(args[0]).Get(cmd.Context())
 		if err != nil {
-			return err
+			return report.Wrap(err, "Post")
 		}
 		out := postOutFrom(post)
 		if jsonOut {

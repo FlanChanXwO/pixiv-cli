@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -51,4 +52,11 @@ func Register(server *mcp.Server, ports SDKPorts, account Account) {
 	t.registerFeed(server)
 	t.registerResolveURL(server)
 	t.registerOpenResource(server)
+}
+
+func closeClient(lease *lifecycle.Lease[*fanbox.Client], result **mcp.CallToolResult) {
+	if err := lease.Close(); err != nil {
+		(*result).IsError = true
+		(*result).Content = append((*result).Content, &mcp.TextContent{Text: "Error: " + report.Wrap(err, "").Error()})
+	}
 }
