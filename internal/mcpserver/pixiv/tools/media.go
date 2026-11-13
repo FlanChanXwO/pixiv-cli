@@ -294,7 +294,7 @@ func (t pixivTools) readArtworkMedia(ctx context.Context, client *pixiv.Client, 
 			return nil, nil
 		}
 	}
-	return readArtworkPages(ctx, client, artwork, out, in.Quality)
+	return readArtworkPages(ctx, artwork, out, in.Quality)
 }
 
 func (t pixivTools) readUgoiraMedia(ctx context.Context, client *pixiv.Client, in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) ([]mcp.Content, error) {
@@ -314,7 +314,7 @@ func (t pixivTools) readUgoiraMedia(ctx context.Context, client *pixiv.Client, i
 	return content, nil
 }
 
-func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork *pixiv.Artwork, out *outputs.ArtworkMedia, quality string) ([]mcp.Content, error) {
+func readArtworkPages(ctx context.Context, artwork *pixiv.Artwork, out *outputs.ArtworkMedia, quality string) ([]mcp.Content, error) {
 	pages := make(map[int]pixiv.ArtworkPage, len(artwork.Pages))
 	for _, page := range artwork.Pages {
 		pages[page.PageIndex+1] = page
@@ -337,7 +337,7 @@ func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork *pixiv.
 			out.Failures = append(out.Failures, failure)
 			continue
 		}
-		data, mime, status, err := readPage(ctx, client, page, variant)
+		data, mime, status, err := readPage(ctx, page, variant)
 		if err != nil {
 			failure.Error = errorCode(err)
 			failure.HTTPStatus = status
@@ -381,7 +381,7 @@ func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn
 	result.Meta = mcp.Meta{"pixiv/mediaDownloads": map[string]any{"media_origin": media.Origin(), "pages": downloads}}
 }
 
-func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {
+func readPage(ctx context.Context, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {
 	image, err := page.Original.Quality(variant)
 	if err != nil {
 		return nil, "", 0, err
@@ -633,7 +633,7 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "account_unavailable"})
 		return out
 	}
-	avatar := !(artwork.Author.ProfileImage.URL == "")
+	avatar := artwork.Author.ProfileImage.URL != ""
 	for _, page := range galleryPages(in) {
 		if page > artwork.PageCount {
 			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "page_unavailable", Page: page})
