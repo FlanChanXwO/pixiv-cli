@@ -10,14 +10,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 type animationWriter struct {
@@ -142,7 +140,7 @@ func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (
 		session.Lease.Close()
 		return Session{}, err
 	}
-	if artwork.ContentType != pixiv.ContentTypeUgoira {
+	if artwork.Artwork.ContentType != pixiv.ContentTypeUgoira {
 		session.Lease.Close()
 		return Session{}, errors.New("artwork is not an animation")
 	}
@@ -152,12 +150,12 @@ func (s *Service) animationSourceSession(ctx context.Context, j *animationJob) (
 // downloadAnimationArchive 读取 ugoira 元数据，把帧归档写入私有工作目录。
 func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob, session Session) (pixiv.UgoiraMetadata, int64, error) {
 	started := time.Now()
-	meta, err := session.Lease.Value().UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: j.claim.Artwork})
+	meta, err := session.Lease.Value().Artwork(j.claim.Artwork).UgoiraMetadata(ctx)
 	s.observeAnimation(ctx, AnimationObservation{Stage: "animation_metadata", Duration: time.Since(started), Failed: err != nil})
 	if err != nil {
 		return pixiv.UgoiraMetadata{}, 0, err
 	}
-	archive := downloader.SelectUgoiraArchive(meta)
+	archive := saving.SelectUgoiraArchive(meta)
 	if archive == nil {
 		return pixiv.UgoiraMetadata{}, 0, errors.New("animation archive unavailable")
 	}
@@ -169,7 +167,7 @@ func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob,
 		return pixiv.UgoiraMetadata{}, 0, err
 	}
 	started = time.Now()
-	resource, err := session.Lease.Value().OpenResource(ctx, sdk.OpenResourceRequest{Ref: archive.Resource.Ref})
+	resource, err := archive.OpenResponse(ctx)
 	if err != nil {
 		_ = file.Close()
 		s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Failed: true})
@@ -184,11 +182,8 @@ func (s *Service) downloadAnimationArchive(ctx context.Context, j *animationJob,
 	n, copyErr := io.Copy(animationWriter{ctx, s, j, file}, resource.Body)
 	closeErr := errors.Join(resource.Body.Close(), file.Close())
 	err = errors.Join(copyErr, closeErr)
-	if length := resource.Header().Get("Content-Length"); err == nil && length != "" {
-		expected, e := strconv.ParseInt(length, 10, 64)
-		if e != nil || expected != n {
-			err = errors.Join(errors.New("incomplete animation archive"), io.ErrUnexpectedEOF)
-		}
+	if err == nil && resource.ContentLength >= 0 && resource.ContentLength != n {
+		err = errors.Join(errors.New("incomplete animation archive"), io.ErrUnexpectedEOF)
 	}
 	s.observeAnimation(ctx, AnimationObservation{Stage: "animation_zip_download", Duration: time.Since(started), Bytes: n, Failed: err != nil})
 	if err != nil {

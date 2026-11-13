@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PublishAnimation 把已经校验、完整编码的字节保存为当前账号读快照下的受保护下载；

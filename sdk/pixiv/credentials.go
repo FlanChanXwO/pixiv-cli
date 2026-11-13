@@ -48,6 +48,7 @@ func (value *Credentials) SetTokens(accessToken, refreshToken string) {
 // Store errors must omit token values; the SDK preserves their causes.
 type CredentialStore interface {
 	// Load returns the latest revision and refresh token, optionally with access state.
+	// A classified [sdk.Error] is preserved, allowing a store to reject an expired lease.
 	Load(ctx context.Context) (Credentials, error)
 	// CompareAndSwap atomically persists replacement only if expectedRevision
 	// matches. Replacement.Revision is expectedRevision+1; return false, nil for

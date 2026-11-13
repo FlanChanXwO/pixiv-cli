@@ -41,7 +41,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
@@ -116,12 +115,12 @@ func (a *app) newRootCommand() *cobra.Command {
 	// --help 与 --version 提供内置帮助/版本入口。
 	cmd.SetHelpCommand(&cobra.Command{Use: "_help [command]", Hidden: true})
 	cmd.CompletionOptions.DisableDefaultCmd = true
-	env, exec := a.commandEnv(), a.local.Execute
+	env := a.commandEnv()
 	cmd.AddCommand(a.newAuthCommand())
 	cmd.AddCommand(whoami.New(env, a.local.CurrentUser))
 	cmd.AddCommand(configcmd.New(env, config.Store{Files: secretfile.ConfigFiles{}}))
 	cmd.AddCommand(a.pixivCommands(env)...)
-	cmd.AddCommand(download.New(env, exec, download.RuntimeFrom(a.runtimeConfig), downloader.NewService))
+	cmd.AddCommand(download.New(env, a.local.ExecuteSDK, download.RuntimeFrom(a.runtimeConfig)))
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	cmd.AddCommand(mcp.New(env, a.runPixivMCP, mcp.InitAuth))
 	cmd.AddCommand(update.New(env, a.runtimeConfig))
@@ -316,7 +315,6 @@ func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 		ErrOut:        a.errOut,
 		Logger:        a.logger,
 		Settings:      runtime,
-		Downloads:     downloader.NewService(),
 		Local:         a.local,
 		Fanbox:        a.local.NewFanbox,
 		ReverseSearch: reverseSearch,

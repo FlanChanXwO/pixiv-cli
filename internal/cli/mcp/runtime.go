@@ -20,7 +20,6 @@ import (
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -31,12 +30,11 @@ import (
 // 本地账号、只读会话、反向搜图与配置快照都由 root.go 构造；本包只把它们接到
 // mcpserver 的 stdio 或 HTTP runtime，不打开账号库或读取配置。
 type Runtime struct {
-	In        io.Reader
-	Out       io.Writer
-	ErrOut    io.Writer
-	Logger    func() *slog.Logger
-	Settings  config.Config
-	Downloads downloader.DownloadService
+	In       io.Reader
+	Out      io.Writer
+	ErrOut   io.Writer
+	Logger   func() *slog.Logger
+	Settings config.Config
 	// Local 提供 Pixiv 重放执行、只读会话与本地账号摘要。
 	Local *session.Local
 	// Fanbox 返回执行内共享账号库的 FANBOX 会话；每次调用只新建租约。
@@ -101,7 +99,7 @@ func pixivRequest(account pixivmcpserver.Account) session.ProxyRequest {
 // runStdio 使用每个请求独立打开本地账号，stdout 只承载 JSON-RPC。
 func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts pixivmcpserver.SDKPorts, fanboxPorts fanboxmcpserver.SDKPorts, request Request) error {
 	account := pixivmcpserver.Account{HTTPSProxyOverride: request.HTTPSProxyOverride}
-	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Service: r.Downloads, Path: settings.Download.Path, FilenameTemplate: settings.Download.FilenameTemplate, DirectoryTemplate: settings.Download.DirectoryTemplate}
+	sdkPorts.Downloads = &pixivmcpserver.LocalDownloads{Path: settings.Download.Path, FilenameTemplate: settings.Download.FilenameTemplate, DirectoryTemplate: settings.Download.DirectoryTemplate}
 	sdkPorts.ResolveSDKAccount = func(_ context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		return account, nil
 	}
@@ -113,8 +111,8 @@ func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts 
 		})
 		return account, err
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*legacysdk.Client], error) {
-		return r.Local.OpenLease(ctx, pixivRequest(account))
+	sdkPorts.OpenSDKLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+		return r.Local.OpenSDKLease(ctx, pixivRequest(account))
 	}
 	return mcpserver.RunStdio(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), r.In, r.Out)
 }
@@ -139,8 +137,8 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 		return err
 	}
 	defer login.Close()
-	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*legacysdk.Client], error) {
-		return r.Local.OpenLease(ctx, session.ProxyRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*pixiv.Client], error) {
+		return r.Local.OpenSDKLease(ctx, session.ProxyRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 	if err != nil {
 		return err
@@ -156,8 +154,8 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
 		return r.Local.Read(ctx, pixivRequest(account), callback)
 	}
-	sdkPorts.OpenLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*legacysdk.Client], error) {
-		snapshot, err := r.Local.ReadSession(ctx, pixivRequest(account))
+	sdkPorts.OpenSDKLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
+		snapshot, err := r.Local.SDKReadSession(ctx, pixivRequest(account))
 		return snapshot.Lease, err
 	}
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
@@ -187,7 +185,7 @@ func (r Runtime) localAccounts(ctx context.Context) (accounts.LocalSnapshot, err
 
 // readSession 把 session 的只读快照投影成媒体代理使用的会话值。
 func (r Runtime) readSession(ctx context.Context, request session.ProxyRequest) (mediaproxy.Session, error) {
-	snapshot, err := r.Local.ReadSession(ctx, request)
+	snapshot, err := r.Local.SDKReadSession(ctx, request)
 	if err != nil {
 		return mediaproxy.Session{}, err
 	}

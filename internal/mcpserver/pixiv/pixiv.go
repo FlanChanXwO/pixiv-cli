@@ -19,7 +19,7 @@ type Account = toolhost.Account
 // MCP 通过这组函数取用依赖。
 type SDKPorts = toolhost.SDKPorts
 
-// LocalDownloads 配置 stdio 下通过共享 downloader 交付文件的路径与模板。
+// LocalDownloads 配置 stdio 下通过页下载器交付文件的路径与模板。
 type LocalDownloads = toolhost.LocalDownloads
 
 // ReverseSearchPorts 携带启动时为 reverse_search 注入的能力与配置。

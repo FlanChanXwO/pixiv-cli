@@ -81,7 +81,7 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 
 - **关闭：** `lifecycle.CloseState` 登记 `Run` 打开的资源；调用方在关闭前停止资源生产者并完成注册；互斥锁保护列表，不保护迟到的注册；closer 不得向同一 scope 注册或递归关闭它。关闭在命令完成后进行；MCP stdio 等待进行中的 handler；关闭错误被合并。
 - **Owner：** `internal/cli` 只有一个 `root.go` 与命令目录，没有 `internal/` 子目录，也没有测试文件。`root.go` 通过显式工厂与窄端口把生产依赖接到命令 owner，并逆序关闭已登记的资源。没有跨命令 locator、bootstrap 构造器或 `internal/cli/runtime`。CLI 契约测试放在 `cmd/pixiv`，通过 `cli.Run` 做黑盒测试。
-- **命令包：** 根级 `internal/cli/{config,mcp,update,whoami}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,browse,download}`。组的持久 `--proxy`/`--no-proxy` flag 由 `internal/cli/fanbox` 拥有。Pixiv 查询与评论命令通过 `session.SDKExecutor` 使用新 `*pixiv.Client`，列表输出使用 `record.RunSDKList`；Pixiv 下载仍使用旧 `session.Executor`。FANBOX 命令通过延迟会话工厂与 `fanbox.UseClient` 使用 `*fanbox.Client`。公共输入输出由 `environment.Env` 提供。
+- **命令包：** 根级 `internal/cli/{config,mcp,update,whoami}`；Pixiv `internal/cli/{auth,bookmark,comment,detail,download,follow,mypixiv,ranking,recommended,search,series,timeline,user}`；FANBOX `internal/cli/fanbox/{auth,browse,download}`。组的持久 `--proxy`/`--no-proxy` flag 由 `internal/cli/fanbox` 拥有。Pixiv 查询、评论与下载命令通过 `session.SDKExecutor` 使用新 `*pixiv.Client`，列表输出使用 `record.RunSDKList`。FANBOX 命令通过延迟会话工厂与 `fanbox.UseClient` 使用 `*fanbox.Client`。公共输入输出由 `environment.Env` 提供。
 - **共享 helper 位于模块级 owner：** `internal/environment`（输入输出流、stdin codec、flag 绑定、usage 标记、生命周期标注）、`internal/pagination`（`--limit`/`--page` 解析、`PagePlan`、分页输出字段）、`internal/record`（record 投影、NDJSON 消费与逐行诊断、列表 JSON/NDJSON/文本输出）、`internal/session`（Pixiv 重放执行器、FANBOX 租约包装与账号/账号池/会话的生产构造函数）、`internal/display`（终端文本渲染、身份格式、上游文本转义）、`internal/pixiv/target`（目标解析）。这些包不导入 `internal/cli` 或 `internal/mcpserver`。
 - **`--version` / 自动更新：** stdout 恰为 `pixiv <version>`，stderr 为空，不检查更新。自动更新只在普通业务命令成功后运行，MCP、help、`--version`、`update`、所有 `auth export`、bundle 形式 `auth import`、标记为离线的命令（例如 `whoami`）与 dev 构建跳过；选择 stable Release，用户缓存 24 小时节流，最多等 3 秒；失败只作为 stderr warning——不改变退出码，不泄漏到 JSON stdout 或 MCP JSON-RPC。
 - **Windows 启动清理** 待更新文件属于潜在写操作：所有 `auth export` 调用在 Cobra 解析前识别并跳过它。根 bool 解析变更时，手动核对 `--help=false` 等重复覆盖形式仍遵守 secret 导出边界。
@@ -120,7 +120,7 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 | 配置 | 组合根读取一次 | 以具名字段的值传入构造函数 | 值字段，不持有 `settings.Store` |
 | stdout 输出（文本/JSON/NDJSON） | CLI 命令层 | 命令持有 writer | 业务返回数据 |
 
-本身就是基础设施的包不受“业务对象”这一限制：`pixiv/api`、`fanbox/api`、`storage/*`、`media/downloader`、`mcpserver/pixiv/mediaproxy` 的职责就是并发、缓存、文件和网络。规则只要求它们对外暴露的接口窄、内部零件不外泄。
+本身就是基础设施的包不受“业务对象”这一限制：`pixiv/api`、`fanbox/api`、`storage/*`、`pixiv/saving`、`mcpserver/pixiv/mediaproxy` 的职责就是并发、缓存、文件和网络。规则只要求它们对外暴露的接口窄、内部零件不外泄。
 
 ### 日志入口
 
@@ -148,17 +148,18 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
 | `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count、origin、op、net、address、errno；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 路由遵循上方日志入口 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
-**账号池读取：** 旧路径的 `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。新 CLI 路径使用 `Local.ExecuteSDK`；MCP 经 `SDKPorts.ExecuteSDK` 使用 `ReadSDK`、`WriteSDK`、`SDKReadExecutor` 与新收集器，`WriteSDK` 在进入回调时提交。命令 owner 负责流式 NDJSON、分页与部分交付；JSON 结果暂存到成功后输出，可见的文本/NDJSON 输出会提交当前尝试。`pagination` 接受两代 cursor，安全重放前清除未提交结果。旧 MCP 消费方保留 `Execute`/`Read`/`OpenLease` 端口。
+**账号池读取：** 旧路径的 `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。新 CLI 路径使用 `Local.ExecuteSDK`；MCP 经 `SDKPorts.ExecuteSDK` 使用 `ReadSDK`、`WriteSDK`、`SDKReadExecutor` 与新收集器，`WriteSDK` 在进入回调时提交。命令 owner 负责流式 NDJSON、分页与部分交付；JSON 结果暂存到成功后输出，可见的文本/NDJSON 输出会提交当前尝试。`pagination` 接受两代 cursor，安全重放前清除未提交结果。旧 MCP 消费方保留 `Execute`/`Read` 端口。
 
-**输出过渡：** `record/pixiv_output.go` 与 `pixiv_user_output.go` 在本次尝试内把新 SDK 对象投影为旧输出 DTO。`pixiv_resource.go` 保留媒体工具消费的旧 `ResourceRef` 身份，可用 URL 和请求头留在 SDK 绑定对象内。`pixiv/target` 经新 SDK 解析 URL，再投影为现有目标描述符。S16 将这些旧输出、资源和目标类型与剩余消费者一并迁移。
+**输出过渡：** `record/pixiv_output.go` 与 `pixiv_user_output.go` 在本次尝试内把新 SDK 对象投影为旧输出 DTO。`pixiv_resource.go` 保留 CLI 资源身份；Gallery 记录经 `RecordFromMediaArtwork` 生成可读图片引用。可用 URL 和请求头留在 SDK 对象或私有媒体缓存内。`pixiv/target` 经新 SDK 解析 URL，再投影为现有目标描述符。S16 将这些旧输出、资源和目标类型与剩余消费者一并迁移。
 
 ### 业务会话、账号与账号池
 
 - `internal/account` 拥有 Pixiv/FANBOX 有序账号快照、凭据持久化、登录完成、轮换门、读会话缓存，以及 Pixiv 账号池的选择/冻结/安全重放。目录、网络选项与池策略由调用方传入；默认账号配置由 `internal/session` 管理。
 - `session.Local` 装配共享 store、`Accounts`、`FanboxAccounts`、`Pixiv`、`Fanbox` 与读会话。`Accounts`/`FanboxAccounts` 将本地快照与 `internal/config` 默认账号组合，提供命令使用的摘要、导入/导出与恢复编排。Pixiv 同时交出两代 SDK client，FANBOX 继续使用 `internal/legacy/sdk`；FANBOX 的凭据与生命周期独立于 Pixiv，没有账号池策略。
+- 新旧 SDK 读取 client 共享有效的内存访问凭据与同一失效代次。构造另一种 client 时保留已验证的账号身份，无需再次轮换 OAuth；每次内容请求仍校验已保存的 revision。旧 token 构造入口在过渡期间接收这份调用方已验证的身份。
 - `Store.OpenSDKClient` 交出新 `sdk/pixiv` client，`OpenAccountClient` 保留旧 client。按账号绑定的 `CredentialStore.Load` 读取最新 revision 并固定账号创建时间，`CompareAndSwap` 比较两者后保存，revision 冲突返回 `false, nil`。OAuth 在存储锁外执行；SDK 冲突后重新加载，保存失败在内容请求前传播。`Client.Credentials(ctx)` 经相同流程准备凭据，省去内容请求。
 - `session.PixivOptions` 为两代 client 装配一致的连接设置。`Local.ExecuteSDK` 复用现有账号池与 gate，单独交出已选 UID；加载凭据前，`Client.UserID()` 仍可能为零。缺省目标在每次尝试内解析，MCP fetch 回调使用 `SDKUserID`。stdio 的 `ResolveSDKAccount` 保留原始请求用于池调度，HTTP 使用持久化的 `ResolveAccount` 快照。SDK 绑定对象在本次操作内使用。
-- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。媒体/下载、FANBOX 与反向搜图保留旧 client，随 S13–S15 迁移。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
+- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。CLI 下载通过 `internal/pixiv/saving` 展开来源并调用 `sdk/download`；MCP 下载与媒体也使用新 SDK；FANBOX 和反向搜图保留各自的迁移路径。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
 - `Request.Selection` 使用带正数 UID 的 `SelectionFixed` 或 `SelectionPool`。固定账号的读写保持该身份；安全且尚未提交的读取可经池重放。调用方从 `internal/config` 读取 `enabled`/`strategy`；`account` 无 config 导入，默认账号由 session 解析。账号池关闭时，session 选择配置的默认账号或存储中的第一个账号。
 - CLI/MCP 经 owner-local port 与 MCP runtime `SDKPorts` 使用会话；筛选、record、schema 与输出渲染留在各适配器。SDK 的依赖图保持独立于本地账号存储。
 
@@ -314,19 +315,11 @@ flowchart LR
 
 见 [MCP server 架构](architecture-mcp.md)。每个产品的 tools 只有一个 `tools` 包：`register.go` 保存唯一的 `Register` 与原有的端口门控注册顺序，各领域文件（`accounts.go`、`media.go`、`bookmarks.go` 等）保存该领域工具的名称、annotations、schema 与 `<tool>Handler` 方法。共享端口仍放在 `internal/mcpserver/{pixiv,fanbox}/internal/toolhost`。
 
-### `internal/media/downloader`
+### `internal/pixiv/saving`
 
-CLI 下载 owner。通过 `DownloadTargetClient` / `DownloadClient` 获取 SDK 执行快照，集中负责来源展开、ID 去重、页码/质量校验、获取与发布、进度事件与 Ugoira 格式选择（适配器不得重复实现）。`ResourceRef` 只由产品 client 解析；SDK 只保留原子的解析/保存能力，没有批量下载流程。
+展开 CLI 与 stdio MCP 下载来源，把逐页保存结果汇总成既有的作品报告。范围字符串由调用方解析，构造页下标前校验边界。`sdk/download` 负责文件发布、命名模板与动图编码；输入的资源身份通过绑定账号的 SDK 对象重新解析。
 
-| 情况 | 结果 |
-| --- | --- |
-| `Download` | 同步执行；返回每个作品的实际产物路径 |
-| 单页 | 保存到下载目录 |
-| 多页、Ugoira | 每个作品一个子目录 |
-| 扩展名 | 来自上游 URL 路径，与模板文件名同样规范化；Pixiv 缩略图在有显式 Content-Type 时修正含糊后缀；未知类型保留 URL 扩展名 |
-| Ugoira | SDK 校验的 `download_url` ZIP → Go 编码器生成 GIF/APNG，或由 SDK 原样发布 ZIP/帧；可以选择 App medium，但绝不标记为 original |
-
-默认路径构造 `ugoira.NewEncoder()`——没有后端选择器或外部编码器 fallback；`CGO_ENABLED=0`。Rust 源码、native library 与 FFI/staticlib 适配器已删除（历史见 Git）。
+作品 ID 去重后排序。每件作品在首个失败页停止，报告保留已发布文件与提示。目录 `{num}` 使用第 0 页，文件名 `{num}` 使用实际选中的页。未设置目录模板时，单页文件写入下载根目录，多页与动图按作品建立子目录。目录模板适用于所有作品，包含单页作品。静态扩展名优先采用受支持的响应 MIME，再嗅探图片字节；响应未声明 MIME 时可使用已知 URL 扩展名。Ugoira 使用原质量，不接受显式页选择，输出 GIF 或 APNG。
 
 ### `internal/media/ugoira`
 
@@ -358,12 +351,12 @@ flowchart LR
 
 ### 测试与 helper owner
 
-与协议无关的 helper 放在调用方：正整数解析与 stdin codec 在 `internal/environment`，字符串安全与终端渲染在 `internal/display`，URL 路径/file URI 在 `internal/media/downloader`，按月截断在 `internal/pixiv/searchfilter`。
+与协议无关的 helper 放在调用方：正整数解析与 stdin codec 在 `internal/environment`，字符串安全与终端渲染在 `internal/display`，URL 路径/file URI 在 `internal/pixiv/saving`，按月截断在 `internal/pixiv/searchfilter`。
 
 | 迁出的职责 | Owner |
 | --- | --- |
 | 文件名清理、模板展开 | `internal/media/filename` |
-| ID 去重、媒体 MIME 类型 | `internal/media/downloader` |
+| 下载 ID 去重、媒体 MIME 类型 | `internal/pixiv/saving` |
 | refresh token 校验 | `internal/pixiv/api/oauth` |
 | 路径、权限 | `internal/config` |
 | 原子写入、替换 | `internal/storage/atomicfile` |

@@ -37,6 +37,8 @@ flowchart LR
 | Caching | `Cache-Control: private, no-store`; no disk or public cache; HEAD validates without a body |
 | Handling | Complete image URLs are short-lived credentials — never share or log them |
 
+Gallery record image references are readable objects: page images carry `artwork_id`, zero-based `page_index` and `quality: "original"`; covers carry `artwork_id` and `quality: "cover"`; author avatars carry `user_id`. These identities omit upstream URLs and account bindings. Use the artwork ID and one-based page with the documented media tools; `cover` identifies the model field, not a media-tool quality argument.
+
 ## Cards and detail
 
 | Element | Behavior |

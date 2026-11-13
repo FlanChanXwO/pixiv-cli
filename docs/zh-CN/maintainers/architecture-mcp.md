@@ -18,7 +18,7 @@ flowchart TB
     MP["pixiv/mediaproxy<br/>capability、LRU、动画任务"]
     AM["pixiv/tools<br/>artwork_media"]
     RS["internal/account/reads.go<br/>MCP 读取会话"]
-    DL["internal/media/downloader<br/>（仅 stdio）"]
+    DL["internal/pixiv/saving → sdk/download<br/>（仅 stdio）"]
     NEW --> PX & FB
     HTTP --> AUTH
     HTTP -->|"origin 校验后的 /media/"| MP
@@ -30,7 +30,7 @@ flowchart TB
 ## Server 与注册
 
 - `New` 构造唯一的协议 server 并调用各产品的 `Register`。Pixiv 工具用 `pixiv_`，FANBOX 用 `fanbox_`；没有无前缀别名。每个工具包负责自己的名称、annotations、schema 与 handler。
-- stdio 通过 `internal/media/downloader` 注入本地下载；HTTP 从不获得该端口。Gallery 与 owner 工具需要各自的媒体/账号/登录端口。
+- stdio 通过 `internal/pixiv/saving → sdk/download` 注入本地下载；HTTP 从不获得该端口。Gallery 与 owner 工具需要各自的媒体/账号/登录端口。
 - `NewHTTPHandler`（父包）组装无状态 Streamable HTTP 与 OAuth 路由；`RunHTTP` 负责 listener 与生命周期；`RunStdio` 负责本地会话并等待清理。
 - 各产品保留自己的 SDK 端口、账号选择与 runtime。发现阶段不打开 FANBOX 账号；FANBOX 工具运行时根包才惰性打开其独立服务。Pixiv 可空的 `page`/`limit` 由其适配器解析；遍历留在 `internal/pagination`。handler 失败保留结构化输出并设置 `isError=true`；合法的空结果保持成功。
 
@@ -45,8 +45,8 @@ flowchart TB
 
 - capability 绑定 OAuth 授权、账号与图片选择；浏览器与路由都不接受上游凭据或任意 URL。组合根提供与其他 Pixiv 操作相同的出站代理与显式账号 lease 工厂。
 - Gallery UI 负责惰性占位、显式重试、视图取消、Blob 清理与宿主能力下载，并在内部导航间维护约 256 MiB 的估算会话 LRU（静态图、元数据、原图字节）；新的工具输入/结果与 teardown 会清空。脱离视图的缓存图片失去视图监听；驱逐会释放来源；活动中的超大图仍可显示。原图弹窗使用全字节媒体工具，并与宿主确认的下载共享字节。宿主不支持下载时，通过 Gallery 工具准备所选页的原图 capability，并暴露受保护的 HTTPS 附件链接（只接受精确下载 query、仅 original 质量、复用 inline 图的 server 缓存）。收藏状态从不缓存；搜索续读留在数据工具。
-- **mediaproxy 缓存：** 序列化元数据、进行中缓冲与被固定的载荷共享配置预算；大图/无法预留的图片流式传输不缓存。每次查找校验当前授权；旧账号/会话代际不能复用内容；只有完整成功的传输进入缓存（从不包含收藏状态或写入）。授权通知、凭据代际信号与条目过期回收空闲条目；被固定的字节在释放前持续计费。发布时在缓存互斥锁下校验授权与代际，迟到的旧填充无法重新写入。SDK 在映射可信元数据时注册经策略校验的质量变体。诊断使用固定阶段，不含 secret 标识。
-- **artwork_media：** 一个 SDK lease 把元数据与所有页面资源绑定到所选账号；每次读取后关闭响应；所有退出路径关闭 lease；返回字节 + 显式的逐页索引/失败；不暴露 server 路径；不重放部分交付。Ugoira 使用共享下载器的压缩包选择器、SDK `SaveResource` 与 Go 编码器，在每次调用的私有工作区中运行，以 `ImageContent` 返回全部 GIF/APNG 字节与单独索引的 PNG 预览（APNG 的 content MIME 属于 PNG 族，元数据保留动画子类型），并在交付前删除临时文件。实际压缩包质量与输出文件名是显式的；仅静态适用的参数被拒绝而非忽略。支持 App 的客户端获得 [媒体交付](../mcp-gallery.md#mcp-apps-媒体交付) 中描述的 `_meta["pixiv/mediaContents"]` 索引交付；可选发布不可用时数组保留完整 inline 内容（宿主仍可能拒绝——准备完成不等于已接收）。
+- **mediaproxy 缓存：** 序列化元数据（包含实际原图页角色）、进行中缓冲与被固定的载荷共享配置预算；大图/无法预留的图片流式传输不缓存。每次查找校验当前授权；旧账号/会话代际不能复用内容；只有完整成功的传输进入缓存（从不包含收藏状态或写入）。授权通知、凭据代际信号与条目过期回收空闲条目；被固定的字节在释放前持续计费。发布时在缓存互斥锁下校验授权与代际，迟到的旧填充无法重新写入。SDK 在映射可信元数据时注册经策略校验的质量变体。诊断使用固定阶段，不含 secret 标识。
+- **artwork_media：** 一个 SDK lease 把元数据与所有页面资源绑定到所选账号；每次读取后关闭响应；所有退出路径关闭 lease；返回字节 + 显式的逐页索引/失败；不暴露 server 路径；不重放部分交付。Ugoira 使用共享压缩包选择器、绑定账号的 SDK 压缩包响应与 Go 编码器，在每次调用的私有工作区中运行，以 `ImageContent` 返回全部 GIF/APNG 字节与单独索引的 PNG 预览（APNG 的 content MIME 属于 PNG 族，元数据保留动画子类型），并在交付前删除临时文件。实际压缩包质量与输出文件名是显式的；仅静态适用的参数被拒绝而非忽略。支持 App 的客户端获得 [媒体交付](../mcp-gallery.md#mcp-apps-媒体交付) 中描述的 `_meta["pixiv/mediaContents"]` 索引交付；可选发布不可用时数组保留完整 inline 内容（宿主仍可能拒绝——准备完成不等于已接收）。
 - ZIP body 失败在任务 context 仍有效时输出固定的 `animation_zip_incomplete` / `animation_zip_reset` / `animation_zip_timeout` 标记（只含部分字节数），不改变重试、截止时间、质量或工具错误。
 - **HTTP 写入观测** 只在存在诊断 scope 时进行；字节数描述 writer 已接受，而非对端已收到；`ResponseController` 解包保持 SDK 流式/截止时间行为；不保留 body/header；不增加缓冲、等待或重试。
 

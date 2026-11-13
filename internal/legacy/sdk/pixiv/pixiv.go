@@ -27,10 +27,14 @@ type ResourcePolicy struct {
 	AllowedHosts []string
 }
 
-// Options are connection-level settings for constructing a Client. They never
+// Options configure a Client and any caller-verified identity. They never
 // include account paths, configuration, browser access, Web fallback, or a
 // public base URL override.
 type Options struct {
+	// UserID and Username retain an already verified identity when NewWith resumes
+	// an access token. Zero UserID keeps the original token-only construction.
+	UserID   int64
+	Username string
 	// HTTPClient is the HTTP client used for App API, OAuth, and resource
 	// requests. It belongs to the caller and is never closed by the SDK; when
 	// nil the SDK creates its own client whose idle connections can be released
@@ -114,7 +118,8 @@ func OpenWith(ctx context.Context, refreshToken string, options Options) (*Clien
 
 // New returns a Client for an explicitly provided access token. It performs no
 // network I/O, reads no files, and never infers a user ID from the token; the
-// token is not refreshed when it expires.
+// token is not refreshed when it expires. NewWith also accepts caller-verified
+// identity metadata through Options.
 func New(accessToken string) (*Client, error) {
 	return NewWith(accessToken, Options{})
 }
@@ -126,11 +131,15 @@ func NewWith(accessToken string, options Options) (*Client, error) {
 	if accessToken == "" {
 		return nil, newError("New", sdk.InvalidArgument, "access token is required")
 	}
+	if options.UserID < 0 {
+		return nil, newError("New", sdk.InvalidArgument, "user ID must not be negative")
+	}
 	httpClient, selfHTTP := api.NewHTTPClient(options.HTTPClient, options.Pacing.MinInterval, options.Logger)
-	client, err := newClient(httpClient, selfHTTP, accessToken, options, 0)
+	client, err := newClient(httpClient, selfHTTP, accessToken, options, options.UserID)
 	if err != nil {
 		return nil, newError("New", sdk.LocalStateError, "cannot initialize cursor instance")
 	}
+	client.userName = options.Username
 	return client, nil
 }
 

@@ -8,19 +8,19 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
 type controller struct {
-	env      environment.Env
-	runner   session.Runner
-	runtime  func() (Runtime, error)
-	download func() downloader.DownloadService
+	env     environment.Env
+	execute session.SDKExecutor
+	runtime func() (Runtime, error)
 }
 
 type commandOptions struct {
@@ -74,7 +74,7 @@ func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (sess
 }
 
 func (a controller) newDownloadCommand() *cobra.Command {
-	opts := downloadOptions{quality: string(downloader.DownloadQualityOriginal), ugoiraMode: string(downloader.UgoiraFormatGIF)}
+	opts := downloadOptions{quality: string(download.QualityOriginal), ugoiraMode: string(download.UgoiraFormatGIF)}
 	cmd := &cobra.Command{
 		Use:   "download [SRC...]",
 		Short: "Download illustrations",
@@ -114,22 +114,22 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
 		return a.usageError(err)
 	}
-	pages, err := downloader.ParsePageSpec(opts.pages)
+	pages, err := saving.ParsePageSpec(opts.pages)
 	if err != nil {
 		return a.usageError(err)
 	}
-	quality := downloader.DownloadQuality(opts.quality)
+	quality := download.Quality(opts.quality)
 	if quality == "" {
-		quality = downloader.DownloadQualityOriginal
+		quality = download.QualityOriginal
 	}
-	if err := downloader.ValidateDownloadQuality(quality); err != nil {
+	if err := saving.ValidateQuality(quality); err != nil {
 		return a.usageError(err)
 	}
-	ugoiraFormat := downloader.UgoiraFormat(opts.ugoiraMode)
+	ugoiraFormat := download.UgoiraFormat(opts.ugoiraMode)
 	if ugoiraFormat == "" {
-		ugoiraFormat = downloader.UgoiraFormatGIF
+		ugoiraFormat = download.UgoiraFormatGIF
 	}
-	if err := downloader.ValidateUgoiraFormat(ugoiraFormat); err != nil {
+	if err := saving.ValidateFormat(ugoiraFormat); err != nil {
 		return a.usageError(err)
 	}
 	clientReq, err := a.clientRequest(cmd, opts.commandOptions)
@@ -151,20 +151,17 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	if cmd.Flags().Changed("filename-template") {
 		runtime.FilenameTemplate = opts.filenameTemplate
 	}
-	request := downloader.DownloadRequest{
+	request := saving.Request{Options: download.Options{
 		DownloadPath:      runtime.DownloadPath,
 		FilenameTemplate:  runtime.FilenameTemplate,
 		DirectoryTemplate: runtime.DirectoryTemplate,
-		Pages:             pages,
 		Quality:           quality,
 		UgoiraFormat:      ugoiraFormat,
-	}
-	// 先完成所有纯输入和运行参数校验，再解析下载服务。这样 owner 的依赖端口
-	// 不会在互斥 flag 等用户输入错误上提前触发资源或文件系统准备。
-	downloadService := a.download()
+	}, Pages: pages}
+	// 先完成纯输入与运行参数校验，再取得账号和下载资源。
 	downloadOne := func(ctx context.Context, id int64) error {
-		return a.runner.Execute(clientReq)(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-			report, err := downloadService.DownloadSources(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
+		return a.execute(ctx, clientReq, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+			report, err := saving.Save(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
 			return downloadAttemptWithWarnings(a.env.Err, report, err)
 		})
 	}
@@ -173,15 +170,15 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	}
 	// 用户页与受资源策略允许的直链可能在一次调用里展开多个文件。只在结果中
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
-	return a.runner.Execute(clientReq)(cmd.Context(), func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		report, err := downloadService.DownloadSources(ctx, client, args, request)
+	return a.execute(cmd.Context(), clientReq, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
+		report, err := saving.Save(ctx, client, args, request)
 		return downloadAttemptWithWarnings(a.env.Err, report, err)
 	})
 }
 
 // downloadAttemptResult 统一 action-record 与普通参数路径的提交边界：
 // operation error 发生在部分结果之后时，仍以已发布文件阻止账号池重放。
-func downloadAttemptResult(report downloader.DownloadReport, operationErr error) (bool, error) {
+func downloadAttemptResult(report saving.DownloadReport, operationErr error) (bool, error) {
 	committed := ReportCommitted(report)
 	if operationErr != nil {
 		return committed, operationErr
@@ -191,7 +188,7 @@ func downloadAttemptResult(report downloader.DownloadReport, operationErr error)
 
 // downloadAttemptWithWarnings 先保留 operation/business error，再附加 stderr
 // 写入错误，避免 warning 输出故障掩盖真实下载失败。
-func downloadAttemptWithWarnings(w io.Writer, report downloader.DownloadReport, operationErr error) (bool, error) {
+func downloadAttemptWithWarnings(w io.Writer, report saving.DownloadReport, operationErr error) (bool, error) {
 	committed, resultErr := downloadAttemptResult(report, operationErr)
 	if warningErr := ReportWarnings(w, report); warningErr != nil {
 		resultErr = errors.Join(resultErr, warningErr)
@@ -200,15 +197,15 @@ func downloadAttemptWithWarnings(w io.Writer, report downloader.DownloadReport, 
 }
 
 // ReportWarnings 把下载过程中的非阻断提示写到 stderr，避免污染 stdout 的
-// JSON/NDJSON 结果；warning 本身只包含 downloader 已分类的安全文本。
-func ReportWarnings(w io.Writer, report downloader.DownloadReport) error {
+// JSON/NDJSON 结果；warning 只包含下载层已分类的安全文本。
+func ReportWarnings(w io.Writer, report saving.DownloadReport) error {
 	for _, warning := range report.Warnings {
 		label := "download"
 		if warning.IllustID > 0 {
 			label = fmt.Sprintf("artwork %d", warning.IllustID)
 		}
-		if warning.Type != "" {
-			label += " (" + warning.Type + ")"
+		if warning.ContentType != "" {
+			label += " (" + warning.ContentType + ")"
 		}
 		if _, err := fmt.Fprintf(w, "warning: %s: %s\n", label, warning.Message); err != nil {
 			return err
@@ -219,7 +216,7 @@ func ReportWarnings(w io.Writer, report downloader.DownloadReport) error {
 
 // ReportCommitted 只以已经原子发布的常规文件判断提交边界。资源获取或解析在此
 // 之前失败时，账号池可识别有效 Retry-After 并切换未尝试账号。
-func ReportCommitted(report downloader.DownloadReport) bool {
+func ReportCommitted(report saving.DownloadReport) bool {
 	if report.Committed {
 		return true
 	}
@@ -231,9 +228,9 @@ func ReportCommitted(report downloader.DownloadReport) bool {
 	return false
 }
 
-// ReportError 把下载报告里的失败折叠成命令错误，并保留首个失败的 typed cause，
+// ReportError 把下载报告里的失败折叠成命令错误，并保留首个失败的分类错误，
 // 使 shell 与账号池仍能区分 rate limit 等可分类原因。
-func ReportError(report downloader.DownloadReport) error {
+func ReportError(report saving.DownloadReport) error {
 	if len(report.Failures) == 0 {
 		return nil
 	}
