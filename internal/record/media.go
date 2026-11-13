@@ -32,6 +32,9 @@ func RecordFromMediaArtwork(artwork *pixiv.Artwork) (Record, error) {
 		return Record{}, err
 	}
 	imageReference := func(value any, identity map[string]any) {
+		if value == nil {
+			return
+		}
 		image := value.(map[string]any)
 		if image[mediaResourceField] != nil {
 			image[mediaResourceField] = map[string]any{mediaReferenceField: identity}
