@@ -127,6 +127,10 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 		if err == nil {
 			err = saveReference(ctx, client, ref, path)
 		}
+		if err == nil {
+			report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
+			report.Committed = true
+		}
 		if ctx.Err() != nil {
 			return report, ctx.Err()
 		}
@@ -134,8 +138,6 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 			report.Failures = append(report.Failures, DownloadFailure{URL: ref.Text, Message: err.Error(), Cause: err})
 			continue
 		}
-		report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
-		report.Committed = true
 	}
 	for _, raw := range urls {
 		if err := ctx.Err(); err != nil {
@@ -152,6 +154,10 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 				err = image.Save(ctx, path)
 			}
 		}
+		if err == nil {
+			report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
+			report.Committed = true
+		}
 		if ctx.Err() != nil {
 			return report, ctx.Err()
 		}
@@ -160,8 +166,6 @@ func Save(ctx context.Context, client *pixiv.Client, sources []string, request R
 			report.Failures = append(report.Failures, DownloadFailure{URL: redactedDownloadSource, Type: downloadedResourceType, Message: err.Error(), Cause: err})
 			continue
 		}
-		report.Items = append(report.Items, DownloadedArtwork{Type: downloadedResourceType, Files: []DownloadedFile{{Path: path, Page: 1}}})
-		report.Committed = true
 	}
 	return report, nil
 }

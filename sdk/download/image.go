@@ -20,6 +20,8 @@ import (
 )
 
 const imageSniffBytes = 512 // http.DetectContentType examines at most this many bytes.
+const imageDirectoryPattern = ".pixiv-image-*"
+const imageFilename = "image"
 
 func saveImage(ctx context.Context, image pixiv.Image, quality Quality, base, name string) (output string, returnErr error) {
 	locator, err := url.Parse(image.URL)
@@ -69,20 +71,28 @@ func saveImage(ctx context.Context, image pixiv.Image, quality Quality, base, na
 	if strings.EqualFold(suffix, extension) || extension == ".jpg" && strings.EqualFold(suffix, ".jpeg") {
 		extension = suffix
 	}
-	source := filepath.Join(base, name+suffix)
+	output = filepath.Join(base, name+extension)
+	if suffix == extension {
+		if _, err := atomicfile.AtomicWrite(ctx, output, reader); err != nil {
+			return "", err
+		}
+		return output, nil
+	}
+	// A detected suffix change must not touch a different existing download.
+	if err := os.MkdirAll(base, directoryPermissions); err != nil {
+		return "", err
+	}
+	work, err := os.MkdirTemp(base, imageDirectoryPattern)
+	if err != nil {
+		return "", err
+	}
+	defer func() { returnErr = errors.Join(returnErr, os.RemoveAll(work)) }()
+	source := filepath.Join(work, imageFilename)
 	if _, err := atomicfile.AtomicWrite(ctx, source, reader); err != nil {
 		return "", err
 	}
-	output = filepath.Join(base, name+extension)
-	if source == output {
-		return output, nil
-	}
-	// A detected suffix change must not overwrite a different existing file.
 	if err := os.Link(source, output); err != nil {
-		return "", errors.Join(fmt.Errorf("publish detected image extension: %w", err), os.Remove(source))
-	}
-	if err := os.Remove(source); err != nil {
-		return "", errors.Join(fmt.Errorf("remove mismatched image path: %w", err), os.Remove(output))
+		return "", fmt.Errorf("publish detected image extension: %w", err)
 	}
 	return output, nil
 }
