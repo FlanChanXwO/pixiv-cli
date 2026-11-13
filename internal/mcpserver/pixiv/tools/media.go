@@ -18,17 +18,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/ugoira"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -48,14 +49,14 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 		format = "gif"
 	}
 	started := time.Now()
-	meta, err := client.UgoiraMetadata(ctx, pixiv.UgoiraMetadataRequest{ArtworkID: id})
+	meta, err := client.Artwork(id).UgoiraMetadata(ctx)
 	observeMediaPhase(ctx, "animation_metadata", time.Since(started), 0, err)
 	if err != nil {
 		return nil, page, err
 	}
-	archive := downloader.SelectUgoiraArchive(meta)
+	archive := saving.SelectUgoiraArchive(meta)
 	if archive == nil {
-		return nil, page, sdk.NewError("pixiv", "artwork_media", sdk.ContentUnavailable)
+		return nil, page, &sdk.Error{Operation: "pixiv.artwork_media", Reason: sdk.ContentUnavailable}
 	}
 	dir, err := os.MkdirTemp("", "pixiv-mcp-ugoira-")
 	if err != nil {
@@ -64,8 +65,21 @@ func readAnimation(ctx context.Context, client *pixiv.Client, id int64, format s
 	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	zipPath := filepath.Join(dir, "frames.zip")
 	started = time.Now()
-	saved, err := client.SaveResource(ctx, archive.Resource.Ref, sdk.SaveOptions{Path: zipPath})
-	observeMediaPhase(ctx, "animation_zip_download", time.Since(started), int(saved.Size), err)
+	var size int64
+	response, err := archive.OpenResponse(ctx)
+	if err == nil {
+		if response.StatusCode != http.StatusOK {
+			err = &sdk.Error{Operation: "pixiv.artwork_media", Reason: sdk.UpstreamError, HTTPStatus: response.StatusCode}
+		} else {
+			size, err = atomicfile.AtomicWrite(ctx, zipPath, response.Body)
+			if err != nil {
+				err = &sdk.Error{Operation: "pixiv.artwork_media", Reason: sdk.LocalStateError, Message: "cannot write animation archive", Err: err}
+			}
+		}
+		err = errors.Join(err, response.Body.Close())
+	}
+
+	observeMediaPhase(ctx, "animation_zip_download", time.Since(started), int(size), err)
 	if err != nil {
 		return nil, page, err
 	}
@@ -209,7 +223,7 @@ func (t pixivTools) artworkMediaHandler(ctx context.Context, in artworkMediaIn) 
 	var source *pixiv.Client
 	// 一个 lease 把作品详情与所有页绑定到同一账号，部分字节不会换账号重放。静态图在内存
 	// 中读取；原生编码器每次调用使用独立临时目录，并在交付前删除。
-	err := lifecycle.Run(ctx, t.app.OpenClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
+	err := lifecycle.Run(ctx, t.app.OpenSDKClient, func(ctx context.Context, client *pixiv.Client, _ *lifecycle.Attempt) error {
 		source = client
 		var runErr error
 		content, runErr = t.readArtworkMedia(ctx, client, &in, &out, requestedQuality)
@@ -251,7 +265,7 @@ func normalizeArtworkMediaRequest(in *artworkMediaIn, out *outputs.ArtworkMedia)
 
 func (t pixivTools) readArtworkMedia(ctx context.Context, client *pixiv.Client, in *artworkMediaIn, out *outputs.ArtworkMedia, requestedQuality string) ([]mcp.Content, error) {
 	started := time.Now()
-	artwork, err := client.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: in.IllustID})
+	artwork, err := client.Artwork(in.IllustID).Get(ctx)
 	observeMediaPhase(ctx, "artwork_query", time.Since(started), 0, err)
 	if err != nil {
 		return nil, err
@@ -300,7 +314,7 @@ func (t pixivTools) readUgoiraMedia(ctx context.Context, client *pixiv.Client, i
 	return content, nil
 }
 
-func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork pixiv.Artwork, out *outputs.ArtworkMedia, quality string) ([]mcp.Content, error) {
+func readArtworkPages(ctx context.Context, client *pixiv.Client, artwork *pixiv.Artwork, out *outputs.ArtworkMedia, quality string) ([]mcp.Content, error) {
 	pages := make(map[int]pixiv.ArtworkPage, len(artwork.Pages))
 	for _, page := range artwork.Pages {
 		pages[page.PageIndex+1] = page
@@ -368,17 +382,17 @@ func (t pixivTools) attachMediaDownloads(ctx context.Context, in *artworkMediaIn
 }
 
 func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage, variant string) (data []byte, mime string, status int, err error) {
-	ref, err := pixiv.ArtworkVariantResource(page.Image.Resource, variant)
+	image, err := page.Original.Quality(variant)
 	if err != nil {
 		return nil, "", 0, err
 	}
-	response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref})
+	response, err := image.OpenResponse(ctx)
 	if err != nil {
 		return nil, "", 0, err
 	}
 	defer func() { err = errors.Join(err, response.Body.Close()) }()
 	if response.StatusCode != http.StatusOK {
-		return nil, "", response.StatusCode, sdk.NewError("pixiv", "artwork_media", sdk.UpstreamError)
+		return nil, "", response.StatusCode, &sdk.Error{Operation: "pixiv.artwork_media", Reason: sdk.UpstreamError}
 	}
 	data, err = io.ReadAll(response.Body)
 	if err != nil {
@@ -387,7 +401,7 @@ func readPage(ctx context.Context, client *pixiv.Client, page pixiv.ArtworkPage,
 	// 按实际字节判断类型，不信任可能出错的上游 Content-Type 或 URL 扩展名。
 	mime = http.DetectContentType(data)
 	if !strings.HasPrefix(mime, "image/") {
-		return nil, "", 0, sdk.NewError("pixiv", "artwork_media", sdk.MalformedUpstreamResponse)
+		return nil, "", 0, &sdk.Error{Operation: "pixiv.artwork_media", Reason: sdk.MalformedUpstreamResponse}
 	}
 	return data, mime, 0, nil
 }
@@ -603,7 +617,7 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "artwork_unavailable"})
 		return out
 	}
-	rec, err := record.RecordFromArtwork(artwork)
+	rec, err := record.RecordFromMediaArtwork(artwork)
 	if err != nil {
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "invalid_metadata"})
 		return out
@@ -619,7 +633,7 @@ func (t pixivTools) readGalleryArtwork(ctx context.Context, id int64, in showGal
 		out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "account_unavailable"})
 		return out
 	}
-	avatar := !artwork.User.ProfileImage.Resource.Ref.IsZero()
+	avatar := !(artwork.Author.ProfileImage.URL == "")
 	for _, page := range galleryPages(in) {
 		if page > artwork.PageCount {
 			out.Failures = append(out.Failures, galleryFailure{IllustID: id, Error: "page_unavailable", Page: page})

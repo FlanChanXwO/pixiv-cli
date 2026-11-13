@@ -23,10 +23,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
 
@@ -253,40 +253,41 @@ func (s *Service) streamImage(w http.ResponseWriter, r *http.Request, c claims, 
 	s.sendImage(w, r, c, session, download, ref)
 }
 
-// imageResource 把 capability 的页与质量映射到当前作品的一个资源引用。
-func imageResource(c claims, artwork pixiv.Artwork) (sdk.ResourceRef, error) {
-	var ref sdk.ResourceRef
+// imageResource 把 capability 的页与质量映射到当前作品的一个图片值。
+func imageResource(c claims, metadata *artworkMetadata) (pixiv.Image, error) {
+	artwork := metadata.Artwork
 	variant := c.Quality
 	if variant == "thumbnail" {
 		variant = "thumb"
 	}
-	switch {
-	case c.Quality == "avatar":
-		ref = artwork.User.ProfileImage.Resource.Ref
-	case artwork.ContentType == pixiv.ContentTypeUgoira:
-		if c.Page == 1 && c.Quality != "original" {
-			ref = artwork.Cover.Resource.Ref
-			if c.Quality == "thumbnail" {
-				return pixiv.ArtworkVariantResource(artwork.Cover.Resource, "square_medium")
-			}
+	if c.Quality == "avatar" {
+		if artwork.Author.ProfileImage.URL == "" {
+			return pixiv.Image{}, errCapability
 		}
-	default:
-		for _, page := range artwork.Pages {
-			if page.PageIndex+1 == c.Page {
-				return pixiv.ArtworkVariantResource(page.Image.Resource, variant)
-			}
+		return artwork.Author.ProfileImage, nil
+	}
+	if artwork.ContentType == pixiv.ContentTypeUgoira {
+		if c.Page != 1 || c.Quality == "original" {
+			return pixiv.Image{}, errCapability
 		}
+		if c.Quality == "thumbnail" {
+			if metadata.Thumbnail.URL == "" {
+				return pixiv.Image{}, errCapability
+			}
+			return metadata.Thumbnail, nil
+		}
+		return artwork.Cover, nil
 	}
-	if ref.IsZero() {
-		return ref, errCapability
+	if image := metadata.PageImages[c.Page-1][variant]; image.URL != "" {
+		return image, nil
 	}
-	return ref, nil
+	return pixiv.Image{}, errCapability
 }
 
 // sendImage 打开上游资源，按嗅探结果提交头部并流式转发，同时按预算填充缓存。
-func (s *Service) sendImage(w http.ResponseWriter, r *http.Request, c claims, session Session, download bool, ref sdk.ResourceRef) {
+func (s *Service) sendImage(w http.ResponseWriter, r *http.Request, c claims, session Session, download bool, image pixiv.Image) {
 	started := time.Now()
-	res, contentType, prefix, length, ok := s.openImage(w, r, c, session, ref)
+	res, contentType, prefix, length, ok := s.openImage(w, r, c, session, image)
 	if !ok {
 		return
 	}
@@ -319,8 +320,12 @@ func (s *Service) sendImage(w http.ResponseWriter, r *http.Request, c claims, se
 }
 
 // openImage 打开并校验上游资源；只在提交响应头前读取嗅探前缀。
-func (s *Service) openImage(w http.ResponseWriter, r *http.Request, c claims, session Session, ref sdk.ResourceRef) (*sdk.ResourceResponse, string, []byte, int64, bool) {
-	res, err := session.Lease.Value().OpenResource(r.Context(), sdk.OpenResourceRequest{Ref: ref})
+func (s *Service) openImage(w http.ResponseWriter, r *http.Request, c claims, session Session, image pixiv.Image) (*pixiv.ImageResponse, string, []byte, int64, bool) {
+	bound, err := session.Lease.Value().Image(image.URL)
+	var res *pixiv.ImageResponse
+	if err == nil {
+		res, err = bound.OpenResponse(r.Context())
+	}
 	if err != nil {
 		if session.Invalidate != nil {
 			session.Invalidate(err)
@@ -331,7 +336,7 @@ func (s *Service) openImage(w http.ResponseWriter, r *http.Request, c claims, se
 	if res.StatusCode != 200 {
 		_ = res.Body.Close()
 		if res.StatusCode == 401 && session.Invalidate != nil {
-			session.Invalidate(sdk.NewError("pixiv", "OpenResource", sdk.Unauthorized))
+			session.Invalidate(&sdk.Error{Operation: "pixiv.Image.OpenResponse", Reason: sdk.Unauthorized, HTTPStatus: 401})
 		}
 		http.Error(w, "Image unavailable", 502)
 		return nil, "", nil, 0, false
@@ -358,12 +363,7 @@ func (s *Service) openImage(w http.ResponseWriter, r *http.Request, c claims, se
 		http.Error(w, "Image authorization expired or invalid", 401)
 		return nil, "", nil, 0, false
 	}
-	length := int64(-1)
-	if raw := res.Header().Get("Content-Length"); raw != "" {
-		if parsed, e := strconv.ParseInt(raw, 10, 64); e == nil && parsed >= 0 {
-			length = parsed
-		}
-	}
+	length := res.ContentLength
 	if length >= 0 && length < int64(n) {
 		_ = res.Body.Close()
 		http.Error(w, "Image unavailable", 502)

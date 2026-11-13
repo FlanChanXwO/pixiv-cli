@@ -53,6 +53,7 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 			return nil, err
 		}
 		image.variant = "original"
+		image.qualities = page.ImageURLs.qualities()
 		a.Pages = append(a.Pages, ArtworkPage{Artwork: a, PageIndex: index, Original: image, Width: page.Width, Height: page.Height})
 	}
 	if len(a.Pages) == 0 && w.MetaSinglePage.OriginalImageURL != "" {

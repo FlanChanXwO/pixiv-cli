@@ -15,11 +15,12 @@ import (
 // Image exposes a client-bound media locator. Open and Save require that binding.
 // JSON preserves the locator and dimensions, while omitting the client.
 type Image struct {
-	URL     string `json:"url"`
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
-	client  *Client
-	variant string
+	URL       string `json:"url"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	client    *Client
+	variant   string
+	qualities map[string]string
 }
 
 // Variant reports the upstream size role selected for a cover or original image.
@@ -64,6 +65,7 @@ func (c *Client) coverImage(w imageURLsWire, width, height int) (Image, error) {
 		if candidate.url != "" {
 			image, err := c.image(candidate.url, width, height)
 			image.variant = candidate.variant
+			image.qualities = w.qualities()
 			return image, err
 		}
 	}
@@ -80,6 +82,13 @@ func (c *Client) Image(rawURL string) (Image, error) {
 // Original returns the image unchanged; other sizes require an original artwork URL.
 func (i Image) Quality(quality string) (Image, error) {
 	if quality == "" || quality == "original" {
+		return i, nil
+	}
+	if raw := i.qualities[quality]; raw != "" {
+		if err := i.client.app(Credentials{}).ValidateResourceURL(raw); err != nil {
+			return Image{}, newError("Image.Quality", sdk.ResourceForbidden, "resource URL is not allowed", nil)
+		}
+		i.URL, i.variant = raw, quality
 		return i, nil
 	}
 	original, err := url.Parse(i.URL)
@@ -133,4 +142,8 @@ func (i Image) OpenResponse(ctx context.Context) (*ImageResponse, error) {
 		}
 	}
 	return &ImageResponse{StatusCode: response.StatusCode, ContentType: response.Header.Get("Content-Type"), ContentLength: length, Body: response.Body}, nil
+}
+
+func (w imageURLsWire) qualities() map[string]string {
+	return map[string]string{"original": w.Original, "regular": w.Large, "small": w.Medium, "thumb": w.SquareMedium, "square_medium": w.SquareMedium}
 }

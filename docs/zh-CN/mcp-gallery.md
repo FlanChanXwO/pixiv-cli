@@ -37,6 +37,8 @@ flowchart LR
 | 缓存 | `Cache-Control: private, no-store`；无磁盘或公共缓存；HEAD 校验但不返回 body |
 | 处理 | 完整图片 URL 是短期凭据——不要分享或记录 |
 
+画廊记录的图片引用改用可读对象：分页图片包含 `artwork_id`、从 0 开始的 `page_index` 与 `quality: "original"`；封面包含 `artwork_id` 与 `quality: "cover"`；作者头像包含 `user_id`。这些身份省略上游 URL 与账号绑定。调用媒体工具时使用作品 ID、从 1 开始的页号和工具支持的画质；`cover` 标记模型中的封面字段。
+
 ## 卡片与详情
 
 | 元素 | 行为 |

@@ -41,7 +41,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
@@ -316,7 +315,6 @@ func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 		ErrOut:        a.errOut,
 		Logger:        a.logger,
 		Settings:      runtime,
-		Downloads:     downloader.NewService(),
 		Local:         a.local,
 		Fanbox:        a.local.NewFanbox,
 		ReverseSearch: reverseSearch,

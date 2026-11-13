@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 )
 
@@ -48,7 +48,7 @@ type Config struct {
 }
 type metadataFlight struct {
 	done    chan struct{}
-	artwork pixiv.Artwork
+	artwork *artworkMetadata
 	err     error
 }
 type readState struct {
@@ -157,26 +157,50 @@ func (s *Service) canCache(ctx context.Context, c claims, session Session) bool 
 func contentKey(c claims, session Session, kind string) string {
 	return fmt.Sprintf("%s/%s/%d/%s/%d/%d/%s", kind, c.Grant, c.Account, session.Version, c.Artwork, c.Page, c.Quality)
 }
-func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixiv.Artwork, error) {
+func (s *Service) metadata(ctx context.Context, c claims, session Session) (*artworkMetadata, error) {
 	if s.authorized(ctx, c) != nil {
-		return pixiv.Artwork{}, errCapability
+		return nil, errCapability
 	}
-	query := func() (result pixiv.Artwork, err error) {
+	query := func() (result *artworkMetadata, err error) {
 		start := time.Now()
 		defer func() {
 			s.observeAnimation(ctx, AnimationObservation{Stage: "artwork_query", Duration: time.Since(start), Failed: err != nil})
 		}()
 		if s.reads != nil {
 			if err := acquire(ctx, s.reads.metadataSlots); err != nil {
-				return pixiv.Artwork{}, err
+				return nil, err
 			}
 			defer func() { <-s.reads.metadataSlots }()
 		}
-		value, err := session.Lease.Value().Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: c.Artwork})
+		value, err := session.Lease.Value().Artwork(c.Artwork).Get(ctx)
 		if err != nil && session.Invalidate != nil {
 			session.Invalidate(err)
 		}
-		return value, err
+		if err != nil {
+			return nil, err
+		}
+		snapshot := &artworkMetadata{Artwork: value, PageImages: map[int]map[string]pixiv.Image{}}
+		if value.ContentType == pixiv.ContentTypeUgoira {
+			snapshot.Thumbnail, err = value.Cover.Quality("square_medium")
+			if err != nil && sdk.ReasonOf(err) != sdk.InvalidArgument {
+				return nil, err
+			}
+		}
+		if value.ContentType != pixiv.ContentTypeUgoira {
+			for _, page := range value.Pages {
+				variants := map[string]pixiv.Image{"original": page.Original}
+				for _, quality := range []string{"regular", "thumb"} {
+					image, variantErr := page.Original.Quality(quality)
+					if variantErr == nil {
+						variants[quality] = image
+					} else if sdk.ReasonOf(variantErr) != sdk.InvalidArgument {
+						return nil, variantErr
+					}
+				}
+				snapshot.PageImages[page.PageIndex] = variants
+			}
+		}
+		return snapshot, nil
 	}
 	if s.reads == nil {
 		return query()
@@ -198,10 +222,10 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 		state.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return pixiv.Artwork{}, ctx.Err()
+			return nil, ctx.Err()
 		case <-flight.done:
 			if err := s.authorized(ctx, c); err != nil {
-				return pixiv.Artwork{}, err
+				return nil, err
 			}
 			return flight.artwork, flight.err
 		}
@@ -233,22 +257,26 @@ func (s *Service) metadata(ctx context.Context, c claims, session Session) (pixi
 }
 
 // Artwork 复用 Gallery 元数据缓存前重新校验当前 grant；缓存里不保存会变的收藏状态。
-func (s *Service) Artwork(ctx context.Context, account, artwork int64) (pixiv.Artwork, error) {
+func (s *Service) Artwork(ctx context.Context, account, artwork int64) (*pixiv.Artwork, error) {
 	info := sdkauth.TokenInfoFromContext(ctx)
 	if info == nil {
-		return pixiv.Artwork{}, errCapability
+		return nil, errCapability
 	}
 	grant, _ := info.Extra["grant_id"].(string)
 	c := claims{Grant: grant, Account: account, Artwork: artwork, Expires: info.Expiration}
 	if err := s.authorized(ctx, c); err != nil {
-		return pixiv.Artwork{}, err
+		return nil, err
 	}
 	session, err := s.session(ctx, account)
 	if err != nil {
-		return pixiv.Artwork{}, err
+		return nil, err
 	}
 	defer session.Lease.Close()
-	return s.metadata(ctx, c, session)
+	metadata, err := s.metadata(ctx, c, session)
+	if err != nil {
+		return nil, err
+	}
+	return metadata.Artwork, nil
 }
 
 // ConcurrentReads 返回固定的 Gallery 查询并发数。
@@ -257,122 +285,29 @@ func (s *Service) ConcurrentReads() int { return readConcurrency }
 // HasReadSessions 报告 Configure 是否安装了带缓存的读取路径。
 func (s *Service) HasReadSessions() bool { return s != nil && s.reads != nil }
 
-// cachedResource 定义进程内的私有缓存格式，显式保留定位信息。它没有嵌入
-// sdk.Resource，以免继承其安全 MarshalJSON 后丢掉 URL。
-type cachedResource struct {
-	Ref                 *sdk.ResourceRef  `json:"ref,omitempty"`
-	URL                 string            `json:"url,omitempty"`
-	RequestHeaders      map[string]string `json:"request_headers,omitempty"`
-	ExpiresAt           *time.Time        `json:"expires_at,omitempty"`
-	RequiresCredentials bool              `json:"requires_credentials,omitempty"`
+// artworkMetadata 把选中的封面缩略图与作品数据一起计入序列化缓存预算。
+type artworkMetadata struct {
+	Artwork    *pixiv.Artwork                 `json:"artwork"`
+	Thumbnail  pixiv.Image                    `json:"thumbnail"`
+	PageImages map[int]map[string]pixiv.Image `json:"page_images"`
 }
 
-type cachedImage struct {
-	Resource cachedResource `json:"resource"`
-	Variant  string         `json:"variant"`
-	Width    int            `json:"width"`
-	Height   int            `json:"height"`
+// 收藏状态随实时工具读取；账号绑定在资源打开处重新建立。
+func marshalArtwork(value *artworkMetadata) ([]byte, error) {
+	snapshot := *value.Artwork
+	snapshot.IsBookmarked = nil
+	return json.Marshal(&artworkMetadata{Artwork: &snapshot, Thumbnail: value.Thumbnail, PageImages: value.PageImages})
 }
 
-type cachedUser struct {
-	pixiv.User
-	ProfileImage cachedImage `json:"profile_image"`
-}
-
-type cachedPage struct {
-	pixiv.ArtworkPage
-	Image cachedImage `json:"image"`
-}
-
-type cachedArtwork struct {
-	pixiv.Artwork
-	Cover cachedImage  `json:"cover"`
-	User  cachedUser   `json:"user"`
-	Pages []cachedPage `json:"pages"`
-}
-
-func cacheResource(value sdk.Resource) cachedResource {
-	out := cachedResource{
-		URL:                 value.URL,
-		RequestHeaders:      value.RequestHeaders,
-		ExpiresAt:           value.ExpiresAt,
-		RequiresCredentials: value.RequiresCredentials,
-	}
-	if !value.Ref.IsZero() {
-		ref := value.Ref
-		out.Ref = &ref
-	}
-	return out
-}
-
-func (c cachedResource) resource() sdk.Resource {
-	out := sdk.Resource{
-		URL:                 c.URL,
-		RequestHeaders:      c.RequestHeaders,
-		ExpiresAt:           c.ExpiresAt,
-		RequiresCredentials: c.RequiresCredentials,
-	}
-	if c.Ref != nil {
-		out.Ref = *c.Ref
-	}
-	return out
-}
-
-func cacheImage(value pixiv.ImageResource) cachedImage {
-	return cachedImage{Resource: cacheResource(value.Resource), Variant: value.Variant, Width: value.Width, Height: value.Height}
-}
-
-func (c cachedImage) image() pixiv.ImageResource {
-	return pixiv.ImageResource{Resource: c.Resource.resource(), Variant: c.Variant, Width: c.Width, Height: c.Height}
-}
-
-func (c cachedUser) user() pixiv.User {
-	out := c.User
-	out.ProfileImage = c.ProfileImage.image()
-	return out
-}
-
-func (c cachedPage) page() pixiv.ArtworkPage {
-	out := c.ArtworkPage
-	out.Image = c.Image.image()
-	return out
-}
-
-func (c cachedArtwork) artwork() pixiv.Artwork {
-	out := c.Artwork
-	out.Cover = c.Cover.image()
-	out.User = c.User.user()
-	out.Pages = make([]pixiv.ArtworkPage, len(c.Pages))
-	for i, page := range c.Pages {
-		out.Pages[i] = page.page()
-	}
-	return out
-}
-
-func marshalArtwork(value pixiv.Artwork) ([]byte, error) {
-	pages := make([]cachedPage, len(value.Pages))
-	for i, page := range value.Pages {
-		pages[i] = cachedPage{ArtworkPage: page, Image: cacheImage(page.Image)}
-	}
-	wire := cachedArtwork{
-		Artwork: value,
-		Cover:   cacheImage(value.Cover),
-		User:    cachedUser{User: value.User, ProfileImage: cacheImage(value.User.ProfileImage)},
-		Pages:   pages,
-	}
-	return json.Marshal(wire)
-}
-
-func (s *Service) cachedArtwork(key string) (pixiv.Artwork, bool, error) {
+func (s *Service) cachedArtwork(key string) (*artworkMetadata, bool, error) {
 	chunks, release, ok := s.reads.cache.load(key)
 	defer release()
 	if !ok {
-		return pixiv.Artwork{}, false, nil
+		return nil, false, nil
 	}
-	// 每个元数据条目只有一段由 marshalArtwork 写出的 JSON。
-	var wire cachedArtwork
-	if err := json.Unmarshal(chunks[0], &wire); err != nil {
-		return pixiv.Artwork{}, false, fmt.Errorf("decode Gallery metadata cache: %w", err)
+	var value artworkMetadata
+	if err := json.Unmarshal(chunks[0], &value); err != nil {
+		return nil, false, fmt.Errorf("decode Gallery metadata cache: %w", err)
 	}
-	return wire.artwork(), true, nil
+	return &value, true, nil
 }

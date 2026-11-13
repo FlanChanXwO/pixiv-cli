@@ -3,25 +3,22 @@
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
-// [ReadSDK] 与 [App.SDKReadExecutor] 使用新 SDK；[Read]、[Write] 与
-// [App.OpenClient] 保留旧领域入口。分页适配在 paging.go 与 sdk_paging.go，
+// [ReadSDK]、[App.SDKReadExecutor] 与 [App.OpenSDKClient] 使用新 SDK；
+// [Read]、[Write] 保留旧领域入口。分页适配在 paging.go 与 sdk_paging.go，
 // cursor 封装在 cursor.go，具体工具在 tools 包。
 package toolhost
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -35,7 +32,6 @@ type Account struct {
 
 // LocalDownloads 只在本地 stdio 交付下载文件时注入，路径模板由组合根决定。
 type LocalDownloads struct {
-	Service                                   downloader.DownloadService
 	Path, FilenameTemplate, DirectoryTemplate string
 }
 
@@ -43,7 +39,8 @@ type LocalDownloads struct {
 // 注入；MCP 通过这组函数取用依赖。
 type SDKPorts struct {
 	// ExecuteSDK 为已迁移的工具装配新 SDK；其余工具保留旧端口。
-	ExecuteSDK SDKExecutor
+	ExecuteSDK   SDKExecutor
+	OpenSDKLease SDKLease
 	// ResolveSDKAccount 保留 stdio 的池选择；HTTP 沿用 ResolveAccount 的固定快照。
 	// shortcut: 新旧工具的账号选择入口并存，旧工具迁移完成后统一。
 	ResolveSDKAccount func(context.Context, Account) (Account, error)
@@ -55,7 +52,6 @@ type SDKPorts struct {
 	Login *accounts.Login
 	// ResolveAccount 固定一次业务调用使用的本地账号；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
-	OpenLease      func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
 	Execute        func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// Read 服务 HTTP 的只读会话；stdio 下留空，读取走 Execute 的账号池。
 	Read func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
@@ -181,33 +177,5 @@ func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Clie
 	})
 }
 
-// OpenClient 打开一次由会话端口管理的独立 SDK snapshot 并返回 Lease。调用方必须关闭
-// 返回的 Lease；底层 gate 与 client 的释放由注入端口负责。
-func (a *App) OpenClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], error) {
-	if a.sdk.OpenLease == nil {
-		return nil, errors.New("pixiv sdk is not configured")
-	}
-	account, err := a.resolveAccount(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return a.sdk.OpenLease(ctx, account)
-}
-
 // ResolveAccount 返回本次工具调用固定的账号；同一调用内多次调用结果一致。
 func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
-
-// Artwork 在有生产读会话时使用带 grant 范围的 Gallery 缓存，否则回退为一次普通 SDK
-// 读取。
-func (a *App) Artwork(ctx context.Context, id int64) (pixiv.Artwork, error) {
-	if a.sdk.Media.HasReadSessions() {
-		account, err := a.resolveAccount(ctx)
-		if err != nil {
-			return pixiv.Artwork{}, err
-		}
-		return a.sdk.Media.Artwork(ctx, account.UserID, id)
-	}
-	return Read(a, ctx, func(ctx context.Context, c *pixiv.Client) (pixiv.Artwork, error) {
-		return c.Artwork(ctx, pixiv.ArtworkRequest{ArtworkID: id})
-	})
-}

@@ -148,9 +148,9 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 | `internal/pagination` | 单流/聚合读取的可重入执行生命周期，安全重放前清除未提交结果 | 负责命令筛选装配 |
 | `internal/logging` | `log/slog` handler 与 ctx 调用信息；CLI、MCP、传输、账号池、下载与 FlareSolverr 共用属性键，只输出 operation、method、host、path、status、duration、attempt、wait、reason、count、origin、op、net、address、errno；文本记录的 operation 放在标签中，JSON 记录保留为键并增加 `source`；SDK 路由遵循上方日志入口 | 创建日志文件，或记录响应体、Cookie、token、query、签名 URL 或任意错误 cause 转储 |
 
-**账号池读取：** 旧路径的 `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。新 CLI 路径使用 `Local.ExecuteSDK`；MCP 经 `SDKPorts.ExecuteSDK` 使用 `ReadSDK`、`WriteSDK`、`SDKReadExecutor` 与新收集器，`WriteSDK` 在进入回调时提交。命令 owner 负责流式 NDJSON、分页与部分交付；JSON 结果暂存到成功后输出，可见的文本/NDJSON 输出会提交当前尝试。`pagination` 接受两代 cursor，安全重放前清除未提交结果。旧 MCP 消费方保留 `Execute`/`Read`/`OpenLease` 端口。
+**账号池读取：** 旧路径的 `session.Read[T]` 在 `Runner` 的 `Executor` 回调内读取，整个执行边界成功后才返回结果；失败返回 T 零值。`Runner.Write` 从进入修改回调起就按已提交处理，即使返回错误，避免跨账号重放结果未知的写入。新 CLI 路径使用 `Local.ExecuteSDK`；MCP 经 `SDKPorts.ExecuteSDK` 使用 `ReadSDK`、`WriteSDK`、`SDKReadExecutor` 与新收集器，`WriteSDK` 在进入回调时提交。命令 owner 负责流式 NDJSON、分页与部分交付；JSON 结果暂存到成功后输出，可见的文本/NDJSON 输出会提交当前尝试。`pagination` 接受两代 cursor，安全重放前清除未提交结果。旧 MCP 消费方保留 `Execute`/`Read` 端口。
 
-**输出过渡：** `record/pixiv_output.go` 与 `pixiv_user_output.go` 在本次尝试内把新 SDK 对象投影为旧输出 DTO。`pixiv_resource.go` 保留媒体工具消费的旧 `ResourceRef` 身份，可用 URL 和请求头留在 SDK 绑定对象内。`pixiv/target` 经新 SDK 解析 URL，再投影为现有目标描述符。S16 将这些旧输出、资源和目标类型与剩余消费者一并迁移。
+**输出过渡：** `record/pixiv_output.go` 与 `pixiv_user_output.go` 在本次尝试内把新 SDK 对象投影为旧输出 DTO。`pixiv_resource.go` 保留 CLI 资源身份；Gallery 记录经 `RecordFromMediaArtwork` 生成可读图片引用。可用 URL 和请求头留在 SDK 对象或私有媒体缓存内。`pixiv/target` 经新 SDK 解析 URL，再投影为现有目标描述符。S16 将这些旧输出、资源和目标类型与剩余消费者一并迁移。
 
 ### 业务会话、账号与账号池
 
@@ -158,7 +158,7 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 - `session.Local` 装配共享 store、`Accounts`、`FanboxAccounts`、`Pixiv`、`Fanbox` 与读会话。`Accounts`/`FanboxAccounts` 将本地快照与 `internal/config` 默认账号组合，提供命令使用的摘要、导入/导出与恢复编排。Pixiv 同时交出两代 SDK client，FANBOX 继续使用 `internal/legacy/sdk`；FANBOX 的凭据与生命周期独立于 Pixiv，没有账号池策略。
 - `Store.OpenSDKClient` 交出新 `sdk/pixiv` client，`OpenAccountClient` 保留旧 client。按账号绑定的 `CredentialStore.Load` 读取最新 revision 并固定账号创建时间，`CompareAndSwap` 比较两者后保存，revision 冲突返回 `false, nil`。OAuth 在存储锁外执行；SDK 冲突后重新加载，保存失败在内容请求前传播。`Client.Credentials(ctx)` 经相同流程准备凭据，省去内容请求。
 - `session.PixivOptions` 为两代 client 装配一致的连接设置。`Local.ExecuteSDK` 复用现有账号池与 gate，单独交出已选 UID；加载凭据前，`Client.UserID()` 仍可能为零。缺省目标在每次尝试内解析，MCP fetch 回调使用 `SDKUserID`。stdio 的 `ResolveSDKAccount` 保留原始请求用于池调度，HTTP 使用持久化的 `ResolveAccount` 快照。SDK 绑定对象在本次操作内使用。
-- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。CLI 下载通过 `internal/pixiv/saving` 展开来源并调用 `sdk/download`；MCP 媒体与下载、FANBOX 和反向搜图保留旧 client，随 S13–S15 迁移。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
+- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。CLI 下载通过 `internal/pixiv/saving` 展开来源并调用 `sdk/download`；MCP 下载与媒体也使用新 SDK；FANBOX 和反向搜图保留各自的迁移路径。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
 - `Request.Selection` 使用带正数 UID 的 `SelectionFixed` 或 `SelectionPool`。固定账号的读写保持该身份；安全且尚未提交的读取可经池重放。调用方从 `internal/config` 读取 `enabled`/`strategy`；`account` 无 config 导入，默认账号由 session 解析。账号池关闭时，session 选择配置的默认账号或存储中的第一个账号。
 - CLI/MCP 经 owner-local port 与 MCP runtime `SDKPorts` 使用会话；筛选、record、schema 与输出渲染留在各适配器。SDK 的依赖图保持独立于本地账号存储。
 
@@ -316,21 +316,9 @@ flowchart LR
 
 ### `internal/pixiv/saving`
 
-展开 CLI 下载来源，并把逐页保存结果汇总成既有的作品报告。范围字符串由调用方解析，构造页下标前校验边界。`sdk/download` 负责文件发布、命名模板与动图编码；输入的资源身份通过绑定账号的 SDK 对象重新解析。
+展开 CLI 与 stdio MCP 下载来源，把逐页保存结果汇总成既有的作品报告。范围字符串由调用方解析，构造页下标前校验边界。`sdk/download` 负责文件发布、命名模板与动图编码；输入的资源身份通过绑定账号的 SDK 对象重新解析。
 
-### `internal/media/downloader`
-
-通过 `DownloadTargetClient` / `DownloadClient` 服务尚在使用旧 SDK 的 MCP 下载调用方，展开来源并汇总结果，由旧产品 client 解析 `ResourceRef`。CLI 下载使用 `internal/pixiv/saving` 与 `sdk/download`。
-
-| 情况 | 结果 |
-| --- | --- |
-| `Download` | 同步执行；返回每个作品的实际产物路径 |
-| 单页 | 保存到下载目录 |
-| 多页、Ugoira | 每个作品一个子目录 |
-| 扩展名 | 来自上游 URL 路径，与模板文件名同样规范化；Pixiv 缩略图在有显式 Content-Type 时修正含糊后缀；未知类型保留 URL 扩展名 |
-| Ugoira | SDK 校验的 `download_url` ZIP → Go 编码器生成 GIF/APNG，或由 SDK 原样发布 ZIP/帧；可以选择 App medium，但绝不标记为 original |
-
-默认路径构造 `ugoira.NewEncoder()`——没有后端选择器或外部编码器 fallback；`CGO_ENABLED=0`。Rust 源码、native library 与 FFI/staticlib 适配器已删除（历史见 Git）。
+作品 ID 去重后排序。每件作品在首个失败页停止，报告保留已发布文件与提示。目录 `{num}` 使用第 0 页，文件名 `{num}` 使用实际选中的页。单页文件写入下载根目录，多页与动图默认按作品建立子目录，也可以使用目录模板。静态扩展名优先采用受支持的响应 MIME，再嗅探图片字节；响应未声明 MIME 时可使用已知 URL 扩展名。Ugoira 使用原质量，不接受显式页选择，输出 GIF 或 APNG。
 
 ### `internal/media/ugoira`
 

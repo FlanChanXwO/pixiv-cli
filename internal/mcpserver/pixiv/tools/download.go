@@ -9,9 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
-	"github.com/FlanChanXwO/pixiv-cli/internal/media/downloader"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -123,26 +124,23 @@ func parseDownloadSources(in downloadIn) ([]string, error) {
 	return in.Srcs, nil
 }
 
-// downloadSources 把 MCP 请求交给共享 downloader：PID、作品或用户 URL 以及资源策略允许
-// 的直链都先经公开 SDK 解析，再统一走 DownloadSources。
-func downloadSources(ctx context.Context, app *toolhost.App, sources []string, pages []int, quality downloader.DownloadQuality, ugoiraFormat downloader.UgoiraFormat) (downloader.DownloadReport, error) {
-	lease, err := app.OpenClient(ctx)
+// downloadSources 在固定账号内展开来源并通过页下载器保存；HTTP 不注入本地下载端口。
+func downloadSources(ctx context.Context, app *toolhost.App, sources []string, pages []int, quality download.Quality, ugoiraFormat download.UgoiraFormat) (saving.DownloadReport, error) {
+	lease, err := app.OpenSDKClient(ctx)
 	if err != nil {
-		return downloader.DownloadReport{}, err
+		return saving.DownloadReport{}, err
 	}
 	defer lease.Close()
 	client := lease.Value()
-	service := app.SDKPorts().Downloads.Service
 	path, template, directory := downloadDefaults(app)
-	request := downloader.DownloadRequest{
-		Pages:             pages,
+	request := saving.Request{Options: download.Options{
 		Quality:           quality,
 		UgoiraFormat:      ugoiraFormat,
 		DownloadPath:      path,
 		FilenameTemplate:  template,
 		DirectoryTemplate: directory,
-	}
-	return service.DownloadSources(ctx, client, sources, request)
+	}, Pages: pages}
+	return saving.Save(ctx, client, sources, request)
 }
 
 func downloadDefaults(app *toolhost.App) (string, string, string) {
@@ -150,23 +148,23 @@ func downloadDefaults(app *toolhost.App) (string, string, string) {
 	return config.Path, config.FilenameTemplate, config.DirectoryTemplate
 }
 
-func parseDownloadSelection(pagesSpec, qualitySpec, ugoiraFormatSpec string) ([]int, downloader.DownloadQuality, downloader.UgoiraFormat, error) {
-	pages, err := downloader.ParsePageSpec(pagesSpec)
+func parseDownloadSelection(pagesSpec, qualitySpec, ugoiraFormatSpec string) ([]int, download.Quality, download.UgoiraFormat, error) {
+	pages, err := saving.ParsePageSpec(pagesSpec)
 	if err != nil {
 		return nil, "", "", err
 	}
-	quality := downloader.DownloadQuality(strings.TrimSpace(qualitySpec))
+	quality := download.Quality(strings.TrimSpace(qualitySpec))
 	if quality == "" {
-		quality = downloader.DownloadQualityOriginal
+		quality = download.QualityOriginal
 	}
-	if err := downloader.ValidateDownloadQuality(quality); err != nil {
+	if err := saving.ValidateQuality(quality); err != nil {
 		return nil, "", "", err
 	}
-	ugoiraFormat := downloader.UgoiraFormat(strings.TrimSpace(ugoiraFormatSpec))
+	ugoiraFormat := download.UgoiraFormat(strings.TrimSpace(ugoiraFormatSpec))
 	if ugoiraFormat == "" {
-		ugoiraFormat = downloader.UgoiraFormatGIF
+		ugoiraFormat = download.UgoiraFormatGIF
 	}
-	if err := downloader.ValidateUgoiraFormat(ugoiraFormat); err != nil {
+	if err := saving.ValidateFormat(ugoiraFormat); err != nil {
 		return nil, "", "", err
 	}
 	return pages, quality, ugoiraFormat, nil
@@ -198,7 +196,7 @@ func emptyDownloadError(delivery, text string) (*mcp.CallToolResult, downloadOut
 
 // downloadOperationError 保留失败前已生成的结构化结果并把 isError 置为 true；已落盘的
 // items 与 failures 原样返回。
-func downloadOperationError(delivery string, report downloader.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
+func downloadOperationError(delivery string, report saving.DownloadReport, operationErr error) (*mcp.CallToolResult, downloadOut, error) {
 	out, err := buildDownloadReportOut(delivery, report)
 	if err != nil {
 		return emptyDownloadError(delivery, "Could not build the download result: "+err.Error())
@@ -218,7 +216,7 @@ func normalizeDelivery(value string) (string, string) {
 	}
 }
 
-func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) (downloadOut, error) {
+func buildDownloadOut(delivery string, artworks []saving.DownloadedArtwork) (downloadOut, error) {
 	out := downloadOut{Delivery: delivery, Items: []downloadItemOut{}, Failures: []downloadFailureOut{}, Warnings: []downloadWarningOut{}, Files: []downloadFileOut{}}
 	lines := []string{fmt.Sprintf("Download completed; delivery: %s.", delivery)}
 	for _, artwork := range artworks {
@@ -240,13 +238,13 @@ func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) 
 			if err != nil {
 				return downloadOut{}, err
 			}
-			mimeType := downloader.MimeTypeForFile(file.Path)
+			mimeType := saving.MimeTypeForFile(file.Path)
 			fileOut := downloadFileOut{
 				IllustID:  artwork.IllustID,
 				Title:     artwork.Title,
 				Author:    artwork.Author,
 				Path:      file.Path,
-				FileURI:   downloader.FileURI(file.Path),
+				FileURI:   saving.FileURI(file.Path),
 				MIMEType:  mimeType,
 				SizeBytes: info.Size(),
 				Page:      file.Page,
@@ -261,7 +259,7 @@ func buildDownloadOut(delivery string, artworks []downloader.DownloadedArtwork) 
 	return out, nil
 }
 
-func buildDownloadReportOut(delivery string, report downloader.DownloadReport) (downloadOut, error) {
+func buildDownloadReportOut(delivery string, report saving.DownloadReport) (downloadOut, error) {
 	out, err := buildDownloadOut(delivery, report.Items)
 	if err != nil {
 		return downloadOut{}, err
@@ -327,13 +325,13 @@ func (t pixivTools) downloadRandomHandler(ctx context.Context, in downloadRandom
 	if err != nil {
 		return emptyDownloadError(delivery, "Error: "+err.Error())
 	}
-	lease, err := t.app.OpenClient(ctx)
+	lease, err := t.app.OpenSDKClient(ctx)
 	if err != nil {
 		return emptyDownloadError(delivery, "Could not retrieve recommendations: "+err.Error())
 	}
 	defer lease.Close()
 	client := lease.Value()
-	result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksRequest{})
+	result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksOptions{})
 	if err != nil {
 		return emptyDownloadError(delivery, "Could not retrieve recommendations: "+err.Error())
 	}
@@ -353,10 +351,10 @@ func (t pixivTools) downloadRandomHandler(ctx context.Context, in downloadRandom
 		sources = append(sources, strconv.FormatInt(id, 10))
 	}
 	path, template, directory := downloadDefaults(t.app)
-	report, err := t.app.SDKPorts().Downloads.Service.DownloadSources(ctx, client, sources, downloader.DownloadRequest{
-		Pages: pages, Quality: quality, UgoiraFormat: ugoiraFormat,
+	report, err := saving.Save(ctx, client, sources, saving.Request{Options: download.Options{
+		Quality: quality, UgoiraFormat: ugoiraFormat,
 		DownloadPath: path, FilenameTemplate: template, DirectoryTemplate: directory,
-	})
+	}, Pages: pages})
 	if err != nil {
 		return downloadOperationError(delivery, report, err)
 	}

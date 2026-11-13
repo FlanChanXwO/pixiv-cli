@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -82,4 +83,31 @@ func SDKUserID(ctx context.Context, requested int64) int64 {
 		return requested
 	}
 	return ctx.Value(sdkUserIDKey{}).(int64)
+}
+
+// SDKLease 打开固定账号的绑定 client；调用方负责关闭租约。
+type SDKLease func(context.Context, Account) (*lifecycle.Lease[*pixiv.Client], error)
+
+// OpenSDKClient 为一次媒体或下载操作固定账号与 client。
+func (a *App) OpenSDKClient(ctx context.Context) (*lifecycle.Lease[*pixiv.Client], error) {
+	if a.sdk.OpenSDKLease == nil {
+		return nil, errors.New("pixiv sdk is not configured")
+	}
+	account, err := a.resolveAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return a.sdk.OpenSDKLease(ctx, account)
+}
+
+// Artwork 复用 grant 范围的 Gallery 元数据；stdio 读取走同一账号选择边界。
+func (a *App) Artwork(ctx context.Context, id int64) (*pixiv.Artwork, error) {
+	if a.sdk.Media.HasReadSessions() {
+		account, err := a.resolveAccount(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return a.sdk.Media.Artwork(ctx, account.UserID, id)
+	}
+	return ReadSDK(a, ctx, func(ctx context.Context, c *pixiv.Client) (*pixiv.Artwork, error) { return c.Artwork(id).Get(ctx) })
 }
