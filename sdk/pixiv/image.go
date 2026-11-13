@@ -146,5 +146,5 @@ func (i Image) OpenResponse(ctx context.Context) (*ImageResponse, error) {
 }
 
 func (w imageURLsWire) qualities() map[string]string {
-	return map[string]string{"original": w.Original, "large": w.Large, "medium": w.Medium, "regular": w.Large, "small": w.Medium, "thumb": w.SquareMedium, "square_medium": w.SquareMedium}
+	return map[string]string{"original": w.Original, "large": w.Large, "medium": w.Medium, "square_medium": w.SquareMedium}
 }
