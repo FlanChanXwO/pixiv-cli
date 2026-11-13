@@ -16,36 +16,38 @@ import (
 
 // OpenAccountClient 读取指定账号，持久化 OAuth 轮换后才交出旧 SDK client。
 func (s *Store) OpenAccountClient(ctx context.Context, userID int64, options legacysdk.Options) (*legacysdk.Client, error) {
-	session, err := s.openReadSession(ctx, userID, options)
+	session, _, err := s.openReadSession(ctx, userID, options)
 	return session.Client, err
 }
 
-func (s *Store) openReadSession(ctx context.Context, userID int64, options legacysdk.Options) (ReadSession, error) {
+func (s *Store) openReadSession(ctx context.Context, userID int64, options legacysdk.Options) (ReadSession, pixiv.Credentials, error) {
 	// CAS 冲突后丢弃本次 OAuth 结果，重新读取获胜者的凭据再打开；OAuth 始终在锁外。
 	for {
 		if err := ctx.Err(); err != nil {
-			return ReadSession{}, err
+			return ReadSession{}, pixiv.Credentials{}, err
 		}
 		a, err := s.GetPixiv(ctx, userID)
 		if err != nil {
-			return ReadSession{}, fmt.Errorf("select pixiv account: %w", err)
+			return ReadSession{}, pixiv.Credentials{}, fmt.Errorf("select pixiv account: %w", err)
 		}
 		client, credentials, err := legacysdk.OpenWith(ctx, a.Credential.Value(), options)
 		if err != nil {
-			return ReadSession{}, err
+			return ReadSession{}, pixiv.Credentials{}, err
 		}
 		if err := verifyAccountIdentity(userID, credentials.UserID); err != nil {
 			client.CloseIdleConnections()
-			return ReadSession{}, err
+			return ReadSession{}, pixiv.Credentials{}, err
 		}
 		if err := s.RotatePixivCredentials(ctx, a, []byte(credentials.RefreshToken())); err != nil {
 			client.CloseIdleConnections()
 			if errors.Is(err, ErrCredentialConflict) {
 				continue
 			}
-			return ReadSession{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
+			return ReadSession{}, pixiv.Credentials{}, fmt.Errorf("persist rotated pixiv credentials: %w", err)
 		}
-		return ReadSession{Client: client, Revision: a.CredentialRevision + 1, createdAt: a.CreatedAt, Expires: credentials.ExpiresAt}, nil
+		current := pixiv.Credentials{UserID: credentials.UserID, DisplayName: credentials.Username, Revision: a.CredentialRevision + 1, ExpiresAt: credentials.ExpiresAt}
+		current.SetTokens(credentials.AccessToken(), credentials.RefreshToken())
+		return ReadSession{Client: client, Revision: current.Revision, createdAt: a.CreatedAt, Expires: current.ExpiresAt}, current, nil
 	}
 }
 
