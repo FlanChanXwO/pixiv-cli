@@ -285,3 +285,36 @@ func selectionFor(userID int64) account.Selection {
 	}
 	return account.Selection{Mode: account.SelectionPool}
 }
+
+// SDKReadSnapshot 固定新 SDK 只读会话的版本与失效信号。
+type SDKReadSnapshot struct {
+	Lease       *lifecycle.Lease[*pixiv.Client]
+	Version     string
+	Expires     time.Time
+	Invalidated <-chan struct{}
+	Invalidate  func(error)
+}
+
+// SDKReadSession 复用账号读取缓存；账号、网络与凭据版本决定会话代次。
+func (l *Local) SDKReadSession(ctx context.Context, request ProxyRequest) (SDKReadSnapshot, error) {
+	ports, err := l.ports(ctx)
+	if err != nil {
+		return SDKReadSnapshot{}, err
+	}
+	settings, err := l.loadPixiv(request)
+	if err != nil {
+		return SDKReadSnapshot{}, err
+	}
+	userID := request.UserID
+	if userID == 0 {
+		userID, err = ports.facade.accounts.selectedUserID(ctx)
+		if err != nil {
+			return SDKReadSnapshot{}, err
+		}
+	}
+	snapshot, err := ports.reads.OpenSDK(ctx, userID, settings.Network, settings.SDKOptions)
+	if err != nil {
+		return SDKReadSnapshot{}, err
+	}
+	return SDKReadSnapshot{Lease: lifecycle.NewLease(snapshot.SDKClient, nil), Version: fmt.Sprint(snapshot.Version), Expires: snapshot.Expires, Invalidated: snapshot.Invalidated, Invalidate: func(err error) { ports.reads.Invalidate(userID, snapshot.Version, err) }}, nil
+}

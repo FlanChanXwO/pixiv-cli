@@ -60,3 +60,24 @@ func openSDKLease(ctx context.Context, ports *pixivPorts, userID int64, options 
 		return nil
 	}), userID, nil
 }
+
+// OpenSDKLease 固定显式账号的 SDK client，关闭租约后释放连接与轮换门。
+func (l *Local) OpenSDKLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*pixiv.Client], error) {
+	ports, err := l.ports(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := l.loadPixiv(request)
+	if err != nil {
+		return nil, err
+	}
+	userID := request.UserID
+	if userID == 0 {
+		userID, err = ports.facade.accounts.selectedUserID(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	lease, _, err := openSDKLease(ctx, ports, userID, settings.SDKOptions)
+	return lease, err
+}
