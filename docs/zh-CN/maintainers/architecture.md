@@ -13,7 +13,8 @@ flowchart LR
     CLI --> SHARED["internal<br/>跨子系统机制"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>配置与本地状态"]
-    CLI -.->|"仅组合根"| RSA["reversesearch/assembly"]
+    CLI -.->|"仅组合根"| RSA["internal/reversesearch"]
+    RSA --> RSSDK["sdk/saucenao · sdk/ascii2d"]
 
     subgraph boundary["不可跨越的边界"]
         RULE["CLI / MCP 从不直连协议适配器<br/>共享机制不承载产品协议语义"]
@@ -75,7 +76,7 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 
 | 文件 | 负责 |
 | --- | --- |
-| `root.go` | `Run`、Cobra 命令树、全局 flag、按需启动 hook、退出码映射、stderr logger 启动、broken-pipe 策略、生产装配与反向搜索 ports；唯一导入 `internal/reversesearch/assembly` 的文件 |
+| `root.go` | `Run`、Cobra 命令树、全局 flag、按需启动 hook、退出码映射、stderr logger 启动、broken-pipe 策略、生产装配与反向搜索 ports；绑定反搜配置与 HTTP 连接 |
 
 职责：Cobra 命令树/help/flag；文本/JSON 输出；`auth import` 输入适配（位置参数 = opaque token；无参数时 TTY 隐藏输入，非 TTY 按首个非空白字节区分 token 与严格 bundle；通过管道/重定向恢复，没有 `--file`）；`auth export` secret 输出适配（无 `--output`：原始 token + 换行，或 `--all` 的 bundle；有 `--output`：私有文件 + 不含 secret 的摘要）；`--page`/`--limit` 解析（逻辑计划在 `internal/pagination`）；`auth login` 的 loopback OAuth、浏览器与 TTY；`pixiv mcp` 分发；根 `--version` 与 `pixiv update`（已移除的 `version` 子命令在解析时返回 unknown command）；只写 stderr 的只读自动更新提示。
 
@@ -159,7 +160,7 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 - 新旧 SDK 读取 client 共享有效的内存访问凭据与同一失效代次。构造另一种 client 时保留已验证的账号身份，无需再次轮换 OAuth；每次内容请求仍校验已保存的 revision。旧 token 构造入口在过渡期间接收这份调用方已验证的身份。
 - `Store.OpenSDKClient` 交出新 `sdk/pixiv` client，`OpenAccountClient` 保留旧 client。按账号绑定的 `CredentialStore.Load` 读取最新 revision 并固定账号创建时间，`CompareAndSwap` 比较两者后保存，revision 冲突返回 `false, nil`。OAuth 在存储锁外执行；SDK 冲突后重新加载，保存失败在内容请求前传播。`Client.Credentials(ctx)` 经相同流程准备凭据，省去内容请求。
 - `session.PixivOptions` 为两代 client 装配一致的连接设置。`Local.ExecuteSDK` 复用现有账号池与 gate，单独交出已选 UID；加载凭据前，`Client.UserID()` 仍可能为零。缺省目标在每次尝试内解析，MCP fetch 回调使用 `SDKUserID`。stdio 的 `ResolveSDKAccount` 保留原始请求用于池调度，HTTP 使用持久化的 `ResolveAccount` 快照。SDK 绑定对象在本次操作内使用。
-- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。CLI 下载通过 `internal/pixiv/saving` 展开来源并调用 `sdk/download`；MCP 下载与媒体也使用新 SDK；FANBOX 和反向搜图保留各自的迁移路径。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
+- S11 迁移 auth、whoami、作品/用户 detail、user（含委托给 user 的用户搜索）、follow、bookmark CLI 路径，以及对应的账号/作品/用户/收藏/related MCP handler，包含这些 handler 内的小说分支和聚合。S12 迁移独立的小说、评论、文字搜索、排行榜、推荐、系列、动态与 MyPixiv 入口。CLI 下载通过 `internal/pixiv/saving` 展开来源并调用 `sdk/download`；MCP 下载与媒体也使用新 SDK；FANBOX 保留独立迁移路径；反向搜图通过独立的 `sdk/saucenao` 与 `sdk/ascii2d` 包执行。完整 SDK 参考重写留在 S16，当前 API 以 [SDK 包 GoDoc](../../../sdk/pixiv/pixiv.go) 为准。
 - `Request.Selection` 使用带正数 UID 的 `SelectionFixed` 或 `SelectionPool`。固定账号的读写保持该身份；安全且尚未提交的读取可经池重放。调用方从 `internal/config` 读取 `enabled`/`strategy`；`account` 无 config 导入，默认账号由 session 解析。账号池关闭时，session 选择配置的默认账号或存储中的第一个账号。
 - CLI/MCP 经 owner-local port 与 MCP runtime `SDKPorts` 使用会话；筛选、record、schema 与输出渲染留在各适配器。SDK 的依赖图保持独立于本地账号存储。
 
@@ -186,24 +187,20 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 
 ### reverse-search service 例外
 
-唯一跨越常规 SDK 边界的产品能力。
-
-只有 `internal/cli/root.go` 导入 `internal/reversesearch/assembly`。CLI 命令 owner 与 MCP owner 可以使用顶层 `internal/reversesearch` 契约；它们不得导入 `assembly` 或 `saucenao`、`ascii2d` 等 provider 包。
+`internal/cli/root.go` 读取配置并创建标准 HTTP 连接。CLI 与 MCP 通过顶层 `internal/reversesearch` 加载来源、合并 Pixiv 结果；服务请求交给 `sdk/saucenao` 与 `sdk/ascii2d`。
 
 ```mermaid
 flowchart LR
-    COMP["internal/cli/root.go"] --> ASM["reversesearch/assembly<br/>（HTTP client、代理、SauceNAO key<br/>每个命令/会话绑定一次）"]
-    ASM --> SN["reversesearch/saucenao"]
-    ASM --> A2["reversesearch/ascii2d"]
-    CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>（契约 + Service）"]
+    COMP["internal/cli/root.go<br/>（配置与 HTTP 连接）"] --> TOP["internal/reversesearch<br/>（来源读取 + 结果合并）"]
+    CMDS["internal/cli/*"] --> TOP
     MCPS["internal/mcpserver/*"] --> TOP
-    CMDS -.->|禁止| SN
-    MCPS -.->|禁止| ASM
+    TOP --> SN["sdk/saucenao"]
+    TOP --> A2["sdk/ascii2d"]
 ```
 
 - Service 返回领域结果；CLI/MCP 适配器在输出边界投影 canonical record。
 - 它把普通文件或 HTTP(S) 来源加载为一个私有快照、计算哈希，并在完成后删除。来源策略有意允许任意可读普通文件与私有、loopback、link-local URL；单 owner OAuth 下只授权可信 connector——路径指 MCP server 文件系统，URL 使用 server 网络。只有来源类型/哈希、安全的 provider 摘要/错误、领域证据与 canonical `artwork`/`user` record 可以发布。
-- 三个网络面：标准来源/SauceNAO client、专用 ascii2d 浏览器 client、FlareSolverr JSON 控制 client。服务代理只能覆盖 ascii2d；命令级覆盖同时作用于两个原生 client；否则标准 client 走全局路由。ascii2d UA 与 `Chrome_146` TLS profile 及匹配的 Chromium hints 配对（非 Chromium UA 省略 hints）。FlareSolverr 上游代理只用于浏览器 `sessions.create`；控制流量保持独立；图片始终使用原生 ascii2d multipart。solver 状态限于进程/client，不持久化。
+- 三个网络面：标准来源/SauceNAO client、专用 ascii2d 浏览器 client、FlareSolverr JSON 控制 client。服务代理只能覆盖 ascii2d；命令级覆盖同时作用于两个原生 client；否则标准 client 走全局路由。ascii2d UA 与 `Chrome_146` TLS profile 及匹配的 Chromium hints 配对（非 Chromium UA 省略 hints）。FlareSolverr 上游代理只用于浏览器 `sessions.create`；控制流量保持独立；图片始终使用原生 ascii2d multipart。ascii2d SDK 在进程内缓存通行状态，并负责每次查询的浏览器连接与 solver 会话清理；状态不持久化。旧 provider 子包已停止使用，留待 SDK 最终清理时删除。
 
 ### `internal/account`
 

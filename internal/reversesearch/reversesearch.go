@@ -1,15 +1,18 @@
-// Package reversesearch 提供反向搜图的领域契约、载荷生命周期与 provider 编排。
+// Package reversesearch 读取反向搜图来源，并合并 SauceNAO 与 ascii2d SDK 的结果。
 //
-// 协议适配器位于子包；CLI/MCP 只依赖本顶层包，provider 的传输细节不越过该边界。
-//
-// 包的组成：[Service] 固化 source 并返回 [Response]，[Loader] 与 [Snapshot] 管理
-// 私有载荷，[Aggregator] 并发编排 provider，[Error] 携带稳定 [ErrorCode]；
-// [ProviderClient]、[ASCII2DClient] 是 provider 端口。
+// 包的组成：[New] 接收调用方读取的配置与连接，[Service.Search] 返回稳定的 [Response]；
+// [Loader] 与 [Snapshot] 管理私有载荷，[Error] 保持 CLI/MCP 的错误分类。
 package reversesearch
 
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/ascii2d"
 )
 
 // Provider 标识一次查询选择的上游能力。
@@ -144,20 +147,6 @@ type ProviderResponse struct {
 	Quota   *Quota  `json:"quota,omitempty"`
 }
 
-// ProviderClient 定义 aggregator 注入的 provider 端口。
-type ProviderClient interface {
-	Closer
-	Preflight(context.Context) error
-	Search(context.Context, *Snapshot) (ProviderResponse, error)
-}
-
-// ASCII2DClient 定义 aggregator 注入的 ascii2d 上传端口。一次上传返回的
-// session 可供 color 与 bovw 并发查询，避免重复外传同一图片。
-type ASCII2DClient interface {
-	Closer
-	Upload(context.Context, *Snapshot) (ASCII2DSession, error)
-}
-
 // ASCII2DSession 定义一次 ascii2d 上传产生的查询端口。
 type ASCII2DSession interface {
 	Search(context.Context, Provider) (ProviderResponse, error)
@@ -173,22 +162,79 @@ type Closer interface {
 	Close() error
 }
 
-// Service 将不透明 source 固化一次，并确保 provider 查询结束后清理快照。
+// Options 固定调用方提供的凭据、标准 HTTP 连接及 ascii2d 独立网络配置。
+// HTTPClient 由调用方创建，供来源读取与 SauceNAO 使用；Close 释放其空闲连接。
+type Options struct {
+	HTTPClient           *http.Client
+	SauceNAOKey          string
+	ASCII2DProxy         string
+	UserAgent            string
+	FlareSolverrURL      string
+	FlareSolverrProxyURL string
+}
+
+// Service 将同一份来源交给两个独立 SDK，并按 Pixiv 身份合并结果。
 type Service struct {
-	sources  *Loader
-	payloads *Aggregator
+	sources *Loader
+	options Options
 }
 
-// NewService 组合 source 载入与 provider 编排；两个依赖都由调用方负责关闭。
-func NewService(sources *Loader, payloads *Aggregator) *Service {
-	return &Service{sources: sources, payloads: payloads}
+// New 检查调用方传入的连接配置，不读取本地配置、账号或发起请求。
+func New(options Options) (*Service, error) {
+	// 配置检查保持在来源读取之前，避免无效连接设置导致先读取或下载图片。
+	if strings.ContainsAny(options.UserAgent, "\r\n\x00") {
+		return nil, NewError(CodeInvalidRequest, "ascii2d user-agent contains invalid header characters", nil)
+	}
+	if strings.TrimSpace(options.ASCII2DProxy) != "" {
+		proxy, err := url.Parse(options.ASCII2DProxy)
+		if err != nil || proxy.Hostname() == "" ||
+			(proxy.Scheme != "http" && proxy.Scheme != "https" && proxy.Scheme != "socks5" && proxy.Scheme != "socks5h") ||
+			(proxy.Path != "" && proxy.Path != "/") || proxy.RawQuery != "" || proxy.Fragment != "" || proxy.ForceQuery {
+			return nil, NewError(CodeInvalidRequest, "ascii2d proxy URL is invalid", err)
+		}
+	}
+	if options.FlareSolverrURL != "" {
+		options.FlareSolverrURL = strings.TrimSpace(options.FlareSolverrURL)
+		solver, err := url.Parse(options.FlareSolverrURL)
+		if err != nil || solver.Host == "" || solver.User != nil || solver.RawQuery != "" || solver.Fragment != "" || solver.ForceQuery ||
+			(solver.Scheme != "http" && solver.Scheme != "https") {
+			return nil, NewError(CodeSolverUnavailable, "ascii2d challenge solver is unavailable", err)
+		}
+	}
+	return &Service{sources: NewSourceLoader(options.HTTPClient), options: options}, nil
 }
 
-// Close 释放 Service 所拥有的 payload 编排器。source snapshot 是每次 Search
-// 的局部资源，已经在 Search 返回前关闭；长期存活的 provider/session 资源则
-// 由 payloads 释放。
+// Close 释放来源读取与 SauceNAO 的空闲连接；ascii2d SDK 自行结束每次查询的资源。
 func (s *Service) Close() error {
-	return s.payloads.Close()
+	s.options.HTTPClient.CloseIdleConnections()
+	return nil
+}
+
+func (s *Service) preflight(ctx context.Context, provider Provider) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	switch provider {
+	case ProviderSauceNAO:
+		return s.sauceNAOCredential()
+	case ProviderASCII2DColor, ProviderASCII2DBOVW, ProviderAll:
+		return nil
+	default:
+		return NewError(CodeInvalidRequest, "reverse search provider is invalid", nil)
+	}
+}
+
+func (s *Service) sauceNAOCredential() error {
+	if strings.TrimSpace(s.options.SauceNAOKey) == "" {
+		return NewError(CodeMissingCredential, "SauceNAO API key is required", nil)
+	}
+	return nil
+}
+
+func (s *Service) ascii2dOptions(image []byte, mode ascii2d.Mode) ascii2d.Options {
+	return ascii2d.Options{Image: image, Mode: mode, ProxyURL: s.options.ASCII2DProxy,
+		UserAgent: s.options.UserAgent, FlareSolverrURL: s.options.FlareSolverrURL,
+		FlareSolverrProxyURL: s.options.FlareSolverrProxyURL}
 }
 
 // Search 校验 provider，载入一次不可变快照，再把快照交给编排器查询。快照在返回前
@@ -197,7 +243,7 @@ func (s *Service) Search(ctx context.Context, request Request) (response Respons
 	if ctx == nil {
 		return Response{}, NewError(CodeInvalidRequest, "reverse search context is required", nil)
 	}
-	if err := s.payloads.preflight(ctx, request.Provider); err != nil {
+	if err := s.preflight(ctx, request.Provider); err != nil {
 		return Response{}, err
 	}
 	snapshot, err := s.sources.Load(ctx, request.Source)
@@ -210,7 +256,15 @@ func (s *Service) Search(ctx context.Context, request Request) (response Respons
 		}
 	}()
 
-	response, err = s.payloads.search(ctx, snapshot, request.Provider, request.PixivOnly)
+	reader, err := snapshot.Open(ctx)
+	if err != nil {
+		return Response{}, err
+	}
+	image, readErr := io.ReadAll(reader)
+	if err := errors.Join(readErr, reader.Close()); err != nil {
+		return Response{}, NewError(CodeSnapshotFailed, "could not read image snapshot", err)
+	}
+	response, err = s.search(ctx, image, request.Provider, request.PixivOnly)
 	response.Input = Input{Kind: snapshot.Kind(), SHA256: snapshot.SHA256()}
 	return response, err
 }

@@ -42,7 +42,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch/assembly"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
@@ -332,24 +331,21 @@ func newReverseSearcher(runtime config.Config, proxyOverride *string) (reversese
 	if proxyOverride != nil {
 		standardProxy, ascii2dProxy = *proxyOverride, *proxyOverride
 	}
-	var flareSolverr *assembly.FlareSolverrOptions
+	client, err := config.HTTPClient(standardProxy)
+	if err != nil {
+		return nil, err
+	}
+	options := reversesearch.Options{HTTPClient: client, ASCII2DProxy: ascii2dProxy, SauceNAOKey: runtime.ReverseSearch.SauceNAOAPIKey}
 	if runtime.ReverseSearch.FlareSolverr.URL != nil {
-		flareSolverr = &assembly.FlareSolverrOptions{URL: *runtime.ReverseSearch.FlareSolverr.URL}
+		options.FlareSolverrURL = *runtime.ReverseSearch.FlareSolverr.URL
 	}
-	if flareSolverr != nil && runtime.ReverseSearch.FlareSolverr.ProxyURL != nil {
-		flareSolverr.ProxyURL = *runtime.ReverseSearch.FlareSolverr.ProxyURL
+	if runtime.ReverseSearch.FlareSolverr.ProxyURL != nil {
+		options.FlareSolverrProxyURL = *runtime.ReverseSearch.FlareSolverr.ProxyURL
 	}
-	userAgent := ""
 	if runtime.ReverseSearch.Network.UserAgent != nil {
-		userAgent = *runtime.ReverseSearch.Network.UserAgent
+		options.UserAgent = *runtime.ReverseSearch.Network.UserAgent
 	}
-	return assembly.New(assembly.Options{
-		Proxy:        standardProxy,
-		ASCII2DProxy: &ascii2dProxy,
-		UserAgent:    userAgent,
-		SauceNAOKey:  runtime.ReverseSearch.SauceNAOAPIKey,
-		FlareSolverr: flareSolverr,
-	})
+	return reversesearch.New(options)
 }
 
 // newMCPReverseSearchPorts 在 MCP 启动时创建一次反向搜图 Facade，并固定 provider 与

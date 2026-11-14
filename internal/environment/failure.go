@@ -11,6 +11,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
@@ -62,6 +63,10 @@ func ErrorText(err error) (text string) {
 		}
 	}()
 	for current := err; current != nil; current = errors.Unwrap(current) {
+		// 反搜错误已在服务边界映射；底层 SDK 原因只供 errors.Is/As 诊断。
+		if _, ok := current.(*reversesearch.Error); ok {
+			break
+		}
 		if joined, ok := current.(interface{ Unwrap() []error }); ok {
 			var replacements []string
 			for _, cause := range joined.Unwrap() {
@@ -82,6 +87,10 @@ func ErrorText(err error) (text string) {
 		if fanbox.IsAuthentication() {
 			return `not logged in; run "pixiv fanbox auth import"`
 		}
+		return err.Error()
+	}
+	var reverse *reversesearch.Error
+	if errors.As(err, &reverse) {
 		return err.Error()
 	}
 	var current *sdk.Error
