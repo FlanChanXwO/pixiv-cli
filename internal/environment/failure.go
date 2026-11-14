@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
@@ -76,6 +77,12 @@ func ErrorText(err error) (text string) {
 	}
 	if errors.Is(err, context.Canceled) {
 		return "operation canceled; run the command again when ready"
+	}
+	if fanbox, ok := err.(*report.Error); ok {
+		if fanbox.IsAuthentication() {
+			return `not logged in; run "pixiv fanbox auth import"`
+		}
+		return err.Error()
 	}
 	var current *sdk.Error
 	var legacy *legacysdk.Error

@@ -15,11 +15,12 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +48,7 @@ func Commands(env environment.Env, open func(context.Context) (*session.Fanbox, 
 
 func (a commandRunner) newCreatorsCommand() *cobra.Command {
 	var opts options
-	kind := string(fanbox.CreatorListSupporting)
+	kind := string(fanbox.CreatorSupporting)
 	cmd := &cobra.Command{
 		Use:   "creators",
 		Short: "List supporting or following FANBOX creators",
@@ -63,8 +64,8 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 }
 
 func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind string) error {
-	kind := fanbox.CreatorListKind(rawKind)
-	if kind != fanbox.CreatorListSupporting && kind != fanbox.CreatorListFollowing {
+	kind := fanbox.CreatorRelation(rawKind)
+	if kind != fanbox.CreatorSupporting && kind != fanbox.CreatorFollowing {
 		return errors.New("relation must be one of: supporting, following")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
@@ -76,12 +77,13 @@ func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind str
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.CreatorSummary], error) {
-			return client.Creators(ctx, fanbox.CreatorsRequest{Kind: kind, Cursor: cursor})
+		fetch := func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Creator], error) {
+			page, err := client.Creators(ctx, fanbox.CreatorsRequest{Relation: kind, Cursor: cursor})
+			return page, report.Wrap(err, "Creators")
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.CreatorSummary) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Creator) error {
 			return printCreators(a.env.Out, items)
-		}, func(item fanbox.CreatorSummary) any { return item }, fetch)
+		}, func(item *fanbox.Creator) any { return record.FanboxCreatorSummary(item) }, fetch)
 	})
 }
 
@@ -114,56 +116,62 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts options)
 		if err != nil {
 			return err
 		}
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Post) error {
 			return printPosts(a.env.Out, items)
-		}, func(item fanbox.Post) any { return item }, fetch)
+		}, func(item *fanbox.Post) any { return record.FanboxPost(item) }, fetch)
 	})
 }
 
-// PostsFetch 把 creator/post/URL 源解析为可分页的帖子获取函数。URL 经 ResolveURL
+// PostsFetch 把 creator/post/URL 源解析为可分页的帖子获取函数。URL 经 ParseURL
 // 分类；纯数字源按 post ID 处理；其余按 creator ID 处理。FANBOX download 命令复用
 // 同一解析，因此两条路由的源语义不会分叉。
-func PostsFetch(ctx context.Context, client *fanbox.Client, source string) (func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error), error) {
+func PostsFetch(ctx context.Context, client *fanbox.Client, source string) (func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error), error) {
 	switch {
 	case strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://"):
-		ref, err := client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: source})
+		ref, err := client.ParseURL(source)
 		if err != nil {
 			return nil, err
 		}
-		switch ref.Kind {
-		case fanbox.ReferenceKindPost:
-			return singlePostFetch(client, ref.PostID), nil
-		case fanbox.ReferenceKindTag:
-			creatorID, tag := ref.CreatorID, ref.Tag
-			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-				return client.TaggedPosts(ctx, fanbox.TaggedPostsRequest{CreatorID: creatorID, Tag: tag, Cursor: cursor})
+		switch ref := ref.(type) {
+		case *fanbox.PostRef:
+			return singlePostFetch(client, ref.ID), nil
+		case *fanbox.CreatorPostsRef:
+			creatorID, tag := ref.ID, ref.Tag
+			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+				page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Tag: tag, Cursor: cursor})
+				if tag != "" {
+					err = report.Wrap(err, "TaggedPosts")
+				}
+				return page, report.Wrap(err, "CreatorPosts")
 			}, nil
 		default:
-			creatorID := ref.CreatorID
-			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-				return client.CreatorPosts(ctx, fanbox.CreatorPostsRequest{CreatorID: creatorID, Cursor: cursor})
+			creatorID := ref.(*fanbox.CreatorRef).ID
+			return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+				page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+				return page, report.Wrap(err, "CreatorPosts")
 			}, nil
 		}
 	case isNumericID(source):
 		return singlePostFetch(client, source), nil
 	default:
 		creatorID := source
-		return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-			return client.CreatorPosts(ctx, fanbox.CreatorPostsRequest{CreatorID: creatorID, Cursor: cursor})
+		return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+			page, err := client.Creator(creatorID).Posts(ctx, fanbox.PostsRequest{Cursor: cursor})
+			return page, report.Wrap(err, "CreatorPosts")
 		}, nil
 	}
 }
 
-func singlePostFetch(client *fanbox.Client, postID string) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-	return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
+func singlePostFetch(client *fanbox.Client, postID string) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+	return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
 		if !cursor.IsZero() {
-			return sdk.Page[fanbox.Post]{Items: []fanbox.Post{}}, nil
+			return sdk.Page[*fanbox.Post]{Items: []*fanbox.Post{}}, nil
 		}
-		post, err := client.Post(ctx, fanbox.PostRequest{PostID: postID})
+		post, err := client.Post(postID).Get(ctx)
 		if err != nil {
-			return sdk.Page[fanbox.Post]{}, err
+			return sdk.Page[*fanbox.Post]{}, report.Wrap(err, "Post")
 		}
-		return sdk.Page[fanbox.Post]{Items: []fanbox.Post{post}}, nil
+		return sdk.Page[*fanbox.Post]{Items: []*fanbox.Post{post}}, nil
 	}
 }
 
@@ -205,9 +213,9 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		tags, err := client.CreatorTags(cmd.Context(), fanbox.CreatorTagsRequest{CreatorID: args[0]})
+		tags, err := client.Creator(args[0]).Tags(cmd.Context())
 		if err != nil {
-			return err
+			return report.Wrap(err, "CreatorTags")
 		}
 		out := make([]tagOut, 0, len(tags))
 		for _, tag := range tags {
@@ -245,9 +253,10 @@ func (a commandRunner) newHomeCommand() *cobra.Command {
 		Short: "Browse the FANBOX home feed",
 		Args:  a.env.ExactArgs(0, "pixiv fanbox home"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-					return client.Home(ctx, fanbox.HomeRequest{Cursor: cursor})
+			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+					page, err := client.Home(ctx, fanbox.FeedRequest{Cursor: cursor})
+					return page, report.Wrap(err, "Home")
 				}
 			})
 		},
@@ -264,9 +273,10 @@ func (a commandRunner) newSupportingCommand() *cobra.Command {
 		Short: "Browse posts from supporting creators",
 		Args:  a.env.ExactArgs(0, "pixiv fanbox supporting"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[fanbox.Post], error) {
-					return client.Supporting(ctx, fanbox.SupportingRequest{Cursor: cursor})
+			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+				return func(ctx context.Context, cursor sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
+					page, err := client.Supporting(ctx, fanbox.FeedRequest{Cursor: cursor})
+					return page, report.Wrap(err, "Supporting")
 				}
 			})
 		},
@@ -276,7 +286,7 @@ func (a commandRunner) newSupportingCommand() *cobra.Command {
 	return cmd
 }
 
-func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[fanbox.Post], error)) error {
+func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error)) error {
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
 		return err
@@ -286,9 +296,9 @@ func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanb
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []fanbox.Post) error {
+		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Post) error {
 			return printPosts(a.env.Out, items)
-		}, func(item fanbox.Post) any { return item }, bind(client))
+		}, func(item *fanbox.Post) any { return record.FanboxPost(item) }, bind(client))
 	})
 }
 
@@ -313,9 +323,9 @@ func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts options) 
 		return err
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		post, err := client.Post(cmd.Context(), fanbox.PostRequest{PostID: args[0]})
+		post, err := client.Post(args[0]).Get(cmd.Context())
 		if err != nil {
-			return err
+			return report.Wrap(err, "Post")
 		}
 		out := postOutFrom(post)
 		if jsonOut {
@@ -324,7 +334,7 @@ func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts options) 
 		if opts.ndjson {
 			return json.NewEncoder(a.env.Out).Encode(out)
 		}
-		return printPosts(a.env.Out, []fanbox.Post{post})
+		return printPosts(a.env.Out, []*fanbox.Post{post})
 	})
 }
 
@@ -339,7 +349,7 @@ type postOut struct {
 	CommentCount int    `json:"comment_count,omitempty"`
 }
 
-func postOutFrom(post fanbox.Post) postOut {
+func postOutFrom(post *fanbox.Post) postOut {
 	published := ""
 	if !post.PublishedAt.IsZero() {
 		published = post.PublishedAt.UTC().Format(time.RFC3339)
@@ -356,12 +366,9 @@ func postOutFrom(post fanbox.Post) postOut {
 	}
 }
 
-func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
+func printCreators(out io.Writer, creators []*fanbox.Creator) error {
 	for _, creator := range creators {
 		identity := display.SafeLine(creator.ID)
-		if creator.Name != "" {
-			identity = display.SafeLine(creator.Name) + " (" + identity + ")"
-		}
 		if _, err := fmt.Fprintln(out, identity); err != nil {
 			return err
 		}
@@ -369,7 +376,7 @@ func printCreators(out io.Writer, creators []fanbox.CreatorSummary) error {
 	return nil
 }
 
-func printPosts(out io.Writer, posts []fanbox.Post) error {
+func printPosts(out io.Writer, posts []*fanbox.Post) error {
 	for _, post := range posts {
 		locked := ""
 		if post.IsRestricted {

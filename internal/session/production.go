@@ -8,10 +8,10 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 

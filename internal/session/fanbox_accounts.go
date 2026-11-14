@@ -9,7 +9,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 // FanboxAccounts 提供 FANBOX 账号导入、列出、选择、移除与 client 打开。

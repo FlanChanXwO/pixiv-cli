@@ -36,7 +36,7 @@ func TestSearchOutputContract(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true, IsCA: true,
-		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc", "i.pximg.net"},
+		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc", "www.fanbox.cc", "i.pximg.net"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
@@ -101,6 +101,9 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	artwork := `{"id":101,"title":"line\n\u001b[31m","type":"illust","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"line\n\u001b[31m"},"tags":[{"name":"line\n\u001b[31m"}],"caption":"line<br>next"}`
 	novel := `{"x_restrict":0,"text_length":1,"is_original":false,"id":101,"title":"line\n\u001b[31m","create_date":"2024-05-01T10:00:00+09:00","user":{"id":7,"name":"artist"},"tags":[]}`
 	switch r.URL.Path {
+	case "/":
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<meta name="metadata" content='{ "context": { "user": { "userId": "7", "name": "artist" } } }'>`)
 	case "/auth/token":
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"12345678","name":"artist"}}`)
 	case "/creator.listFollowing":

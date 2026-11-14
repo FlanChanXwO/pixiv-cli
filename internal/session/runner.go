@@ -5,10 +5,11 @@ import (
 	"errors"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 // ProxyRequest 保存一次 Pixiv 数据执行的账号与代理覆盖。代理到 SDK Options 的翻译
@@ -82,8 +83,8 @@ func Open(ctx context.Context, open func(context.Context) (*Fanbox, error), requ
 func Use(ctx context.Context, open func(context.Context) (*Fanbox, error), request OpenRequest, use func(*fanbox.Client) error) error {
 	lease, err := Open(ctx, open, request)
 	if err != nil {
-		return err
+		return report.Wrap(err, "")
 	}
 	useErr := use(lease.Value())
-	return errors.Join(useErr, lease.Close())
+	return errors.Join(report.Wrap(useErr, ""), lease.Close())
 }

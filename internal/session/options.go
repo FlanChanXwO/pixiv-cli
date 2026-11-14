@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
 	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -40,8 +40,8 @@ func PixivOptions(runtime config.Config, request ProxyRequest, logger *slog.Logg
 }
 
 // FanboxOptions 把运行时配置翻译成公开 FANBOX SDK 选项。
-func FanboxOptions(runtime config.Config, logger *slog.Logger) fanbox.Options {
-	options := fanbox.Options{Logger: logger}
+func FanboxOptions(runtime config.Config) fanbox.Options {
+	options := fanbox.Options{}
 	if runtime.Fanbox.Network.ProxyURL != nil {
 		options.ProxyURL = *runtime.Fanbox.Network.ProxyURL
 	} else {
@@ -51,11 +51,9 @@ func FanboxOptions(runtime config.Config, logger *slog.Logger) fanbox.Options {
 		options.UserAgent = *runtime.Fanbox.Network.UserAgent
 	}
 	if runtime.Fanbox.FlareSolverr.URL != nil {
-		options.FlareSolverr = &fanbox.FlareSolverrOptions{
-			URL: *runtime.Fanbox.FlareSolverr.URL,
-		}
+		options.FlareSolverrURL = *runtime.Fanbox.FlareSolverr.URL
 		if runtime.Fanbox.FlareSolverr.ProxyURL != nil {
-			options.FlareSolverr.ProxyURL = *runtime.Fanbox.FlareSolverr.ProxyURL
+			options.FlareSolverrProxyURL = *runtime.Fanbox.FlareSolverr.ProxyURL
 		}
 	}
 	return options

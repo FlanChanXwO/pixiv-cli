@@ -15,10 +15,11 @@ import (
 	fanboxcli "github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
 
@@ -58,12 +59,12 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return err
 			}
-			if err := pagination.PageItems(cmd.Context(), pagination.PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]fanbox.Post, sdk.Cursor, error) {
+			if err := pagination.PageItems(cmd.Context(), pagination.PagePlan{}, func(ctx context.Context, cursor sdk.Cursor) ([]*fanbox.Post, sdk.Cursor, error) {
 				page, err := fetch(ctx, cursor)
-				return page.Items, page.Next, err
-			}, func(posts []fanbox.Post) error {
+				return page.Items, page.Cursor, err
+			}, func(posts []*fanbox.Post) error {
 				for _, post := range posts {
-					if err := a.savePostAssets(cmd.Context(), client, baseDir, post, seen); err != nil {
+					if err := a.savePostAssets(cmd.Context(), baseDir, post, seen); err != nil {
 						return err
 					}
 				}
@@ -76,7 +77,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func (a commandRunner) savePostAssets(ctx context.Context, client *fanbox.Client, baseDir string, post fanbox.Post, seen map[string]struct{}) error {
+func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post *fanbox.Post, seen map[string]struct{}) error {
 	if post.Body == nil {
 		return nil
 	}
@@ -94,23 +95,31 @@ func (a commandRunner) savePostAssets(ctx context.Context, client *fanbox.Client
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	for _, asset := range post.Body.Assets {
-		if asset.Resource.Ref.IsZero() {
-			continue
-		}
-		name := safePathSegment(assetFilename(asset))
+	save := func(id, name, locator string, write func(context.Context, string) error) error {
+		name = safePathSegment(assetFilename(id, name, locator))
 		if name == "" {
-			return fmt.Errorf("asset %s in post %s has no usable filename", asset.ID, post.ID)
+			return fmt.Errorf("asset %s in post %s has no usable filename", id, post.ID)
 		}
 		path := filepath.Join(dir, name)
 		if !pathInsideBase(path, baseDir) {
-			return fmt.Errorf("asset %s in post %s resolves outside the download directory", asset.ID, post.ID)
+			return fmt.Errorf("asset %s in post %s resolves outside the download directory", id, post.ID)
 		}
 		if _, exists := seen[path]; exists {
-			continue
+			return nil
+		}
+		if err := write(ctx, path); err != nil {
+			return report.Wrap(err, "OpenResource")
 		}
 		seen[path] = struct{}{}
-		if _, err := client.SaveResource(ctx, asset.Resource.Ref, sdk.SaveOptions{Path: path}); err != nil {
+		return nil
+	}
+	for _, image := range post.Body.Images {
+		if err := save(image.ID, "", image.URL, image.Save); err != nil {
+			return err
+		}
+	}
+	for _, file := range post.Body.Files {
+		if err := save(file.ID, file.Name, file.URL, file.Save); err != nil {
 			return err
 		}
 	}
@@ -155,13 +164,13 @@ func pathInsideBase(target, base string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
 }
 
-func assetFilename(asset fanbox.Asset) string {
-	if asset.Name != "" {
-		return asset.Name
+func assetFilename(id, name, locator string) string {
+	if name != "" {
+		return name
 	}
-	ext := assetExtension(asset.Resource.URL)
-	if asset.ID != "" {
-		return asset.ID + ext
+	ext := assetExtension(locator)
+	if id != "" {
+		return id + ext
 	}
 	if ext != "" {
 		return "asset" + ext

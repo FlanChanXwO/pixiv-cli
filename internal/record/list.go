@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // Format 指定列表命令的输出格式，由 --json/--ndjson 决定；两个 flag 互斥。
@@ -189,7 +189,7 @@ func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination
 	defer w.closeSpool()
 	result, err := pagination.TraversePages(ctx, plan, func(ctx context.Context, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
 		page, err := fetch(ctx, cursor)
-		return page.Items, page.Next, err
+		return page.Items, page.Cursor, err
 	}, func(items []T) error {
 		_, err := w.consume(items)
 		return err

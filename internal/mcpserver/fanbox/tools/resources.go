@@ -4,19 +4,24 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
 	"github.com/FlanChanXwO/pixiv-cli/internal/media/filename"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -52,38 +57,38 @@ type openResourceOut struct {
 
 func (t fanboxTools) openResourceHandler(ctx context.Context, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
 	out := openResourceOut{}
-	ref, err := sdk.ParseResourceRef(input.Ref)
+	ref, err := legacysdk.ParseResourceRef(input.Ref)
 	if err != nil {
 		out.Error = "invalid_ref"
 		return outputs.Result(true, out.Error), out, nil
 	}
-	product, err := sdk.ResourceRefProduct(ref)
+	product, err := legacysdk.ResourceRefProduct(ref)
 	if err != nil || product != "fanbox" {
 		out.Error = "invalid_ref"
 		return outputs.Result(true, out.Error), out, nil
 	}
-	method := sdk.ResourceMethod(strings.ToUpper(input.Method))
+	method := legacysdk.ResourceMethod(strings.ToUpper(input.Method))
 	if method == "" {
-		method = sdk.ResourceMethodGet
+		method = legacysdk.ResourceMethodGet
 	}
-	if method != sdk.ResourceMethodGet && method != sdk.ResourceMethodHead {
+	if method != legacysdk.ResourceMethodGet && method != legacysdk.ResourceMethodHead {
 		out.Error = "invalid_method"
 		return outputs.Result(true, out.Error), out, nil
 	}
 	var content []mcp.Content
 	err = lifecycle.Run(ctx, t.openClient, func(ctx context.Context, client *fanbox.Client, _ *lifecycle.Attempt) error {
-		response, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: ref, Method: method})
+		response, err := openResource(ctx, client, ref, string(method))
 		if err != nil {
 			return err
 		}
 		out.Filename = filename.Sanitize(response.Filename)
 		out.StatusCode = response.StatusCode
-		out.ContentType = response.ContentType()
-		out.ContentLength = response.ContentLength()
+		out.ContentType = response.Header.Get("Content-Type")
+		out.ContentLength, _ = strconv.ParseInt(response.Header.Get("Content-Length"), 10, 64)
 		if response.StatusCode != http.StatusOK {
-			return errors.Join(sdk.NewError("fanbox", "OpenResource", sdk.UpstreamError, sdk.WithHTTPStatus(response.StatusCode)), response.Body.Close())
+			return errors.Join(&sdk.Error{Operation: "OpenResource", Reason: sdk.UpstreamError, HTTPStatus: response.StatusCode}, response.Body.Close())
 		}
-		if method == sdk.ResourceMethodHead {
+		if method == legacysdk.ResourceMethodHead {
 			out.Ref = ref.String()
 			return response.Body.Close()
 		}
@@ -97,7 +102,7 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 		detected := http.DetectContentType(data)
 		declared, _, _ := mime.ParseMediaType(out.ContentType)
 		if strings.HasPrefix(declared, "image/") && !strings.HasPrefix(detected, "image/") {
-			return sdk.NewError("fanbox", "OpenResource", sdk.MalformedUpstreamResponse)
+			return &sdk.Error{Operation: "OpenResource", Reason: sdk.MalformedUpstreamResponse}
 		}
 		// 图片按实际字节嗅探；其他附件保留有效的专用 MIME，例如 ZIP 容器里的 Office 文件。
 		out.ContentType = declared
@@ -122,10 +127,7 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 		out.Error = "resource_read_failed"
 		var typed *sdk.Error
 		if errors.As(err, &typed) {
-			out.Error = string(typed.Reason)
-			if out.StatusCode == 0 {
-				out.StatusCode = typed.HTTPStatus
-			}
+			out.Error = string(report.ReasonOf(err))
 		}
 		if errors.Is(err, context.Canceled) {
 			out.Error = "canceled"
@@ -158,4 +160,61 @@ func isAPNG(data []byte) bool {
 		offset += int(size) + 12
 	}
 	return false
+}
+
+// openResource 只解码稳定身份，再通过绑定的新 SDK 对象取得当前地址。
+func openResource(ctx context.Context, client *fanbox.Client, ref legacysdk.ResourceRef, method string) (*fanbox.MediaResponse, error) {
+	payload, err := legacysdk.ResourceRefPayload(ref)
+	if err != nil {
+		return nil, err
+	}
+	var identity record.FanboxResourceIdentity
+	if json.Unmarshal(payload, &identity) != nil {
+		return nil, &sdk.Error{Reason: sdk.InvalidArgument, Operation: "OpenResource", Message: "invalid resource reference"}
+	}
+	request := fanbox.OpenRequest{Method: method}
+	switch identity.Role {
+	case record.FanboxCreatorIcon, record.FanboxCreatorCover:
+		if identity.Creator == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "creator resource reference is missing creator id"}
+		}
+		creator, err := client.Creator(identity.Creator).Get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		image := creator.Icon
+		if identity.Role == record.FanboxCreatorCover {
+			image = creator.Cover
+		}
+		if image.URL == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "creator resource is unavailable"}
+		}
+		return image.Open(ctx, request)
+	case record.FanboxPostImage, record.FanboxPostFile:
+		if identity.Post == "" || identity.Asset == "" {
+			return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "post resource reference is missing post or attachment id"}
+		}
+		post, err := client.Post(identity.Post).Get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if post.Body != nil {
+			if identity.Role == record.FanboxPostImage {
+				for _, image := range post.Body.Images {
+					if image.ID == identity.Asset {
+						return image.Open(ctx, request)
+					}
+				}
+			} else {
+				for _, file := range post.Body.Files {
+					if file.ID == identity.Asset {
+						return file.Open(ctx, request)
+					}
+				}
+			}
+		}
+		return nil, &sdk.Error{Reason: sdk.MalformedUpstreamResponse, Operation: "OpenResource", Message: "post attachment is unavailable"}
+	default:
+		return nil, &sdk.Error{Reason: sdk.InvalidArgument, Operation: "OpenResource", Message: "resource kind is unsupported"}
+	}
 }

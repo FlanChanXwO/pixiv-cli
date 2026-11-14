@@ -372,6 +372,8 @@ flowchart LR
 | `fanbox_resolve_url` | 本地把 URL 解析为类型化引用。 |
 | `fanbox_open_resource` | 打开 opaque `ref`；GET 交付字节 + 安全元数据，HEAD 只返回元数据。 |
 
+`fanbox_resolve_url`、`pixiv fanbox posts` 和 `pixiv fanbox download` 接受 `fanbox.cc`、`www.fanbox.cc` 上的创作者/内容页面 URL，以及创作者子域名。服务域名 `api.fanbox.cc` 和 `downloads.fanbox.cc` 返回 `invalid_argument`。实体工具在 SDK 租约关闭失败时保留结构化结果，并设置 `isError=true`。
+
 ### FANBOX 资源内容
 
 | 方面 | 契约 |
@@ -380,8 +382,8 @@ flowchart LR
 | GET 内容 | 静态图 → `ImageContent`；GIF/APNG 与其他附件 → embedded-resource blob。PNG 与 APNG 依据动画控制 chunk 区分，而非仅看 Content-Type。保留合法的非图片 MIME；缺失/格式错误的 MIME 按字节检测。不写 server 文件，不设字节上限 |
 | 字段 | 原有 `ref`、`status_code`、`content_type`、声明的 `content_length`；`size` = 实际字节数、`content_index`、`delivered`（本响应含字节）、`complete`（请求/清理成功）。HEAD：`delivered=false`，无 index |
 | URI | embedded resource URI 是内容哈希 URN，不是 server 路径，也不承诺单独的 resources/read 端点 |
-| `filename` | 文件元数据有名称时 GET 与 HEAD 都返回（含扩展名，不重复后缀）。名称解析由 SDK 负责；MCP 从不解码 ref 或从 URL 猜测，并套用 CLI 文件名规范化（分隔符/保留标点 → `_`）。这只是建议名，不是可信路径；缺失时保持缺失 |
-| 失败 | 非成功状态、读取/关闭错误、取消、lease 关闭错误都保持结构化；保留 SDK 错误类别，不含原始响应体、位置或非法输入。`status_code=0` = SDK 未暴露状态（分类为 forbidden 的错误不会被编造状态码）。schema → `invalid_request`；本地 ref/method → `invalid_ref` / `invalid_method`。仅为本地合成测试——不是真实账号或宿主验收 |
+| `filename` | 文件元数据有名称时 GET 与 HEAD 都返回（含扩展名，不重复后缀）。工具解码 ref 中的稳定身份，再加载绑定的 SDK 媒体对象取得当前名称，并套用 CLI 文件名规范化（分隔符/保留标点 → `_`）。这只是建议名，不是可信路径；缺失时保持缺失 |
+| 失败 | 非成功状态、读取/关闭错误、取消、lease 关闭错误都保持结构化；保留 FANBOX 呈现层的错误类别，不含原始响应体、位置或非法输入。`status_code=0` 表示尚未取得媒体响应；元数据读取或求解器失败时保留此值。schema → `invalid_request`；本地 ref/method → `invalid_ref` / `invalid_method`。仅为本地合成测试——不是真实账号或宿主验收 |
 
 ## 认证与 fallback
 
