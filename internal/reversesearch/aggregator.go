@@ -22,13 +22,8 @@ func (s *Service) search(ctx context.Context, image []byte, provider Provider, p
 	if cancellation := cancellationError(ctx, errors.Join(outcome.err, outcome.closeErr)); cancellation != nil {
 		return Response{}, cancellation
 	}
-	if err := outcome.err; err != nil {
-		providerError, safeErr := safeProviderFailure(provider, err)
-		return Response{
-			Providers:      []ProviderSummary{{Name: provider, Status: ProviderStatusError}},
-			Results:        make([]Result, 0),
-			ProviderErrors: []ProviderError{providerError},
-		}, safeErr
+	if outcome.err != nil {
+		return responseFromFailure(provider, outcome.err)
 	}
 	return responseFromProvider(provider, outcome.response, pixivOnly), nil
 }
@@ -70,7 +65,7 @@ func (s *Service) searchAllASCII2D(ctx context.Context, image []byte, outcomes *
 	if result.Color == nil {
 		outcomes[1].err = s.ascii2dFailure(err, false)
 		outcomes[2].err = outcomes[1].err
-		return nil
+		return s.ascii2dCloseFailure(err)
 	}
 	outcomes[1].response, outcomes[1].err = s.ascii2dPage(result.Color)
 	outcomes[2].response, outcomes[2].err = s.ascii2dPage(result.BOVW)
@@ -123,10 +118,16 @@ func (s *Service) searchSingle(ctx context.Context, provider Provider, image []b
 		page = result.BOVW
 	}
 	if page == nil {
-		return providerOutcome{err: s.ascii2dFailure(err, false)}
+		return providerOutcome{err: s.ascii2dFailure(err, false), closeErr: s.ascii2dCloseFailure(err)}
 	}
 	response, pageErr := s.ascii2dPage(page)
 	return providerOutcome{response: response, err: pageErr, closeErr: s.ascii2dCloseFailure(err)}
+}
+
+func responseFromFailure(provider Provider, err error) (Response, error) {
+	providerError, safeErr := safeProviderFailure(provider, err)
+	return Response{Providers: []ProviderSummary{{Name: provider, Status: ProviderStatusError}},
+		Results: make([]Result, 0), ProviderErrors: []ProviderError{providerError}}, safeErr
 }
 
 func safeProviderFailure(provider Provider, err error) (ProviderError, error) {
