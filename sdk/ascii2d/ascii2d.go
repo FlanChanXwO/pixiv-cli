@@ -18,17 +18,18 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
+// MaxImageBytes bounds one ascii2d upload at 10 MiB.
+const MaxImageBytes = 10 * 1024 * 1024
+
 const (
 	origin          = "https://ascii2d.net"
 	homeURL         = origin + "/"
 	uploadPath      = "/search/file"
 	searchPath      = "/search/"
 	operationSearch = "ascii2d.Search"
-	// The service accepts at most 10 MB per JPEG, PNG, or WEBP upload.
-	maxImageBytes = 10 * 1024 * 1024
-	mediaJPEG     = "image/jpeg"
-	mediaPNG      = "image/png"
-	mediaWEBP     = "image/webp"
+	mediaJPEG       = "image/jpeg"
+	mediaPNG        = "image/png"
+	mediaWEBP       = "image/webp"
 )
 
 // Mode selects result pages from a single image upload.
@@ -46,7 +47,7 @@ const (
 // Options configures image bytes, matching, and independent native/solver routes.
 // A supplied HTTPClient requires an explicit Transport and remains caller-owned.
 type Options struct {
-	Image                []byte       `json:"-"` // JPEG, PNG, or WEBP, at most 10 MB; unchanged until Search returns.
+	Image                []byte       `json:"-"` // JPEG, PNG, or WEBP, up to MaxImageBytes; unchanged until Search returns.
 	Mode                 Mode         // Empty selects Color.
 	HTTPClient           *http.Client `json:"-"` // Nil uses Chrome TLS; injected transports own compression, and Jar is bypassed.
 	ProxyURL             string
@@ -91,7 +92,7 @@ func Search(ctx context.Context, options Options) (result Result, err error) {
 		return Result{}, failure(sdk.InvalidArgument, "invalid ascii2d mode", nil)
 	}
 	mediaType := http.DetectContentType(options.Image)
-	if len(options.Image) > maxImageBytes {
+	if len(options.Image) > MaxImageBytes {
 		return Result{}, failure(sdk.InvalidArgument, "ascii2d image exceeds the 10 MB limit", nil)
 	}
 	if mediaType != mediaJPEG && mediaType != mediaPNG && mediaType != mediaWEBP {

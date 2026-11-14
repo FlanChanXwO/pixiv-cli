@@ -200,6 +200,7 @@ flowchart LR
 
 - Service 返回领域结果；CLI/MCP 适配器在输出边界投影 canonical record。
 - 它把普通文件或 HTTP(S) 来源加载为一个私有快照、计算哈希，并在完成后删除。来源策略有意允许任意可读普通文件与私有、loopback、link-local URL；单 owner OAuth 下只授权可信 connector——路径指 MCP server 文件系统，URL 使用 server 网络。只有来源类型/哈希、安全的 provider 摘要/错误、领域证据与 canonical `artwork`/`user` record 可以发布。
+- 仅查询 ascii2d 时，在读入图片字节前按 `ascii2d.MaxImageBytes` 拒绝超限快照。SauceNAO 与 `all` 按 SDK 的 `Image []byte` 契约在内存中保留来源字节；SauceNAO 上传时把 multipart 封装与原始字节串联读取，避免再复制一份整图请求体。
 - 三个网络面：标准来源/SauceNAO client、专用 ascii2d 浏览器 client、FlareSolverr JSON 控制 client。服务代理只能覆盖 ascii2d；命令级覆盖同时作用于两个原生 client；否则标准 client 走全局路由。ascii2d UA 与 `Chrome_146` TLS profile 及匹配的 Chromium hints 配对（非 Chromium UA 省略 hints）。FlareSolverr 上游代理只用于浏览器 `sessions.create`；控制流量保持独立；图片始终使用原生 ascii2d multipart。ascii2d SDK 在进程内缓存通行状态，并负责每次查询的浏览器连接与 solver 会话清理；状态不持久化。旧 provider 子包已停止使用，留待 SDK 最终清理时删除。
 
 ### `internal/account`

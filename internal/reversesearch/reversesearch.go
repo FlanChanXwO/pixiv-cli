@@ -271,6 +271,17 @@ func (s *Service) Search(ctx context.Context, request Request) (response Respons
 		}
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return Response{Input: Input{Kind: snapshot.Kind(), SHA256: snapshot.SHA256()}}, err
+	}
+
+	// ascii2d 的既有上限在读入内存前执行；SauceNAO 与 all 的输入范围保持不变。
+	if (request.Provider == ProviderASCII2DColor || request.Provider == ProviderASCII2DBOVW) && snapshot.Size() > ascii2d.MaxImageBytes {
+		response, err = responseFromFailure(request.Provider, NewError(CodeInvalidSource, "ascii2d image exceeds the 10 MB limit", nil))
+		response.Input = Input{Kind: snapshot.Kind(), SHA256: snapshot.SHA256()}
+		return response, err
+	}
+
 	reader, err := snapshot.Open(ctx)
 	if err != nil {
 		return Response{}, err
