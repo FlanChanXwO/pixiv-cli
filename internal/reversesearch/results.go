@@ -106,7 +106,9 @@ func (s *Service) ascii2dFailure(err error, page bool) error {
 		if page {
 			message = "ascii2d returned a malformed result page"
 		}
-		if classified.Message == "ascii2d returned a malformed upload location" {
+		if classified.Message == "ascii2d returned a malformed upload location" ||
+			classified.Message == "ascii2d returned an unsafe upload location" ||
+			classified.Message == "ascii2d redirected outside its origin" {
 			message = classified.Message
 		}
 		return NewError(CodeMalformedUpstreamResponse, message, err)
