@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk/ascii2d"
 )
@@ -175,8 +176,10 @@ type Options struct {
 
 // Service 将同一份来源交给两个独立 SDK，并按 Pixiv 身份合并结果。
 type Service struct {
-	sources *Loader
-	options Options
+	sources  *Loader
+	options  Options
+	mu       sync.Mutex
+	closeErr error
 }
 
 // New 检查调用方传入的连接配置，不读取本地配置、账号或发起请求。
@@ -204,10 +207,22 @@ func New(options Options) (*Service, error) {
 	return &Service{sources: NewSourceLoader(options.HTTPClient), options: options}, nil
 }
 
-// Close 释放来源读取与 SauceNAO 的空闲连接；ascii2d SDK 自行结束每次查询的资源。
+// Close 释放标准 HTTP 连接，并报告查询期间 SDK 返回的资源关闭错误；重复调用返回相同错误。
 func (s *Service) Close() error {
 	s.options.HTTPClient.CloseIdleConnections()
-	return nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closeErr
+}
+
+func (s *Service) retainCloseError(err error) {
+	if err == nil {
+		return
+	}
+	// SDK 在查询返回前清理资源；错误仍由 CLI/MCP 既有的关闭阶段报告。
+	s.mu.Lock()
+	s.closeErr = errors.Join(s.closeErr, err)
+	s.mu.Unlock()
 }
 
 func (s *Service) preflight(ctx context.Context, provider Provider) error {

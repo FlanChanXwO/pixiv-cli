@@ -18,6 +18,7 @@ func (s *Service) search(ctx context.Context, image []byte, provider Provider, p
 		return s.searchAll(ctx, image, pixivOnly)
 	}
 	outcome := s.searchSingle(ctx, provider, image)
+	s.retainCloseError(outcome.closeErr)
 	if cancellation := cancellationError(ctx, errors.Join(outcome.err, outcome.closeErr)); cancellation != nil {
 		return Response{}, cancellation
 	}
@@ -27,9 +28,9 @@ func (s *Service) search(ctx context.Context, image []byte, provider Provider, p
 			Providers:      []ProviderSummary{{Name: provider, Status: ProviderStatusError}},
 			Results:        make([]Result, 0),
 			ProviderErrors: []ProviderError{providerError},
-		}, errors.Join(safeErr, outcome.closeErr)
+		}, safeErr
 	}
-	return responseFromProvider(provider, outcome.response, pixivOnly), outcome.closeErr
+	return responseFromProvider(provider, outcome.response, pixivOnly), nil
 }
 
 type providerOutcome struct {
@@ -53,6 +54,9 @@ func (s *Service) searchAll(ctx context.Context, image []byte, pixivOnly bool) (
 	}()
 	branches.Wait()
 
+	for _, outcome := range outcomes {
+		s.retainCloseError(outcome.closeErr)
+	}
 	for _, outcome := range outcomes {
 		if cancellation := cancellationError(ctx, errors.Join(outcome.err, outcome.closeErr)); cancellation != nil {
 			return Response{}, cancellation
@@ -82,10 +86,9 @@ func responseFromOutcomes(outcomes [len(aggregateProviderOrder)]providerOutcome,
 	}
 	canonical := make(map[pixivRefKey]int)
 	successes := 0
-	var failures, closeErrors []error
+	var failures []error
 	for index, outcome := range outcomes {
 		provider := aggregateProviderOrder[index]
-		closeErrors = append(closeErrors, outcome.closeErr)
 		if outcome.err != nil {
 			failures = append(failures, outcome.err)
 			providerError, _ := safeProviderFailure(provider, outcome.err)
@@ -100,10 +103,10 @@ func responseFromOutcomes(outcomes [len(aggregateProviderOrder)]providerOutcome,
 		appendProviderMatches(&response.Results, canonical, provider, outcome.response.Matches, pixivOnly)
 	}
 	if successes == 0 {
-		return response, errors.Join(NewError(CodeAllProvidersFailed, "all reverse search providers failed", errors.Join(failures...)), errors.Join(closeErrors...))
+		return response, NewError(CodeAllProvidersFailed, "all reverse search providers failed", errors.Join(failures...))
 	}
 	response.Partial = successes != len(outcomes)
-	return response, errors.Join(closeErrors...)
+	return response, nil
 }
 
 func (s *Service) searchSingle(ctx context.Context, provider Provider, image []byte) providerOutcome {
