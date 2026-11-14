@@ -93,7 +93,7 @@ func (c *Client) runSolve(ctx context.Context, call *solveCall, target string) {
 	if err == nil {
 		slog.DebugContext(ctx, "Cloudflare clearance acquired")
 	} else if ctx.Err() == nil {
-		slog.WarnContext(ctx, "Cloudflare solver failed", logReason, sdk.ReasonOf(err))
+		slog.DebugContext(ctx, "Cloudflare solver failed", logReason, sdk.ReasonOf(err))
 	}
 	c.mu.Lock()
 	if c.closed {

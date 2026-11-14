@@ -4,112 +4,73 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/ascii2d"
 )
 
 var aggregateProviderOrder = [...]Provider{ProviderSauceNAO, ProviderASCII2DColor, ProviderASCII2DBOVW}
 
-// Aggregator 在同一快照上执行 provider 并构造稳定领域 envelope。
-type Aggregator struct {
-	sauceNAO ProviderClient
-	ascii2d  ASCII2DClient
-}
-
-// NewAggregator 组合 SauceNAO 与 ascii2d 端口；Close 按相反顺序释放两者。
-func NewAggregator(sauceNAO ProviderClient, ascii2d ASCII2DClient) *Aggregator {
-	return &Aggregator{sauceNAO: sauceNAO, ascii2d: ascii2d}
-}
-
-// Close 以与 provider 构造相反的顺序释放长期存活的 provider 资源。
-func (a *Aggregator) Close() error {
-	return errors.Join(a.ascii2d.Close(), a.sauceNAO.Close())
-}
-
-func (a *Aggregator) preflight(ctx context.Context, provider Provider) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	switch provider {
-	case ProviderSauceNAO:
-		return a.sauceNAO.Preflight(ctx)
-	case ProviderASCII2DColor, ProviderASCII2DBOVW:
-		return nil
-	case ProviderAll:
-		// all 必须允许单个 provider 的 preflight 失败转为 partial；具体错误在
-		// search 中按固定 provider 顺序进入 envelope。
-		return nil
-	default:
-		return NewError(CodeInvalidRequest, "reverse search provider is invalid", nil)
-	}
-}
-
-func (a *Aggregator) search(ctx context.Context, snapshot *Snapshot, provider Provider, pixivOnly bool) (Response, error) {
+func (s *Service) search(ctx context.Context, image []byte, provider Provider, pixivOnly bool) (Response, error) {
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
 	if provider == ProviderAll {
-		return a.searchAll(ctx, snapshot, pixivOnly)
+		return s.searchAll(ctx, image, pixivOnly)
 	}
-	providerResponse, err := a.searchSingle(ctx, provider, snapshot)
-	if err != nil {
-		if cancellation := cancellationError(ctx, err); cancellation != nil {
-			return Response{}, cancellation
-		}
-		providerError, safeErr := safeProviderFailure(provider, err)
-		return Response{
-			Providers:      []ProviderSummary{{Name: provider, Status: ProviderStatusError}},
-			Results:        make([]Result, 0),
-			ProviderErrors: []ProviderError{providerError},
-		}, safeErr
+	outcome := s.searchSingle(ctx, provider, image)
+	s.retainCloseError(outcome.closeErr)
+	if cancellation := cancellationError(ctx, errors.Join(outcome.err, outcome.closeErr)); cancellation != nil {
+		return Response{}, cancellation
 	}
-	return responseFromProvider(provider, providerResponse, pixivOnly), nil
+	if outcome.err != nil {
+		return responseFromFailure(provider, outcome.err)
+	}
+	return responseFromProvider(provider, outcome.response, pixivOnly), nil
 }
 
 type providerOutcome struct {
 	response ProviderResponse
 	err      error
+	closeErr error
 }
 
-func (a *Aggregator) searchAll(ctx context.Context, snapshot *Snapshot, pixivOnly bool) (Response, error) {
+func (s *Service) searchAll(ctx context.Context, image []byte, pixivOnly bool) (Response, error) {
 	var outcomes [len(aggregateProviderOrder)]providerOutcome
 	var branches sync.WaitGroup
+	// 两个服务并行；等待两边结束后再合并，避免取消时留下上传任务。
 	branches.Add(2)
 	go func() {
 		defer branches.Done()
-		if err := a.sauceNAO.Preflight(ctx); err != nil {
-			outcomes[0].err = err
-			return
-		}
-		outcomes[0].response, outcomes[0].err = a.sauceNAO.Search(ctx, snapshot)
+		outcomes[0] = s.searchSauceNAO(ctx, image)
 	}()
 	go func() {
 		defer branches.Done()
-		a.searchAllASCII2D(ctx, snapshot, &outcomes)
+		outcomes[1].closeErr = s.searchAllASCII2D(ctx, image, &outcomes)
 	}()
 	branches.Wait()
 
 	for _, outcome := range outcomes {
-		if cancellation := cancellationError(ctx, outcome.err); cancellation != nil {
+		s.retainCloseError(outcome.closeErr)
+	}
+	for _, outcome := range outcomes {
+		if cancellation := cancellationError(ctx, errors.Join(outcome.err, outcome.closeErr)); cancellation != nil {
 			return Response{}, cancellation
 		}
 	}
 	return responseFromOutcomes(outcomes, pixivOnly)
 }
 
-func (a *Aggregator) searchAllASCII2D(ctx context.Context, snapshot *Snapshot, outcomes *[len(aggregateProviderOrder)]providerOutcome) {
-	session, err := a.ascii2d.Upload(ctx, snapshot)
-	if err != nil {
-		outcomes[1].err, outcomes[2].err = err, err
-		return
+func (s *Service) searchAllASCII2D(ctx context.Context, image []byte, outcomes *[len(aggregateProviderOrder)]providerOutcome) error {
+	result, err := ascii2d.Search(ctx, s.ascii2dOptions(image, ascii2d.Both))
+	if result.Color == nil {
+		outcomes[1].err = s.ascii2dFailure(err, false)
+		outcomes[2].err = outcomes[1].err
+		return s.ascii2dCloseFailure(err)
 	}
-	var searches sync.WaitGroup
-	for index := 1; index < len(outcomes); index++ {
-		searches.Add(1)
-		go func(index int) {
-			defer searches.Done()
-			outcomes[index].response, outcomes[index].err = session.Search(ctx, aggregateProviderOrder[index])
-		}(index)
-	}
-	searches.Wait()
+	outcomes[1].response, outcomes[1].err = s.ascii2dPage(result.Color)
+	outcomes[2].response, outcomes[2].err = s.ascii2dPage(result.BOVW)
+	// 清理失败独立返回，已经成功的页面仍进入结果与摘要。
+	return s.ascii2dCloseFailure(err)
 }
 
 func responseFromOutcomes(outcomes [len(aggregateProviderOrder)]providerOutcome, pixivOnly bool) (Response, error) {
@@ -143,19 +104,30 @@ func responseFromOutcomes(outcomes [len(aggregateProviderOrder)]providerOutcome,
 	return response, nil
 }
 
-func (a *Aggregator) searchSingle(ctx context.Context, provider Provider, snapshot *Snapshot) (ProviderResponse, error) {
-	switch provider {
-	case ProviderSauceNAO:
-		return a.sauceNAO.Search(ctx, snapshot)
-	case ProviderASCII2DColor, ProviderASCII2DBOVW:
-		session, err := a.ascii2d.Upload(ctx, snapshot)
-		if err != nil {
-			return ProviderResponse{}, err
-		}
-		return session.Search(ctx, provider)
-	default:
-		return ProviderResponse{}, NewError(CodeInvalidRequest, "reverse search provider is invalid", nil)
+func (s *Service) searchSingle(ctx context.Context, provider Provider, image []byte) providerOutcome {
+	if provider == ProviderSauceNAO {
+		return s.searchSauceNAO(ctx, image)
 	}
+	mode := ascii2d.Color
+	if provider == ProviderASCII2DBOVW {
+		mode = ascii2d.BOVW
+	}
+	result, err := ascii2d.Search(ctx, s.ascii2dOptions(image, mode))
+	page := result.Color
+	if mode == ascii2d.BOVW {
+		page = result.BOVW
+	}
+	if page == nil {
+		return providerOutcome{err: s.ascii2dFailure(err, false), closeErr: s.ascii2dCloseFailure(err)}
+	}
+	response, pageErr := s.ascii2dPage(page)
+	return providerOutcome{response: response, err: pageErr, closeErr: s.ascii2dCloseFailure(err)}
+}
+
+func responseFromFailure(provider Provider, err error) (Response, error) {
+	providerError, safeErr := safeProviderFailure(provider, err)
+	return Response{Providers: []ProviderSummary{{Name: provider, Status: ProviderStatusError}},
+		Results: make([]Result, 0), ProviderErrors: []ProviderError{providerError}}, safeErr
 }
 
 func safeProviderFailure(provider Provider, err error) (ProviderError, error) {
@@ -190,5 +162,3 @@ func responseFromProvider(provider Provider, providerResponse ProviderResponse, 
 	appendProviderMatches(&response.Results, make(map[pixivRefKey]int), provider, providerResponse.Matches, pixivOnly)
 	return response
 }
-
-var _ Closer = (*Aggregator)(nil)

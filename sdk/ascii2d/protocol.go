@@ -102,10 +102,16 @@ func (s *searchSession) request(ctx context.Context, method, path string, body i
 			err = requestError.Err
 		}
 		reason := sdk.UpstreamUnavailable
-		if errors.Is(err, errCrossOrigin) {
-			reason = sdk.MalformedUpstreamResponse
+		message := "ascii2d session request failed"
+		if method == http.MethodPost {
+			message = "ascii2d upload request failed"
+		} else if path != homePath {
+			message = "ascii2d result request failed"
 		}
-		return nil, nil, failure(reason, "ascii2d request failed", err)
+		if errors.Is(err, errCrossOrigin) {
+			reason, message = sdk.MalformedUpstreamResponse, "ascii2d redirected outside its origin"
+		}
+		return nil, nil, failure(reason, message, err)
 	}
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil {
@@ -222,7 +228,10 @@ func validateUploadLocation(raw string) (string, error) {
 		location.Scheme = endpoint.Scheme
 	}
 	resolved := endpoint.ResolveReference(location)
-	if !sameOrigin(endpoint, resolved) || resolved.RawQuery != "" || resolved.ForceQuery || resolved.Fragment != "" {
+	if !sameOrigin(endpoint, resolved) {
+		return "", failure(sdk.MalformedUpstreamResponse, "ascii2d returned an unsafe upload location", nil)
+	}
+	if resolved.RawQuery != "" || resolved.ForceQuery || resolved.Fragment != "" {
 		return malformed()
 	}
 	segments := strings.Split(strings.TrimPrefix(resolved.EscapedPath(), "/"), "/")

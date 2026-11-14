@@ -259,5 +259,3 @@ func validateWireResponse(response wireResponse) error {
 	}
 	return nil
 }
-
-var _ reversesearch.ProviderClient = (*Client)(nil)

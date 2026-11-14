@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -91,20 +92,24 @@ func Search(ctx context.Context, options Options) (result Result, err error) {
 			return Result{}, failure(sdk.InvalidArgument, "could not encode SauceNAO search", err)
 		}
 	}
-	part, err := writer.CreateFormFile(paramFile, imageFilename)
-	if err != nil {
+	if _, err := writer.CreateFormFile(paramFile, imageFilename); err != nil {
 		return Result{}, failure(sdk.InvalidArgument, "could not encode SauceNAO image", err)
 	}
-	if _, err := part.Write(options.Image); err != nil {
-		return Result{}, failure(sdk.InvalidArgument, "could not encode SauceNAO image", err)
-	}
+	imageOffset := body.Len()
 	if err := writer.Close(); err != nil {
 		return Result{}, failure(sdk.InvalidArgument, "could not finish SauceNAO search", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
+	envelope := body.Bytes()
+	// Replay reads the same caller-owned bytes without another image-sized multipart buffer.
+	openBody := func() io.ReadCloser {
+		return io.NopCloser(io.MultiReader(bytes.NewReader(envelope[:imageOffset]), bytes.NewReader(options.Image), bytes.NewReader(envelope[imageOffset:])))
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, openBody())
 	if err != nil {
 		return Result{}, failure(sdk.InvalidArgument, "could not create SauceNAO request", err)
 	}
+	request.ContentLength = int64(len(envelope)) + int64(len(options.Image))
+	request.GetBody = func() (io.ReadCloser, error) { return openBody(), nil }
 	request.Header.Set(headerContentType, writer.FormDataContentType())
 	// 2. Keep the API key's multipart body on the service origin during redirects.
 	client := http.DefaultClient

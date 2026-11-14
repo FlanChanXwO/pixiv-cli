@@ -13,7 +13,8 @@ flowchart LR
     CLI --> SHARED["internal<br/>cross-subsystem mechanisms"]
     MCP --> SHARED
     CLI --> STATE["config / storage<br/>config and local state"]
-    CLI -.->|"composition root only"| RSA["reversesearch/assembly"]
+    CLI -.->|"composition root only"| RSA["internal/reversesearch"]
+    RSA --> RSSDK["sdk/saucenao · sdk/ascii2d"]
 
     subgraph boundary["non-crossable boundary"]
         RULE["CLI / MCP never reach protocol adapters directly<br/>shared mechanisms carry no product protocol semantics"]
@@ -75,7 +76,7 @@ CLI composition root. `internal/cli` is one `root.go` plus command directories; 
 
 | File | Owns |
 | --- | --- |
-| `root.go` | `Run`, the Cobra command tree, global flags, requirement-driven startup hooks, exit-code mapping, stderr logger startup, broken-pipe policy, production wiring, and reverse-search ports; the only file importing `internal/reversesearch/assembly` |
+| `root.go` | `Run`, the Cobra command tree, global flags, requirement-driven startup hooks, exit-code mapping, stderr logger startup, broken-pipe policy, production wiring, and reverse-search ports; binds reverse-search configuration and HTTP connections |
 
 Responsibilities: Cobra tree/help/flags; text/JSON output; `auth import` input adapter (positional = opaque token; no arg: TTY hidden input, non-TTY first non-whitespace byte picks token vs strict bundle; restore via pipe/redirect, no `--file`); `auth export` secret-output adapter (no `--output`: raw token + newline, or `--all` bundle; `--output`: private file + secret-free summary); `--page`/`--limit` parsing (logical plan in `internal/pagination`); loopback OAuth, browser, TTY for `auth login`; `pixiv mcp` dispatch; root `--version` and `pixiv update` (removed `version` subcommand → unknown-command during parsing); read-only automatic update notice on stderr.
 
@@ -159,7 +160,7 @@ New SDK events use the current slog default handler, including protocol events t
 - Read sessions share valid in-memory access credentials and one invalidation generation across legacy and new SDK clients. Constructing the other client preserves the verified account identity without another OAuth rotation; every content request still checks the saved revision. The legacy token constructor accepts that caller-verified identity for this transition.
 - `Store.OpenSDKClient` supplies new `sdk/pixiv` clients; `OpenAccountClient` retains legacy clients. The account-bound `CredentialStore.Load` reads the latest saved revision and pins the account creation time; `CompareAndSwap` compares both before saving, returning `false, nil` on a revision conflict. OAuth runs outside storage locks; the SDK reloads after a conflict and propagates save failures before content access. `Client.Credentials(ctx)` prepares credentials through the same flow without fetching content.
 - `session.PixivOptions` supplies matching connection settings for both client generations. `Local.ExecuteSDK` shares the existing pool and gate and provides the selected UID separately: `Client.UserID()` may still be zero before credential loading. Resolve an omitted target inside each attempt; MCP fetch callbacks use `SDKUserID`. Stdio `ResolveSDKAccount` preserves the original request for pool scheduling; HTTP uses the persisted `ResolveAccount` snapshot. Bound SDK objects remain inside the operation.
-- S11 migrates auth, whoami, artwork/user detail, user (including delegated user search), follow and bookmark CLI paths and the corresponding account/artwork/user/bookmark/related MCP handlers, including novel branches and aggregates inside those handlers. S12 migrates the independent novel, comment, text-search, ranking, recommendation, series, timeline and MyPixiv entry points. CLI downloads expand sources through `internal/pixiv/saving` and save pages with `sdk/download`; MCP downloads and media also use the new SDK; FANBOX and reverse search retain their separate transition paths. The full SDK reference rewrite remains with S16; current APIs are documented in the [SDK package GoDoc](../../../sdk/pixiv/pixiv.go).
+- S11 migrates auth, whoami, artwork/user detail, user (including delegated user search), follow and bookmark CLI paths and the corresponding account/artwork/user/bookmark/related MCP handlers, including novel branches and aggregates inside those handlers. S12 migrates the independent novel, comment, text-search, ranking, recommendation, series, timeline and MyPixiv entry points. CLI downloads expand sources through `internal/pixiv/saving` and save pages with `sdk/download`; MCP downloads and media also use the new SDK; FANBOX retains its separate transition path; reverse search uses the independent `sdk/saucenao` and `sdk/ascii2d` packages. The full SDK reference rewrite remains with S16; current APIs are documented in the [SDK package GoDoc](../../../sdk/pixiv/pixiv.go).
 - `Request.Selection` uses `SelectionFixed` with a positive UID or `SelectionPool`. Fixed reads/writes keep that identity; safe uncommitted reads may replay through the pool. The caller reads `enabled`/`strategy` from `internal/config`; `account` imports no config package and resolves no CLI default. With the pool disabled, session resolves the configured default or the first stored account.
 - CLI/MCP use owner-local ports and MCP runtime `SDKPorts`; filtering, records, schemas and output rendering stay in their adapters. SDK packages keep local account storage outside their dependency graph.
 
@@ -186,24 +187,21 @@ Legacy product clients hold one protocol client; new Pixiv requests construct th
 
 ### Reverse-search service exception
 
-The only product capability crossing the normal SDK boundary.
-
-Only `internal/cli/root.go` imports `internal/reversesearch/assembly`. CLI command owners and MCP owners may use the top-level `internal/reversesearch` contract; they must not import `assembly` or provider packages such as `saucenao` and `ascii2d`.
+`internal/cli/root.go` reads configuration and creates the standard HTTP connection. CLI and MCP owners use the top-level `internal/reversesearch` service for source loading and Pixiv result merging; provider requests go through `sdk/saucenao` and `sdk/ascii2d`.
 
 ```mermaid
 flowchart LR
-    COMP["internal/cli/root.go"] --> ASM["reversesearch/assembly<br/>(HTTP client, proxy, SauceNAO key<br/>once per command/session)"]
-    ASM --> SN["reversesearch/saucenao"]
-    ASM --> A2["reversesearch/ascii2d"]
-    CMDS["internal/cli/*"] --> TOP["internal/reversesearch<br/>(contract + Service)"]
+    COMP["internal/cli/root.go<br/>(configuration and HTTP client)"] --> TOP["internal/reversesearch<br/>(source loading + result merging)"]
+    CMDS["internal/cli/*"] --> TOP
     MCPS["internal/mcpserver/*"] --> TOP
-    CMDS -.->|forbidden| SN
-    MCPS -.->|forbidden| ASM
+    TOP --> SN["sdk/saucenao"]
+    TOP --> A2["sdk/ascii2d"]
 ```
 
 - The Service returns domain results; CLI/MCP adapters project canonical records at their output boundary.
 - It loads a regular file or HTTP(S) source into one private snapshot, hashes it and removes it afterwards. Deliberate source policy permits any readable regular file and private, loopback or link-local URLs; under single-owner OAuth authorize only trusted connectors — paths are the MCP server's filesystem and URLs use the server network. Only source kind/hash, safe provider summaries/errors, domain evidence and canonical `artwork`/`user` records are publishable.
-- Three network surfaces: standard source/SauceNAO client, dedicated ascii2d browser client, FlareSolverr JSON control client. The service proxy may override only ascii2d; a command-level override applies to both native clients; the standard client otherwise follows the global route. The ascii2d UA pairs with the `Chrome_146` TLS profile and matching Chromium hints (omitted for non-Chromium UAs). FlareSolverr's upstream proxy is used only by browser `sessions.create`; control traffic stays independent; the image always uses native ascii2d multipart. Solver state is process/client-scoped, not persisted.
+- Before loading image bytes, ascii2d-only searches reject snapshots larger than `ascii2d.MaxImageBytes`. SauceNAO and `all` retain the source bytes in memory under the SDK’s `Image []byte` contract. SauceNAO streams multipart framing around those bytes without another image-sized request buffer.
+- Three network surfaces: standard source/SauceNAO client, dedicated ascii2d browser client, FlareSolverr JSON control client. The service proxy may override only ascii2d; a command-level override applies to both native clients; the standard client otherwise follows the global route. The ascii2d UA pairs with the `Chrome_146` TLS profile and matching Chromium hints (omitted for non-Chromium UAs). FlareSolverr's upstream proxy is used only by browser `sessions.create`; control traffic stays independent; the image always uses native ascii2d multipart. The ascii2d SDK caches clearance in process and owns each search’s browser transport and solver-session cleanup; no solver state is persisted. The legacy provider subpackages remain unused until the final SDK cleanup.
 
 ### `internal/account`
 
