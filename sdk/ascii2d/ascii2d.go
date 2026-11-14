@@ -91,7 +91,10 @@ func Search(ctx context.Context, options Options) (result Result, err error) {
 		return Result{}, failure(sdk.InvalidArgument, "invalid ascii2d mode", nil)
 	}
 	mediaType := http.DetectContentType(options.Image)
-	if len(options.Image) > maxImageBytes || (mediaType != mediaJPEG && mediaType != mediaPNG && mediaType != mediaWEBP) {
+	if len(options.Image) > maxImageBytes {
+		return Result{}, failure(sdk.InvalidArgument, "ascii2d image exceeds the 10 MB limit", nil)
+	}
+	if mediaType != mediaJPEG && mediaType != mediaPNG && mediaType != mediaWEBP {
 		return Result{}, failure(sdk.InvalidArgument, "ascii2d requires a JPEG, PNG, or WEBP image up to 10 MB", nil)
 	}
 	if options.UserAgent == "" {

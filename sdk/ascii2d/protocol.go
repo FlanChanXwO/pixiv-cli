@@ -105,7 +105,13 @@ func (s *searchSession) request(ctx context.Context, method, path string, body i
 		if errors.Is(err, errCrossOrigin) {
 			reason = sdk.MalformedUpstreamResponse
 		}
-		return nil, nil, failure(reason, "ascii2d request failed", err)
+		message := "ascii2d session request failed"
+		if method == http.MethodPost {
+			message = "ascii2d upload request failed"
+		} else if path != homePath {
+			message = "ascii2d result request failed"
+		}
+		return nil, nil, failure(reason, message, err)
 	}
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil {
