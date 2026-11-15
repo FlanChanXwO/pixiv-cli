@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
@@ -53,12 +52,12 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			result, err := client.FollowingNovels(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			items := make([]legacysdk.Novel, len(result.Items))
+			items := make([]record.Novel, len(result.Items))
 			for i, item := range result.Items {
 				items[i], err = record.NovelOutput(item)
 				if err != nil {
@@ -82,12 +81,12 @@ func (t pixivTools) timelineFollowingHandler(ctx context.Context, in timelineFol
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		result, err := client.FollowingArtworks(ctx, pixiv.FollowingOptions{Restrict: pixiv.Restrict(in.Restrict), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -139,12 +138,12 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 		if err != nil {
 			return outputs.Error(err)
 		}
-		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			result, err := client.LatestNovels(ctx, pixiv.LatestNovelsOptions{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			items := make([]legacysdk.Novel, len(result.Items))
+			items := make([]record.Novel, len(result.Items))
 			for i, item := range result.Items {
 				items[i], err = record.NovelOutput(item)
 				if err != nil {
@@ -171,12 +170,12 @@ func (t pixivTools) timelineLatestHandler(ctx context.Context, in timelineLatest
 	if err != nil {
 		return outputs.Error(err)
 	}
-	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		result, err := client.LatestArtworks(ctx, pixiv.LatestArtworksOptions{Category: pixiv.ArtworkCategory(in.ContentType), Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {

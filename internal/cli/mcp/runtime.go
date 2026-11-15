@@ -10,7 +10,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -74,9 +73,6 @@ func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) 
 		ExecuteSDK: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
 			return r.Local.ExecuteSDK(ctx, pixivRequest(account), attempt)
 		},
-		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *legacysdk.Client) (bool, error)) error {
-			return r.Local.Execute(ctx, pixivRequest(account), attempt)
-		},
 		ReverseSearch: r.ReverseSearch,
 	}
 	fanboxPorts := fanboxmcpserver.SDKPorts{
@@ -103,7 +99,7 @@ func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts 
 	sdkPorts.ResolveSDKAccount = func(_ context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		return account, nil
 	}
-	// 旧领域仍只解析一次身份，媒体的多个阶段固定使用同一账号。
+	// 媒体的多个阶段只解析一次身份，固定使用同一账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		err := r.Local.ExecuteSDK(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
 			account.UserID = userID
@@ -151,9 +147,6 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	}
 	defer func() { result = errors.Join(result, media.CloseAnimations()) }()
 	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, selection, login
-	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
-		return r.Local.Read(ctx, pixivRequest(account), callback)
-	}
 	sdkPorts.OpenSDKLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
 		snapshot, err := r.Local.SDKReadSession(ctx, pixivRequest(account))
 		return snapshot.Lease, err

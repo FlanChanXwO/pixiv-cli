@@ -6,11 +6,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
 
 // PrintUserPreviews 转义用户名，每个用户预览输出一行。
-func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
+func PrintUserPreviews(out io.Writer, users []record.UserPreview) error {
 	for _, item := range users {
 		if _, err := fmt.Fprintln(out, Identity(item.User.Name, item.User.ID)); err != nil {
 			return err
@@ -20,8 +20,8 @@ func PrintUserPreviews(out io.Writer, users []pixiv.UserPreview) error {
 }
 
 // PrintUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
-// “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 原样输出 SDK DTO。
-func PrintUserDetail(out io.Writer, result pixiv.UserDetail) error {
+// “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 输出记录快照。
+func PrintUserDetail(out io.Writer, result record.UserDetail) error {
 	identity := Identity(result.User.Name, result.User.ID)
 	if result.User.Account != "" {
 		identity = fmt.Sprintf("%s (@%s, %d)", SafeLine(result.User.Name), SafeLine(result.User.Account), result.User.ID)

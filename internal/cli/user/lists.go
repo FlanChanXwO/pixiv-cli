@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -13,23 +12,23 @@ import (
 )
 
 func (a commandRunner) runUsers(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, format record.Format, fetch func(context.Context, int64, *pixiv.Client, sdk.Cursor) (sdk.Page[*pixiv.User], error)) error {
-	return runList(a, ctx, request, plan, format, fetch, record.UserPreviewOutput, record.List[legacysdk.UserPreview]{
-		Print:       func(items []legacysdk.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
-		RecordValue: func(item legacysdk.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
+	return runList(a, ctx, request, plan, format, fetch, record.UserPreviewOutput, record.List[record.UserPreview]{
+		Print:       func(items []record.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
+		RecordValue: func(item record.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
 	})
 }
 
 func (a commandRunner) runArtworkList(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, format record.Format, fetch func(context.Context, int64, *pixiv.Client, sdk.Cursor) (sdk.Page[*pixiv.Artwork], error)) error {
-	return runList(a, ctx, request, plan, format, fetch, func(item *pixiv.Artwork) (legacysdk.Artwork, error) { return record.ArtworkOutput(item, false) }, record.List[legacysdk.Artwork]{
-		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
-		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+	return runList(a, ctx, request, plan, format, fetch, func(item *pixiv.Artwork) (record.Artwork, error) { return record.ArtworkOutput(item, false) }, record.List[record.Artwork]{
+		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 	})
 }
 
 func (a commandRunner) runNovelList(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, format record.Format, fetch func(context.Context, int64, *pixiv.Client, sdk.Cursor) (sdk.Page[*pixiv.Novel], error)) error {
-	return runList(a, ctx, request, plan, format, fetch, record.NovelOutput, record.List[legacysdk.Novel]{
-		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
-		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+	return runList(a, ctx, request, plan, format, fetch, record.NovelOutput, record.List[record.Novel]{
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
 	})
 }
 

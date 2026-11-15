@@ -8,7 +8,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -18,18 +17,8 @@ import (
 // PixivSettings 保存一次请求翻译得到的 SDK 选项与只读会话缓存键。
 // 代理覆盖、节奏与语言都由组合根解析，本包不读取配置或 flag。
 type PixivSettings struct {
-	Options    legacysdk.Options
 	SDKOptions pixiv.Options
 	Network    string
-}
-
-// ReadSnapshot 是一次只读 SDK 会话及其失效通知。
-type ReadSnapshot struct {
-	Lease       *lifecycle.Lease[*legacysdk.Client]
-	Version     string
-	Expires     time.Time
-	Invalidated <-chan struct{}
-	Invalidate  func(error)
 }
 
 // LocalAccount 是本地账号的公开摘要；凭据始终留在账号存储中。
@@ -184,74 +173,6 @@ func (l *Local) ports(ctx context.Context) (*pixivPorts, error) {
 	l.closeState.Add(reads.Close)
 	l.pixiv = &pixivPorts{store: store, reads: reads, facade: NewPixiv(service, gate, l.loadPoolConfig)}
 	return l.pixiv, nil
-}
-
-// Execute 在账号池的重放边界内使用一次 Pixiv client。
-func (l *Local) Execute(ctx context.Context, request ProxyRequest, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
-	ports, err := l.ports(ctx)
-	if err != nil {
-		return err
-	}
-	settings, err := l.loadPixiv(request)
-	if err != nil {
-		return err
-	}
-	return ports.facade.Use(ctx, Request{Selection: selectionFor(request.UserID), Options: settings.Options}, callback)
-}
-
-// OpenLease 打开一个显式账号的 Pixiv client 租约。
-func (l *Local) OpenLease(ctx context.Context, request ProxyRequest) (*lifecycle.Lease[*legacysdk.Client], error) {
-	ports, err := l.ports(ctx)
-	if err != nil {
-		return nil, err
-	}
-	settings, err := l.loadPixiv(request)
-	if err != nil {
-		return nil, err
-	}
-	return ports.facade.Open(ctx, Request{Selection: selectionFor(request.UserID), Options: settings.Options})
-}
-
-// Read 复用账号读取快照执行一次读取，并在失败时丢弃对应 generation。
-func (l *Local) Read(ctx context.Context, request ProxyRequest, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
-	snapshot, err := l.ReadSession(ctx, request)
-	if err != nil {
-		return err
-	}
-	defer snapshot.Lease.Close()
-	_, err = callback(ctx, snapshot.Lease.Value())
-	snapshot.Invalidate(err)
-	return err
-}
-
-// ReadSession 复用账号读取快照，并按请求选择代理覆写与请求节奏。
-func (l *Local) ReadSession(ctx context.Context, request ProxyRequest) (ReadSnapshot, error) {
-	ports, err := l.ports(ctx)
-	if err != nil {
-		return ReadSnapshot{}, err
-	}
-	settings, err := l.loadPixiv(request)
-	if err != nil {
-		return ReadSnapshot{}, err
-	}
-	userID := request.UserID
-	if userID == 0 {
-		userID, err = ports.facade.accounts.selectedUserID(ctx)
-		if err != nil {
-			return ReadSnapshot{}, err
-		}
-	}
-	snapshot, err := ports.reads.Open(ctx, userID, settings.Network, settings.Options)
-	if err != nil {
-		return ReadSnapshot{}, err
-	}
-	return ReadSnapshot{
-		Lease:       lifecycle.NewLease(snapshot.Client, nil),
-		Version:     fmt.Sprint(snapshot.Version),
-		Expires:     snapshot.Expires,
-		Invalidated: snapshot.Invalidated,
-		Invalidate:  func(err error) { ports.reads.Invalidate(userID, snapshot.Version, err) },
-	}, nil
 }
 
 // LocalAccounts 读取本地账号摘要与显式默认账号，不读取凭据。

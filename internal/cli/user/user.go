@@ -11,7 +11,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -334,7 +333,7 @@ func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environmen
 	if err != nil {
 		return err
 	}
-	var result legacysdk.UserDetail
+	var result record.UserDetail
 	err = a.executeSDK(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		profile, err := client.User(userID).Profile(ctx)
 		if err != nil {

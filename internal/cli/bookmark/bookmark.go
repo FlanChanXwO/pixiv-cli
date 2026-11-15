@@ -13,7 +13,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -66,8 +65,8 @@ type commandRunner struct {
 
 type bookmarkListItem struct {
 	kind    string
-	artwork legacysdk.Artwork
-	novel   legacysdk.Novel
+	artwork record.Artwork
+	novel   record.Novel
 }
 
 type bookmarkTagItem struct {
@@ -200,9 +199,9 @@ func (a commandRunner) newDetail() *cobra.Command {
 			}
 			if jsonOut {
 				if result.kind == string(target.NamespaceNovel) {
-					return a.env.PrintJSON(legacysdk.NovelBookmarkDetail{Restrict: legacysdk.Restrict(result.novel.Restrict), Tags: result.novel.Tags})
+					return a.env.PrintJSON(record.BookmarkDetail{Restrict: result.novel.Restrict, Tags: result.novel.Tags})
 				}
-				return a.env.PrintJSON(legacysdk.ArtworkBookmarkDetail{Restrict: legacysdk.Restrict(result.artwork.Restrict), Tags: result.artwork.Tags})
+				return a.env.PrintJSON(record.BookmarkDetail{Restrict: result.artwork.Restrict, Tags: result.artwork.Tags})
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
@@ -265,12 +264,12 @@ func bookmarkDetailContract() target.Contract {
 		Operation:   "bookmark detail",
 		DefaultType: string(target.NamespaceArtwork),
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: legacysdk.ReferenceKindArtwork},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: legacysdk.ReferenceKindNovel},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: target.ReferenceKindArtwork},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: target.ReferenceKindNovel},
 		},
-		URLKinds: map[legacysdk.ReferenceKind]target.URLTypeRelation{
-			legacysdk.ReferenceKindArtwork: target.URLTypeMustMatchResult,
-			legacysdk.ReferenceKindNovel:   target.URLTypeMustMatchResult,
+		URLKinds: map[target.ReferenceKind]target.URLTypeRelation{
+			target.ReferenceKindArtwork: target.URLTypeMustMatchResult,
+			target.ReferenceKindNovel:   target.URLTypeMustMatchResult,
 		},
 	}
 }
@@ -407,13 +406,13 @@ func bookmarkContract(operation string) target.Contract {
 		Operation:   operation,
 		DefaultType: string(target.NamespaceArtwork),
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: legacysdk.ReferenceKindUser},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: legacysdk.ReferenceKindUser},
-			{Name: "all", All: true, BareReferenceKind: legacysdk.ReferenceKindUser},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: target.ReferenceKindUser},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: target.ReferenceKindUser},
+			{Name: "all", All: true, BareReferenceKind: target.ReferenceKindUser},
 		},
-		URLKinds: map[legacysdk.ReferenceKind]target.URLTypeRelation{
-			legacysdk.ReferenceKindUser:          target.URLTypeIndependent,
-			legacysdk.ReferenceKindUserBookmarks: target.URLTypeMustMatchResult,
+		URLKinds: map[target.ReferenceKind]target.URLTypeRelation{
+			target.ReferenceKindUser:          target.URLTypeIndependent,
+			target.ReferenceKindUserBookmarks: target.URLTypeMustMatchResult,
 		},
 	}
 }

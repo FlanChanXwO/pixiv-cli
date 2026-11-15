@@ -3,8 +3,7 @@ package schemas
 import (
 	"reflect"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -107,7 +106,7 @@ func BookmarkTagsAllOutputSchema() *jsonschema.Schema {
 					Properties: map[string]*jsonschema.Schema{
 						"name":         {Type: "string"},
 						"count":        {Type: "integer"},
-						"content_type": {Type: "string", Enum: []any{string(pixiv.ReferenceKindArtwork), string(pixiv.ReferenceKindNovel)}},
+						"content_type": {Type: "string", Enum: []any{"artwork", "novel"}},
 					},
 					Required:             []string{"name", "count", "content_type"},
 					AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
@@ -216,9 +215,9 @@ func RecommendedOutputSchema() *jsonschema.Schema {
 func TrendingTagsOutputSchema() *jsonschema.Schema {
 	// Resource 由 MarshalJSON 决定 JSON 形态，只输出 opaque ref 与 requires_credentials，
 	// 零值序列化成 null。schema 推导看不到方法实现，所以这里显式声明。
-	tagSchema, err := jsonschema.For[pixiv.TrendingTag](&jsonschema.ForOptions{
+	tagSchema, err := jsonschema.For[record.TrendingTag](&jsonschema.ForOptions{
 		TypeSchemas: map[reflect.Type]*jsonschema.Schema{
-			reflect.TypeFor[sdk.Resource](): {
+			reflect.TypeFor[record.Resource](): {
 				Types:                []string{"null", "object"},
 				Properties:           map[string]*jsonschema.Schema{"ref": {Type: "string"}, "requires_credentials": {Type: "boolean"}},
 				Required:             []string{"ref"},

@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,9 +18,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,29 +137,22 @@ func startRotationProcess(t *testing.T, directory string, index int) (*exec.Cmd,
 }
 
 func TestSchedulerFreezeCoversRetryAfter(t *testing.T) {
-	for _, generation := range []string{"legacy", "current"} {
-		t.Run(generation, func(t *testing.T) {
-			store, err := account.Open(t.Context(), t.TempDir())
-			require.NoError(t, err)
-			require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
-			now := time.Unix(100, 500000000).UTC()
-			deadline := now.Add(11 * time.Second)
-			scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
-			err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
-				now = now.Add(10 * time.Second)
-				if generation == "legacy" {
-					return legacysdk.NewError("pixiv", "read", legacysdk.RateLimited, legacysdk.WithRetry(legacysdk.RetryAdvice{Safe: true, HasAfter: true, After: deadline}))
-				}
-				wait := time.Second
-				return &sdk.Error{Operation: "read", Reason: sdk.RateLimited, RetryAfter: &wait}
-			})
-			require.Error(t, err)
-			saved, err := store.GetPixiv(t.Context(), 42)
-			require.NoError(t, err)
-			require.NotNil(t, saved.Pool.FrozenUntil)
-			require.Equal(t, deadline.Truncate(time.Second).Add(time.Second), *saved.Pool.FrozenUntil, "freeze must cover the response wait without adding request duration twice")
-		})
-	}
+	store, err := account.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("synthetic"))}))
+	now := time.Unix(100, 500000000).UTC()
+	deadline := now.Add(11 * time.Second)
+	scheduler := account.Scheduler{State: store, Strategy: account.StrategyRoundRobin, Now: func() time.Time { return now }}
+	err = scheduler.Run(t.Context(), account.Selection{Mode: account.SelectionPool}, func(context.Context, int64, *lifecycle.Attempt) error {
+		now = now.Add(10 * time.Second)
+		wait := time.Second
+		return &sdk.Error{Operation: "read", Reason: sdk.RateLimited, RetryAfter: &wait}
+	})
+	require.Error(t, err)
+	saved, err := store.GetPixiv(t.Context(), 42)
+	require.NoError(t, err)
+	require.NotNil(t, saved.Pool.FrozenUntil)
+	require.Equal(t, deadline.Truncate(time.Second).Add(time.Second), *saved.Pool.FrozenUntil, "freeze must cover the response wait without adding request duration twice")
 }
 
 func TestRecreatedAccountRejectsPreviousRotation(t *testing.T) {
@@ -172,4 +168,27 @@ func TestRecreatedAccountRejectsPreviousRotation(t *testing.T) {
 	saved, err := store.GetPixiv(t.Context(), 42)
 	require.NoError(t, err)
 	require.Equal(t, "replacement", saved.Credential.Value())
+}
+
+func TestPersistenceFailureDoesNotReturnClient(t *testing.T) {
+	directory := t.TempDir()
+	store, err := account.Open(t.Context(), directory)
+	require.NoError(t, err)
+	require.NoError(t, store.SavePixivCredential(t.Context(), account.Pixiv{UserID: 42, Credential: credential.New([]byte("initial"))}))
+	api := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := filepath.Join(directory, "auth.json")
+		if err := os.Rename(path, path+".saved"); err != nil {
+			t.Error(err)
+		}
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Error(err)
+		}
+		fmt.Fprint(w, `{"access_token":"access","refresh_token":"uncommitted","expires_in":3600,"user":{"id":"42","name":"artist"}}`)
+	}))
+	defer api.Close()
+	reads := account.NewReadSessions(store, account.NewGate())
+	defer reads.Close()
+	snapshot, err := reads.OpenSDK(t.Context(), 42, "network", pixiv.Options{HTTPClient: oauthClient(api)})
+	require.Error(t, err)
+	require.Nil(t, snapshot.SDKClient)
 }

@@ -4,52 +4,44 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
-
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 )
 
-// RecordFromArtwork 将 public artwork 映射为管道记录。
-func RecordFromArtwork(artwork pixiv.Artwork) (Record, error) {
+// RecordFromArtwork 将作品输出快照映射为管道记录。
+func RecordFromArtwork(artwork Artwork) (Record, error) {
 	url := "https://www.pixiv.net/artworks/" + strconv.FormatInt(artwork.ID, 10)
 	return recordFromValue(artwork, artwork.ID, "artwork", url)
 }
 
-// RecordFromNovel 将 public novel 映射为管道记录。
-func RecordFromNovel(novel pixiv.Novel) (Record, error) {
+// RecordFromNovel 将小说输出快照映射为管道记录。
+func RecordFromNovel(novel Novel) (Record, error) {
 	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(novel.ID, 10)
 	return recordFromValue(novel, novel.ID, "novel", url)
 }
 
-// RecordFromNovelContent 将结构化小说正文映射为可继续管道处理的小说记录。
-func RecordFromNovelContent(content pixiv.NovelContent) (Record, error) {
-	url := "https://www.pixiv.net/novel/show.php?id=" + strconv.FormatInt(content.NovelID, 10)
-	return recordFromValue(content, content.NovelID, "novel", url)
-}
-
 // RecordFromUserPreview 将用户预览映射为管道记录。
-func RecordFromUserPreview(preview pixiv.UserPreview) (Record, error) {
+func RecordFromUserPreview(preview UserPreview) (Record, error) {
 	id := strconv.FormatInt(preview.User.ID, 10)
 	return recordFromValue(preview, preview.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
 
 // RecordFromUserDetail 将用户详情映射为管道记录。
-func RecordFromUserDetail(detail pixiv.UserDetail) (Record, error) {
+func RecordFromUserDetail(detail UserDetail) (Record, error) {
 	id := strconv.FormatInt(detail.User.ID, 10)
 	return recordFromValue(detail, detail.User.ID, "user", "https://www.pixiv.net/users/"+id)
 }
 
 // FromArtworks 批量构造 artwork records。
-func FromArtworks(items []pixiv.Artwork) ([]Record, error) {
+func FromArtworks(items []Artwork) ([]Record, error) {
 	return recordsFrom(items, RecordFromArtwork)
 }
 
 // FromNovels 批量构造 novel records。
-func FromNovels(items []pixiv.Novel) ([]Record, error) {
+func FromNovels(items []Novel) ([]Record, error) {
 	return recordsFrom(items, RecordFromNovel)
 }
 
 // FromUserPreviews 批量构造 user records。
-func FromUserPreviews(items []pixiv.UserPreview) ([]Record, error) {
+func FromUserPreviews(items []UserPreview) ([]Record, error) {
 	return recordsFrom(items, RecordFromUserPreview)
 }
 

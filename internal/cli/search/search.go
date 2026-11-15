@@ -15,7 +15,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
@@ -250,12 +249,12 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		AspectRatio: params.aspectRatio, Resolution: params.resolution,
 		Tool: opts.drawTool, BookmarkMin: params.bookmarkMin, BookmarkMax: params.bookmarkMax,
 	}
-	var include func(legacysdk.Artwork) (bool, error)
+	var include func(record.Artwork) (bool, error)
 	if artworkFilter.Rating != searchfilter.RatingAll {
 		// rating 只有 DTO 中的 x_restrict 可验证；它必须绑定到 SDK cursor，
 		// 但不能伪造为 upstream 的 rating/x_restrict 请求参数。
 		query.CursorContext = artworkFilter.CursorContext()
-		include = func(item legacysdk.Artwork) (bool, error) {
+		include = func(item record.Artwork) (bool, error) {
 			return artworkFilter.Matches(item.XRestrict, string(item.ContentType)), nil
 		}
 	}
@@ -276,14 +275,14 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		// AI-only 在 SDK 内本地过滤，不能把过滤后的逻辑位置当作原始 offset。
 		params.plan, query.Offset = params.plan.PushDownSkip()
 	}
-	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		request := query
 		request.Cursor = cursor
 		result, err := client.SearchArtworks(ctx, params.word, request)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -292,9 +291,9 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.List[legacysdk.Artwork]{
-		Print:       func(items []legacysdk.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) },
-		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.List[record.Artwork]{
+		Print:       func(items []record.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) },
+		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 	}, fetch)
 }
 
@@ -312,7 +311,7 @@ type bookmarkFilterJSON struct {
 }
 
 // runBookmarkFiltered 在 SDK attempt 内执行收藏数与 rating 筛选，再统一输出逻辑页。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.ArtworkSearchOptions, strategy searchfilter.BookmarkStrategy, include func(legacysdk.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.ArtworkSearchOptions, strategy searchfilter.BookmarkStrategy, include func(record.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return a.executeSDK(ctx, account, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) { return attempt(ctx, client) })
 	}, artworkSearchRequest{
@@ -328,7 +327,7 @@ func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.P
 	return a.writeArtworkResults(jsonOut, ndjson, plan, outcome.Page, outcome.Filter)
 }
 
-func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[legacysdk.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
+func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination.PagePlan, page sdk.Page[record.Artwork], bookmark *searchfilter.BookmarkOutcome) error {
 	items := page.Items
 	if ndjson {
 		encoder := json.NewEncoder(a.env.Out)
@@ -375,19 +374,19 @@ func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.O
 	if err != nil {
 		return err
 	}
-	var tags []legacysdk.TrendingTag
+	var tags []record.TrendingTag
 	err = a.executeSDK(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		result, err := client.TrendingArtworkTags(ctx)
 		if err != nil {
 			return false, err
 		}
-		tags = make([]legacysdk.TrendingTag, len(result))
+		tags = make([]record.TrendingTag, len(result))
 		for i, tag := range result {
 			artwork, err := record.ArtworkOutput(tag.Artwork, false)
 			if err != nil {
 				return false, err
 			}
-			tags[i] = legacysdk.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork}
+			tags[i] = record.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork}
 		}
 		return false, nil
 	})

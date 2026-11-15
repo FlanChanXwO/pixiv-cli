@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
 // PaginationOut 在共享逻辑页字段之外增加 Pixiv 查询绑定的批次 cursor。
@@ -19,36 +18,6 @@ type PaginationOut struct {
 // ListPagination 生成不含 next_cursor 的分页；cursor 由调用方确认续读可用后再填。
 func ListPagination(plan pagination.PagePlan, limit *int, returned int, more bool) PaginationOut {
 	return PaginationOut{PaginationOut: pagination.ListPagination(plan, limit, returned, more)}
-}
-
-// CollectWith 通过共享 traversal 引擎执行逻辑分页，只在批次内做 MCP 实体筛选。
-// MCP 不自行打开 client、重放账号或解释 opaque cursor。
-func CollectWith[T any](ctx context.Context, app *App, plan pagination.PagePlan, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
-	return collectWithFrom(ctx, app, plan, sdk.Cursor{}, fetch)
-}
-
-// CollectBatchWith 从已有 cursor 读取一个完整过滤批次，不应用逻辑 limit，所以返回的
-// SDK cursor 之前不会遗留未交付的条目。
-func CollectBatchWith[T any](ctx context.Context, app *App, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, sdk.Cursor, error) {
-	var next sdk.Cursor
-	items, _, err := collectWithFrom(ctx, app, pagination.PagePlan{Page: 1, OneBatch: true}, initial, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]T, sdk.Cursor, error) {
-		batch, continuation, err := fetch(ctx, client, cursor)
-		if err == nil && !continuation.IsZero() && continuation == cursor {
-			return nil, sdk.Cursor{}, errors.New("batch continuation cursor repeated")
-		}
-		next = continuation
-		return batch, continuation, err
-	})
-	if err != nil {
-		return nil, sdk.Cursor{}, err
-	}
-	return items, next, nil
-}
-
-// collectWithFrom 统一逻辑分页与批次续读的 execution-attempt 生命周期；SDK cursor
-// 的解析与对外 envelope 由具体工具负责。
-func collectWithFrom[T any](ctx context.Context, app *App, plan pagination.PagePlan, initial sdk.Cursor, fetch func(context.Context, *pixiv.Client, sdk.Cursor) ([]T, sdk.Cursor, error)) ([]T, bool, error) {
-	return collectFrom(ctx, app.ReadExecutor(), plan, initial, fetch)
 }
 
 func collectFrom[E any, T any, C pagination.Cursor](ctx context.Context, baseExecute pagination.Execute[E], plan pagination.PagePlan, initial C, fetch func(context.Context, E, C) ([]T, C, error)) ([]T, bool, error) {
@@ -74,8 +43,7 @@ func collectFrom[E any, T any, C pagination.Cursor](ctx context.Context, baseExe
 		return filters.FilterPage(ctx, items, seen), next, nil
 	})
 	if errors.Is(err, pagination.ErrExecuteNotConfigured) {
-		err = sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
+		err = &sdk.Error{Operation: "PagedRead", Reason: sdk.LocalStateError, Message: "sdk pooled operation is not configured"}
 	}
 	return result.Items, result.HasMore, err
 }

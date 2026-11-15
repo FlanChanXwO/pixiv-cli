@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"net/url"
 	"strings"
-
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 )
 
 // FanboxResourceRole 标识公开资源引用的媒体角色。
@@ -31,13 +29,13 @@ type FanboxResourceIdentity struct {
 }
 
 // FanboxImageResource 将已验证的图片地址投影为稳定资源身份；URL 不进入输出。
-func FanboxImageResource(role FanboxResourceRole, creator, post, asset, locator string) legacysdk.Resource {
+func FanboxImageResource(role FanboxResourceRole, creator, post, asset, locator string) Resource {
 	if locator == "" {
-		return legacysdk.Resource{}
+		return Resource{}
 	}
 	// 此身份只含字符串；固定产品名与非空 JSON 满足通用引用编码器的前置条件。
 	payload, _ := json.Marshal(FanboxResourceIdentity{role, creator, post, asset})
-	ref, _ := legacysdk.NewResourceRef("fanbox", payload)
+	ref, _ := newResourceRef("fanbox", payload)
 	parsed, _ := url.Parse(locator)
-	return legacysdk.Resource{Ref: ref, RequiresCredentials: strings.EqualFold(parsed.Hostname(), "downloads.fanbox.cc")}
+	return Resource{Ref: ref, RequiresCredentials: strings.EqualFold(parsed.Hostname(), "downloads.fanbox.cc")}
 }

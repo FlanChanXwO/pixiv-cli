@@ -5,11 +5,12 @@ import (
 	"io"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PrintArtworks 每项输出一行标题、作者和收藏数，并转义上游文本。
-func PrintArtworks(out io.Writer, items []pixiv.Artwork) error {
+func PrintArtworks(out io.Writer, items []record.Artwork) error {
 	for _, item := range items {
 		if err := printArtworkLine(out, item); err != nil {
 			return err
@@ -19,7 +20,7 @@ func PrintArtworks(out io.Writer, items []pixiv.Artwork) error {
 }
 
 // PrintArtworksRanked 在每项前加排名；offset 是本批在整体结果中的起点。
-func PrintArtworksRanked(out io.Writer, items []pixiv.Artwork, offset int) error {
+func PrintArtworksRanked(out io.Writer, items []record.Artwork, offset int) error {
 	for index, item := range items {
 		if _, err := fmt.Fprintf(out, "#%d ", offset+index+1); err != nil {
 			return err
@@ -31,13 +32,13 @@ func PrintArtworksRanked(out io.Writer, items []pixiv.Artwork, offset int) error
 	return nil
 }
 
-func printArtworkLine(out io.Writer, item pixiv.Artwork) error {
+func printArtworkLine(out io.Writer, item record.Artwork) error {
 	_, err := fmt.Fprintf(out, "%d  %s — %s  (%d bookmarks)\n", item.ID, SafeLine(item.Title), SafeLine(item.User.Name), item.TotalBookmarks)
 	return err
 }
 
 // PrintArtworkDetail 输出作品详情卡片；上游文本转义为单行。
-func PrintArtworkDetail(out io.Writer, item pixiv.Artwork) error {
+func PrintArtworkDetail(out io.Writer, item record.Artwork) error {
 	tags := make([]string, 0, len(item.Tags))
 	for _, tag := range item.Tags {
 		tags = append(tags, SafeLine(tag.Name))

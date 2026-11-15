@@ -9,7 +9,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -88,9 +87,9 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				var err error
 				switch item.kind {
 				case string(target.NamespaceArtwork):
-					err = display.PrintArtworks(&staged, []legacysdk.Artwork{item.artwork})
+					err = display.PrintArtworks(&staged, []record.Artwork{item.artwork})
 				case string(target.NamespaceNovel):
-					err = display.PrintNovels(&staged, []legacysdk.Novel{item.novel})
+					err = display.PrintNovels(&staged, []record.Novel{item.novel})
 				}
 				if err != nil {
 					return false, err
@@ -199,7 +198,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		userID := requestedUserID
 		if userID == 0 {
 			userID = selected
@@ -208,7 +207,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -217,9 +216,9 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
-		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
+		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
 	}, fetch)
 }
 
@@ -250,7 +249,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, selected int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		userID := requestedUserID
 		if userID == 0 {
 			userID = selected
@@ -259,7 +258,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Novel, len(result.Items))
+		items := make([]record.Novel, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.NovelOutput(item)
 			if err != nil {
@@ -268,8 +267,8 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
-		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
-		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Novel]{
+		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
 	}, fetch)
 }

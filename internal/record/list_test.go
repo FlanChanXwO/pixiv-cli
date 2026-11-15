@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	legacypixiv "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -84,7 +83,7 @@ func spoolNames(t *testing.T, dir string) []string {
 }
 
 func TestArtworkRecordPreservesContentType(t *testing.T) {
-	value, err := record.RecordFromArtwork(legacypixiv.Artwork{ID: 101, ContentType: "future_art"})
+	value, err := record.RecordFromArtwork(record.Artwork{ID: 101, ContentType: "future_art"})
 	if err != nil {
 		t.Fatal(err)
 	}

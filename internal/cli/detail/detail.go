@@ -15,11 +15,10 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
@@ -92,7 +91,7 @@ func validateContentEntity(content bool, entity string) error {
 	if content {
 		// App v1 的正文 endpoint 已被拒绝；在构造 request 和打开账号池前返回
 		// 兼容错误，保证 text/record 两条输入链路都不会触达已排除的 endpoint。
-		return sdk.NewError("pixiv", "NovelContent", sdk.ContentUnavailable, sdk.WithDetail("novel content is unsupported by the v1 App API"))
+		return &sdk.Error{Operation: "pixiv:NovelContent", Reason: sdk.ContentUnavailable, Message: "novel content is unsupported by the v1 App API"}
 	}
 	return nil
 }
@@ -190,7 +189,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 	}
 	switch entity {
 	case string(target.NamespaceArtwork):
-		var result legacysdk.Artwork
+		var result record.Artwork
 		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 			artwork, err := client.Artwork(id).Get(ctx)
 			if err != nil {
@@ -214,7 +213,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		}
 		return display.PrintArtworkDetail(a.env.Out, result)
 	case string(target.NamespaceNovel):
-		var result legacysdk.Novel
+		var result record.Novel
 		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 			novel, err := client.Novel(id).Get(ctx)
 			if err != nil {
@@ -238,7 +237,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		}
 		return display.PrintNovelDetail(a.env.Out, result)
 	case string(target.NamespaceUser):
-		var result legacysdk.UserDetail
+		var result record.UserDetail
 		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 			profile, err := client.User(id).Profile(ctx)
 			if err != nil {
@@ -322,7 +321,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 	}
 	ref, err := (&pixiv.Client{}).ParseURL(value)
 	if err != nil {
-		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail("argument must be an entity ID or a supported Pixiv URL"))
+		return 0, &sdk.Error{Operation: "detail", Reason: sdk.InvalidArgument, Message: "argument must be an entity ID or a supported Pixiv URL"}
 	}
 	var id int64
 	switch value := ref.(type) {
@@ -340,7 +339,7 @@ func parseEntityIDOrURL(arg, entity string) (int64, error) {
 		}
 	}
 	if id == 0 {
-		return 0, sdk.NewError("pixiv", "detail", sdk.InvalidArgument, sdk.WithDetail(fmt.Sprintf("URL does not name a supported Pixiv %s", entity)))
+		return 0, &sdk.Error{Operation: "detail", Reason: sdk.InvalidArgument, Message: fmt.Sprintf("URL does not name a supported Pixiv %s", entity)}
 	}
 	return id, nil
 }

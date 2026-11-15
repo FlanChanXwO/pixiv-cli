@@ -10,7 +10,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -340,7 +340,7 @@ func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
 		}
 		return userID, nil
 	}
-	return 0, sdk.NewError("pixiv", "auth", sdk.Unauthorized, sdk.WithDetail("no pixiv account is authenticated"))
+	return 0, &sdk.Error{Operation: "auth", Reason: sdk.Unauthorized, Message: "no pixiv account is authenticated"}
 }
 
 // defaultUserID 优先返回显式配置，否则按文件顺序选择首个账号。

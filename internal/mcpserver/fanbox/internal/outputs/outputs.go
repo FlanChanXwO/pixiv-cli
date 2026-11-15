@@ -8,7 +8,6 @@ package outputs
 import (
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -34,7 +33,7 @@ type ResourceOut struct {
 }
 
 // ResourceOutFrom 只保留资源的 opaque ref 与凭据要求；零值 ref 返回 nil。
-func ResourceOutFrom(res sdk.Resource) *ResourceOut {
+func ResourceOutFrom(res record.Resource) *ResourceOut {
 	if res.Ref.IsZero() {
 		return nil
 	}

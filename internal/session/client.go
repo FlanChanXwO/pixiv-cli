@@ -11,7 +11,7 @@ import (
 // SDKExecutor 为 CLI 交出新 SDK client 与本次操作选中的账号。
 type SDKExecutor func(context.Context, ProxyRequest, func(context.Context, int64, *pixiv.Client) (bool, error)) error
 
-// ExecuteSDK 在新旧 client 共用的账号池与轮换门内执行一次新 SDK 操作。
+// ExecuteSDK 在账号池与轮换门内执行一次 SDK 操作。
 // 回调接收已选 UID；返回 committed=true 后，账号池停止重放。
 func (l *Local) ExecuteSDK(ctx context.Context, request ProxyRequest, callback func(context.Context, int64, *pixiv.Client) (bool, error)) error {
 	ports, err := l.ports(ctx)

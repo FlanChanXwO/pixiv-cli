@@ -1,15 +1,12 @@
 package record
 
-import (
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
-	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
-)
+import "github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 
 // UserDetailOutput 保留用户详情的 profile/profile_publicity/workspace 布局。
-func UserDetailOutput(p *pixiv.Profile) (legacysdk.UserDetail, error) {
+func UserDetailOutput(p *pixiv.Profile) (UserDetail, error) {
 	u, err := UserOutput(p.User)
-	return legacysdk.UserDetail{User: u,
-		Profile: legacysdk.UserProfile{
+	return UserDetail{User: u,
+		Profile: UserProfile{
 			Webpage: p.Webpage, Gender: p.Gender, BirthDay: p.BirthDay, BirthYear: p.BirthYear,
 			Region: p.Region, CountryCode: p.CountryCode, Job: p.Job,
 			TotalFollowUsers: p.TotalFollowUsers, TotalMyPixivUsers: p.TotalMyPixivUsers,
@@ -19,15 +16,15 @@ func UserDetailOutput(p *pixiv.Profile) (legacysdk.UserDetail, error) {
 			TwitterURL: p.TwitterURL, PawooURL: p.PawooURL,
 			IsPremium: p.IsPremium, IsUsingCustomProfileImage: p.IsUsingCustomProfileImage,
 		},
-		ProfilePublicity: legacysdk.UserProfilePublicity(p.Publicity),
-		Workspace:        legacysdk.UserWorkspace(p.Workspace),
+		ProfilePublicity: UserProfilePublicity(p.Publicity),
+		Workspace:        UserWorkspace(p.Workspace),
 	}, err
 }
 
 // UserPreviewOutput 为用户列表保留空的 illusts/novels 数组。
-func UserPreviewOutput(u *pixiv.User) (legacysdk.UserPreview, error) {
+func UserPreviewOutput(u *pixiv.User) (UserPreview, error) {
 	value, err := UserOutput(u)
-	return legacysdk.UserPreview{User: value, Illusts: []legacysdk.Artwork{}, Novels: []legacysdk.Novel{}}, err
+	return UserPreview{User: value, Illusts: []Artwork{}, Novels: []Novel{}}, err
 }
 
 // RecordFromSDKProfile 把新 SDK 的完整用户详情投影为管道记录。

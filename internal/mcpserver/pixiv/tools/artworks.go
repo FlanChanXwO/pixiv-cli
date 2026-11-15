@@ -4,17 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"slices"
 	"strings"
 	"time"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/filters"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -574,7 +573,7 @@ func (t pixivTools) trendingTagsIllustHandler(ctx context.Context, _ trendingTag
 	if err != nil {
 		return outputs.TrendingTagsError(err)
 	}
-	out := outputs.TrendingTags{Tags: []legacysdk.TrendingTag{}}
+	out := outputs.TrendingTags{Tags: []record.TrendingTag{}}
 	if len(result) == 0 {
 		out.Text = "No trending tags found."
 		return outputs.TrendingTagsResult(out, false), out, nil
@@ -585,7 +584,7 @@ func (t pixivTools) trendingTagsIllustHandler(ctx context.Context, _ trendingTag
 		if err != nil {
 			return outputs.TrendingTagsError(err)
 		}
-		out.Tags = append(out.Tags, legacysdk.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork})
+		out.Tags = append(out.Tags, record.TrendingTag{Tag: tag.Tag.Name, TranslatedName: tag.Tag.TranslatedName, Artwork: artwork})
 		translated := tag.Tag.TranslatedName
 		if translated == "" {
 			translated = "none"

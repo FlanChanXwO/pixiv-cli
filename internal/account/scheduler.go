@@ -61,7 +61,7 @@ func (s Scheduler) Run(ctx context.Context, selection Selection, attempt func(co
 			return err
 		}
 		failedAt := s.Now()
-		retryAfter, ok := retryAfterFor(attemptErr, failedAt)
+		retryAfter, ok := retryAfterFor(attemptErr)
 		if !ok {
 			return attemptErr
 		}

@@ -279,7 +279,7 @@ func (a *app) pixivSettings(request session.ProxyRequest) (session.PixivSettings
 	if err != nil {
 		return session.PixivSettings{}, err
 	}
-	return session.PixivOptions(runtime, request, a.logger())
+	return session.PixivOptions(runtime, request)
 }
 
 func (a *app) fanboxOptions() (fanbox.Options, error) {

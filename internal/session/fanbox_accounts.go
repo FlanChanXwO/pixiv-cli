@@ -8,7 +8,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
@@ -172,7 +173,7 @@ func (s *FanboxAccounts) selectedUserID(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	if len(accounts) == 0 {
-		return 0, sdk.NewError("fanbox", "", sdk.Unauthorized, sdk.WithDetail("no fanbox account is authenticated"))
+		return 0, report.Wrap(&sdk.Error{Reason: sdk.Unauthorized, Message: "no fanbox account is authenticated"}, "")
 	}
 	return accounts[0].UserID, nil
 }

@@ -2,24 +2,20 @@ package session
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // PixivOptions 把运行时配置与请求的代理覆盖翻译成公开 SDK 选项，并返回只读会话
 // 缓存键：同一次读取只在代理、节奏与语言都相同时复用 client。
-func PixivOptions(runtime config.Config, request ProxyRequest, logger *slog.Logger) (PixivSettings, error) {
-	options := legacysdk.Options{Logger: logger}
+func PixivOptions(runtime config.Config, request ProxyRequest) (PixivSettings, error) {
 	interval, err := time.ParseDuration(runtime.Network.RequestInterval)
 	if err != nil {
 		return PixivSettings{}, err
 	}
-	options.Pacing.MinInterval = interval
 	proxy := runtime.Network.HTTPSProxy
 	if runtime.Pixiv.Network.ProxyURL != nil {
 		proxy = *runtime.Pixiv.Network.ProxyURL
@@ -31,11 +27,9 @@ func PixivOptions(runtime config.Config, request ProxyRequest, logger *slog.Logg
 	if err != nil {
 		return PixivSettings{}, err
 	}
-	options.HTTPClient = httpClient
 	return PixivSettings{
-		Options:    options,
 		SDKOptions: pixiv.Options{HTTPClient: httpClient, RequestInterval: interval},
-		Network:    fmt.Sprintf("%q/%d/%q", proxy, options.Pacing.MinInterval, options.AcceptLanguage),
+		Network:    fmt.Sprintf("%q/%d/%q", proxy, interval, ""),
 	}, nil
 }
 

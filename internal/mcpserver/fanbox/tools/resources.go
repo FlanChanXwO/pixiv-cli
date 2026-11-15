@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/fanbox/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
@@ -57,21 +56,20 @@ type openResourceOut struct {
 
 func (t fanboxTools) openResourceHandler(ctx context.Context, input openResourceIn) (*mcp.CallToolResult, openResourceOut, error) {
 	out := openResourceOut{}
-	ref, err := legacysdk.ParseResourceRef(input.Ref)
+	ref, err := record.ParseResourceRef(input.Ref)
 	if err != nil {
 		out.Error = "invalid_ref"
 		return outputs.Result(true, out.Error), out, nil
 	}
-	product, err := legacysdk.ResourceRefProduct(ref)
-	if err != nil || product != "fanbox" {
+	if ref.Product() != "fanbox" {
 		out.Error = "invalid_ref"
 		return outputs.Result(true, out.Error), out, nil
 	}
-	method := legacysdk.ResourceMethod(strings.ToUpper(input.Method))
+	method := strings.ToUpper(input.Method)
 	if method == "" {
-		method = legacysdk.ResourceMethodGet
+		method = http.MethodGet
 	}
-	if method != legacysdk.ResourceMethodGet && method != legacysdk.ResourceMethodHead {
+	if method != http.MethodGet && method != http.MethodHead {
 		out.Error = "invalid_method"
 		return outputs.Result(true, out.Error), out, nil
 	}
@@ -88,7 +86,7 @@ func (t fanboxTools) openResourceHandler(ctx context.Context, input openResource
 		if response.StatusCode != http.StatusOK {
 			return errors.Join(&sdk.Error{Operation: "OpenResource", Reason: sdk.UpstreamError, HTTPStatus: response.StatusCode}, response.Body.Close())
 		}
-		if method == legacysdk.ResourceMethodHead {
+		if method == http.MethodHead {
 			out.Ref = ref.String()
 			return response.Body.Close()
 		}
@@ -163,11 +161,8 @@ func isAPNG(data []byte) bool {
 }
 
 // openResource 只解码稳定身份，再通过绑定的新 SDK 对象取得当前地址。
-func openResource(ctx context.Context, client *fanbox.Client, ref legacysdk.ResourceRef, method string) (*fanbox.MediaResponse, error) {
-	payload, err := legacysdk.ResourceRefPayload(ref)
-	if err != nil {
-		return nil, err
-	}
+func openResource(ctx context.Context, client *fanbox.Client, ref record.ResourceRef, method string) (*fanbox.MediaResponse, error) {
+	payload := ref.Payload()
 	var identity record.FanboxResourceIdentity
 	if json.Unmarshal(payload, &identity) != nil {
 		return nil, &sdk.Error{Reason: sdk.InvalidArgument, Operation: "OpenResource", Message: "invalid resource reference"}

@@ -6,7 +6,6 @@ import (
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -31,9 +30,9 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 		if _, err := io.WriteString(spool, `{"artworks":`); err != nil {
 			return false, err
 		}
-		if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[legacysdk.Artwork]{
-			RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+		if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[record.Artwork]{
+			RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 			return fetchRecommendedArtworks(client)(ctx, cursor)
 		}); err != nil {
 			return false, err
@@ -54,10 +53,10 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 			return false, err
 		}
 	}
-	if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[legacysdk.Novel]{
-		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(spool, items) },
-		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
-	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+	if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[record.Novel]{
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(spool, items) },
+		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
+	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		return fetchRecommendedNovels(client)(ctx, cursor)
 	}); err != nil {
 		return false, err
@@ -68,10 +67,10 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 			return false, err
 		}
 	}
-	if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[legacysdk.UserPreview]{
-		Print:       func(items []legacysdk.UserPreview, _ int) error { return display.PrintUserPreviews(spool, items) },
-		RecordValue: func(item legacysdk.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
-	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+	if err := record.RunSDKList(ctx, spool, io.Discard, execute, session.ProxyRequest{}, plan, format, record.List[record.UserPreview]{
+		Print:       func(items []record.UserPreview, _ int) error { return display.PrintUserPreviews(spool, items) },
+		RecordValue: func(item record.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
+	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.UserPreview, sdk.Cursor, error) {
 		return fetchRecommendedUsers(client)(ctx, cursor)
 	}); err != nil {
 		return false, err

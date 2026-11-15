@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
@@ -254,7 +253,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 		return result, out, nil
 	}
 	metadata := commentMetadata{}
-	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Comment, sdk.Cursor, error) {
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Comment, sdk.Cursor, error) {
 		var page pixiv.CommentPage
 		var err error
 		if in.Type == kindNovel {
@@ -269,7 +268,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 			metadata = commentMetadata{}
 		}
 		metadata.Set(page)
-		comments := make([]legacysdk.Comment, len(page.Page.Items))
+		comments := make([]record.Comment, len(page.Page.Items))
 		for i, comment := range page.Page.Items {
 			comments[i], err = record.CommentOutput(comment)
 			if err != nil {
@@ -283,7 +282,7 @@ func (t pixivTools) commentsHandler(ctx context.Context, in commentsIn) (*mcp.Ca
 		return result, out, nil
 	}
 	if items == nil {
-		items = []legacysdk.Comment{}
+		items = []record.Comment{}
 	}
 	out := outputs.Comments{Comments: items, Pagination: toolhost.ListPagination(plan, in.Limit, len(items), more), Total: metadata.Total, AccessControl: metadata.Access}
 	return outputs.CommentsResult(out, false, ""), out, nil

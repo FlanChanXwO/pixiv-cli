@@ -3,15 +3,14 @@ package record
 import (
 	"time"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
 type fanboxImageResource struct {
-	Resource legacysdk.Resource `json:"resource"`
-	Variant  string             `json:"variant"`
-	Width    int                `json:"width"`
-	Height   int                `json:"height"`
+	Resource Resource `json:"resource"`
+	Variant  string   `json:"variant"`
+	Width    int      `json:"width"`
+	Height   int      `json:"height"`
 }
 
 type fanboxCreatorSummary struct {
@@ -31,14 +30,14 @@ const (
 )
 
 type fanboxPostImageBlock struct {
-	Resource legacysdk.Resource `json:"resource"`
-	Caption  string             `json:"caption"`
+	Resource Resource `json:"resource"`
+	Caption  string   `json:"caption"`
 }
 
 type fanboxPostFileBlock struct {
-	Resource legacysdk.Resource `json:"resource"`
-	Name     string             `json:"name"`
-	Caption  string             `json:"caption"`
+	Resource Resource `json:"resource"`
+	Name     string   `json:"name"`
+	Caption  string   `json:"caption"`
 }
 
 type fanboxPostArticleBlock struct {
@@ -74,7 +73,7 @@ type FanboxAssetOut struct {
 	ID        string              `json:"id"`
 	Kind      string              `json:"kind"`
 	Name      string              `json:"name"`
-	Resource  legacysdk.Resource  `json:"resource"`
+	Resource  Resource            `json:"resource"`
 	Thumbnail fanboxImageResource `json:"thumbnail"`
 }
 

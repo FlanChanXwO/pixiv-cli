@@ -7,7 +7,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/session"
@@ -99,12 +98,12 @@ func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 			return err
 		}
 	}
-	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.UserPreview, sdk.Cursor, error) {
 		result, err := client.MyPixivUsers(ctx, pixiv.MyPixivOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.UserPreview, len(result.Items))
+		items := make([]record.UserPreview, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.UserPreviewOutput(item)
 			if err != nil {
@@ -113,9 +112,9 @@ func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[legacysdk.UserPreview]{
-		RecordValue: func(item legacysdk.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
-		Print:       func(items []legacysdk.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[record.UserPreview]{
+		RecordValue: func(item record.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
+		Print:       func(items []record.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
 	}, fetch)
 }
 
@@ -160,7 +159,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
 	if opts.contentType == string(target.NamespaceNovel) {
-		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			var result sdk.Page[*pixiv.Novel]
 			var err error
 			if len(args) == 0 {
@@ -171,7 +170,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			items := make([]legacysdk.Novel, len(result.Items))
+			items := make([]record.Novel, len(result.Items))
 			for i, item := range result.Items {
 				items[i], err = record.NovelOutput(item)
 				if err != nil {
@@ -180,12 +179,12 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 			}
 			return items, result.Cursor, nil
 		}
-		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Novel]{
-			RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
-			Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Novel]{
+			RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
+			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
 		}, fetch)
 	}
-	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		var result sdk.Page[*pixiv.Artwork]
 		var err error
 		if len(args) == 0 {
@@ -196,7 +195,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -205,8 +204,8 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
-		RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
+		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
 	}, fetch)
 }
