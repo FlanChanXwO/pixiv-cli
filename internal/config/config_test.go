@@ -67,3 +67,17 @@ func TestDefaultTemplate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, existing, body)
 }
+
+func TestTypeMismatchNamesKeyWithoutValue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store := config.Store{Files: secretfile.ConfigFiles{}}
+	path, err := store.Path()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = 987654321\n"), 0o600))
+	_, err = store.Current()
+	require.ErrorContains(t, err, `line 2, key "saucenao_api_key"`)
+	require.NotContains(t, err.Error(), "987654321")
+}

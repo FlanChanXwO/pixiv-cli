@@ -3,7 +3,9 @@ package config
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -64,7 +66,18 @@ func (s Store) load(c *Config) error {
 		return err
 	}
 	if err := toml.Unmarshal(body, c); err != nil {
-		return err
+		// go-toml 的类型错误只带 Go 字段名；补上行号与该行的键，用户才能定位要改的值。
+		// 只取等号左侧，避免把配置值（可能是 API key）写进错误。
+		var decodeErr *toml.DecodeError
+		if !errors.As(err, &decodeErr) {
+			return fmt.Errorf("config.toml: %w", err)
+		}
+		line, _ := decodeErr.Position()
+		lines := strings.Split(string(body), "\n")
+		if key, _, found := strings.Cut(lines[min(max(line, 1), len(lines))-1], "="); found {
+			return fmt.Errorf("config.toml line %d, key %q: %w", line, strings.TrimSpace(key), err)
+		}
+		return fmt.Errorf("config.toml line %d: %w", line, err)
 	}
 	applyEnvironment(c)
 	return nil
