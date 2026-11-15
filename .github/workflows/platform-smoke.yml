@@ -93,11 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          account_package=./internal/storage/database
-          if [ -d ./internal/account ]; then
-            account_package=./internal/account
-          fi
-          go test "$account_package" -run '^TestOpenOnWindowsAcceptsForwardSlashFileURI$' -count=1
+          go test ./internal/account -run '^TestOpenOnWindowsAcceptsForwardSlashFileURI$' -count=1
       - name: Build and package the platform binary
         shell: bash
         run: |

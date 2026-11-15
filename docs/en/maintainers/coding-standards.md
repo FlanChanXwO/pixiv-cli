@@ -54,7 +54,7 @@ List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after co
 
 | Scope of the declaration | Placement | Example |
 | --- | --- | --- |
-| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/artwork.go` (public artwork), `artwork_wire.go` (artwork response shape), `response.go` (shared response shapes), `sdk/sdk.go` (error classifications) |
+| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/artwork.go` (public artwork), `artwork_wire.go` (artwork response shape), `errors.go` (upstream error mapping), `sdk/sdk.go` (error classifications) |
 | Serves one behavior | Beside the function that uses it, above it | `internal/mcpserver/pixiv/tools/users.go`: `userArtworksIn`; `internal/record/list.go`: `List` |
 | Methods of a type (`String`, `Valid`, `MarshalJSON`, …) | Same file as the type | `sdk/pixiv/image.go`: `Image.UnmarshalJSON` |
 
