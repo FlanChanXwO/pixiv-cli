@@ -90,19 +90,22 @@ func TestGIFDelayAndDimensions(t *testing.T) {
 			t.Fatalf("invalid delay %d accepted", delay)
 		}
 	}
-	input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, image.NewNRGBA(image.Rect(0, 0, 65536, 1)))}}), Frames: []Frame{{File: "a.png", Delay: 80}}}
-	if err := encodeGIF(t.Context(), io.Discard, input); err == nil {
-		t.Fatal("oversized GIF accepted")
-	}
-	for _, edge := range []uint32{65535, 4, 1} {
-		input.MaxEdge = edge
+	for _, width := range []int{65536, 65535} {
+		input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, image.NewNRGBA(image.Rect(0, 0, width, 1)))}}), Frames: []Frame{{File: "a.png", Delay: 80}}}
 		var out bytes.Buffer
-		if err := encodeGIF(t.Context(), &out, input); err != nil {
+		err := encodeGIF(t.Context(), &out, input)
+		if width > math.MaxUint16 {
+			if err == nil {
+				t.Fatal("oversized GIF accepted")
+			}
+			continue
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 		decoded, err := gif.DecodeAll(bytes.NewReader(out.Bytes()))
-		if err != nil || decoded.Config.Width != int(edge) || decoded.Config.Height != 1 {
-			t.Fatalf("scaled width %d: %v", edge, err)
+		if err != nil || decoded.Config.Width != width || decoded.Config.Height != 1 {
+			t.Fatalf("width %d: %v", width, err)
 		}
 		for _, index := range decoded.Image[0].Pix {
 			if index != 0 {

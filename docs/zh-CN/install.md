@@ -59,7 +59,7 @@ flowchart LR
 sh scripts/build.sh
 ```
 
-使用 `go.mod` 中的 Go 版本，设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`）；不需要 Rust 工具链、native library 或 C linker。Windows 使用 Git Bash、MSYS2 或 WSL。编码、许可证与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
+使用 `go.mod` 中的 Go 版本，设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`）；不需要 Rust 工具链、native library 或 C linker。Windows 使用 Git Bash、MSYS2 或 WSL。编码与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
 
 ## Go 源码安装
 

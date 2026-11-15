@@ -2,7 +2,7 @@
 //
 // 编码器串行处理同一进程内的任务，并在发布前把输出写入临时文件。
 //
-// 包的组成：[NewEncoder] 返回 [Encoder]，[Input] 描述源 ZIP、帧延迟、缩放与输出
+// 包的组成：[NewEncoder] 返回 [Encoder]，[Input] 描述源 ZIP、帧延迟与输出
 // 选项，[Format] 选择 GIF 或 APNG；gif.go、apng.go 实现两种容器，frames.go 读取帧。
 package ugoira
 
@@ -47,14 +47,13 @@ type Frame struct {
 	Delay int    `json:"delay"`
 }
 
-// Input 描述一次编码任务；MaxEdge 为 0 时保持原尺寸。
+// Input 描述一次编码任务；输出保持源帧尺寸。
 type Input struct {
 	ZipPath    string
 	Frames     []Frame
 	WorkDir    string
 	OutputPath string
 	Format     Format
-	MaxEdge    uint32
 	// MaxOutputBytes 非 nil 时限制发布前的写入字节数。
 	MaxOutputBytes *uint64
 	// ReserveOutput 在每次同步写文件前申请共享容量；Encode 返回后不再持有该回调，
