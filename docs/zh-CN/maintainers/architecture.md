@@ -321,7 +321,7 @@ FANBOX 默认使用 Chrome 146 TLS 与 Firefox 148 UA。会话 Cookie 仅随经�
 
 ### `internal/media/ugoira`
 
-负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、缩放、GIF 量化/抖动、APNG 容器组装与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。JPEG/PNG 解码与 GIF/PNG 编码使用标准库；本包保留 RGB Wu 量化、Floyd–Steinberg 抖动、双线性缩放与 APNG 动画块。[开发流程](development.md#ugoira-go-encoder)说明缓冲区归属与帧预算。六目标执行证据来自平台 smoke worker，与运行时编码器分离。
+负责 `Format`、有序帧输入、`Encoder`、ZIP 校验/解码、GIF 量化/抖动、APNG 容器组装与原子发布。下载器消费 `Encoder` 契约，不得重复编码或发布。JPEG/PNG 解码与 GIF/PNG 编码使用标准库；本包保留 RGB Wu 量化、Floyd–Steinberg 抖动与 APNG 动画块。[开发流程](development.md#ugoira-go-encoder)说明缓冲区归属与帧预算。六目标执行证据来自平台 smoke worker，与运行时编码器分离。
 
 ## Release assets 与信任边界
 

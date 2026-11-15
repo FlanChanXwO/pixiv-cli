@@ -23,7 +23,7 @@ func TestDitherCancellationAndPaletteSize(t *testing.T) {
 	frame := image.NewNRGBA(image.Rect(0, 0, 7, 5))
 	palette := []rgb{{0, 0, 0}, {255, 255, 255}}
 	for _, checks := range []int{1, 3, 5, 7} {
-		ctx := &resizeCancelContext{Context: t.Context(), remaining: checks}
+		ctx := &countdownContext{Context: t.Context(), remaining: checks}
 		if got, err := quantizeFrame(ctx, frame, palette, true); got != nil || !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancel after %d checks: %v, %v", checks, got, err)
 		}
@@ -50,4 +50,18 @@ func TestFloydSteinbergDiffusesError(t *testing.T) {
 	if !bytes.Equal(got, []byte{1, 0, 1, 0}) {
 		t.Fatalf("diffusion indices: %v", got)
 	}
+}
+
+// countdownContext 在第 remaining 次 Err 检查时报告取消，避免依赖机器速度或 sleep。
+type countdownContext struct {
+	context.Context
+	remaining int
+}
+
+func (c *countdownContext) Err() error {
+	c.remaining--
+	if c.remaining <= 0 {
+		return context.Canceled
+	}
+	return c.Context.Err()
 }
