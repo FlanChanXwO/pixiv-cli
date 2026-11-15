@@ -34,6 +34,10 @@ flowchart TB
 - `NewHTTPHandler` (parent package) assembles stateless Streamable HTTP and OAuth routing; `RunHTTP` owns listener and lifecycle; `RunStdio` owns the local session and waits for cleanup.
 - Products keep their own SDK ports, account selection and runtime. Discovery opens no FANBOX account; the root opens its service lazily when a FANBOX tool runs. Pixiv nullable `page`/`limit` are parsed by its adapter; traversal stays in `internal/pagination`. Handler failures keep structured output with `isError=true`; legitimate empty results stay successful.
 
+The root directly composes `internal/account` stores, gates and read sessions and injects concrete functions into the MCP runtime. Product `SDKPorts` retain the selected UID, execution/commit boundary and explicit leases. Adapters project bound objects into stable `internal/record` values and keep schemas/output envelopes product-local.
+
+Pixiv `internal/toolhost/cursor.go` owns the outer MCP cursor envelope, including query/account binding and inner SDK cursor text. It uses public `sdk.ParseCursor`; SDK-private cursor codecs stay inside the SDK. Existing MCP continuation tokens keep their wire contract.
+
 ## Gallery and media
 
 | Package | Owns |
@@ -66,7 +70,7 @@ flowchart LR
 ## Read sessions (`internal/account/reads.go`)
 
 - Lifecycle-managed MCP read sessions validate the current `auth.json` revision before cache reuse, publication and each content request. They share the rotation gate only for OAuth refresh and successful rotation persistence; account changes are detected on use without a credential-store watcher.
-- Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. Mutation leases and pool commit/replay stay in the Facade.
+- Credential replacement/removal, network changes, expiry and upstream 401 invalidate the generation and release idle connections. The CLI composition root supplies mutation leases and pool commit/replay through explicit function ports.
 - Root injects a separate read port and opaque session generations; MCP adapters never read credentials. A cancelled account lookup returns its error without invalidating the shared generation or forcing rotation.
 - On Windows the animation-authorization watcher also watches its parent directory to detect the watched directory being moved.
 
@@ -91,6 +95,6 @@ flowchart LR
 | `RequireBearer` | SDK middleware; reads current state per request; validates resource/revocation/expiry; rejects multiple Authorization headers. Unauthorized → 401 + canonical `resource_metadata` challenge (not an MCP result). Invalid state fails safely without paths. `no-store`; expiry/reset affects later authorization, not running requests |
 | Tests | HTTP and real temp-file tests cover exact deadlines, concurrent code/refresh/reset, restart and real write failure; deadlines via `testing/synctest`, no production clock config |
 
-**HTTP owner** — exact escaped paths instead of ServeMux cleaning; Host and any Origin must match the canonical origin; forwarding headers never establish trust; proxies must keep public Host and prefixes. `no-store` enforced at response commit, incl. SDK SSE. On cancellation or listener failure the server cancels its own context and waits for active handlers (no fixed timeout), keeps the original listener error and never cancels the caller context. Receiving middleware binds legacy SDK sessions to the service context; the SDK propagates modern-revision request cancellation. No custom session store or transport fallback.
+**HTTP owner** — exact escaped paths instead of ServeMux cleaning; Host and any Origin must match the canonical origin; forwarding headers never establish trust; proxies must keep public Host and prefixes. `no-store` enforced at response commit, incl. SDK SSE. On cancellation or listener failure the server cancels its own context and waits for active handlers (no fixed timeout), keeps the original listener error and never cancels the caller context. Receiving middleware binds MCP protocol sessions to the service context; the MCP SDK propagates HTTP request cancellation, and product operations receive the resulting context. No custom session store or transport fallback.
 
 **Interoperability evidence** — the standard-client fixture covers 401 discovery, DCR, PKCE, both products' SDK reads and persisted grants after restart at the same address. The pinned Go MCP SDK v1.8.0 default refresh token source omits `resource` and gets `invalid_request`; validation is not relaxed for it. A separate control adds the [required resource parameter](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation) via a configurable HTTP client and verifies rotation and reconnected reads — not evidence of unmodified SDK refresh compatibility or ChatGPT/Gemini acceptance. Path and registration rules follow RFC 8414 §3, RFC 9728 §3, RFC 7591 §2/§3.2 and RFC 8252 §7/§8.4. Temp-file and HTTP fixtures do not establish live connector OAuth compatibility.

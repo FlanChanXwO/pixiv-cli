@@ -16,37 +16,37 @@
 
 | 规则 | 不这样写 | 这样写 |
 | --- | --- | --- |
-| 不用空泛的名字 | `Deps`、`Dependencies`、`Data`、`Info`、`Facade`、`Manager`、`Helper`、`Util`、`Common`、`Base`、`Impl`、`Wrapper` | `session.Runner`、`environment.Env`、`session.Pixiv`；`Manager` 按实际职责改名 |
-| 不建依赖袋 | 每个命令一个 `Dependencies` 结构体，由组合根填满再向下传 | `download.New(env environment.Env, session *session.Pixiv)`；依赖过多的 owner 先拆职责 |
+| 不用空泛的名字 | `Deps`、`Dependencies`、`Data`、`Info`、`Facade`、`Manager`、`Helper`、`Util`、`Common`、`Base`、`Impl`、`Wrapper` | `account.ReadSessions`、`environment.Env`、`environment.PixivExecutor`；`Manager` 按实际职责改名 |
+| 不建依赖袋 | 每个命令一个 `Dependencies` 结构体，由组合根填满再向下传 | `bookmark.New(env environment.Env, execute environment.PixivExecutor)`；依赖过多的 owner 先拆职责 |
 | 不用“函数字段 + 同名转发方法”，函数字段不加 `Fn` 后缀 | `PromptSecretFn func(string) (string, error)` 加 `func (d Data) PromptSecret` | `func (e Env) PromptSecret(message string) (string, error)`；需要替换的行为用具体类型或窄接口 |
-| 不重复包名已经给出的上下文 | `session.PixivSession`、`filename.FilenameData` | `session.Pixiv`、`filename.Fields` |
+| 不重复包名已经给出的上下文 | `account.AccountReadSessions`、`filename.FilenameData` | `account.ReadSessions`、`filename.Fields` |
 | 同一种能力只用一个名字 | `UsageError` 与 `Usage`、`PrintJSON` 与 `WriteJSON` 并存 | 统一为 `environment.Env` 上的一个名字 |
 
-以下规则约束新增代码（2026-10-26 起）。本轮 SDK 重写在 `sdk/` 中从头设计，全面采用这些命名规则。`internal/legacy/sdk/` 只供查阅上游行为，新 API 的结构与命名重新设计。其他现有名字按任务需要调整。SDK 的破坏性变更在重写完成时统一写入 changelog。
+以下规则约束新增代码（2026-10-26 起）与全部公开 SDK 代码。其他现有名字按任务需要调整，SDK 破坏性变更写入 changelog。
 
 - 新类型和字段不用 `Kind`、`Type`（作为万能区分字段时）、`Item`、`Object`、`Misc` 做名字或后缀，改用说明具体角色的词：`Phase`、`Mode`、`Source`、`Status`、`Registry`、`Store`。上游协议本身的字段名，例如 Pixiv 的 `type`，在映射层保持原样。
 - 不用缩写：`Cfg`、`Mgr`、`Svc`、`Msg`、`Req`、`Resp`、`Tmp`、`Val` 都写完整单词。只在几行内使用的局部变量（`ctx`、`err`、`ok`、`i`、`n`、`req`）和一两个字母的方法接收者按 Go 惯例使用短名。`ID`、`URL`、`HTTP` 等首字母缩写词保持全大写。
 - 包名用简短的小写名词，不用 `util`、`common`、`base`、`types`。目录名与包名一致。避开与公开 SDK 包、常用标准库包（`runtime`、`log`、`context`）或同一调用方已导入的包重名；需要 import 别名就说明命名有问题，例外见下。
 
-只属于一个产品的包放进 `internal/pixiv/` 或 `internal/fanbox/`，用它在领域里的角色命名。另一个产品有同一角色的包时（目前是 `api`），目录名与包名都是角色名；只有一个产品有的包也用产品目录（`internal/pixiv/searchfilter`、`internal/pixiv/target`）。跨产品、与产品协议无关的包留在 `internal/` 顶层，不加产品前缀（`environment`、`display`、`urlscheme`、`session`、`record`、`account`）。
+产品应用代码按领域角色放在 `internal/pixiv/` 或 `internal/fanbox/`（如 `internal/pixiv/searchfilter`、`internal/pixiv/target`）。SDK 专用实现位于 `sdk/<产品>/internal/`，仅 SDK 包之间共用的机制位于 `sdk/internal/`；应用与 SDK 实际共用的机制放在模块级 `internal/`。协议无关的跨产品 owner 包括 `environment`、`display`、`urlscheme`、`record` 和 `account`。
 
 例外：同一个文件必须同时导入两个产品同一角色的包时，用 `pixiv<角色>` / `fanbox<角色>` 作 import 别名，例如 `pixivapi`、`fanboxapi`。`internal/cli` 组合根用 `fanboxauth` 与 Pixiv 的 `auth` 区分。CLI 组合根还将命令包 `internal/cli/config` 导入为 `configcmd`，与配置 owner `internal/config` 同时使用。其他情况不加 import 别名，也不写与包名相同的多余别名。
 
 ## SDK 调用约定
 
-新 SDK 提供纯 API 调用和按页下载。调用方通过各包的 `Options` 传入连接设置，负责配置与账号选择，并通过 `CredentialStore` 提供 Pixiv 凭据存储。SDK 提供内存实现，自动刷新 token，并在按版本号比较保存成功后使用新凭据。
+SDK 提供纯 API 调用和按页下载。调用方通过各包的 `Options` 传入连接设置，负责配置与账号选择，并通过 `CredentialStore` 提供 Pixiv 凭据存储。SDK 提供内存实现，自动刷新 token，并在按版本号比较保存成功后使用新凭据。
 
 | 约定 | 规则 |
 | --- | --- |
 | 上下文 | 所有会发网络请求的 SDK 操作，第一个参数都是 `ctx context.Context`。每次调用显式传入，结构体不持有 context，省去无 `ctx` 的变体。标准 `http.RoundTripper` 实现按接口要求从请求中取得 context。 |
 | 参数 | 必填参数直接传入；可选参数集中在一个 `Options` 或 `XxxRequest` 结构体中，零值使用默认设置。无参数的操作省略参数结构体。 |
 | 入口 | 每个产品包只有一个主入口 `New` 或 `Search`，省去 `OpenWith`、`NewWith` 等变体。Pixiv 的独立 PKCE 登录通过 `BeginLogin` 开始。 |
-| 日志 | 使用事件发生时的 slog 默认 logger，通过 `slog.DebugContext(ctx, …)` 等 Context 函数记录日志，入口省去 logger 参数。限速等待、重试过程等常规细节用 Debug；被限流后等待等真正的警告用 Warn。新 SDK 代码不直接 import `internal/logging`。 |
+| 日志 | 使用事件发生时的 slog 默认 logger，通过 `slog.DebugContext(ctx, …)` 等 Context 函数记录日志，入口省去 logger 参数。限速等待、重试过程等常规细节用 Debug；被限流后等待等真正的警告用 Warn。SDK 依赖图独立于 `internal/logging` 与终端处理。 |
 | 错误 | 统一公开 `sdk.Error`，用 `Reason` 分类，支持 `sdk.ReasonOf` 和 `errors.As`。错误构造函数保持私有。 |
 | 注释 | `sdk/` 的全部注释与文档注释使用英文；每个导出符号都有文档注释。 |
-| 依赖 | 根模块的生产构建保持纯 Go，race 插桩按[开发流程](development.md#ugoira-go-encoder)执行。新 SDK 对 `tls-client` 的引用集中在 `sdk/internal/cloudflare`。 |
+| 依赖 | 根模块的生产构建保持纯 Go，race 插桩按[开发流程](development.md#ugoira-go-encoder)执行。SDK 对 `tls-client` 的引用集中在 `sdk/internal/cloudflare`。 |
 
-过渡期间，Pixiv 使用模块级 `internal/pixiv/api` 协议层，保留其中的日志间接依赖。现有两份 Cloudflare 实现在调用方迁移后删除；新的 FANBOX 与 ascii2d SDK 共用 `sdk/internal/cloudflare`。架构与 SDK 参考页仍描述旧客户端及其 `Options.Logger`；新 API 以新包的 Go 文档为准。
+Pixiv 协议与 OAuth 位于 `sdk/pixiv/internal/api`，FANBOX 协议位于 `sdk/fanbox/internal/api`。FANBOX 与 ascii2d 共用 `sdk/internal/cloudflare`。产品请求属性使用 SDK 自持常量，保留原有键名。当前公开 API 见 [SDK 参考](../sdk.md)。
 
 列表请求通过不透明的 `sdk.Cursor` 续页。消费当前页后保存 `page.Cursor.String()`，恢复时用 `sdk.ParseCursor` 解析，放回原列表请求的 `Cursor` 字段，并保持原查询条件与同一账号。空游标表示末页，将空游标传回列表入口会开始新查询。查询条件或账号不一致时，在内容请求前返回 `InvalidArgument`。当前页的 `Next(ctx)` 保留绑定；JSON 解码后的非末页通过原列表入口恢复绑定。
 
@@ -54,9 +54,9 @@
 
 | 声明的使用范围 | 放置位置 | 示例 |
 | --- | --- | --- |
-| 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/models.go`（公开实体）、`sdk/pixiv/artwork_wire.go`（作品响应结构）、`sdk/pixiv/response.go`（多个领域共用的响应结构）、`errors.go`（错误码） |
+| 包内多个文件共用 | 按主题命名的声明文件 | `sdk/pixiv/artwork.go`（公开作品）、`artwork_wire.go`（作品响应结构）、`response.go`（共用响应结构）、`sdk/sdk.go`（错误分类） |
 | 只服务一个行为 | 和使用它的函数放在同一个文件，写在函数前面 | `internal/mcpserver/pixiv/tools/users.go` 中的 `userArtworksIn`；`internal/record/list.go` 中的 `List` |
-| 类型自身的方法（`String`、`Valid`、`MarshalJSON` 等） | 和类型放在同一个文件 | `sdk/resource.go` 中的 `Resource.MarshalJSON` |
+| 类型自身的方法（`String`、`Valid`、`MarshalJSON` 等） | 和类型放在同一个文件 | `sdk/pixiv/image.go` 中的 `Image.UnmarshalJSON` |
 
 - 不按“一个类型一个文件”拆分。
 - 不建立 `types.go`、`consts.go` 这类没有主题的汇总文件。
@@ -71,7 +71,7 @@
 
 `包名.go` 的含义是“从这里开始读这个包”，不用作杂物文件。
 
-新代码按下面顺序决定位置，第一条成立就停下：只服务一个命令，放进该命令目录；机制已有模块级 owner 时放进该 owner——执行环境与 stdin codec 在 `internal/environment`，逻辑分页在 `internal/pagination`，record 投影与列表/记录流输出在 `internal/record`，账号相关 SDK 生命周期包装在 `internal/session`，共用终端文本在 `internal/display`，Pixiv 目标解析在 `internal/pixiv/target`；MCP tool 放进该产品的 `tools` 包；公开能力放进 `sdk/<产品>/` 的领域文件，上游协议细节放进 `internal/pixiv/api` 或 `internal/fanbox/api`；以上都不是，新建一个按职责命名的包。`internal/cli` 只保留命令目录与根包组合文件。放进去之后，所在包、文件或类型的名字如果不再能概括全部内容，就是放错了位置。不建立 `common`、`shared`、`util`、`misc` 这类位置。
+新代码遵循现有 owner：单命令行为在该命令目录，执行流/端口在 `internal/environment`，逻辑分页在 `internal/pagination`，稳定 record/资源投影与列表输出在 `internal/record`，账号存储/轮换门/读缓存位于 `internal/account`，配置/默认账号/lease 装配位于 `internal/cli/root.go` 与产品 auth 命令，共用终端文本在 `internal/display`，Pixiv 目标在 `internal/pixiv/target`，MCP tool 位于产品 tools 包。公开 API 行为在 `sdk/<产品>/` 领域文件。SDK 专用上游协议细节放入该产品的 `internal/`，SDK 共用机制放入 `sdk/internal/`，应用和 SDK 实际共用的机制放入模块级 `internal/`。剩余的独立职责才新建包。`internal/cli` 保留命令目录与根组合文件，名字应概括其全部内容。
 
 ## 命名常量
 
@@ -80,7 +80,7 @@
 | 类别 | 形式 | 放置位置 |
 | --- | --- | --- |
 | 枚举取值（日志级别、输出格式、restrict、作品类型等） | 具名类型 + 常量，例如 `config.LogLevelDebug`、`pixiv.RestrictPublic` | 与该类型放在同一文件 |
-| 上游 API 路径、query/form 参数名、请求头名 | 导出常量，例如 `api.PathUserFollower`、`api.ParamUserID`；包位于 `internal/` 下，模块外部无法引用 | `internal/pixiv/api/api.go`、`internal/fanbox/api/api.go` |
+| 上游 API 路径、query/form 参数名、请求头名 | 产品 SDK 领域文件需要时才导出，例如 `api.PathUserFollower`、`api.ParamUserID`；单包 provider 保持私有常量 | `sdk/pixiv/internal/api/routes.go`；FANBOX 为 `sdk/fanbox/internal/api/{json,protocol,media}.go`；SauceNAO/ascii2d 放在各自 owner 内 |
 | MCP tool 名称 | 未导出常量，例如 `toolUserDetail` | 与该 tool 的注册代码放在同一文件 |
 | Go 代码中引用的数据库列名 | 未导出常量，例如 `legacySchedulableColumn` | `internal/account/migrate.go`，紧挨导入器 |
 | JSON 输出键（struct tag 以外），例如 `illusts` | 未导出常量 | 与使用它的输出代码放在同一文件 |
@@ -98,15 +98,15 @@
 配置通过嵌套 `config.Config` 字段上的原生 `toml` 标签声明。`values.go` 将 CLI 的 TOML 路径映射到这些字段，修改时保持字段映射与命令帮助一致。环境覆盖在 `environment.go` 中显式赋值，保留存在性与顺序。程序内部读取 `c.Logging.Level`、`c.AccountPool` 等字段；`Store.Get`、`Set`、`Unset` 处理用户输入的 TOML 路径。默认模板解码后须与 `Default()` 相等。见[原生 TOML 配置](architecture.md#原生-toml-配置)。
 
 ```go
-// internal/pixiv/api/api.go
+// sdk/pixiv/internal/api/routes.go
 
-// App API 路径。
+// App API paths.
 const (
 	PathUserFollower  = "/v1/user/follower"
 	PathUserFollowing = "/v1/user/following"
 )
 
-// 查询与表单参数名。
+// Query and form parameter names.
 const (
 	ParamUserID   = "user_id"
 	ParamRestrict = "restrict"
@@ -114,7 +114,7 @@ const (
 ```
 
 ```go
-// sdk/pixiv/models.go
+// sdk/pixiv/relationships.go
 
 // Restrict is the visibility scope of a bookmark or following list.
 type Restrict string
@@ -141,13 +141,13 @@ const (
 | P-h | 注释引用仓库中不存在的文档编号 | 改为直接写出原因，或删除 |
 | P-i | 中转层：只在结构相同的类型之间转换，或原样转发调用 | 删除中转层，两侧共用一个类型或直接调用 |
 | P-j | 碎片化：一个概念被拆进多个必须一起读才能看懂的小包或小文件 | 合并为一个包或文件 |
-| P-k | 为假想扩展预留的间接层：同一层内照抄某个具体类型方法集的接口、每个包各声明一份的相同接口、只注册一项的注册表、没有第二种取值的选项 | 去掉间接层，直接使用具体类型。测试替身不算第二种生产实现；通过 `httptest` 或临时目录测试真实边界。由使用方定义、只含其所需方法、用来切断存储/网络/系统依赖的窄端口（例如 `session` 的 `AccountOpener`、MCP `toolhost.SDKPorts`）是真实边界，保留 |
+| P-k | 为假想扩展预留的间接层：同一层内照抄某个具体类型方法集的接口、每个包各声明一份的相同接口、只注册一项的注册表、没有第二种取值的选项 | 去掉间接层，直接使用具体类型。测试替身不算第二种生产实现；通过 `httptest` 或临时目录测试真实边界。由使用方定义、只含其所需方法、用来切断存储/网络/系统依赖的窄端口（例如 `pixiv.CredentialStore`、MCP `toolhost.SDKPorts`）是真实边界，保留 |
 | P-l | 兼容层：旧入口与新入口并存、旧名别名、source-compatible 包装、为旧版本自身组件保留的分支、已删除配置键的墓碑、以往改名遗留的输入别名 | 删除，只保留新入口。上游（Pixiv/FANBOX API、浏览器 Cookie）格式本身的差异不是兼容层；让用户已有的数据库、配置文件仍能打开的读取逻辑保留 |
 | P-m | 过度防御：对内部调用方已经保证的前提重复校验；对构造时一定会设置的字段或依赖判 nil；Go 本身已经安全的判断（读 nil map、对 nil 切片取 `len` 或遍历）；遇到不可能出现的状态时悄悄降级、返回零值或吞掉错误；没有共享修改风险的防御性拷贝；“以防万一”的 `recover` | 删除，校验只留在最外层的那一次。确需防住的内部不变量，让它立即失败（返回明确错误或 panic），不伪装成成功 |
 
 这些标准只调整结构，不删除用户可见的功能。功能范围由对应功能负责人决定。
 
-校验留在信任边界：用户输入、CLI/MCP 参数、上游响应、文件与数据库内容、环境变量。公开 SDK 入口的参数校验、定义所有权的凭据副本（例如 `RefreshTokenCopy`），以及并发与取消相关的检查同样保留。
+校验留在信任边界：用户输入、CLI/MCP 参数、上游响应、文件与数据库内容、环境变量。公开 SDK 入口的参数校验、定义所有权的凭据副本（例如 `Secret.Copy`），以及并发与取消相关的检查同样保留。
 
 不做内部兼容：新入口取代旧入口时，在同一次改动里删除旧入口。SDK 公开 API 的破坏性变更写入 changelog，不提供 `Deprecated` 过渡。
 
@@ -156,18 +156,15 @@ const (
 限额、超时、重试、截断和降级只在有明确需求、平台约束、既有契约或可复现故障时添加。写明触发条件，用最小证据覆盖，失败时如实报告，不静默丢弃有效数据。尚未支持的能力直接写成不支持。
 
 ```go
-// sdk/resource.go: JSON encoding omits URL, request headers, and expiry metadata.
+// internal/record/resource.go
 
-// MarshalJSON emits only the opaque reference and the credential requirement,
-// never URL, request headers, or expiry metadata.
+// MarshalJSON 保留缺失资源的 null 输出。
 func (r Resource) MarshalJSON() ([]byte, error) {
 	if r.Ref.IsZero() {
 		return []byte("null"), nil
 	}
-	return json.Marshal(struct {
-		Ref                 ResourceRef `json:"ref"`
-		RequiresCredentials bool        `json:"requires_credentials,omitempty"`
-	}{r.Ref, r.RequiresCredentials})
+	type output Resource
+	return json.Marshal(output(r))
 }
 ```
 
@@ -207,7 +204,7 @@ func (e Env) ParsePlan(cmd *cobra.Command, limit, page int) (pagination.PagePlan
 ```go
 // Package pixiv provides a Go client for the Pixiv App API: artworks, novels, users, bookmarks, and comments.
 //
-// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixiv/api.
+// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in sdk/pixiv/internal/api.
 package pixiv
 ```
 

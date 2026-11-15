@@ -20,7 +20,7 @@ Pixiv 的非官方 CLI 与 MCP server：在终端或 AI Agent 中搜索、浏览
 flowchart LR
     U["你 / 脚本"] --> CLI["pixiv CLI"]
     A["AI Agent"] --> MCP["pixiv mcp<br/>stdio · HTTP+OAuth"]
-    CLI --> SDK["共享核心<br/>（也作为公开 Go SDK）"]
+    CLI --> SDK["公开 Go SDK<br/>（绑定账号的 API 对象）"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>（仅限已认证）"]
     SDK -.-> FB["Pixiv Fanbox<br/>（只读，FANBOXSESSID）"]
@@ -145,7 +145,7 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 | [认证](docs/zh-CN/authentication.md) | 登录、跨机器 hand-off、token 导入导出 |
 | [CLI 参考](docs/zh-CN/cli-reference.md) | 命令、参数、配置、下载、MCP 启动 |
 | [MCP 工具](docs/zh-CN/mcp-tools.md) · [MCP Apps 画廊](docs/zh-CN/mcp-gallery.md) | 工具 schema、输出、HTTP 授权、Gallery UI |
-| [Go SDK](docs/zh-CN/sdk.md) | 在 Go 程序中嵌入同一核心 |
+| [Go SDK](docs/zh-CN/sdk.md) | Go API 对象、调用方凭据、以图搜图与按页下载 |
 | [架构](docs/zh-CN/maintainers/architecture.md) · [MCP server](docs/zh-CN/maintainers/architecture-mcp.md) | 包边界与运行时流程 |
 | [编码规范](docs/zh-CN/maintainers/coding-standards.md) | 贡献者 Go 编码约定 |
 | [开发](docs/zh-CN/maintainers/development.md) · [CI](docs/zh-CN/maintainers/ci.md) · [发布](docs/zh-CN/maintainers/release.md) | 工具链、测试、PR 门禁、发布 |

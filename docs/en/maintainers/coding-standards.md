@@ -16,37 +16,37 @@ Name a package, file, type, function, or field for what it is and what it owns, 
 
 | Rule | Avoid | Prefer |
 | --- | --- | --- |
-| No vague names | `Deps`, `Dependencies`, `Data`, `Info`, `Facade`, `Manager`, `Helper`, `Util`, `Common`, `Base`, `Impl`, `Wrapper` | `session.Runner`, `environment.Env`, `session.Pixiv`; rename `Manager` for its actual job |
-| No dependency bags | one `Dependencies` struct per command, filled by the root and passed down | `download.New(env environment.Env, session *session.Pixiv)`; split an owner that needs too many dependencies |
+| No vague names | `Deps`, `Dependencies`, `Data`, `Info`, `Facade`, `Manager`, `Helper`, `Util`, `Common`, `Base`, `Impl`, `Wrapper` | `account.ReadSessions`, `environment.Env`, `environment.PixivExecutor`; rename `Manager` for its actual job |
+| No dependency bags | one `Dependencies` struct per command, filled by the root and passed down | `bookmark.New(env environment.Env, execute environment.PixivExecutor)`; split an owner that needs too many dependencies |
 | No function field behind a same-named forwarding method, no `Fn` suffix | `PromptSecretFn func(string) (string, error)` plus `func (d Data) PromptSecret` | `func (e Env) PromptSecret(message string) (string, error)`, or a concrete type or narrow interface for behavior that must vary |
-| No context the package name already gives | `session.PixivSession`, `filename.FilenameData` | `session.Pixiv`, `filename.Fields` |
+| No context the package name already gives | `account.AccountReadSessions`, `filename.FilenameData` | `account.ReadSessions`, `filename.Fields` |
 | One name per capability | `UsageError` and `Usage`, `PrintJSON` and `WriteJSON` side by side | one name on `environment.Env` |
 
-These rules apply to new code (since 2026-10-26). The current SDK rewrite designs `sdk/` from scratch and applies these naming rules throughout. Code under `internal/legacy/sdk/` serves as an upstream-behavior reference; its structure and names do not prescribe the new API. Other existing names stay unchanged unless the task calls for a rename. SDK breaking changes are consolidated in the changelog when the rewrite is complete.
+These rules apply to new code (since 2026-10-26) and all public SDK code. Other existing names change when the task requires it. List SDK breaking changes in the changelog.
 
 - No `Kind`, `Type` (as a catch-all discriminator), `Item`, `Object`, or `Misc` as a name or suffix. Use the specific role: `Phase`, `Mode`, `Source`, `Status`, `Registry`, `Store`. Keep upstream wire field names, such as Pixiv `type`, unchanged at the mapping layer.
 - No abbreviations: write `Config`, `Manager`, `Service`, `Message`, `Request`, `Response`, `Temporary`, `Value`. Short names remain fine for locals used within a few lines (`ctx`, `err`, `ok`, `i`, `n`, `req`) and for one- or two-letter receivers. Keep initialisms such as `ID`, `URL`, and `HTTP` in full capitals.
 - Package names are short lowercase nouns; avoid `util`, `common`, `base`, and `types`. Keep each directory name equal to its package name. Avoid names that collide with the public SDK packages, common standard-library packages (`runtime`, `log`, `context`), or another package imported by the same caller; needing an import alias signals a naming problem, with the exceptions below.
 
-Packages that serve only one product live under `internal/pixiv/` or `internal/fanbox/` and are named for their role in that domain. When the other product has a package in the same role (currently `api`), directory and package name are both the role name; packages only one product has still use the product directory (`internal/pixiv/searchfilter`, `internal/pixiv/target`). Cross-product and protocol-free packages stay at the top level of `internal/` without a product prefix (`environment`, `display`, `urlscheme`, `session`, `record`, `account`).
+Product application code lives under `internal/pixiv/` or `internal/fanbox/`, named for its domain role (`internal/pixiv/searchfilter`, `internal/pixiv/target`). SDK-only implementation lives under `sdk/<product>/internal/`; mechanisms shared only by SDK packages live under `sdk/internal/`. Mechanisms actually shared by SDK and application code live at module-level `internal/`. Protocol-free cross-product owners include `environment`, `display`, `urlscheme`, `record` and `account`.
 
 Exception: when one file must import both products' package in the same role, alias them `pixiv<role>` / `fanbox<role>`, for example `pixivapi` and `fanboxapi`. The `internal/cli` composition root uses `fanboxauth` alongside Pixiv `auth`. The CLI root also imports its `internal/cli/config` command package as `configcmd` alongside the configuration owner `internal/config`. Otherwise add no import alias, and never one that repeats the package name.
 
 ## SDK calling conventions
 
-The new SDK is a pure API library with page-level download support. Callers supply connection settings through each package's `Options`, own configuration and account selection, and provide Pixiv credential storage through `CredentialStore`. The SDK supplies an in-memory store and refreshes tokens through revision-checked persistence before using them.
+The SDK is a pure API library with page-level download support. Callers supply connection settings through each package's `Options`, own configuration and account selection, and provide Pixiv credential storage through `CredentialStore`. The SDK supplies an in-memory store and refreshes tokens through revision-checked persistence before using them.
 
 | Contract | Rule |
 | --- | --- |
 | Context | Every network-capable SDK operation takes `ctx context.Context` first. Pass it per call; keep it out of structs and provide no context-free variant. Standard `http.RoundTripper` implementations obtain context from the request, as required by that interface. |
 | Parameters | Pass required parameters directly. Group optional parameters in one `Options` or `XxxRequest` struct whose zero value selects defaults. A parameterless operation needs no empty struct. |
 | Entry points | Each product package has one primary entry point, `New` or `Search`; omit variants such as `OpenWith` and `NewWith`. Pixiv's standalone PKCE flow starts with `BeginLogin`. |
-| Logging | Accept no logger. Call `slog.DebugContext(ctx, …)` and the other Context functions, using the default logger at the time of the event. Routine pacing and retry details use Debug; genuine warnings, such as waiting after rate limiting, use Warn. New SDK code has no direct import of `internal/logging`. |
+| Logging | Accept no logger. Call `slog.DebugContext(ctx, …)` and the other Context functions, using the default logger at the time of the event. Routine pacing and retry details use Debug; genuine warnings, such as waiting after rate limiting, use Warn. SDK dependencies exclude `internal/logging` and terminal handling. |
 | Errors | Expose one error type, `sdk.Error`, classified by `Reason`; support `sdk.ReasonOf` and `errors.As`. Keep error-construction functions private. |
 | Comments | All comments and doc comments under `sdk/` are English. Document every exported symbol. |
-| Dependencies | Root-module production builds remain CGO-free; race instrumentation follows the [development guide](development.md#ugoira-go-encoder). New SDK code references `tls-client` only from `sdk/internal/cloudflare`. |
+| Dependencies | Root-module production builds remain CGO-free; race instrumentation follows the [development guide](development.md#ugoira-go-encoder). SDK code references `tls-client` only from `sdk/internal/cloudflare`. |
 
-During migration, Pixiv uses the module-level `internal/pixiv/api` protocol layer, including its indirect logging dependency. The two existing Cloudflare implementations remain until their consumers migrate; new FANBOX and ascii2d SDK code shares `sdk/internal/cloudflare`. The architecture and SDK reference pages still describe the legacy clients, including their `Options.Logger`; consult the new packages' Go documentation for their current API.
+Pixiv protocol and OAuth live in `sdk/pixiv/internal/api`; FANBOX protocol lives in `sdk/fanbox/internal/api`. FANBOX and ascii2d share `sdk/internal/cloudflare`. Product request attributes use SDK-owned constants, with their existing key strings preserved. The [SDK reference](../sdk.md) describes the current public API.
 
 List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after consuming the current batch, parse it with `sdk.ParseCursor`, and pass it in the original list request's `Cursor` field with the same query and account. A zero cursor marks the last page; sending it starts a fresh query. Query or account mismatches return `InvalidArgument` before a content request. A live page's `Next(ctx)` retains its binding; a nonterminal JSON-decoded page resumes through the original list operation.
 
@@ -54,9 +54,9 @@ List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after co
 
 | Scope of the declaration | Placement | Example |
 | --- | --- | --- |
-| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/models.go` (public entities), `sdk/pixiv/artwork_wire.go` (artwork response shape), `sdk/pixiv/response.go` (response shapes shared across domains), `errors.go` (error codes) |
+| Shared by several files in one package | A declaration file named for its subject | `sdk/pixiv/artwork.go` (public artwork), `artwork_wire.go` (artwork response shape), `response.go` (shared response shapes), `sdk/sdk.go` (error classifications) |
 | Serves one behavior | Beside the function that uses it, above it | `internal/mcpserver/pixiv/tools/users.go`: `userArtworksIn`; `internal/record/list.go`: `List` |
-| Methods of a type (`String`, `Valid`, `MarshalJSON`, …) | Same file as the type | `sdk/resource.go`: `Resource.MarshalJSON` |
+| Methods of a type (`String`, `Valid`, `MarshalJSON`, …) | Same file as the type | `sdk/pixiv/image.go`: `Image.UnmarshalJSON` |
 
 - Do not split one type per file.
 - Do not create subjectless catch-all files such as `types.go` or `consts.go`.
@@ -71,7 +71,7 @@ List requests carry an opaque `sdk.Cursor`. Save `page.Cursor.String()` after co
 
 `name.go` means "start reading this package here". It is not a storage room.
 
-New code goes where its owner already lives, checked in this order: the directory of the one command it serves; the existing module-level owner for the mechanism — `internal/environment` for the execution environment and stdin codecs, `internal/pagination` for logical pagination, `internal/record` for record projection and list/record-stream output, `internal/session` for account-bound SDK lifecycle wrappers, `internal/display` for shared terminal text, `internal/pixiv/target` for Pixiv target resolution; the MCP product's `tools` package; the public SDK domain file, with upstream protocol detail in `internal/pixiv/api` or `internal/fanbox/api`; otherwise a new package named for the responsibility. `internal/cli` holds only command directories and root composition files. If the package, file, or type name no longer summarizes its contents, the code is in the wrong place. Never create `common`, `shared`, `util`, or `misc` locations.
+New code follows its existing owner: command-local behavior in that command directory; execution streams/ports in `internal/environment`; logical pagination in `internal/pagination`; stable record/resource projection and list output in `internal/record`; account storage, gate and read cache in `internal/account`; configuration/default/lease assembly in `internal/cli/root.go` and product auth commands; terminal text in `internal/display`; Pixiv targets in `internal/pixiv/target`; MCP tools in the product tools package. Public API behavior lives in `sdk/<product>/` domain files. Place SDK-only upstream protocol details under that product’s `internal/`, SDK-shared mechanisms under `sdk/internal/`, and actual application/SDK shared mechanisms under module-level `internal/`. Create a new package only for a distinct remaining responsibility. `internal/cli` keeps command directories and root composition files; names must still describe their full contents.
 
 ## Named constants
 
@@ -80,7 +80,7 @@ Identifiers with business meaning use named constants instead of inline string l
 | Category | Form | Placement |
 | --- | --- | --- |
 | Enum value (log level, output format, restrict, content type, …) | named type plus constants, for example `config.LogLevelDebug`, `pixiv.RestrictPublic` | same file as the type |
-| Upstream API path, query/form parameter, header name | exported constant, for example `api.PathUserFollower`, `api.ParamUserID`; the package is under `internal/`, so module users cannot import it | `internal/pixiv/api/api.go`, `internal/fanbox/api/api.go` |
+| Upstream API path, query/form parameter, header name | export only when a product SDK domain file needs it, for example `api.PathUserFollower`, `api.ParamUserID`; single-package providers keep constants private | `sdk/pixiv/internal/api/routes.go`; FANBOX `sdk/fanbox/internal/api/{json,protocol,media}.go`; owner-local declarations for SauceNAO/ascii2d |
 | MCP tool name | unexported constant, for example `toolUserDetail` | same file as the tool registration |
 | Database column referenced from Go | unexported constant, for example `legacySchedulableColumn` | `internal/account/migrate.go`, beside the importer |
 | JSON output key outside a struct tag, for example `illusts` | unexported constant | same file as the output code |
@@ -98,15 +98,15 @@ Literals remain acceptable for:
 Configuration uses native `toml` tags on nested `config.Config` fields. `values.go` maps CLI TOML paths to those fields; keep that mapping and the command help aligned with the fields. Environment overrides are explicit assignments in `environment.go`, with presence and order preserved. Program code reads fields such as `c.Logging.Level` and `c.AccountPool`; `Store.Get`, `Set` and `Unset` handle user-supplied TOML paths. The default template must decode to `Default()`. See [Native TOML configuration](architecture.md#native-toml-configuration).
 
 ```go
-// internal/pixiv/api/api.go
+// sdk/pixiv/internal/api/routes.go
 
-// App API 路径。
+// App API paths.
 const (
 	PathUserFollower  = "/v1/user/follower"
 	PathUserFollowing = "/v1/user/following"
 )
 
-// 查询与表单参数名。
+// Query and form parameter names.
 const (
 	ParamUserID   = "user_id"
 	ParamRestrict = "restrict"
@@ -114,7 +114,7 @@ const (
 ```
 
 ```go
-// sdk/pixiv/models.go
+// sdk/pixiv/relationships.go
 
 // Restrict is the visibility scope of a bookmark or following list.
 type Restrict string
@@ -141,13 +141,13 @@ Ask three questions about a structure: which caller would write more code withou
 | P-h | Comment citing a document or section number that is not in the repository | State the reason, or delete the comment |
 | P-i | Pass-through layer that only converts between structurally identical types or forwards a call unchanged | Delete; share one type or call directly |
 | P-j | One concept split across tiny packages or files that must be read together | Merge them |
-| P-k | Indirection reserved for imagined extension: an interface that copies one concrete type's method set in the same layer, a per-package copy of the same interface, a registry with one entry, an option with one value | Use the concrete type. A test substitute is not a second production implementation; exercise real boundaries with `httptest` or temporary directories. A consumer-owned narrow port that cuts a storage, network, or operating-system dependency, such as `session`'s `AccountOpener` or MCP `toolhost.SDKPorts`, is a real boundary and stays |
+| P-k | Indirection reserved for imagined extension: an interface that copies one concrete type's method set in the same layer, a per-package copy of the same interface, a registry with one entry, an option with one value | Use the concrete type. A test substitute is not a second production implementation; exercise real boundaries with `httptest` or temporary directories. A consumer-owned narrow port that cuts a storage, network, or operating-system dependency, such as `pixiv.CredentialStore` or MCP `toolhost.SDKPorts`, is a real boundary and stays |
 | P-l | Compatibility layer: old and new entry points, old-name aliases, source-compatible wrappers, branches kept for this project's older components, removed-setting tombstones, stale input aliases | Delete it and keep only the new path. Upstream format differences (Pixiv/FANBOX API, browser cookies) are not compatibility layers, and read logic that opens a user's existing database or config file stays |
 | P-m | Over-defense: re-validating a precondition an internal caller guarantees; nil checks on fields or dependencies the constructor always sets; checks Go already makes, such as a nil map read or `len`/range on a nil slice; quietly degrading, returning a zero value, or swallowing an error on an impossible state; defensive copies without shared-mutation risk; `recover` "just in case" | Delete it. Keep the outermost check once. Let an internal invariant fail immediately with a clear error or panic instead of looking like success |
 
 These criteria change structure, not user-visible features. Feature-scope decisions belong to the feature owner.
 
-Validation stays at trust boundaries: user input, CLI and MCP arguments, upstream responses, files and database content, and environment variables. It also stays at the public SDK entry point, on credential copies that define ownership such as `RefreshTokenCopy`, and on concurrency and cancellation checks.
+Validation stays at trust boundaries: user input, CLI and MCP arguments, upstream responses, files and database content, and environment variables. It also stays at the public SDK entry point, on credential copies that define ownership such as `Secret.Copy`, and on concurrency and cancellation checks.
 
 No internal compatibility: a change that supersedes an entry point removes the old one in the same change. Public SDK breaking changes are listed in the changelog and get no `Deprecated` transition.
 
@@ -156,18 +156,15 @@ Express optional parameters through request/spec structs or methods; do not add 
 Limits, timeouts, retries, truncation, and fallbacks exist only for a verified requirement, a platform constraint, an established contract, or a reproducible failure. State the trigger, cover it with the smallest evidence, and report failures instead of discarding valid data silently. Document an unsupported capability as unsupported.
 
 ```go
-// sdk/resource.go: JSON encoding omits URL, request headers, and expiry metadata.
+// internal/record/resource.go
 
-// MarshalJSON emits only the opaque reference and the credential requirement,
-// never URL, request headers, or expiry metadata.
+// MarshalJSON 保留缺失资源的 null 输出。
 func (r Resource) MarshalJSON() ([]byte, error) {
 	if r.Ref.IsZero() {
 		return []byte("null"), nil
 	}
-	return json.Marshal(struct {
-		Ref                 ResourceRef `json:"ref"`
-		RequiresCredentials bool        `json:"requires_credentials,omitempty"`
-	}{r.Ref, r.RequiresCredentials})
+	type output Resource
+	return json.Marshal(output(r))
 }
 ```
 
@@ -207,7 +204,7 @@ Directives and special files:
 ```go
 // Package pixiv provides a Go client for the Pixiv App API: artworks, novels, users, bookmarks, and comments.
 //
-// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in internal/pixiv/api.
+// [Client] carries every endpoint and is built by [New]. Upstream protocol details live in sdk/pixiv/internal/api.
 package pixiv
 ```
 

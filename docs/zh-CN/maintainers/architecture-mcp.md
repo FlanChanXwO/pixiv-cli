@@ -34,6 +34,10 @@ flowchart TB
 - `NewHTTPHandler`（父包）组装无状态 Streamable HTTP 与 OAuth 路由；`RunHTTP` 负责 listener 与生命周期；`RunStdio` 负责本地会话并等待清理。
 - 各产品保留自己的 SDK 端口、账号选择与 runtime。发现阶段不打开 FANBOX 账号；FANBOX 工具运行时根包才惰性打开其独立服务。Pixiv 可空的 `page`/`limit` 由其适配器解析；遍历留在 `internal/pagination`。handler 失败保留结构化输出并设置 `isError=true`；合法的空结果保持成功。
 
+根组合层直接装配 `internal/account` 存储、轮换门和读会话，将具体函数注入 MCP runtime。产品 `SDKPorts` 保留所选 UID、执行/提交边界与显式 lease。适配器将绑定对象投影为稳定的 `internal/record` 值，schema/输出信封留在产品内。
+
+Pixiv 的 `internal/toolhost/cursor.go` 拥有外层 MCP cursor 信封，包含查询/账号绑定与内层 SDK cursor 文本；通过公开 `sdk.ParseCursor` 解码，SDK 私有 cursor codec 留在 SDK 内。现有 MCP 续页 token 保持 wire 契约。
+
 ## Gallery 与媒体
 
 | 包 | 负责 |
@@ -66,7 +70,7 @@ flowchart LR
 ## 读取会话（`internal/account/reads.go`）
 
 - 受生命周期管理的 MCP 读取会话在缓存复用、发布、每次内容请求前校验 `auth.json` 的当前 revision。只在 OAuth 刷新与成功的轮换持久化时共享轮换门；账号变化在使用时发现，无凭据存储 watcher。
-- 凭据替换/删除、网络变化、过期与上游 401 使代际失效并释放空闲连接。写操作 lease 与账号池提交/重放保留在 Facade 中。
+- 凭据替换/删除、网络变化、过期与上游 401 使代际失效并释放空闲连接。CLI 组合根通过显式函数端口提供修改操作 lease 与账号池提交/重放。
 - 根包注入单独的读取端口与 opaque 会话代际；MCP 适配器从不读取凭据。被取消的账号查找返回其请求错误，不会使共享代际失效或强制轮换。
 - Windows 上，动画授权 watcher 还会监视父目录，以发现被监视目录本身被移动。
 
@@ -91,6 +95,6 @@ flowchart LR
 | `RequireBearer` | 复用 SDK middleware；每个请求读取当前状态；校验 resource/撤销/过期；拒绝多个 Authorization header。未授权 → 401 + canonical `resource_metadata` challenge（不是 MCP 结果）。非法状态安全失败且不暴露路径。`no-store`；过期/重置影响之后的授权，不影响已授权的长请求 |
 | 测试 | HTTP 与真实临时文件测试覆盖精确截止时间、并发 code/refresh/reset、重启与真实写入失败；截止时间测试用 `testing/synctest`，不增加生产时钟配置 |
 
-**HTTP owner** —— 使用精确的转义路径而非 ServeMux 清理；Host 与任何 Origin 必须匹配 canonical origin；转发 header 从不建立信任；反向代理必须保留公开 Host 与前缀。在响应提交时强制 `no-store`，包括 SDK SSE。服务取消或 listener 失败时，server 取消自身 context 并等待活动 handler（无固定超时），保留原始 listener 错误，从不取消调用方 context。接收 middleware 把旧 SDK 会话绑定到服务 context；SDK 传播新版协议的 HTTP 请求取消。不增加自定义会话存储或传输 fallback。
+**HTTP owner** —— 使用精确的转义路径而非 ServeMux 清理；Host 与任何 Origin 必须匹配 canonical origin；转发 header 从不建立信任；反向代理必须保留公开 Host 与前缀。在响应提交时强制 `no-store`，包括 SDK SSE。服务取消或 listener 失败时，server 取消自身 context 并等待活动 handler（无固定超时），保留原始 listener 错误，从不取消调用方 context。接收 middleware 将 MCP 协议会话绑定到服务 context；MCP SDK 传播 HTTP 请求取消，产品操作接收对应的 context。不增加自定义会话存储或传输 fallback。
 
 **互通证据** —— 标准 client fixture 覆盖 401 发现、DCR、PKCE、两个产品的 SDK 读取，以及在同一地址重启后授权仍持久存在。固定版本的 Go MCP SDK v1.8.0 默认 refresh token source 省略 `resource` 并收到 `invalid_request`；server 不为它放宽校验。另一个对照通过可配置的 HTTP client 在表单中加入[必需的 resource 参数](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization#resource-parameter-implementation)，验证轮换与重连读取——这不证明未修改的 SDK refresh 兼容，也不证明 ChatGPT/Gemini 产品验收。路径与注册规则遵循 RFC 8414 §3、RFC 9728 §3、RFC 7591 §2/§3.2 与 RFC 8252 §7/§8.4。临时文件与 HTTP fixture 检查不能证明真实 connector 的 OAuth 兼容性。

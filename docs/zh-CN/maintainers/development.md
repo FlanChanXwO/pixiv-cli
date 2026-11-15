@@ -104,8 +104,8 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## 查找协议与日志实现
 
-- Pixiv 协议在 `internal/pixiv/api/`，OAuth 在其 `oauth/` 子包；FANBOX 协议在 `internal/fanbox/api/`。端点请求、响应校验与映射在 `sdk/pixiv/` 和 `sdk/fanbox/` 的领域文件中，按领域定位问题。职责图见[架构说明](architecture.md#internalpixivapiinternalfanboxapi)。
-- `internal/cli/root.go` 经 `internal/logging` 创建 stderr logger；`internal/session/options.go` 与 `internal/cli/mcp/runtime.go` 传递到 SDK 和 MCP。MCP 共用包装在 `internal/mcpserver/toolrun/toolrun.go`，handler 与 ctx 属性在 `internal/logging/`。CLI 共用机制位于模块级 owner（`internal/environment`、`internal/pagination`、`internal/record`、`internal/session`、`internal/display`），`internal/cli` 只保留命令目录与根包组合文件。归属见[日志入口](architecture.md#日志入口)，外部 Go 调用方示例见[SDK](../sdk.md#连接与日志)。
+- Pixiv 协议位于 `sdk/pixiv/internal/api/`，OAuth 位于其 `oauth/`；FANBOX 协议位于 `sdk/fanbox/internal/api/`。产品领域文件拥有端点请求、响应校验与映射。SDK 共用的 Cloudflare/cursor 机制在 `sdk/internal/`，应用/SDK 共用的安全传输诊断在 `internal/netdiagnostic/`。见[协议归属](architecture.md#sdk-协议内部实现)。
+- `internal/cli/root.go` 用 `slog.SetDefault` 安装 `internal/logging` 的 stderr logger，清理后恢复原默认值。SDK 事件使用当前默认 logger，属性常量由 SDK 自持。MCP 调用包装位于 `internal/mcpserver/toolrun/toolrun.go`。根组合层装配账号存储、轮换门、读会话与配置，流、分页、record 和渲染仍由模块级 owner 负责。见[日志入口](architecture.md#日志入口)与 [SDK 示例](../sdk.md#连接与日志)。
 - 本地排查使用 `pixiv config set logging.level debug`，需要结构化字段时再设置 `pixiv config set logging.format json`；设置在下次执行生效。文本日志在第二个方括号显示 operation，其余上下文写成 `key=value`；JSON 日志保留 `operation`，MCP 调用另带 `call_id`；数据输出保持在 stdout。
 
 ## 开发中的凭据
@@ -131,10 +131,13 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 go test ./... -count=1
 env CGO_ENABLED=1 go test -race ./... -count=1
 go vet ./...
+env CGO_ENABLED=0 go build ./...
 sh scripts/build.sh
 ```
 
 race 检查需要 C 工具链，源码构建保持 CGO-free。保留 workflow 对 Windows ARM64 race 的限制与诊断处理。记录实际通过、失败、跳过及尚未运行的必需检查。发布 fixture 门禁见[发布](release.md#本地发布-fixture-门禁)。
+
+变更 SDK 依赖后，检查 `go list -deps ./sdk/...`，依赖图需排除 `internal/logging` 与 `golang.org/x/term`。移除包依赖后运行 `go mod tidy`。
 
 ### CI 豁免
 
