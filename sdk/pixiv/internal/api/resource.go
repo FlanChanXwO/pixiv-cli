@@ -47,7 +47,7 @@ func (c *Client) OpenResource(ctx context.Context, rawURL string) (*http.Respons
 	return resp, nil
 }
 
-// ValidateResourceURL checks the media scheme, host allowlist, and nonempty path.
+// ValidateResourceURL checks the media scheme, default port, host allowlist, and nonempty path.
 func (c *Client) ValidateResourceURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -66,6 +66,10 @@ func ValidStampURL(rawURL string) bool {
 func validateResourceURL(parsed *url.URL, extra []string) error {
 	if parsed.Scheme != "https" || parsed.User != nil {
 		return errors.New("resource URL must be https without userinfo")
+	}
+	// An allowed hostname on another port is a different service than the media origin.
+	if port := parsed.Port(); port != "" && port != "443" {
+		return errors.New("resource URL must use the default https port")
 	}
 	if parsed.Path == "" || parsed.Path == "/" {
 		return errors.New("resource URL has no path")

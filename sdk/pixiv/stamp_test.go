@@ -36,6 +36,7 @@ func TestStampMalformedResponses(t *testing.T) {
 		`{"stamps":null}`, `{"stamps":[{"stamp_id":0,"stamp_url":"https://s.pximg.net/stamp.png"}]}`,
 		`{"stamps":[{"stamp_id":1,"stamp_url":"https://evil.example/stamp.png"}]}`,
 		`{"stamps":[{"stamp_id":1,"stamp_url":"http://s.pximg.net/stamp.png"}]}`,
+		`{"stamps":[{"stamp_id":1,"stamp_url":"https://s.pximg.net:8443/stamp.png"}]}`,
 		`{"stamps":[],"next_url":"https://app-api.pixiv.net/v1/stamps?offset=1"}`, `{"stamps":[],"next_url":false}`,
 	} {
 		t.Run(body, func(t *testing.T) {
