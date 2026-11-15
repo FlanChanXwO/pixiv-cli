@@ -3,7 +3,10 @@ package config
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -64,7 +67,21 @@ func (s Store) load(c *Config) error {
 		return err
 	}
 	if err := toml.Unmarshal(body, c); err != nil {
-		return err
+		// go-toml 的消息只带 Go 字段名，还可能回显配置值（例如溢出的数字）；
+		// 这里只报告行号与该行的键，不转述原始消息。
+		var decodeErr *toml.DecodeError
+		if !errors.As(err, &decodeErr) {
+			return errors.New("config.toml: invalid TOML")
+		}
+		line, _ := decodeErr.Position()
+		lines := strings.Split(string(body), "\n")
+		name, _, _ := strings.Cut(lines[min(max(line, 1), len(lines))-1], "=")
+		name = strings.TrimSpace(name)
+		// 出错行可能位于多行字符串内，等号左侧是配置值；只报告已声明的键名。
+		if slices.ContainsFunc(Keys(), func(key string) bool { return key == name || strings.HasSuffix(key, "."+name) }) {
+			return fmt.Errorf("config.toml line %d: key %q has invalid TOML or a value of the wrong type", line, name)
+		}
+		return fmt.Errorf("config.toml line %d: invalid TOML", line)
 	}
 	applyEnvironment(c)
 	return nil

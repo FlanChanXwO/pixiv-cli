@@ -67,3 +67,25 @@ func TestDefaultTemplate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, existing, body)
 }
+
+func TestTypeMismatchNamesKeyWithoutValue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store := config.Store{Files: secretfile.ConfigFiles{}}
+	path, err := store.Path()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	// 类型不符，以及解码器会在消息里回显的溢出数字。
+	for _, value := range []string{"987654321", "99999999999999999999999999"} {
+		require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = "+value+"\n"), 0o600))
+		_, err = store.Current()
+		require.ErrorContains(t, err, `line 2: key "saucenao_api_key"`)
+		require.NotContains(t, err.Error(), value)
+	}
+	// 多行字符串内的出错行，等号左侧属于配置值。
+	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = \"\"\"\nSECRET_TOKEN=abc\\q\n\"\"\"\n"), 0o600))
+	_, err = store.Current()
+	require.ErrorContains(t, err, "config.toml line 3")
+	require.NotContains(t, err.Error(), "SECRET_TOKEN")
+}

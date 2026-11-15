@@ -57,7 +57,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | --- | --- |
 | 单帧上限 | 项目常量 `maxFrameSourceBytes` 与 `maxFrameDecodedBytes` 均为 512 MiB，分别约束 ZIP 成员源字节与解码前分配估算 |
 | 超出上限 | 声明大小超出 → 读取前失败；实际展开超出 → 分块读取时失败；非法/溢出尺寸或估算 → 错误。不截断，不 fallback |
-| 取消 | 每次读取和图像解码前后、缩放/量化的每行、标准库编码器的写入及完成时检查；PNG/JPEG 解码返回后观察取消，标准库 GIF/PNG 编码的取消延迟取决于其写入粒度 |
+| 取消 | 每次读取和图像解码前后、量化的每行、标准库编码器的写入及完成时检查；PNG/JPEG 解码返回后观察取消，标准库 GIF/PNG 编码的取消延迟取决于其写入粒度 |
 | 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
 
 解码估算将宽、高分别向上对齐到 32 像素，按每像素 24 字节计入 JPEG 系数、像素平面与转换空间。这一保守估算可能比之前按色型估算更早拒绝超大的灰度或其他低通道图片。
@@ -68,7 +68,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 透明 APNG 矩形使用标准编码器的 NRGBA 直接像素路径。不透明矩形通过图像包装强制输出 RGBA8，会进入编码器的通用路径并逐像素分配。两种路径均在 APNG 输出中保留透明像素及其隐藏 RGB。
 
-`Input.MaxEdge` 通过双线性缩放保持宽高比，零值保留原尺寸；下载器、MCP tool 与 MCP 媒体代理目前均使用零值。多帧 GIF 与 APNG 无限循环；标准库单帧 GIF 输出省略循环扩展。JPEG 舍入、GIF 调色板/抖动与缩放像素可能和之前有细微差异，文件体积也可能变化。比较编码器时，验证完整渲染画布、尺寸、时序与循环行为。
+输出保持源帧尺寸。多帧 GIF 与 APNG 无限循环；标准库单帧 GIF 输出省略循环扩展。JPEG 舍入、GIF 调色板/抖动可能和之前有细微差异，文件体积也可能变化。比较编码器时，验证完整渲染画布、尺寸、时序与循环行为。
 
 **平台构建** —— `scripts/build/platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀。runner 元数据在 `scripts/build/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 

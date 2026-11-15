@@ -38,18 +38,13 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 			return err
 		}
 		if i == 0 {
-			width, height := scaledDimensions(uint32(current.Rect.Dx()), uint32(current.Rect.Dy()), input.MaxEdge)
-			size = image.Pt(int(width), int(height))
-			if width > math.MaxUint16 || height > math.MaxUint16 {
-				return fmt.Errorf("frame %q size %dx%d exceeds GIF uint16 dimensions", frame.File, width, height)
+			size = current.Rect.Size()
+			if size.X > math.MaxUint16 || size.Y > math.MaxUint16 {
+				return fmt.Errorf("frame %q size %dx%d exceeds GIF uint16 dimensions", frame.File, size.X, size.Y)
 			}
-			if uint64(len(input.Frames))*uint64(width)*uint64(height) > maxGIFIndexedBytes {
-				return fmt.Errorf("%d GIF frames of %dx%d exceed the indexed frame limit %d bytes", len(input.Frames), width, height, maxGIFIndexedBytes)
+			if uint64(len(input.Frames))*uint64(size.X)*uint64(size.Y) > maxGIFIndexedBytes {
+				return fmt.Errorf("%d GIF frames of %dx%d exceed the indexed frame limit %d bytes", len(input.Frames), size.X, size.Y, maxGIFIndexedBytes)
 			}
-		}
-		current, err = resizeFrame(ctx, current, size)
-		if err != nil {
-			return err
 		}
 		if err := statistics.addFrame(ctx, current); err != nil {
 			return err
@@ -75,10 +70,6 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	// 标准库 EncodeAll 接收全部索引帧；彩色解码缓冲仍逐帧复用。
 	for _, frame := range input.Frames {
 		current, err = archive.decodeInto(ctx, frame, current)
-		if err != nil {
-			return err
-		}
-		current, err = resizeFrame(ctx, current, size)
 		if err != nil {
 			return err
 		}

@@ -13,6 +13,11 @@
 - New `config.toml` files use a template with English comments and defaults. Existing files are preserved.
 - `pixiv config set reverse_search.saucenao_api_key VALUE` accepts the API key as an argument. `config get` prints its effective value, including an environment override, directly instead of `<redacted>`.
 - Simplify Ugoira GIF/APNG encoding with standard-library codecs; output images may have subtle visual differences.
+- `config.toml` values must use the declared TOML type. Quoted numbers and booleans, such as `check_enabled = "true"`, are no longer converted and now fail with the line and key to fix; remove the quotes.
+- MCP `next_cursor` values issued by earlier versions are rejected; restart the query with its original arguments. A cursor now stays on the account that produced its first batch, and HTTP continuation requires the same account selection.
+- MCP Gallery records identify images with readable objects (`artwork_id`, `page_index`, `quality`, or `user_id`) instead of opaque strings.
+- FANBOX commands and tools reject `api.fanbox.cc` and `downloads.fanbox.cc` URLs instead of reading the host as a creator ID.
+- CLI and MCP error messages for upstream, validation and pagination failures are reworded.
 
 ## Fixed
 
