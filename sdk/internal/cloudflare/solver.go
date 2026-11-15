@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -30,6 +31,8 @@ const (
 	jsonMediaType                     = "application/json"
 	// Retain ascii2d's browser-protocol maxTimeout; Go requests use caller cancellation.
 	sessionMaxTimeout = 180000
+	// A solution carries the solved page's HTML beside its cookies; this bounds a faulty solver.
+	maxSolverResponseBytes = 16 << 20
 )
 
 // Clearance carries only the solver's user agent, cf_clearance, and optional
@@ -144,14 +147,23 @@ func (c *Client) call(ctx context.Context, payload solverRequest) (solverRespons
 		err.HTTPStatus = response.StatusCode
 		return solverResponse{}, err
 	}
-	decoder := json.NewDecoder(response.Body)
+	limited := &io.LimitedReader{R: response.Body, N: maxSolverResponseBytes + 1}
+	decoder := json.NewDecoder(limited)
 	var decoded solverResponse
-	if err := decoder.Decode(&decoded); err != nil {
-		return solverResponse{}, failure(operation, sdk.MalformedUpstreamResponse, "malformed FlareSolverr response", err)
-	}
+	err = decoder.Decode(&decoded)
 	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return solverResponse{}, failure(operation, sdk.MalformedUpstreamResponse, "trailing FlareSolverr response data", err)
+	if err == nil {
+		if err = decoder.Decode(&trailing); err == io.EOF {
+			err = nil
+		} else if err == nil {
+			err = errors.New("trailing FlareSolverr response data")
+		}
+	}
+	if limited.N <= 0 {
+		return solverResponse{}, failure(operation, sdk.MalformedUpstreamResponse, "FlareSolverr response exceeds the size limit", nil)
+	}
+	if err != nil {
+		return solverResponse{}, failure(operation, sdk.MalformedUpstreamResponse, "malformed FlareSolverr response", err)
 	}
 	switch decoded.Status {
 	case statusOK:
