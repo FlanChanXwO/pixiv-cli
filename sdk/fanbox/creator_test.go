@@ -76,7 +76,7 @@ func TestCreatorProfileFailures(t *testing.T) {
 }
 
 func TestCreatorTags(t *testing.T) {
-	for _, body := range []string{`[{"tag":"art","url":"https://artist.fanbox.cc/tags/art"}]`, `{"tags":[{"tag":"art","url":"https://artist.fanbox.cc/tags/art"}]}`} {
+	for _, body := range []string{`[{"tag":"art","url":"https://artist.fanbox.cc/tags/art"}]`, `{"tags":[{"tag":"art","url":"https://artist.fanbox.cc/tags/art"}]}`, `{"featuredTags":[{"tag":"art","url":"https://artist.fanbox.cc/tags/art"}]}`} {
 		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/tag.getFeatured" || r.URL.Query().Get("creatorId") != "artist" {
 				t.Error("incorrect tag request")
