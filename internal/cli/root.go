@@ -62,7 +62,7 @@ type app struct {
 	pipelineSignal *environment.BrokenPipe
 	mcpSignal      *environment.BrokenPipe
 	closeState     *lifecycle.CloseState
-	storeMu        sync.Mutex
+	storeSlot      chan struct{}
 	store          *account.Store
 	gate           *account.Gate
 	readsMu        sync.Mutex
@@ -158,8 +158,13 @@ func (a *app) runtimeConfig() (config.Config, error) {
 }
 
 func (a *app) openAccounts(ctx context.Context) (*account.Store, error) {
-	a.storeMu.Lock()
-	defer a.storeMu.Unlock()
+	// 用容量为 1 的 channel 串行初始化：排队的请求能响应各自的取消，Mutex 做不到。
+	select {
+	case a.storeSlot <- struct{}{}:
+		defer func() { <-a.storeSlot }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	if a.store != nil {
 		return a.store, nil
 	}
@@ -372,7 +377,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	a := app{
 		in: in, out: out, errOut: errOut, closeState: closeState,
 		pipelineSignal: &environment.BrokenPipe{}, mcpSignal: &environment.BrokenPipe{},
-		logs: &logging.State{Logger: logging.Discard()},
+		logs:      &logging.State{Logger: logging.Discard()},
+		storeSlot: make(chan struct{}, 1),
 	}
 	a.gate = account.NewGate()
 	defer a.pipelineSignal.Restore()
