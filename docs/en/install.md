@@ -59,7 +59,7 @@ flowchart LR
 sh scripts/build.sh
 ```
 
-Uses the Go version in `go.mod`, sets `CGO_ENABLED=0`, writes `build/pixiv` (`build/pixiv.exe` on Windows); no Rust toolchain, native library or C linker. On Windows use Git Bash, MSYS2 or WSL. Encoding, licenses and platform evidence: [development guide](maintainers/development.md#ugoira-go-encoder).
+Uses the Go version in `go.mod`, sets `CGO_ENABLED=0`, writes `build/pixiv` (`build/pixiv.exe` on Windows); no Rust toolchain, native library or C linker. On Windows use Git Bash, MSYS2 or WSL. Encoding and platform evidence: [development guide](maintainers/development.md#ugoira-go-encoder).
 
 ## Go source installation
 

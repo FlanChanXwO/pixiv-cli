@@ -24,7 +24,6 @@ func encodeAPNG(ctx context.Context, output io.Writer, input Input) (err error) 
 	defer func() { err = errors.Join(err, archive.Close()) }()
 	w := apngWriter{ctx: ctx, output: output}
 	var previous, spare *image.NRGBA
-	var size image.Point
 	for i, frame := range input.Frames {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -37,17 +36,9 @@ func encodeAPNG(ctx context.Context, output io.Writer, input Input) (err error) 
 		if err != nil {
 			return err
 		}
-		if i == 0 {
-			width, height := scaledDimensions(uint32(current.Rect.Dx()), uint32(current.Rect.Dy()), input.MaxEdge)
-			size = image.Pt(int(width), int(height))
-		}
-		current, err = resizeFrame(ctx, current, size)
-		if err != nil {
-			return err
-		}
 		region := current.Rect
 		if i == 0 {
-			if err := w.header(size, uint32(len(input.Frames))); err != nil {
+			if err := w.header(current.Rect.Size(), uint32(len(input.Frames))); err != nil {
 				return err
 			}
 		} else {

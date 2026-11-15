@@ -22,22 +22,16 @@ func TestEncoderJPEGArchive(t *testing.T) {
 	input := Input{ZipPath: writeFrameArchive(t, entries), Frames: frames, WorkDir: t.TempDir()}
 	for _, format := range []Format{FormatGIF, FormatAPNG} {
 		t.Run(string(format), func(t *testing.T) {
-			for _, edge := range []uint32{0, 9} {
-				input.Format, input.MaxEdge = format, edge
-				input.OutputPath = filepath.Join(input.WorkDir, "out."+string(format))
-				if err := NewEncoder().Encode(t.Context(), input); err != nil {
-					t.Fatal(err)
-				}
-				body, err := os.ReadFile(input.OutputPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				size := image.Pt(17, 9)
-				if edge == 9 {
-					size = image.Pt(9, 4)
-				}
-				checkJPEGAnimation(t, body, input, size)
+			input.Format = format
+			input.OutputPath = filepath.Join(input.WorkDir, "out."+string(format))
+			if err := NewEncoder().Encode(t.Context(), input); err != nil {
+				t.Fatal(err)
 			}
+			body, err := os.ReadFile(input.OutputPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkJPEGAnimation(t, body, input, image.Pt(17, 9))
 		})
 	}
 }
@@ -81,10 +75,6 @@ func checkJPEGCanvas(t *testing.T, file string, canvas image.Image, maxChannelEr
 		t.Fatal(err)
 	}
 	want, err := decodeFrameSource(t.Context(), body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err = resizeFrame(t.Context(), want, canvas.Bounds().Size())
 	if err != nil {
 		t.Fatal(err)
 	}

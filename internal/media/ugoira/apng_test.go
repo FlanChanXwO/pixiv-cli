@@ -55,21 +55,16 @@ func TestAPNGReplay(t *testing.T) {
 	}
 }
 
-func TestAPNGResizeAndSourceValidation(t *testing.T) {
+func TestAPNGSourceValidation(t *testing.T) {
 	img := image.NewNRGBA(image.Rect(0, 0, 8, 4))
 	draw.Draw(img, img.Rect, image.NewUniform(color.NRGBA{10, 30, 50, 70}), image.Point{}, draw.Src)
 	input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, img)}, {"different.png", framePNG(t, image.NewNRGBA(image.Rect(0, 0, 2, 2)))}}), Frames: []Frame{{File: "a.png", Delay: 80}}}
-	for _, maxEdge := range []uint32{0, 1, 4, 540} {
-		input.MaxEdge = maxEdge
-		var out bytes.Buffer
-		if err := encodeAPNG(t.Context(), &out, input); err != nil {
-			t.Fatal(err)
-		}
-		decoded := decodeAPNGTest(t, out.Bytes())
-		w, h := scaledDimensions(8, 4, maxEdge)
-		if len(decoded) != 1 || decoded[0].image.Rect.Size() != image.Pt(int(w), int(h)) {
-			t.Fatalf("maxEdge=%d: dimensions or frame count changed", maxEdge)
-		}
+	var out bytes.Buffer
+	if err := encodeAPNG(t.Context(), &out, input); err != nil {
+		t.Fatal(err)
+	}
+	if decoded := decodeAPNGTest(t, out.Bytes()); len(decoded) != 1 || decoded[0].image.Rect.Size() != img.Rect.Size() {
+		t.Fatal("dimensions or frame count changed")
 	}
 	input.Frames = append(input.Frames, Frame{File: "different.png", Delay: 80})
 	if err := encodeAPNG(t.Context(), io.Discard, input); err == nil {

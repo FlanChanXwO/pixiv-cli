@@ -13,3 +13,8 @@
 - 新建的 `config.toml` 使用带英文注释和默认值的模板，已有文件保持原样。
 - `pixiv config set reverse_search.saucenao_api_key VALUE` 支持通过参数传入 API key；`config get` 直接输出生效值，包括环境变量覆盖的值，原来的 `<redacted>` 隐藏行为已移除。
 - 使用标准库编解码器精简 Ugoira GIF/APNG 动图编码，输出画面可能有细微差异。
+- `config.toml` 的值必须使用声明的 TOML 类型。带引号的数字与布尔值（例如 `check_enabled = "true"`）不再自动转换，报错会给出需要修改的行号与键；去掉引号即可。
+- 旧版本返回的 MCP `next_cursor` 会被拒绝，请用原参数重新发起查询。游标固定在取得首批结果的账号上，HTTP 续页需要保持相同的账号选择。
+- MCP Gallery 记录改用可读对象（`artwork_id`、`page_index`、`quality` 或 `user_id`）标识图片，原来是不透明字符串。
+- FANBOX 命令与 tool 拒绝 `api.fanbox.cc` 与 `downloads.fanbox.cc` 的 URL，不再把主机名当作创作者 ID。
+- CLI 与 MCP 在上游、校验、分页失败时的错误文案有调整。

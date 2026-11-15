@@ -57,7 +57,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | --- | --- |
 | Per-frame bounds | Project constants `maxFrameSourceBytes` and `maxFrameDecodedBytes` each allow 512 MiB: ZIP member source bytes and the pre-decode allocation estimate, respectively |
 | Over the bound | declared size → fail before reading; actual expansion → fail during chunked reading; invalid/overflowing dimensions or estimates → error. No truncation or fallback |
-| Cancellation | checked before/after each read chunk and image decode, per row during resizing/quantization, and on standard-encoder writes and completion; PNG/JPEG decode loops return before cancellation is observed, and standard GIF/PNG encoding latency follows their write granularity |
+| Cancellation | checked before/after each read chunk and image decode, per row during quantization, and on standard-encoder writes and completion; PNG/JPEG decode loops return before cancellation is observed, and standard GIF/PNG encoding latency follows their write granularity |
 | Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
 
 The decode estimate rounds each dimension up to 32 pixels and charges 24 bytes per pixel for JPEG coefficients/planes and conversion space. This conservative estimate can reject large grayscale or other low-channel images earlier than the previous color-type estimate.
@@ -68,7 +68,7 @@ Nearest-color matching scans up to 256 palette entries per pixel. Large GIF fram
 
 Transparent APNG rectangles use the standard encoder's direct NRGBA path. Opaque rectangles use an image wrapper to force RGBA8; this invokes the encoder's generic path and allocates per pixel. Both paths preserve transparent pixels and their hidden RGB in APNG output.
 
-`Input.MaxEdge` keeps aspect ratio with bilinear resizing; zero preserves the original dimensions. The downloader, MCP tool and MCP media proxy currently leave it at zero. Multi-frame GIF and APNG loop indefinitely; standard-library single-frame GIF output omits the loop extension. JPEG rounding, GIF palette/dithering and resized pixels may differ slightly from earlier output, and file sizes may change. Validate complete rendered canvases, dimensions, timing and loops when comparing encoders.
+Output keeps the source frame dimensions. Multi-frame GIF and APNG loop indefinitely; standard-library single-frame GIF output omits the loop extension. JPEG rounding, GIF palette/dithering may differ slightly from earlier output, and file sizes may change. Validate complete rendered canvases, dimensions, timing and loops when comparing encoders.
 
 **Platform builds** — `scripts/build/platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes. Runner metadata stays in `scripts/build/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
