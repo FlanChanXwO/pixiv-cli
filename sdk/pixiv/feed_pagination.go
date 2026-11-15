@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 func nonnegativeOffset(values []string) bool {

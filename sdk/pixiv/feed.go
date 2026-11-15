@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 // ArtworkRankingOptions selects a ranking and optional YYYY-MM-DD date.

@@ -7,8 +7,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api/oauth"
 )
 
 func (c *Client) credentials(ctx context.Context, rejected Credentials) (Credentials, error) {
@@ -89,7 +89,7 @@ func (c *Client) refresh(ctx context.Context, previous Credentials) (Credentials
 	if previous.Revision == math.MaxInt64 {
 		return Credentials{}, newError("refresh", sdk.LocalStateError, "credential revision cannot advance", nil)
 	}
-	auth := oauth.New(previous.RefreshToken.Value(), oauth.Config{HTTPClient: c.http, Logger: protocolLogger(), PreferConfiguredLogger: true})
+	auth := oauth.New(previous.RefreshToken.Value(), oauth.Config{HTTPClient: c.http})
 	if err := auth.Refresh(ctx); err != nil {
 		return Credentials{}, classifyError("refresh", err, true)
 	}

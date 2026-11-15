@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/internal/cursor"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 // ArtworkSearchOptions controls upstream filters, local AI selection, and continuation.

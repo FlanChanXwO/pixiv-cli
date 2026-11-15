@@ -3,8 +3,8 @@ package pixiv
 import (
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 // The pointer fields are mandatory in search responses and optional elsewhere.

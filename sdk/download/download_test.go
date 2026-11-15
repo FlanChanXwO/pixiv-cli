@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -32,8 +31,8 @@ const animationMetadata = `{"ugoira_metadata":{"zip_urls":{"original":"https://i
 func TestSaveSelectedPages(t *testing.T) {
 	var paths []string
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.PathIllustDetail {
-			fmt.Fprint(w, strings.Replace(staticArtwork, `"id":23`, `"id":`+r.URL.Query().Get(api.ParamIllustID), 1))
+		if r.URL.Path == "/v1/illust/detail" {
+			fmt.Fprint(w, strings.Replace(staticArtwork, `"id":23`, `"id":`+r.URL.Query().Get("illust_id"), 1))
 			return
 		}
 		paths = append(paths, r.URL.Path)
@@ -58,7 +57,7 @@ func TestSaveSelectedPages(t *testing.T) {
 
 func TestSavePartialFailure(t *testing.T) {
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.PathIllustDetail {
+		if r.URL.Path == "/v1/illust/detail" {
 			fmt.Fprint(w, staticArtwork)
 			return
 		}
@@ -90,7 +89,7 @@ func TestSaveCancellation(t *testing.T) {
 	defer cancel()
 	var mediaCalls atomic.Int32
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.PathIllustDetail {
+		if r.URL.Path == "/v1/illust/detail" {
 			fmt.Fprint(w, staticArtwork)
 			return
 		}
@@ -123,9 +122,9 @@ func TestSaveUgoira(t *testing.T) {
 	require.NoError(t, writer.Close())
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case api.PathIllustDetail:
+		case "/v1/illust/detail":
 			fmt.Fprint(w, animatedArtwork)
-		case api.PathUgoiraMetadata:
+		case "/v1/ugoira/metadata":
 			fmt.Fprint(w, animationMetadata)
 		case "/frames.zip":
 			w.Write(archive.Bytes())

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
 	"github.com/stretchr/testify/require"
@@ -27,7 +26,7 @@ func TestSaveImageQualities(t *testing.T) {
 	} {
 		t.Run(string(tc.quality), func(t *testing.T) {
 			client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == api.PathIllustDetail {
+				if r.URL.Path == "/v1/illust/detail" {
 					fmt.Fprint(w, strings.ReplaceAll(staticArtwork, "/0.png", "/img-original/img/2026/23_p0.png"))
 					return
 				}
@@ -48,7 +47,7 @@ func TestSaveImageQualities(t *testing.T) {
 
 func TestSaveImagePreservesExistingFile(t *testing.T) {
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.PathIllustDetail {
+		if r.URL.Path == "/v1/illust/detail" {
 			fmt.Fprint(w, staticArtwork)
 			return
 		}
@@ -75,7 +74,7 @@ func TestSaveImagePreservesExistingFile(t *testing.T) {
 
 func TestSaveRejectsInvalidPathsBeforeMediaIO(t *testing.T) {
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, api.PathIllustDetail, r.URL.Path)
+		require.Equal(t, "/v1/illust/detail", r.URL.Path)
 		fmt.Fprint(w, staticArtwork)
 	})
 	art, err := client.Artwork(23).Get(t.Context())
@@ -97,7 +96,7 @@ func TestSaveRejectsInvalidPathsBeforeMediaIO(t *testing.T) {
 
 func TestSaveRejectsHTMLResponse(t *testing.T) {
 	client := localClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.PathIllustDetail {
+		if r.URL.Path == "/v1/illust/detail" {
 			fmt.Fprint(w, staticArtwork)
 			return
 		}

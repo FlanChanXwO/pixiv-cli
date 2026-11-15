@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 )
 
 var (
@@ -196,7 +197,7 @@ func (c *solverClient) call(ctx context.Context, payload solverRequest) (solverR
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", netdiagnostic.Attrs(err)...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return solverResponse{}, ctxErr
 		}

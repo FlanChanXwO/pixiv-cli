@@ -1,8 +1,8 @@
-// transport_windows.go 补齐 Windows socket 返回的 WSA errno；syscall.ECONNREFUSED 等为合成值。
-package logging
+package netdiagnostic
 
 import "golang.org/x/sys/windows"
 
+// Windows socket 返回 WSA errno，syscall.ECONNREFUSED 等为合成值。
 func init() {
 	errnoNames[windows.WSAECONNREFUSED] = "WSAECONNREFUSED"
 	errnoNames[windows.WSAECONNRESET] = "WSAECONNRESET"

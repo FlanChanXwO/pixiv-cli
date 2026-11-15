@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 )
 
 // Client 发送 Pixiv App 请求，持有共享 HTTP 生命周期与已校验的资源 locator 缓存。
@@ -199,7 +200,7 @@ func (c *Client) send(ctx context.Context, req request, attempt int) (*http.Resp
 		logging.OperationAttr(ctx),
 	}
 	if err != nil {
-		attrs = append(attrs, logging.TransportAttrs(err)...)
+		attrs = append(attrs, netdiagnostic.Attrs(err)...)
 		c.log.LogAttrs(ctx, slog.LevelDebug, "Request failed", append(attrs, slog.String(logging.AttrError, Transport(err).Error()))...)
 		return nil, err
 	}

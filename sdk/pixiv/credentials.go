@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api/oauth"
 )
 
 // Credentials carries one account's versioned OAuth state. Token fields redact

@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api/oauth"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api/oauth"
 )
 
 const (
@@ -54,7 +54,7 @@ func BeginLogin(options Options) (*LoginSession, error) {
 		return nil, newError("BeginLogin", sdk.LocalStateError, "could not generate login state", err)
 	}
 	query := url.Values{loginChallenge: {challenge}, loginChallengeMethod: {loginS256}, loginClient: {loginAndroid}, loginState: {nonce}}
-	client, owned := api.NewHTTPClient(options.HTTPClient, options.RequestInterval, protocolLogger())
+	client, owned := api.NewHTTPClient(options.HTTPClient, options.RequestInterval)
 	return &LoginSession{http: client, ownsHTTP: owned, authorization: api.AppAPIBase + api.PathLogin + "?" + query.Encode(), verifier: credential.New([]byte(verifier)), nonce: credential.New([]byte(nonce)), used: &atomic.Bool{}}, nil
 }
 
@@ -94,7 +94,7 @@ func (s *LoginSession) Complete(ctx context.Context, callbackOrCode string) (Cre
 	if !s.used.CompareAndSwap(false, true) {
 		return Credentials{}, newError("LoginSession.Complete", sdk.InvalidArgument, "login session was already consumed", nil)
 	}
-	auth := oauth.New("", oauth.Config{HTTPClient: s.http, Logger: protocolLogger(), PreferConfiguredLogger: true})
+	auth := oauth.New("", oauth.Config{HTTPClient: s.http})
 	token, err := auth.ExchangeAuthorizationCode(ctx, code, s.verifier.Value())
 	if err != nil {
 		return Credentials{}, classifyError("LoginSession.Complete", err, true)

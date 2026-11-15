@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 )
 
@@ -202,7 +203,7 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, api.OAuthBase+api.PathOAuthToken, strings.NewReader(values.Encode()))
 	if err != nil {
-		details = logging.TransportAttrs(err)
+		details = netdiagnostic.Attrs(err)
 		return authResponse{}, api.Transport(err)
 	}
 	for name, value := range api.OAuthHeaders() {
@@ -210,13 +211,13 @@ func (c *Client) exchange(ctx context.Context, operation string, form map[string
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		details = logging.TransportAttrs(err)
+		details = netdiagnostic.Attrs(err)
 		return authResponse{}, api.Transport(err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		details = logging.TransportAttrs(err)
+		details = netdiagnostic.Attrs(err)
 		return authResponse{}, api.Transport(err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

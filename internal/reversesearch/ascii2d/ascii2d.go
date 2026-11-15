@@ -20,6 +20,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 )
 
 // maxImageBytes 来自 ascii2d 官方说明中的单图 10 MB 上限，只作用于该 provider。
@@ -290,7 +291,7 @@ func (c *Client) fetchCSRF(ctx context.Context) (string, error) {
 	c.applyNavigationHeaders(request, "none", "")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", netdiagnostic.Attrs(err)...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return "", ctxErr
 		}
@@ -341,7 +342,7 @@ func (s *Session) Search(ctx context.Context, provider reversesearch.Provider) (
 	s.client.applyNavigationHeaders(request, "same-origin", s.client.homeURL())
 	response, err := s.client.httpClient.Do(request)
 	if err != nil {
-		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", netdiagnostic.Attrs(err)...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return reversesearch.ProviderResponse{}, ctxErr
 		}

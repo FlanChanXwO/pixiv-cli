@@ -15,6 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
+	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 )
 
 func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, mediaType, token string) (string, error) {
@@ -34,7 +35,7 @@ func (c *Client) upload(ctx context.Context, snapshot *reversesearch.Snapshot, m
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	response, err := client.Do(request)
 	if err != nil {
-		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", logging.TransportAttrs(err)...)
+		logging.From(ctx).LogAttrs(ctx, slog.LevelDebug, "Request failed", netdiagnostic.Attrs(err)...)
 		_ = body.CloseWithError(err)
 		<-writeResult
 		if ctxErr := ctx.Err(); ctxErr != nil {
