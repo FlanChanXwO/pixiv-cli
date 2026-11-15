@@ -10,7 +10,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -28,11 +27,11 @@ type options struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv ranking` 命令，作品和小说排行共用同一套分页与输出。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	options := options{typ: string(target.NamespaceArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{

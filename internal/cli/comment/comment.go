@@ -14,7 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -43,11 +42,11 @@ type stampsOptions struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv comment` 命令及其增删改子命令；ID 统一由请求解析器确定作品或小说。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	options := options{}
 	cmd := &cobra.Command{

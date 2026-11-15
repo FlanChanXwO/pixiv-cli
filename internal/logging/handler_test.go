@@ -3,9 +3,7 @@ package logging_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -13,7 +11,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
@@ -108,20 +105,6 @@ func unsetNoColor(t *testing.T) {
 type privateLogValue string
 
 func (privateLogValue) LogValue() slog.Value { return slog.StringValue("<redacted>") }
-
-func TestSDKErrorOriginPreservesPresentation(t *testing.T) {
-	err := sdk.NewError("pixiv", "Open", sdk.UpstreamUnavailable)
-	plain := &sdk.Error{Product: "pixiv", Operation: "Open", Reason: sdk.UpstreamUnavailable}
-	require.Equal(t, plain.Error(), err.Error())
-	actual, marshalErr := json.Marshal(err)
-	require.NoError(t, marshalErr)
-	expected, marshalErr := json.Marshal(plain)
-	require.NoError(t, marshalErr)
-	require.JSONEq(t, string(expected), string(actual))
-	require.Regexp(t, `logging/handler_test.go:[0-9]+`, logging.OriginAttr(fmt.Errorf("safe: %w", err))[0].Value.String())
-	require.Empty(t, logging.OriginAttr(errors.New("local failure")))
-	require.Empty(t, logging.OriginAttr(plain))
-}
 
 func TestAuthorizationExchangeUsesCallLogger(t *testing.T) {
 	var output bytes.Buffer

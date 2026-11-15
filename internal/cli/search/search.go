@@ -20,7 +20,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -63,11 +62,11 @@ type ReverseSearchPort func(context.Context, ReverseSearchRequest) (reversesearc
 type commandRunner struct {
 	env           environment.Env
 	reverseSearch ReverseSearchPort
-	executeSDK    session.SDKExecutor
+	executeSDK    environment.PixivExecutor
 }
 
 // New 构造根级 `pixiv search` 命令，覆盖作品、小说、用户和反向搜图入口。
-func New(env environment.Env, executeSDK session.SDKExecutor, reverseSearch ReverseSearchPort) *cobra.Command {
+func New(env environment.Env, executeSDK environment.PixivExecutor, reverseSearch ReverseSearchPort) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK, reverseSearch: reverseSearch}
 	opts := options{
 		searchBy:    searchTargetTagPartial,
@@ -120,7 +119,7 @@ func New(env environment.Env, executeSDK session.SDKExecutor, reverseSearch Reve
 
 // artworkSearchParams 收集 artwork 搜索在解析 flag 后的查询、分页和输出参数。
 type artworkSearchParams struct {
-	request     session.ProxyRequest
+	request     environment.PixivRequest
 	plan        pagination.PagePlan
 	word        string
 	period      pixiv.DurationFilter
@@ -311,7 +310,7 @@ type bookmarkFilterJSON struct {
 }
 
 // runBookmarkFiltered 在 SDK attempt 内执行收藏数与 rating 筛选，再统一输出逻辑页。
-func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.ArtworkSearchOptions, strategy searchfilter.BookmarkStrategy, include func(record.Artwork) (bool, error)) error {
+func (a commandRunner) runBookmarkFiltered(cmd *cobra.Command, account environment.PixivRequest, plan pagination.PagePlan, jsonOut, ndjson bool, word string, query pixiv.ArtworkSearchOptions, strategy searchfilter.BookmarkStrategy, include func(record.Artwork) (bool, error)) error {
 	outcome, err := searchArtworks(cmd.Context(), func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
 		return a.executeSDK(ctx, account, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) { return attempt(ctx, client) })
 	}, artworkSearchRequest{

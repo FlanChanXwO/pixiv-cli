@@ -14,7 +14,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -34,11 +33,11 @@ const recommendationKindAll = "all"
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv recommended` 命令，保留各输出格式的提交时机。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	opts := options{contentType: string(pixiv.ArtworkCategoryAll)}
 	cmd := &cobra.Command{
@@ -144,7 +143,7 @@ func validKind(kind string) bool {
 	return kind == recommendationKindAll || kind == string(pixiv.ArtworkCategoryIllust) || kind == string(pixiv.ArtworkCategoryManga) || kind == string(target.NamespaceNovel) || kind == string(target.NamespaceUser)
 }
 
-func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
+func (a commandRunner) runOne(ctx context.Context, request environment.PixivRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	format := record.FormatOf(jsonOut, ndjson)
 	if kind == string(pixiv.ArtworkCategoryIllust) || kind == string(pixiv.ArtworkCategoryManga) {
 		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.Artwork]{

@@ -1,4 +1,4 @@
-package session
+package auth
 
 import (
 	"context"
@@ -14,10 +14,15 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-// Accounts 将默认账号配置与 Pixiv 账号存储接到命令和会话，保持输出摘要契约。
+// Accounts 将默认账号配置与 Pixiv 账号存储接到命令，保持输出摘要契约。
 type Accounts struct {
 	store    *account.Store
 	defaults config.Store
+}
+
+// NewAccounts 绑定账号文件与调用方的默认账号配置。
+func NewAccounts(store *account.Store, defaults config.Store) *Accounts {
+	return &Accounts{store: store, defaults: defaults}
 }
 
 // AccountSummary 汇总 Pixiv 账号的公开摘要。
@@ -121,7 +126,7 @@ func (s *Accounts) UseAuto() error {
 
 // CurrentUser 返回当前选中账号的身份摘要。
 func (s *Accounts) CurrentUser(ctx context.Context) (*AccountSummary, error) {
-	userID, err := s.selectedUserID(ctx)
+	userID, err := s.SelectedUserID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +333,8 @@ func accountSummary(saved account.Pixiv, isDefault, lastSelected bool) AccountSu
 	}
 }
 
-func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
+// SelectedUserID 读取显式默认或首个账号，并保留存储和取消错误。
+func (s *Accounts) SelectedUserID(ctx context.Context) (int64, error) {
 	if userID, ok, err := s.defaultUserID(ctx); err != nil {
 		return 0, err
 	} else if ok {

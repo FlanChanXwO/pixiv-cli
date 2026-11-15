@@ -9,7 +9,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -27,12 +26,12 @@ type options struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv mypixiv` 命令组；用户与作品两个子命令共用同一个执行端口，
 // 但各自执行时都会重新选择账号。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}
 	cmd.AddCommand(a.newUsersCommand(), a.newWorksCommand())

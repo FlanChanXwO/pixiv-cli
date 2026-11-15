@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -55,12 +54,12 @@ func (e Env) ListJSONOut(cmd *cobra.Command, jsonOut, ndjson bool) (bool, error)
 }
 
 // Request 从共用代理 flag 构造一次 Pixiv 执行请求。
-func (e Env) Request(cmd *cobra.Command, opts ProxyOptions) (session.ProxyRequest, error) {
+func (e Env) Request(cmd *cobra.Command, opts ProxyOptions) (PixivRequest, error) {
 	proxy, err := ProxyOverride(cmd, opts)
 	if err != nil {
-		return session.ProxyRequest{}, err
+		return PixivRequest{}, err
 	}
-	return session.ProxyRequest{HTTPSProxyOverride: proxy}, nil
+	return PixivRequest{HTTPSProxyOverride: proxy}, nil
 }
 
 // NormalizeFlagError 把 pflag 的未知选项错误翻译成 usage 错误；其他错误原样返回。

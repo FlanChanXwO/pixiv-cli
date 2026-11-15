@@ -11,7 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -19,7 +18,7 @@ import (
 
 type controller struct {
 	env     environment.Env
-	execute session.SDKExecutor
+	execute environment.PixivExecutor
 	runtime func() (Runtime, error)
 }
 
@@ -57,13 +56,13 @@ func (a controller) bindActionFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear the configured proxy for this command")
 }
 
-func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (session.ProxyRequest, error) {
+func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (environment.PixivRequest, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
 	noProxyChanged := cmd.Flags().Changed("no-proxy")
 	if proxyChanged && noProxyChanged {
-		return session.ProxyRequest{}, errors.New("use either --proxy or --no-proxy, not both")
+		return environment.PixivRequest{}, errors.New("use either --proxy or --no-proxy, not both")
 	}
-	req := session.ProxyRequest{}
+	req := environment.PixivRequest{}
 	if noProxyChanged && opts.noProxy {
 		empty := ""
 		req.HTTPSProxyOverride = &empty

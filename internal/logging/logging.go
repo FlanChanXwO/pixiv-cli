@@ -1,11 +1,11 @@
-// Package logging 提供 CLI、MCP、SDK 共用的 slog 层：ctx 中的调用信息、属性键常量和
+// Package logging 提供 CLI 与 MCP 的 slog 层：ctx 中的调用信息、属性键常量和
 // 可配置的 text/JSON handler。
 //
 // [WithCall] 由执行边界写入 operation 与 call_id，之后同一 ctx 上的日志都会附带这些
-// 字段；[WithOperation] 只登记 SDK 操作名。
+// 字段；SDK 使用默认 slog logger，属性键由各 SDK 自持。
 //
 // 包的组成：[New] 创建带调用上下文与脱敏行为的 handler，[From] 从 ctx 取 logger，
-// [AttrMethod] 等常量是各方共用的字段名，[WithCall] 与 [WithOperation] 负责绑定。
+// [AttrOperation] 等常量是执行边界的字段名，[WithCall] 负责绑定。
 package logging
 
 import (
@@ -13,23 +13,15 @@ import (
 	"log/slog"
 )
 
-// AttrMethod 等常量是日志属性键，SDK 传输层、执行边界和 JSON 输出共用这些字段名。
+// AttrOperation 等常量是执行边界与 JSON 输出使用的日志属性键。
 const (
-	AttrOrigin       = "origin"
-	AttrMethod       = "method"
-	AttrHost         = "host"
-	AttrPath         = "path"
-	AttrStatus       = "status"
-	AttrDuration     = "duration"
-	AttrAttempt      = "attempt"
-	AttrWait         = "wait"
-	AttrSDKOperation = "sdk_operation"
-	AttrError        = "error"
-	AttrCount        = "count"
-	AttrStage        = "stage"
-	AttrOperation    = "operation"
-	AttrCallID       = "call_id"
-	AttrReason       = "reason"
+	AttrDuration  = "duration"
+	AttrError     = "error"
+	AttrCount     = "count"
+	AttrStage     = "stage"
+	AttrOperation = "operation"
+	AttrCallID    = "call_id"
+	AttrReason    = "reason"
 )
 
 type contextKey struct{}
@@ -75,20 +67,4 @@ func Discard() *slog.Logger {
 func callInfoFrom(ctx context.Context) (callInfo, bool) {
 	value, ok := ctx.Value(contextKey{}).(callContext)
 	return value.info, ok
-}
-
-type operationKey struct{}
-
-// WithOperation 把 SDK 操作名放进 ctx；只作为日志属性，不影响请求。
-func WithOperation(ctx context.Context, operation string) context.Context {
-	if existing, _ := ctx.Value(operationKey{}).(string); existing != "" {
-		return ctx
-	}
-	return context.WithValue(ctx, operationKey{}, operation)
-}
-
-// OperationAttr 返回 SDK 操作名属性；没有登记时为空字符串。
-func OperationAttr(ctx context.Context) slog.Attr {
-	operation, _ := ctx.Value(operationKey{}).(string)
-	return slog.String(AttrSDKOperation, operation)
 }

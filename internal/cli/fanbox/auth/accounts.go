@@ -1,4 +1,4 @@
-package session
+package auth
 
 import (
 	"context"
@@ -13,15 +13,20 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
 
-// FanboxAccounts 提供 FANBOX 账号导入、列出、选择、移除与 client 打开。
-type FanboxAccounts struct {
+// Accounts 提供 FANBOX 账号导入、列出、选择、移除与 client 打开。
+type Accounts struct {
 	store       *account.Store
 	defaults    config.Store
 	loadOptions func() (fanbox.Options, error)
 }
 
-// FanboxAccountSummary 汇总 auth list 的输出行。
-type FanboxAccountSummary struct {
+// NewAccounts 绑定账号文件、默认配置与按调用读取的连接选项。
+func NewAccounts(store *account.Store, defaults config.Store, loadOptions func() (fanbox.Options, error)) *Accounts {
+	return &Accounts{store: store, defaults: defaults, loadOptions: loadOptions}
+}
+
+// AccountSummary 汇总 auth list 的输出行。
+type AccountSummary struct {
 	UserID      int64
 	DisplayName string
 	CreatorID   string
@@ -30,48 +35,48 @@ type FanboxAccountSummary struct {
 
 // ImportSession 使用显式 FANBOXSESSID 在线验证并保存账号；验证失败不产生记录。
 // proxyOverride 只覆盖本次请求的原生 HTTP proxy，空值保留配置的优先级。
-func (s *FanboxAccounts) ImportSession(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (FanboxAccountSummary, error) {
+func (s *Accounts) ImportSession(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (AccountSummary, error) {
 	sessionValue = strings.TrimSpace(sessionValue)
 	if sessionValue == "" {
-		return FanboxAccountSummary{}, errors.New("FANBOX session value is required")
+		return AccountSummary{}, errors.New("FANBOX session value is required")
 	}
 	options, err := s.connectionOptions(proxyOverride)
 	if err != nil {
-		return FanboxAccountSummary{}, err
+		return AccountSummary{}, err
 	}
 	user, err := s.store.ImportFanbox(ctx, sessionValue, options)
 	if err != nil {
-		return FanboxAccountSummary{}, err
+		return AccountSummary{}, err
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {
-		return FanboxAccountSummary{}, fmt.Errorf("read fanbox default account: %w", err)
+		return AccountSummary{}, fmt.Errorf("read fanbox default account: %w", err)
 	}
 	if setDefault || !hasDefault {
 		if err := s.defaults.SetFanboxDefaultUserID(user.UserID); err != nil {
-			return FanboxAccountSummary{}, fmt.Errorf("set fanbox default account: %w", err)
+			return AccountSummary{}, fmt.Errorf("set fanbox default account: %w", err)
 		}
 	}
 	isDefault, err := s.isDefault(ctx, user.UserID)
 	if err != nil {
-		return FanboxAccountSummary{}, err
+		return AccountSummary{}, err
 	}
-	return FanboxAccountSummary{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Default: isDefault}, nil
+	return AccountSummary{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Default: isDefault}, nil
 }
 
 // ListAccounts 返回按显示顺序排列的 FANBOX 账号。
-func (s *FanboxAccounts) ListAccounts(ctx context.Context) ([]FanboxAccountSummary, error) {
+func (s *Accounts) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 	accounts, err := s.store.ListFanbox(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]FanboxAccountSummary, 0, len(accounts))
+	out := make([]AccountSummary, 0, len(accounts))
 	for _, account := range accounts {
 		isDefault, err := s.isDefault(ctx, account.UserID)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, FanboxAccountSummary{
+		out = append(out, AccountSummary{
 			UserID:      account.UserID,
 			DisplayName: account.DisplayName,
 			CreatorID:   account.CreatorID,
@@ -82,7 +87,7 @@ func (s *FanboxAccounts) ListAccounts(ctx context.Context) ([]FanboxAccountSumma
 }
 
 // RemoveAccount 删除一个 FANBOX 账号。
-func (s *FanboxAccounts) RemoveAccount(ctx context.Context, userID int64) error {
+func (s *Accounts) RemoveAccount(ctx context.Context, userID int64) error {
 	defaultID, explicit, err := s.defaults.ReadFanboxDefaultUserID()
 	if err != nil {
 		return fmt.Errorf("read fanbox default account: %w", err)
@@ -97,7 +102,7 @@ func (s *FanboxAccounts) RemoveAccount(ctx context.Context, userID int64) error 
 }
 
 // UseAccount 设置显式默认账号。
-func (s *FanboxAccounts) UseAccount(ctx context.Context, userID int64) error {
+func (s *Accounts) UseAccount(ctx context.Context, userID int64) error {
 	if _, err := s.store.GetFanbox(ctx, userID); err != nil {
 		return err
 	}
@@ -105,12 +110,12 @@ func (s *FanboxAccounts) UseAccount(ctx context.Context, userID int64) error {
 }
 
 // UseAuto 清除显式默认，恢复首个入库账号。
-func (s *FanboxAccounts) UseAuto() error {
+func (s *Accounts) UseAuto() error {
 	return s.defaults.ClearFanboxDefaultUserID()
 }
 
 // Status 返回当前默认账号身份。
-func (s *FanboxAccounts) Status(ctx context.Context) (*FanboxAccountSummary, error) {
+func (s *Accounts) Status(ctx context.Context) (*AccountSummary, error) {
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -119,7 +124,7 @@ func (s *FanboxAccounts) Status(ctx context.Context) (*FanboxAccountSummary, err
 	if err != nil {
 		return nil, err
 	}
-	return &FanboxAccountSummary{
+	return &AccountSummary{
 		UserID:      account.UserID,
 		DisplayName: account.DisplayName,
 		CreatorID:   account.CreatorID,
@@ -129,7 +134,7 @@ func (s *FanboxAccounts) Status(ctx context.Context) (*FanboxAccountSummary, err
 
 // OpenClient 打开选中的账号。proxyOverride 只影响本次请求的原生代理，nil 时按配置的
 // 服务级/全局优先级决定；FlareSolverr 服务与 upstream 代理保持不变。
-func (s *FanboxAccounts) OpenClient(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
+func (s *Accounts) OpenClient(ctx context.Context, proxyOverride *string) (*fanbox.Client, error) {
 	userID, err := s.selectedUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -141,7 +146,7 @@ func (s *FanboxAccounts) OpenClient(ctx context.Context, proxyOverride *string) 
 	return s.store.OpenFanboxClient(ctx, userID, options)
 }
 
-func (s *FanboxAccounts) connectionOptions(proxyOverride *string) (fanbox.Options, error) {
+func (s *Accounts) connectionOptions(proxyOverride *string) (fanbox.Options, error) {
 	var options fanbox.Options
 	if s.loadOptions != nil {
 		loaded, err := s.loadOptions()
@@ -156,7 +161,7 @@ func (s *FanboxAccounts) connectionOptions(proxyOverride *string) (fanbox.Option
 	return options, nil
 }
 
-func (s *FanboxAccounts) selectedUserID(ctx context.Context) (int64, error) {
+func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
 	if userID, ok, err := s.defaults.ReadFanboxDefaultUserID(); err != nil {
 		return 0, err
 	} else if ok {
@@ -178,12 +183,12 @@ func (s *FanboxAccounts) selectedUserID(ctx context.Context) (int64, error) {
 	return accounts[0].UserID, nil
 }
 
-func (s *FanboxAccounts) hasDefault() (bool, error) {
+func (s *Accounts) hasDefault() (bool, error) {
 	_, ok, err := s.defaults.ReadFanboxDefaultUserID()
 	return ok, err
 }
 
-func (s *FanboxAccounts) isDefault(ctx context.Context, userID int64) (bool, error) {
+func (s *Accounts) isDefault(ctx context.Context, userID int64) (bool, error) {
 	configured, ok, err := s.defaults.ReadFanboxDefaultUserID()
 	if err != nil {
 		return false, err

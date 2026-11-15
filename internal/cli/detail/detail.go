@@ -17,7 +17,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -35,11 +34,11 @@ type Options struct {
 
 type commandRunner struct {
 	env        environment.Env
-	executeSDK session.SDKExecutor
+	executeSDK environment.PixivExecutor
 }
 
 // New 构造 `pixiv detail` 命令；实体类型由 --type 或 URL 决定。
-func New(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	options := Options{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{

@@ -18,7 +18,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
@@ -26,11 +25,11 @@ import (
 
 type commandRunner struct {
 	env  environment.Env
-	open func(context.Context) (*session.Fanbox, error)
+	open fanboxcli.Opener
 }
 
 // Commands 返回 FANBOX 内容叶子命令；open 延迟到实际执行时才打开账号。
-func Commands(env environment.Env, open func(context.Context) (*session.Fanbox, error)) []*cobra.Command {
+func Commands(env environment.Env, open fanboxcli.Opener) []*cobra.Command {
 	a := commandRunner{env: env, open: open}
 	leaves := []*cobra.Command{
 		a.newCreatorsCommand(),

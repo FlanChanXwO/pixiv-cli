@@ -9,7 +9,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -27,7 +26,7 @@ type novelOptions struct {
 
 // NewNovel 构造 `pixiv novel` 命令组，其 search 叶子与 `pixiv search --type novel`
 // 共用同一套执行逻辑。
-func NewNovel(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+func NewNovel(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())

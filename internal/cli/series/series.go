@@ -12,7 +12,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -28,11 +27,11 @@ type options struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv series` 命令；SERIES_ID_OR_URL 由请求解析器判定作品或小说系列。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
@@ -140,7 +139,7 @@ type novelSeriesOut struct {
 	record.ListOutput[record.Record]
 }
 
-func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
+func (a commandRunner) runNovel(cmd *cobra.Command, request environment.PixivRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
 	return a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		var metadata record.NovelSeries
 		var novels []record.Novel

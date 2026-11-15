@@ -8,7 +8,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -25,11 +24,11 @@ type options struct {
 
 type commandRunner struct {
 	env        environment.Env
-	executeSDK session.SDKExecutor
+	executeSDK environment.PixivExecutor
 }
 
 // New 构造 `pixiv follow` 命令；关注与取消关注都要求已认证账号。
-func New(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}
 	cmd.AddCommand(a.newAdd(), a.newRemove())
@@ -50,7 +49,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request environment.PixivRequest, id int64) error {
 				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 					return true, client.User(id).Follow(ctx, pixiv.FollowOptions{Restrict: pixiv.Restrict(opts.restrict)})
 				})
@@ -83,7 +82,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request environment.PixivRequest, id int64) error {
 				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 					return true, client.User(id).Unfollow(ctx)
 				})
@@ -105,8 +104,8 @@ func (a commandRunner) newRemove() *cobra.Command {
 	return cmd
 }
 
-func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Options, invoke func(context.Context, session.ProxyRequest, int64) error) func(context.Context, int64) error {
-	var request session.ProxyRequest
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Options, invoke func(context.Context, environment.PixivRequest, int64) error) func(context.Context, int64) error {
+	var request environment.PixivRequest
 	initialized := false
 	return func(ctx context.Context, id int64) error {
 		if !initialized {

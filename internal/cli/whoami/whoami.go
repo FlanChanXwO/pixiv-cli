@@ -12,13 +12,12 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
 
 // New 构造 `pixiv whoami`；current 是执行时才调用的只读账号端口。
-func New(env environment.Env, current func(context.Context) (*session.AccountSummary, error)) *cobra.Command {
+func New(env environment.Env, current func(context.Context) (*auth.AccountSummary, error)) *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "whoami",
@@ -45,7 +44,7 @@ func New(env environment.Env, current func(context.Context) (*session.AccountSum
 	return cmd
 }
 
-func printText(out io.Writer, account *session.AccountSummary) error {
+func printText(out io.Writer, account *auth.AccountSummary) error {
 	line := display.Identity(account.Username, account.UserID)
 	if account.Username != "" && account.Premium != nil && *account.Premium {
 		line += " · Premium"

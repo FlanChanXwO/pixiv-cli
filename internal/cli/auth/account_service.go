@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -51,25 +50,10 @@ type accountPoolStatusOut struct {
 }
 
 // AccountService 把账号领域服务接到 auth 命令上。
-// 默认账号由 session 解析；代理和运行时开关在这里转换为 SDK options。
+// 默认账号由 Accounts 解析；代理和运行时开关在这里转换为 SDK options。
 type AccountService struct {
-	Pixiv       accountPort
+	Pixiv       *Accounts
 	LoadRuntime func() (config.Config, error)
-}
-
-// accountPort 定义 auth adapter 消费的账号业务端口，领域服务保持独立于 CLI DTO。
-type accountPort interface {
-	ImportAccount(context.Context, string, bool, pixiv.Options) (session.AccountSummary, error)
-	ListAccounts(context.Context) ([]session.AccountSummary, error)
-	UseAccount(context.Context, int64) error
-	RemoveAccount(context.Context, int64) error
-	CheckAccount(context.Context, int64, pixiv.Options) (session.AccountSummary, error)
-	RefreshAccount(context.Context, int64, pixiv.Options) (session.AccountSummary, error)
-	CurrentUser(context.Context) (*session.AccountSummary, error)
-	RestoreAccounts(context.Context, []session.RestoreAccountInput) (session.RestoreAccountsResult, error)
-	AccountsWithTokens(context.Context) ([]session.AccountWithToken, error)
-	SetPoolSchedulable(context.Context, []int64, bool) error
-	SetAllPoolSchedulable(context.Context, bool) error
 }
 
 type accountImportRequest struct {
@@ -186,10 +170,10 @@ func (s AccountService) importBundle(ctx context.Context, body []byte) (accountB
 	if err != nil {
 		return accountBundleImportOut{}, err
 	}
-	inputs := make([]session.RestoreAccountInput, 0, len(bundle.Accounts))
+	inputs := make([]RestoreAccountInput, 0, len(bundle.Accounts))
 	for _, entry := range bundle.Accounts {
-		summary := session.AccountSummary{UserID: entry.UserID, Username: entry.Username}
-		inputs = append(inputs, session.RestoreAccountInput{
+		summary := AccountSummary{UserID: entry.UserID, Username: entry.Username}
+		inputs = append(inputs, RestoreAccountInput{
 			Account:         summary,
 			RefreshToken:    entry.RefreshToken,
 			IsBundleDefault: entry.UserID == bundle.DefaultUserID,
@@ -280,7 +264,7 @@ func (s AccountService) export(request accountExportRequest) (accountExportResul
 		selected = nil
 		for _, entry := range accounts {
 			if entry.UserID == request.UserID {
-				selected = []session.AccountWithToken{entry}
+				selected = []AccountWithToken{entry}
 				break
 			}
 		}
@@ -385,9 +369,9 @@ func (s AccountService) refreshWithRequest(ctx context.Context, request accountR
 }
 
 // AccountJSON 返回与 `pixiv auth list --json` 单账号项相同的公开摘要；不含凭据。
-func AccountJSON(account session.AccountSummary) any { return accountFromPixiv(account) }
+func AccountJSON(account AccountSummary) any { return accountFromPixiv(account) }
 
-func accountFromPixiv(account session.AccountSummary) accountOut {
+func accountFromPixiv(account AccountSummary) accountOut {
 	result := accountOut{UserID: account.UserID, Username: account.Username, Default: account.Default, PremiumStatus: account.Premium}
 	if account.PoolStatusKnown {
 		schedulable := account.Schedulable
@@ -400,7 +384,7 @@ func accountFromPixiv(account session.AccountSummary) accountOut {
 	return result
 }
 
-func accountImportOutFrom(account session.AccountSummary, status string) accountImportOut {
+func accountImportOutFrom(account AccountSummary, status string) accountImportOut {
 	return accountImportOut{UserID: account.UserID, Username: account.Username, Status: status}
 }
 

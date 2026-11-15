@@ -11,7 +11,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -31,11 +30,11 @@ type options struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv timeline` 命令组；following 与 latest 共用分页、代理覆盖和输出判定。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	cmd := &cobra.Command{Use: "timeline", Short: "Browse authenticated Pixiv timelines"}
 	cmd.AddCommand(a.newFollowingCommand(), a.newLatestCommand())
@@ -218,23 +217,23 @@ func (a commandRunner) runLatest(cmd *cobra.Command, opts options) error {
 
 // resolve 统一两个 timeline 命令的分页、传输覆盖与输出模式判定，使 --ndjson 与
 // --json 的互斥、自动 NDJSON 判定和 JSON 解析顺序保持一致。
-func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pagination.PagePlan, session.ProxyRequest, bool, bool, error) {
+func (a commandRunner) resolve(cmd *cobra.Command, opts options) (pagination.PagePlan, environment.PixivRequest, bool, bool, error) {
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 	}
 	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
 		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+			return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 		}
 	}
 	return plan, request, jsonOut, a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut), nil
