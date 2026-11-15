@@ -104,8 +104,8 @@ https_proxy=http://127.0.0.1:7890 ./build/pixiv mcp --port 1270
 
 ## Finding protocol and logging code
 
-- Pixiv protocol code lives in `internal/pixiv/api/`, with OAuth in its `oauth/` subpackage; FANBOX protocol code lives in `internal/fanbox/api/`. Endpoint requests, response validation, and mapping live in the domain files under `sdk/pixiv/` and `sdk/fanbox/`; locate issues by domain. See [architecture](architecture.md#internalpixivapi-internalfanboxapi).
-- `internal/cli/root.go` creates the stderr logger through `internal/logging`; `internal/session/options.go` and `internal/cli/mcp/runtime.go` pass it to the SDK and MCP. Shared MCP wrappers live in `internal/mcpserver/toolrun/toolrun.go`, and handlers/context attributes in `internal/logging/`. CLI-wide mechanisms live at their module-level owners (`internal/environment`, `internal/pagination`, `internal/record`, `internal/session`, `internal/display`); `internal/cli` keeps only command directories and root composition files. See [logging entry points](architecture.md#logging-entry-points) and the external Go caller's [SDK example](../sdk.md#connections-and-logging).
+- Pixiv protocol lives in `sdk/pixiv/internal/api/`, with OAuth in `oauth/`; FANBOX protocol lives in `sdk/fanbox/internal/api/`. Product domain files own endpoint requests, response validation and mapping. SDK-shared Cloudflare/cursor mechanisms live in `sdk/internal/`; application/SDK-safe transport diagnostics live in `internal/netdiagnostic/`. See [protocol ownership](architecture.md#sdk-protocol-internals).
+- `internal/cli/root.go` installs the stderr logger from `internal/logging` with `slog.SetDefault` and restores the previous default after cleanup. SDK events use that current default, with SDK-owned attribute constants. MCP call wrappers live in `internal/mcpserver/toolrun/toolrun.go`. The root composes account stores, gates, read sessions and configuration; streams, pagination, records and display stay at their module-level owners. See [logging entry points](architecture.md#logging-entry-points) and the [SDK example](../sdk.md#connections-and-logging).
 - For local diagnosis, run `pixiv config set logging.level debug`; add `pixiv config set logging.format json` when structured fields help. Settings apply on the next invocation. Text logs show the operation in the second bracket and other context as `key=value`; JSON logs keep `operation`, and MCP calls add `call_id`; data stays on stdout.
 
 ## Credentials in development
@@ -131,10 +131,13 @@ Run the affected package during editing. On the final shared-contract candidate,
 go test ./... -count=1
 env CGO_ENABLED=1 go test -race ./... -count=1
 go vet ./...
+env CGO_ENABLED=0 go build ./...
 sh scripts/build.sh
 ```
 
 Race checks need the C toolchain; source builds stay CGO-free. Preserve the workflow's Windows ARM64 race limitation and diagnostic handling. Report actual pass/fail/skip and unrun required checks. Release fixture gates are documented under [release](release.md#local-release-fixture-gates).
+
+For SDK dependency changes, inspect `go list -deps ./sdk/...`: the graph must exclude `internal/logging` and `golang.org/x/term`. Run `go mod tidy` after removing package dependencies.
 
 ### CI exemptions
 

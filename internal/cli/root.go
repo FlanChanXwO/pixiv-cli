@@ -12,8 +12,11 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/bookmark"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/comment"
@@ -39,15 +42,17 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
-	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
+	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
 )
 
@@ -57,7 +62,11 @@ type app struct {
 	pipelineSignal *environment.BrokenPipe
 	mcpSignal      *environment.BrokenPipe
 	closeState     *lifecycle.CloseState
-	local          *session.Local
+	storeMu        sync.Mutex
+	store          *account.Store
+	gate           *account.Gate
+	readsMu        sync.Mutex
+	reads          *account.ReadSessions
 	logs           *logging.State
 }
 
@@ -116,10 +125,10 @@ func (a *app) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	env := a.commandEnv()
 	cmd.AddCommand(a.newAuthCommand())
-	cmd.AddCommand(whoami.New(env, a.local.CurrentUser))
+	cmd.AddCommand(whoami.New(env, a.currentUser))
 	cmd.AddCommand(configcmd.New(env, config.Store{Files: secretfile.ConfigFiles{}}))
 	cmd.AddCommand(a.pixivCommands(env)...)
-	cmd.AddCommand(download.New(env, a.local.ExecuteSDK, download.RuntimeFrom(a.runtimeConfig)))
+	cmd.AddCommand(download.New(env, a.executePixiv, download.RuntimeFrom(a.runtimeConfig)))
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	cmd.AddCommand(mcp.New(env, a.runPixivMCP, mcp.InitAuth))
 	cmd.AddCommand(update.New(env, a.runtimeConfig))
@@ -129,23 +138,218 @@ func (a *app) newRootCommand() *cobra.Command {
 func (a *app) pixivCommands(env environment.Env) []*cobra.Command {
 	reverseSearch := a.reverseSearchPort()
 	return []*cobra.Command{
-		search.New(env, a.local.ExecuteSDK, reverseSearch),
-		search.NewNovel(env, a.local.ExecuteSDK),
-		detail.New(env, a.local.ExecuteSDK),
-		ranking.New(env, a.local.ExecuteSDK),
-		series.New(env, a.local.ExecuteSDK),
-		comment.New(env, a.local.ExecuteSDK),
-		recommended.New(env, a.local.ExecuteSDK),
-		timeline.New(env, a.local.ExecuteSDK),
-		mypixiv.New(env, a.local.ExecuteSDK),
-		user.New(env, a.local.ExecuteSDK, func() *cobra.Command { return follow.New(env, a.local.ExecuteSDK) }),
-		bookmark.New(env, a.local.ExecuteSDK),
-		follow.New(env, a.local.ExecuteSDK),
+		search.New(env, a.executePixiv, reverseSearch),
+		search.NewNovel(env, a.executePixiv),
+		detail.New(env, a.executePixiv),
+		ranking.New(env, a.executePixiv),
+		series.New(env, a.executePixiv),
+		comment.New(env, a.executePixiv),
+		recommended.New(env, a.executePixiv),
+		timeline.New(env, a.executePixiv),
+		mypixiv.New(env, a.executePixiv),
+		user.New(env, a.executePixiv, func() *cobra.Command { return follow.New(env, a.executePixiv) }),
+		bookmark.New(env, a.executePixiv),
+		follow.New(env, a.executePixiv),
 	}
 }
 
 func (a *app) runtimeConfig() (config.Config, error) {
 	return (config.Store{Files: secretfile.ConfigFiles{}}).Current()
+}
+
+func (a *app) openAccounts(ctx context.Context) (*account.Store, error) {
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
+	if a.store != nil {
+		return a.store, nil
+	}
+	directory, err := config.AppDataDir()
+	if err != nil {
+		return nil, fmt.Errorf("determine home directory: %w", err)
+	}
+	store, err := account.Open(ctx, directory)
+	if err != nil {
+		return nil, err
+	}
+	a.store = store
+	return store, nil
+}
+
+func (a *app) pixivAccounts(ctx context.Context) (*auth.Accounts, auth.LoginService, error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return nil, auth.LoginService{}, err
+	}
+	service := auth.NewAccounts(store, config.Store{Files: secretfile.ConfigFiles{}})
+	return service, auth.LoginService{Pixiv: service}, nil
+}
+
+func (a *app) currentUser(ctx context.Context) (*auth.AccountSummary, error) {
+	service, _, err := a.pixivAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return service.CurrentUser(ctx)
+}
+
+func (a *app) fanboxAccounts(ctx context.Context) (*fanboxauth.Accounts, error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return fanboxauth.NewAccounts(store, config.Store{Files: secretfile.ConfigFiles{}}, a.fanboxOptions), nil
+}
+
+func (a *app) openFanbox(ctx context.Context, proxy *string) (*lifecycle.Lease[*fanbox.Client], error) {
+	service, err := a.fanboxAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	client, err := service.OpenClient(ctx, proxy)
+	if err != nil {
+		return nil, err
+	}
+	return lifecycle.NewLease(client, func() error { return client.Close(context.WithoutCancel(ctx)) }), nil
+}
+
+func (a *app) selectedPixiv(ctx context.Context, userID int64) (int64, error) {
+	if userID != 0 {
+		return userID, nil
+	}
+	service, _, err := a.pixivAccounts(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return service.SelectedUserID(ctx)
+}
+
+func (a *app) pixivLease(ctx context.Context, store *account.Store, userID int64, options pixiv.Options) (lease *lifecycle.Lease[*pixiv.Client], err error) {
+	// 注入传输归组合根所有，在失败或租约关闭时释放。
+	defer func() {
+		if lease == nil {
+			options.HTTPClient.CloseIdleConnections()
+		}
+	}()
+	if err := a.gate.Acquire(ctx); err != nil {
+		return nil, err
+	}
+	client, err := store.OpenSDKClient(ctx, userID, options)
+	if err != nil {
+		a.gate.Release()
+		return nil, err
+	}
+	return lifecycle.NewLease(client, func() error {
+		defer a.gate.Release()
+		client.CloseIdleConnections()
+		options.HTTPClient.CloseIdleConnections()
+		return nil
+	}), nil
+}
+
+func (a *app) executePixiv(ctx context.Context, request environment.PixivRequest, invoke func(context.Context, int64, *pixiv.Client) (bool, error)) error {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	options, _, err := a.pixivSettings(request)
+	if err != nil {
+		return err
+	}
+	defer options.HTTPClient.CloseIdleConnections()
+	runtime, err := a.runtimeConfig()
+	if err != nil {
+		return err
+	}
+	selection := account.Selection{Mode: account.SelectionPool}
+	if request.UserID != 0 || !runtime.AccountPool.Enabled {
+		userID, err := a.selectedPixiv(ctx, request.UserID)
+		if err != nil {
+			return err
+		}
+		selection = account.Selection{Mode: account.SelectionFixed, UserID: userID}
+	}
+	scheduler := account.Scheduler{State: store, Strategy: account.Strategy(runtime.AccountPool.Strategy), Now: time.Now}
+	return scheduler.Run(ctx, selection, func(ctx context.Context, userID int64, attempt *lifecycle.Attempt) (err error) {
+		lease, err := a.pixivLease(ctx, store, userID, options)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, lease.Close()) }()
+		committed, err := invoke(ctx, userID, lease.Value())
+		if committed {
+			attempt.Commit()
+		}
+		return err
+	})
+}
+
+func (a *app) openPixiv(ctx context.Context, request environment.PixivRequest) (*lifecycle.Lease[*pixiv.Client], error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	options, _, err := a.pixivSettings(request)
+	if err != nil {
+		return nil, err
+	}
+	userID, err := a.selectedPixiv(ctx, request.UserID)
+	if err != nil {
+		options.HTTPClient.CloseIdleConnections()
+		return nil, err
+	}
+	return a.pixivLease(ctx, store, userID, options)
+}
+
+func (a *app) readSession(ctx context.Context, request environment.PixivRequest) (mediaproxy.Session, error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return mediaproxy.Session{}, err
+	}
+	a.readsMu.Lock()
+	if a.reads == nil {
+		a.reads = account.NewReadSessions(store, a.gate)
+		a.closeState.Add(a.reads.Close)
+	}
+	reads := a.reads
+	a.readsMu.Unlock()
+	options, network, err := a.pixivSettings(request)
+	if err != nil {
+		return mediaproxy.Session{}, err
+	}
+	userID, err := a.selectedPixiv(ctx, request.UserID)
+	if err != nil {
+		options.HTTPClient.CloseIdleConnections()
+		return mediaproxy.Session{}, err
+	}
+	snapshot, err := reads.OpenSDK(ctx, userID, network, options)
+	if err != nil {
+		options.HTTPClient.CloseIdleConnections()
+		return mediaproxy.Session{}, err
+	}
+	return mediaproxy.Session{Lease: lifecycle.NewLease(snapshot.SDKClient, nil), Version: fmt.Sprint(snapshot.Version), Expires: snapshot.Expires, Invalidated: snapshot.Invalidated, Invalidate: func(err error) { reads.Invalidate(userID, snapshot.Version, err) }}, nil
+}
+
+func (a *app) localAccounts(ctx context.Context) (accounts.LocalSnapshot, error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return accounts.LocalSnapshot{}, err
+	}
+	records, err := store.ListPixiv(ctx)
+	if err != nil {
+		return accounts.LocalSnapshot{}, err
+	}
+	defaultID, explicit, err := (config.Store{Files: secretfile.ConfigFiles{}}).ReadPixivDefaultUserID()
+	if err != nil {
+		return accounts.LocalSnapshot{}, err
+	}
+	local := accounts.LocalSnapshot{Accounts: make([]accounts.Account, 0, len(records))}
+	if explicit {
+		local.DefaultUserID = defaultID
+	}
+	for _, record := range records {
+		local.Accounts = append(local.Accounts, accounts.Account{UserID: record.UserID, Username: record.Username, HasCredentials: !record.Credential.Empty()})
+	}
+	return local, nil
 }
 
 // Run 执行一条 CLI 命令并返回进程退出码，阶段顺序固定：
@@ -170,7 +374,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 		pipelineSignal: &environment.BrokenPipe{}, mcpSignal: &environment.BrokenPipe{},
 		logs: &logging.State{Logger: logging.Discard()},
 	}
-	a.local = session.NewLocal(closeState, a.pixivSettings, a.fanboxOptions, a.poolConfig)
+	a.gate = account.NewGate()
 	defer a.pipelineSignal.Restore()
 	defer a.mcpSignal.Restore()
 	cmd := a.newRootCommand()
@@ -190,7 +394,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	}
 	ndjsonOutput := environment.WritesNDJSON(target) || environment.OutputNDJSON(target)
 	if err != nil && !(ndjsonOutput && errors.Is(err, syscall.EPIPE)) && a.logs.Ctx != nil {
-		attrs := append([]slog.Attr{slog.Any(logging.AttrError, err)}, logging.OriginAttr(err)...)
+		attrs := []slog.Attr{slog.Any(logging.AttrError, err)}
 		a.logs.Logger.LogAttrs(a.logs.Ctx, a.logs.FailureLevel, "Command failed", attrs...)
 	}
 	return a.exitWithNDJSONScope(err, ndjsonOutput)
@@ -260,26 +464,41 @@ func (a *app) commandEnv() environment.Env {
 
 // newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开账号文件。
 func (a *app) newAuthCommand() *cobra.Command {
-	return auth.New(a.commandEnv(), auth.SupportFor(a.local.PixivAccounts, a.runtimeConfig, secretfile.WriteSecretFile))
+	return auth.New(a.commandEnv(), auth.SupportFor(a.pixivAccounts, a.runtimeConfig, secretfile.WriteSecretFile))
 }
 
 func (a *app) newFanboxCommandGroup(env environment.Env) *cobra.Command {
 	children := []*cobra.Command{
-		fanboxauth.New(env, a.local.FanboxAccounts, fanboxauth.SystemBrowserProvider{}),
-		fanboxdownload.New(env, a.local.Fanbox, func() (string, error) {
+		fanboxauth.New(env, a.fanboxAccounts, fanboxauth.SystemBrowserProvider{}),
+		fanboxdownload.New(env, a.openFanbox, func() (string, error) {
 			runtime, err := a.runtimeConfig()
 			return runtime.Download.Path, err
 		}),
 	}
-	return fanboxcli.NewCommand(env, append(children, browse.Commands(env, a.local.Fanbox)...))
+	return fanboxcli.NewCommand(env, append(children, browse.Commands(env, a.openFanbox)...))
 }
 
-func (a *app) pixivSettings(request session.ProxyRequest) (session.PixivSettings, error) {
+func (a *app) pixivSettings(request environment.PixivRequest) (pixiv.Options, string, error) {
 	runtime, err := a.runtimeConfig()
 	if err != nil {
-		return session.PixivSettings{}, err
+		return pixiv.Options{}, "", err
 	}
-	return session.PixivOptions(runtime, request, a.logger())
+	interval, err := time.ParseDuration(runtime.Network.RequestInterval)
+	if err != nil {
+		return pixiv.Options{}, "", err
+	}
+	proxy := runtime.Network.HTTPSProxy
+	if runtime.Pixiv.Network.ProxyURL != nil {
+		proxy = *runtime.Pixiv.Network.ProxyURL
+	}
+	if request.HTTPSProxyOverride != nil {
+		proxy = *request.HTTPSProxyOverride
+	}
+	httpClient, err := config.HTTPClient(proxy)
+	if err != nil {
+		return pixiv.Options{}, "", err
+	}
+	return pixiv.Options{HTTPClient: httpClient, RequestInterval: interval}, fmt.Sprintf("%q/%d/%q", proxy, interval, ""), nil
 }
 
 func (a *app) fanboxOptions() (fanbox.Options, error) {
@@ -287,15 +506,20 @@ func (a *app) fanboxOptions() (fanbox.Options, error) {
 	if err != nil {
 		return fanbox.Options{}, err
 	}
-	return session.FanboxOptions(runtime), nil
-}
-
-func (a *app) poolConfig() (session.PoolConfig, error) {
-	runtime, err := a.runtimeConfig()
-	if err != nil {
-		return session.PoolConfig{}, err
+	options := fanbox.Options{ProxyURL: runtime.Network.HTTPSProxy}
+	if runtime.Fanbox.Network.ProxyURL != nil {
+		options.ProxyURL = *runtime.Fanbox.Network.ProxyURL
 	}
-	return session.PoolConfig{Enabled: runtime.AccountPool.Enabled, Strategy: string(runtime.AccountPool.Strategy)}, nil
+	if runtime.Fanbox.Network.UserAgent != nil {
+		options.UserAgent = *runtime.Fanbox.Network.UserAgent
+	}
+	if runtime.Fanbox.FlareSolverr.URL != nil {
+		options.FlareSolverrURL = *runtime.Fanbox.FlareSolverr.URL
+		if runtime.Fanbox.FlareSolverr.ProxyURL != nil {
+			options.FlareSolverrProxyURL = *runtime.Fanbox.FlareSolverr.ProxyURL
+		}
+	}
+	return options, nil
 }
 
 // runPixivMCP 构造 MCP 启动快照，把反向搜图与本地账号端口注入 mcp.Runtime。
@@ -314,10 +538,13 @@ func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 		ErrOut:        a.errOut,
 		Logger:        a.logger,
 		Settings:      runtime,
-		Local:         a.local,
-		Fanbox:        a.local.NewFanbox,
+		ExecutePixiv:  a.executePixiv,
+		OpenPixiv:     a.openPixiv,
+		ReadSession:   a.readSession,
+		LocalAccounts: a.localAccounts,
+		PixivAccounts: a.pixivAccounts,
+		OpenFanbox:    a.openFanbox,
 		ReverseSearch: reverseSearch,
-		PixivAccounts: a.local.PixivAccounts,
 		CloseState:    a.closeState,
 	}.Run(ctx, request)
 }
@@ -350,16 +577,16 @@ func newReverseSearcher(runtime config.Config, proxyOverride *string) (reversese
 
 // newMCPReverseSearchPorts 在 MCP 启动时创建一次反向搜图 Facade，并固定 provider 与
 // 两个代理网络面；后续 tool input 只能覆盖 provider，不能改变传输或凭据依赖。
-func newMCPReverseSearchPorts(runtime config.Config, request mcp.Request) (pixiv.ReverseSearchPorts, error) {
+func newMCPReverseSearchPorts(runtime config.Config, request mcp.Request) (pixivmcpserver.ReverseSearchPorts, error) {
 	searcher, err := newReverseSearcher(runtime, request.HTTPSProxyOverride)
 	if err != nil {
-		return pixiv.ReverseSearchPorts{}, err
+		return pixivmcpserver.ReverseSearchPorts{}, err
 	}
 	provider := reversesearch.Provider(runtime.ReverseSearch.Provider)
 	if provider == "" {
 		provider = reversesearch.ProviderSauceNAO
 	}
-	return pixiv.ReverseSearchPorts{Searcher: searcher, Provider: provider, PixivOnly: runtime.ReverseSearch.PixivOnly}, nil
+	return pixivmcpserver.ReverseSearchPorts{Searcher: searcher, Provider: provider, PixivOnly: runtime.ReverseSearch.PixivOnly}, nil
 }
 
 // reverseSearchPort 为每次命令树构造反向搜图端口；每次调用按当前配置重新读取 provider 和代理。

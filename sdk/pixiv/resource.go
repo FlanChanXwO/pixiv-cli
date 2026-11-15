@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 func (c *Client) resourceBody(ctx context.Context, operation, rawURL string) (io.ReadCloser, error) {
@@ -55,7 +55,7 @@ func (c *Client) saveResource(ctx context.Context, operation, rawURL, path strin
 // caller owns the returned body and interprets its HTTP status and headers.
 // A nil client represents a deserialized, unbound object. Resource requests
 // require saved account credentials but never forward them to the media host.
-func (c *Client) openResource(ctx context.Context, rawURL string) (*api.Response, error) {
+func (c *Client) openResource(ctx context.Context, rawURL string) (*http.Response, error) {
 	if c == nil {
 		return nil, newError("resource.Open", sdk.InvalidArgument, "resource is unbound", nil)
 	}
@@ -69,7 +69,7 @@ func (c *Client) openResource(ctx context.Context, rawURL string) (*api.Response
 		return nil, err
 	}
 	// 3. The protocol layer strips the cookie jar and revalidates redirects.
-	response, err := transport.OpenResource(ctx, api.OpenRequest{URL: rawURL})
+	response, err := transport.OpenResource(ctx, rawURL)
 	if err != nil {
 		return nil, classifyError("resource.Open", err, false)
 	}

@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
+	cliauth "github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver"
@@ -20,7 +21,6 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -35,14 +35,18 @@ type Runtime struct {
 	ErrOut   io.Writer
 	Logger   func() *slog.Logger
 	Settings config.Config
-	// Local 提供 Pixiv 重放执行、只读会话与本地账号摘要。
-	Local *session.Local
-	// Fanbox 返回执行内共享账号库的 FANBOX 会话；每次调用只新建租约。
-	Fanbox func(context.Context) (*session.Fanbox, error)
+	// ExecutePixiv、OpenPixiv 与 ReadSession 保留组合根的账号选择和生命周期。
+	ExecutePixiv environment.PixivExecutor
+	OpenPixiv    func(context.Context, environment.PixivRequest) (*lifecycle.Lease[*pixiv.Client], error)
+	ReadSession  func(context.Context, environment.PixivRequest) (mediaproxy.Session, error)
+	// LocalAccounts 返回本地账号摘要与显式默认账号。
+	LocalAccounts func(context.Context) (accounts.LocalSnapshot, error)
+	// PixivAccounts 延迟打开账号与登录服务，保留保存后摘要读取的错误。
+	PixivAccounts func(context.Context) (*cliauth.Accounts, cliauth.LoginService, error)
+	// OpenFanbox 每次打开独立租约，默认账号与连接配置由组合根解析。
+	OpenFanbox func(context.Context, *string) (*lifecycle.Lease[*fanbox.Client], error)
 	// ReverseSearch 是启动时固定配置的反向搜图端口。
 	ReverseSearch pixivmcpserver.ReverseSearchPorts
-	// PixivAccounts 延迟打开账号与登录服务，供 HTTP 登录接力复用。
-	PixivAccounts func(context.Context) (*session.Accounts, session.LoginService, error)
 	// CloseState 登记 MCP 打开的反向搜图 client。
 	CloseState *lifecycle.CloseState
 }
@@ -72,28 +76,21 @@ func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) 
 	sdkPorts := pixivmcpserver.SDKPorts{
 		Logger: r.Logger(),
 		ExecuteSDK: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
-			return r.Local.ExecuteSDK(ctx, pixivRequest(account), attempt)
-		},
-		Execute: func(ctx context.Context, account pixivmcpserver.Account, attempt func(context.Context, *legacysdk.Client) (bool, error)) error {
-			return r.Local.Execute(ctx, pixivRequest(account), attempt)
+			return r.ExecutePixiv(ctx, pixivRequest(account), attempt)
 		},
 		ReverseSearch: r.ReverseSearch,
 	}
 	fanboxPorts := fanboxmcpserver.SDKPorts{
 		Logger: r.Logger(),
 		OpenLease: func(ctx context.Context, account fanboxmcpserver.Account) (*lifecycle.Lease[*fanbox.Client], error) {
-			service, err := r.Fanbox(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return service.Open(ctx, session.OpenRequest{ProxyOverride: account.HTTPSProxyOverride})
+			return r.OpenFanbox(ctx, account.HTTPSProxyOverride)
 		},
 	}
 	return sdkPorts, fanboxPorts
 }
 
-func pixivRequest(account pixivmcpserver.Account) session.ProxyRequest {
-	return session.ProxyRequest{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}
+func pixivRequest(account pixivmcpserver.Account) environment.PixivRequest {
+	return environment.PixivRequest{UserID: account.UserID, HTTPSProxyOverride: account.HTTPSProxyOverride}
 }
 
 // runStdio 使用每个请求独立打开本地账号，stdout 只承载 JSON-RPC。
@@ -103,16 +100,16 @@ func (r Runtime) runStdio(ctx context.Context, settings config.Config, sdkPorts 
 	sdkPorts.ResolveSDKAccount = func(_ context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
 		return account, nil
 	}
-	// 旧领域仍只解析一次身份，媒体的多个阶段固定使用同一账号。
+	// 媒体的多个阶段只解析一次身份，固定使用同一账号。
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
-		err := r.Local.ExecuteSDK(ctx, session.ProxyRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
+		err := r.ExecutePixiv(ctx, environment.PixivRequest{HTTPSProxyOverride: account.HTTPSProxyOverride}, func(_ context.Context, userID int64, _ *pixiv.Client) (bool, error) {
 			account.UserID = userID
 			return false, nil
 		})
 		return account, err
 	}
 	sdkPorts.OpenSDKLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
-		return r.Local.OpenSDKLease(ctx, pixivRequest(account))
+		return r.OpenPixiv(ctx, pixivRequest(account))
 	}
 	return mcpserver.RunStdio(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), r.In, r.Out)
 }
@@ -131,19 +128,19 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	if _, err := store.Read(ctx); err != nil {
 		return err
 	}
-	selection := accounts.Selection{Store: store, Load: r.localAccounts}
+	selection := accounts.Selection{Store: store, Load: r.LocalAccounts}
 	login, err := r.newLogin(ctx, baseURL, selection, request.HTTPSProxyOverride)
 	if err != nil {
 		return err
 	}
 	defer login.Close()
 	media, err := mediaproxy.New(baseURL, store, func(ctx context.Context, userID int64) (*lifecycle.Lease[*pixiv.Client], error) {
-		return r.Local.OpenSDKLease(ctx, session.ProxyRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+		return r.OpenPixiv(ctx, environment.PixivRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 	if err != nil {
 		return err
 	}
-	if err := configureMedia(ctx, media, settings, r.readSession, request); err != nil {
+	if err := configureMedia(ctx, media, settings, r.ReadSession, request); err != nil {
 		return err
 	}
 	if err := media.ConfigureAnimations(ctx, settings.MCP.GalleryAnimationTempCapacityMiB*(1<<20)); err != nil {
@@ -151,11 +148,8 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	}
 	defer func() { result = errors.Join(result, media.CloseAnimations()) }()
 	sdkPorts.Media, sdkPorts.Accounts, sdkPorts.Login = media, selection, login
-	sdkPorts.Read = func(ctx context.Context, account pixivmcpserver.Account, callback func(context.Context, *legacysdk.Client) (bool, error)) error {
-		return r.Local.Read(ctx, pixivRequest(account), callback)
-	}
 	sdkPorts.OpenSDKLease = func(ctx context.Context, account pixivmcpserver.Account) (*lifecycle.Lease[*pixiv.Client], error) {
-		snapshot, err := r.Local.SDKReadSession(ctx, pixivRequest(account))
+		snapshot, err := r.ReadSession(ctx, pixivRequest(account))
 		return snapshot.Lease, err
 	}
 	sdkPorts.ResolveAccount = func(ctx context.Context, account pixivmcpserver.Account) (pixivmcpserver.Account, error) {
@@ -170,30 +164,8 @@ func (r Runtime) runHTTP(ctx context.Context, settings config.Config, sdkPorts p
 	return mcpserver.RunHTTP(ctx, mcpserver.New(sdkPorts, account, fanboxPorts, request.HTTPSProxyOverride), listenAddr, baseURL, store, r.ErrOut, login, media)
 }
 
-// localAccounts 把 session 的本地账号摘要投影成 MCP 的选择视图。
-func (r Runtime) localAccounts(ctx context.Context) (accounts.LocalSnapshot, error) {
-	local, err := r.Local.LocalAccounts(ctx)
-	if err != nil {
-		return accounts.LocalSnapshot{}, err
-	}
-	snapshot := accounts.LocalSnapshot{DefaultUserID: local.DefaultUserID, Accounts: make([]accounts.Account, 0, len(local.Accounts))}
-	for _, account := range local.Accounts {
-		snapshot.Accounts = append(snapshot.Accounts, accounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.HasCredentials})
-	}
-	return snapshot, nil
-}
-
-// readSession 把 session 的只读快照投影成媒体代理使用的会话值。
-func (r Runtime) readSession(ctx context.Context, request session.ProxyRequest) (mediaproxy.Session, error) {
-	snapshot, err := r.Local.SDKReadSession(ctx, request)
-	if err != nil {
-		return mediaproxy.Session{}, err
-	}
-	return mediaproxy.Session{Lease: snapshot.Lease, Version: snapshot.Version, Expires: snapshot.Expires, Invalidated: snapshot.Invalidated, Invalidate: snapshot.Invalidate}, nil
-}
-
 // configureMedia 挂媒体阶段观测；日志只带固定阶段名和计数。
-func configureMedia(lifecycleCtx context.Context, media *mediaproxy.Service, settings config.Config, readSession func(context.Context, session.ProxyRequest) (mediaproxy.Session, error), request Request) error {
+func configureMedia(lifecycleCtx context.Context, media *mediaproxy.Service, settings config.Config, readSession func(context.Context, environment.PixivRequest) (mediaproxy.Session, error), request Request) error {
 	return media.Configure(mediaproxy.Config{
 		Capacity: settings.MCP.GalleryCacheCapacityMiB * (1 << 20),
 		ObserveAnimation: func(requestCtx context.Context, event mediaproxy.AnimationObservation) {
@@ -204,7 +176,7 @@ func configureMedia(lifecycleCtx context.Context, media *mediaproxy.Service, set
 				slog.String(logging.AttrStage, stage), slog.Duration(logging.AttrDuration, duration))
 		},
 	}, func(ctx context.Context, userID int64) (mediaproxy.Session, error) {
-		return readSession(ctx, session.ProxyRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
+		return readSession(ctx, environment.PixivRequest{UserID: userID, HTTPSProxyOverride: request.HTTPSProxyOverride})
 	})
 }
 
@@ -259,7 +231,7 @@ func InitAuth(ctx context.Context, reset bool) (string, error) {
 
 func (r Runtime) newLogin(ctx context.Context, baseURL string, selection accounts.Selection, proxy *string) (*accounts.Login, error) {
 	// 登录启动串行执行；成功后保留同一个账号服务，后续完成步骤复用它。
-	var service *session.LoginService
+	var service *cliauth.LoginService
 	return accounts.NewLogin(ctx, strings.TrimRight(baseURL, "/")+"/pixiv-login", func() (accounts.LoginAttempt, error) {
 		if service == nil {
 			_, loaded, err := r.PixivAccounts(ctx)
@@ -288,12 +260,12 @@ func (r Runtime) newLogin(ctx context.Context, baseURL string, selection account
 				if options.HTTPClient != nil {
 					defer options.HTTPClient.CloseIdleConnections()
 				}
-				account, err := service.Complete(ctx, start, session.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
-				result := accounts.LoginResult{Account: accounts.Account{UserID: account.UserID, Username: account.Username, HasCredentials: account.UserID > 0}, AccountSaved: account.UserID > 0}
+				saved, err := service.Complete(ctx, start, cliauth.LoginCompleteRequest{CallbackOrCode: callback, PreserveDefault: true})
+				result := accounts.LoginResult{Account: accounts.Account{UserID: saved.UserID, Username: saved.Username, HasCredentials: saved.UserID > 0}, AccountSaved: saved.UserID > 0}
 				if err != nil {
 					return result, err
 				}
-				result.SelectionUpdated, err = selection.SelectAfterLogin(ctx, account.UserID)
+				result.SelectionUpdated, err = selection.SelectAfterLogin(ctx, saved.UserID)
 				return result, err
 			},
 		}, nil

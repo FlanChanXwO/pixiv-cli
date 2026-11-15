@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -212,18 +212,18 @@ func match(item any, filters value) (string, bool) {
 	case *pixiv.User:
 		f := filters.user
 		return fmt.Sprintf("user:%d", value.ID), f == nil || f.ID == nil || value.ID == *f.ID
-	case legacysdk.Artwork:
+	case record.Artwork:
 		if !MatchesIllust(value, filters.illust) {
 			return "", false
 		}
 		kind := string(value.ContentType)
 		return fmt.Sprintf("%s:%d", kind, value.ID), true
-	case legacysdk.Novel:
+	case record.Novel:
 		if !matchesNovel(value, filters.novel) {
 			return "", false
 		}
 		return fmt.Sprintf("novel:%d", value.ID), true
-	case legacysdk.UserPreview:
+	case record.UserPreview:
 		if !matchesUser(value.User, filters.user) {
 			return "", false
 		}
@@ -234,7 +234,7 @@ func match(item any, filters value) (string, bool) {
 }
 
 // MatchesIllust 按条件匹配一条作品；filter 为 nil 时匹配所有作品。
-func MatchesIllust(item legacysdk.Artwork, filter *IllustFilter) bool {
+func MatchesIllust(item record.Artwork, filter *IllustFilter) bool {
 	if filter == nil {
 		return true
 	}
@@ -253,7 +253,7 @@ func MatchesIllust(item legacysdk.Artwork, filter *IllustFilter) bool {
 	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesNovel(item legacysdk.Novel, filter *NovelFilter) bool {
+func matchesNovel(item record.Novel, filter *NovelFilter) bool {
 	if filter == nil {
 		return true
 	}
@@ -266,11 +266,11 @@ func matchesNovel(item legacysdk.Novel, filter *NovelFilter) bool {
 	return hasAllTags(item.Tags, filter.Tags)
 }
 
-func matchesUser(item legacysdk.User, filter *UserFilter) bool {
+func matchesUser(item record.User, filter *UserFilter) bool {
 	return filter == nil || filter.ID == nil || item.ID == *filter.ID
 }
 
-func hasAllTags(tags []legacysdk.Tag, wanted []string) bool {
+func hasAllTags(tags []record.Tag, wanted []string) bool {
 	for _, want := range wanted {
 		found := false
 		for _, tag := range tags {

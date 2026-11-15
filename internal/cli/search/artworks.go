@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -15,7 +14,7 @@ import (
 )
 
 type artworkSearchOutcome struct {
-	Page   sdk.Page[legacysdk.Artwork]
+	Page   sdk.Page[record.Artwork]
 	Filter *searchfilter.BookmarkOutcome
 }
 
@@ -24,7 +23,7 @@ type artworkSearchRequest struct {
 	Query    pixiv.ArtworkSearchOptions
 	Plan     pagination.PagePlan
 	Strategy searchfilter.BookmarkStrategy
-	Include  func(legacysdk.Artwork) (bool, error)
+	Include  func(record.Artwork) (bool, error)
 }
 
 // searchArtworks 在 CLI 的 execution scope 内执行 bookmark 候选筛选。
@@ -60,13 +59,13 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 			ctx,
 			request.Plan,
 			candidateQuery.Cursor,
-			func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+			func(ctx context.Context, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 				candidateQuery.Cursor = cursor
 				page, err := client.SearchArtworks(ctx, request.Word, candidateQuery)
 				if err != nil {
 					return nil, sdk.Cursor{}, err
 				}
-				items := make([]legacysdk.Artwork, len(page.Items))
+				items := make([]record.Artwork, len(page.Items))
 				for i, item := range page.Items {
 					items[i], err = record.ArtworkOutput(item, false)
 					if err != nil {
@@ -75,7 +74,7 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 				}
 				return items, page.Cursor, nil
 			},
-			func(item legacysdk.Artwork) (bool, error) {
+			func(item record.Artwork) (bool, error) {
 				if item.TotalBookmarks < 0 {
 					return false, &sdk.Error{Operation: "pixiv:SearchArtworks", Reason: sdk.MalformedUpstreamResponse, Message: "artwork bookmark count is negative"}
 				}
@@ -96,7 +95,7 @@ func searchArtworks(ctx context.Context, execute pagination.Execute[*pixiv.Clien
 		}
 		filtered := filter.Outcome(pageResult.HasMore || !next.IsZero())
 		outcome = artworkSearchOutcome{
-			Page:   sdk.Page[legacysdk.Artwork]{Items: items, Cursor: next},
+			Page:   sdk.Page[record.Artwork]{Items: items, Cursor: next},
 			Filter: &filtered,
 		}
 		return false, nil
@@ -119,18 +118,18 @@ func bookmarkSearchError(err error) error {
 	return &sdk.Error{Operation: "pixiv:SearchArtworks", Reason: kind, Message: err.Error(), Err: err}
 }
 
-func searchArtworkPages(ctx context.Context, client *pixiv.Client, word string, query pixiv.ArtworkSearchOptions, plan pagination.PagePlan, include func(legacysdk.Artwork) (bool, error)) (sdk.Page[legacysdk.Artwork], error) {
+func searchArtworkPages(ctx context.Context, client *pixiv.Client, word string, query pixiv.ArtworkSearchOptions, plan pagination.PagePlan, include func(record.Artwork) (bool, error)) (sdk.Page[record.Artwork], error) {
 	if include == nil {
-		include = func(legacysdk.Artwork) (bool, error) { return true, nil }
+		include = func(record.Artwork) (bool, error) { return true, nil }
 	}
-	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+	items, next, _, err := pagination.CollectFilteredPagesFrom(ctx, plan, query.Cursor, func(ctx context.Context, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		fetchQuery := query
 		fetchQuery.Cursor = cursor
 		page, err := client.SearchArtworks(ctx, word, fetchQuery)
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(page.Items))
+		items := make([]record.Artwork, len(page.Items))
 		for i, item := range page.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -144,9 +143,9 @@ func searchArtworkPages(ctx context.Context, client *pixiv.Client, word string, 
 		return client.CheckpointSearchArtworks(ctx, word, checkpointQuery, consumed)
 	})
 	if err != nil {
-		return sdk.Page[legacysdk.Artwork]{}, err
+		return sdk.Page[record.Artwork]{}, err
 	}
-	return sdk.Page[legacysdk.Artwork]{Items: items, Cursor: next}, nil
+	return sdk.Page[record.Artwork]{Items: items, Cursor: next}, nil
 }
 
 // combineCursorContexts 将多个已经脱敏的本地语义摘要绑定为一个摘要；空值

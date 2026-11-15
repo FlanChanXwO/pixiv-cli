@@ -9,11 +9,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -29,11 +27,11 @@ type options struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv series` 命令；SERIES_ID_OR_URL 由请求解析器判定作品或小说系列。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
@@ -87,17 +85,17 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 
 	switch resolved.ResultKind {
 	case target.NamespaceArtwork:
-		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[legacysdk.Artwork]{
-			Print: func(items []legacysdk.Artwork, start int) error {
+		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
+			Print: func(items []record.Artwork, start int) error {
 				return display.PrintArtworksRanked(a.env.Out, items, start)
 			},
-			RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+			RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 			page, err := client.ArtworkSeries(resolved.ID).Artworks(ctx, pixiv.ArtworkSeriesOptions{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
 			}
-			items := make([]legacysdk.Artwork, len(page.Items))
+			items := make([]record.Artwork, len(page.Items))
 			for i, item := range page.Items {
 				items[i], err = record.ArtworkOutput(item, false)
 				if err != nil {
@@ -126,26 +124,26 @@ func seriesContract() target.Contract {
 	return target.Contract{
 		Operation: "series",
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: legacysdk.ReferenceKindArtworkSeries},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: legacysdk.ReferenceKindNovelSeries},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: target.ReferenceKindArtworkSeries},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: target.ReferenceKindNovelSeries},
 		},
-		URLKinds: map[legacysdk.ReferenceKind]target.URLTypeRelation{
-			legacysdk.ReferenceKindArtworkSeries: target.URLTypeMustMatchResult,
-			legacysdk.ReferenceKindNovelSeries:   target.URLTypeMustMatchResult,
+		URLKinds: map[target.ReferenceKind]target.URLTypeRelation{
+			target.ReferenceKindArtworkSeries: target.URLTypeMustMatchResult,
+			target.ReferenceKindNovelSeries:   target.URLTypeMustMatchResult,
 		},
 	}
 }
 
 type novelSeriesOut struct {
-	Series legacysdk.NovelSeries `json:"series"`
+	Series record.NovelSeries `json:"series"`
 	record.ListOutput[record.Record]
 }
 
-func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
+func (a commandRunner) runNovel(cmd *cobra.Command, request environment.PixivRequest, id int64, plan pagination.PagePlan, jsonOut, ndjson bool) error {
 	return a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
-		var metadata legacysdk.NovelSeries
-		var novels []legacysdk.Novel
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		var metadata record.NovelSeries
+		var novels []record.Novel
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			result, err := client.NovelSeries(id).Get(ctx, pixiv.NovelSeriesOptions{Cursor: cursor})
 			if err != nil {
 				return nil, sdk.Cursor{}, err
@@ -156,7 +154,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 					return nil, sdk.Cursor{}, err
 				}
 			}
-			items := make([]legacysdk.Novel, len(result.Novels.Items))
+			items := make([]record.Novel, len(result.Novels.Items))
 			for i, novel := range result.Novels.Items {
 				items[i], err = record.NovelOutput(novel)
 				if err != nil {
@@ -165,7 +163,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			}
 			return items, result.Novels.Cursor, nil
 		}
-		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []legacysdk.Novel) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []record.Novel) error {
 			novels = append(novels, items...)
 			return nil
 		})
@@ -203,7 +201,7 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request session.ProxyRequest
 			if _, err := fmt.Fprintf(a.env.Out, "#%d ", plan.Skip+index+1); err != nil {
 				return true, err
 			}
-			if err := display.PrintNovels(a.env.Out, []legacysdk.Novel{novel}); err != nil {
+			if err := display.PrintNovels(a.env.Out, []record.Novel{novel}); err != nil {
 				return true, err
 			}
 		}

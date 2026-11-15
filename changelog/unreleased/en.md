@@ -2,6 +2,10 @@
 
 > Release-prep workspace. Audit the target tag range, then write the next bilingual notes directly. Every PR or direct commit in the audit must appear in both languages. Internal-only changes are listed in a trailing `internal` comment, which is hidden from the rendered Release body.
 
+## Breaking changes
+
+- Rewrite the Go SDK around account-bound references and objects: create Pixiv clients with `pixiv.New(CredentialStore, Options)` and FANBOX clients with `fanbox.New(sessionID, Options)`, replacing `Open`/`OpenWith`/`NewWith`. Load metadata through reference `Get` methods, call operations on the returned objects, and pass `ctx` to every network operation. Pixiv refreshes credentials through revision-checked persistence; callers own account selection and storage. Lists use query/account-bound `sdk.Page[T]`, `Next(ctx)` and opaque cursors; decoded objects/pages must regain their client binding before further operations. Configure logging through the current `slog` default logger instead of constructor logger options. Handle the unified `sdk.Error` / `Reason` and preserved error chain; replace generic resource wrappers with product `Image`/`File` operations. Use independent `sdk/saucenao` and `sdk/ascii2d` packages for image search, and `sdk/download` for selected Pixiv pages and partial download reports. Module and import roots remain unchanged.
+
 ## Changed
 
 - Local accounts are now stored in `auth.json`. When initializing the account file, the first account-using command automatically imports an existing `pixiv-cli.db`; a valid current-format `auth.json` is preserved without merging the database; the old database is retained unchanged, including its modification time.

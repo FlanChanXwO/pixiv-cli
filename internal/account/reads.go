@@ -9,15 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	legacypixiv "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
 // ReadSession 关联短期 SDK client 与已保存的凭据版本；Invalidated 通知该代次失效。
 type ReadSession struct {
-	Client      *legacypixiv.Client
 	SDKClient   *pixiv.Client
 	createdAt   time.Time
 	Revision    int64
@@ -33,41 +30,36 @@ type ReadSessions struct {
 	store      *Store
 	gate       *Gate
 	mu         sync.Mutex
-	sessions   map[readKey]readEntry
+	sessions   map[int64]readEntry
 	generation uint64
 	closed     bool
 }
-type readKey struct {
-	userID int64
-	sdk    bool
-}
 
 type readEntry struct {
-	session        ReadSession
-	network        string
-	transport      *http.Client
-	cancel         context.CancelFunc
-	authentication pixiv.Credentials
+	session   ReadSession
+	network   string
+	transport *http.Client
+	cancel    context.CancelFunc
 }
 
 // NewReadSessions 与写路径共用已有的轮换门。
 func NewReadSessions(store *Store, gate *Gate) *ReadSessions {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ReadSessions{ctx: ctx, cancel: cancel, store: store, gate: gate, sessions: map[readKey]readEntry{}}
+	return &ReadSessions{ctx: ctx, cancel: cancel, store: store, gate: gate, sessions: map[int64]readEntry{}}
 }
 
-func (m *ReadSessions) cached(ctx context.Context, key readKey, network string) (readEntry, bool, error) {
+func (m *ReadSessions) cached(ctx context.Context, uid int64, network string) (readEntry, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return readEntry{}, false, errors.New("read sessions closed")
 	}
-	a, err := m.store.GetPixiv(ctx, key.userID)
+	a, err := m.store.GetPixiv(ctx, uid)
 	// 单次查询取消不代表凭据失效，不能连带终止共享传输或触发轮换。
 	if cancelled := ctx.Err(); cancelled != nil {
 		return readEntry{}, false, cancelled
 	}
-	entry, ok := m.sessions[key]
+	entry, ok := m.sessions[uid]
 	if ok && err == nil && entry.network == network && entry.session.Revision == a.CredentialRevision && entry.session.createdAt.Equal(a.CreatedAt) && time.Now().Before(entry.session.Expires) {
 		select {
 		case <-entry.session.Invalidated:
@@ -77,60 +69,38 @@ func (m *ReadSessions) cached(ctx context.Context, key readKey, network string) 
 	}
 	if ok {
 		entry.close()
-		delete(m.sessions, key)
+		delete(m.sessions, uid)
 	}
 	return readEntry{}, false, err
 }
 
-// Open 在成功持久化轮换后的凭据后返回共享读取快照。轮换门在返回前释放，内容与媒体请求
-// 不持有它。
-func (m *ReadSessions) Open(ctx context.Context, uid int64, network string, options legacypixiv.Options) (ReadSession, error) {
-	return m.open(ctx, readKey{userID: uid}, network, options.HTTPClient, func(ctx context.Context, httpClient *http.Client, seed *readEntry) (ReadSession, pixiv.Credentials, error) {
-		options.HTTPClient = httpClient
-		if seed != nil {
-			credentials := seed.authentication
-			options.UserID, options.Username = credentials.UserID, credentials.DisplayName
-			client, err := legacypixiv.NewWith(credentials.AccessToken.Value(), options)
-			return ReadSession{Client: client, Revision: credentials.Revision, createdAt: seed.session.createdAt, Expires: credentials.ExpiresAt}, credentials, err
-		}
-		return m.store.openReadSession(ctx, uid, options)
-	})
+func (m *ReadSessions) create(ctx context.Context, uid int64, options pixiv.Options) (ReadSession, error) {
+	account, err := m.store.GetPixiv(ctx, uid)
+	if err != nil {
+		return ReadSession{}, err
+	}
+	store := readCredentials{savedCredentials: savedCredentials{store: m.store, userID: uid, createdAt: account.CreatedAt}, transport: options.HTTPClient.Transport.(*readSessionTransport)}
+	client, err := pixiv.New(store, options)
+	if err != nil {
+		return ReadSession{}, err
+	}
+	credentials, err := client.Credentials(ctx)
+	if err != nil {
+		client.CloseIdleConnections()
+		return ReadSession{}, err
+	}
+	return ReadSession{SDKClient: client, createdAt: account.CreatedAt, Revision: credentials.Revision, Expires: credentials.ExpiresAt}, nil
 }
 
-// OpenSDK 在轮换持久化完成后交出新 SDK 读取快照；内容请求不占用共享轮换门。
+// OpenSDK 在轮换持久化完成后交出读取快照；内容请求不占用共享轮换门。
 func (m *ReadSessions) OpenSDK(ctx context.Context, uid int64, network string, options pixiv.Options) (ReadSession, error) {
-	return m.open(ctx, readKey{userID: uid, sdk: true}, network, options.HTTPClient, func(ctx context.Context, httpClient *http.Client, seed *readEntry) (ReadSession, pixiv.Credentials, error) {
-		options.HTTPClient = httpClient
-		account, err := m.store.GetPixiv(ctx, uid)
-		if err != nil {
-			return ReadSession{}, pixiv.Credentials{}, err
-		}
-		store := readCredentials{savedCredentials: savedCredentials{store: m.store, userID: uid, createdAt: account.CreatedAt}, transport: httpClient.Transport.(*readSessionTransport)}
-		if seed != nil {
-			store.savedCredentials.createdAt = seed.session.createdAt
-			store.seed = &seed.authentication
-		}
-		client, err := pixiv.New(store, options)
-		if err != nil {
-			return ReadSession{}, pixiv.Credentials{}, err
-		}
-		credentials, err := client.Credentials(ctx)
-		if err != nil {
-			client.CloseIdleConnections()
-			return ReadSession{}, pixiv.Credentials{}, err
-		}
-		return ReadSession{SDKClient: client, createdAt: account.CreatedAt, Revision: credentials.Revision, Expires: credentials.ExpiresAt}, credentials, nil
-	})
-}
-
-func (m *ReadSessions) open(ctx context.Context, key readKey, network string, httpClient *http.Client, create func(context.Context, *http.Client, *readEntry) (ReadSession, pixiv.Credentials, error)) (ReadSession, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(m.ctx, cancel)
 	defer func() { stop(); cancel() }()
 	if err := ctx.Err(); err != nil {
 		return ReadSession{}, err
 	}
-	if session, ok, err := m.cached(ctx, key, network); ok || err != nil {
+	if session, ok, err := m.cached(ctx, uid, network); ok || err != nil {
 		return session.session, err
 	}
 	err := m.gate.Acquire(ctx)
@@ -138,20 +108,12 @@ func (m *ReadSessions) open(ctx context.Context, key readKey, network string, ht
 		return ReadSession{}, err
 	}
 	defer m.gate.Release()
-	if session, ok, err := m.cached(ctx, key, network); ok || err != nil {
+	if session, ok, err := m.cached(ctx, uid, network); ok || err != nil {
 		return session.session, err
 	}
-	// 新旧 client 共享已持久化的认证状态；切换消费者不触发 OAuth 轮换。
-	other, reused, err := m.cached(ctx, readKey{userID: key.userID, sdk: !key.sdk}, network)
-	if err != nil {
-		return ReadSession{}, err
-	}
-	var seed *readEntry
-	if reused {
-		seed = &other
-	}
 	generationCtx, cancelGeneration := context.WithCancel(m.ctx)
-	transport := &readSessionTransport{owner: m, userID: key.userID, ctx: generationCtx}
+	transport := &readSessionTransport{owner: m, userID: uid, ctx: generationCtx}
+	httpClient := options.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
 	}
@@ -162,7 +124,8 @@ func (m *ReadSessions) open(ctx context.Context, key readKey, network string, ht
 	}
 	clientCopy.Transport = transport
 	httpClient = &clientCopy
-	session, authentication, err := create(ctx, httpClient, seed)
+	options.HTTPClient = httpClient
+	session, err := m.create(ctx, uid, options)
 	if err != nil {
 		cancelGeneration()
 		httpClient.CloseIdleConnections()
@@ -173,57 +136,40 @@ func (m *ReadSessions) open(ctx context.Context, key readKey, network string, ht
 	if err := generationCtx.Err(); err != nil {
 		cancelGeneration()
 		httpClient.CloseIdleConnections()
-		session.closeIdleConnections()
+		session.SDKClient.CloseIdleConnections()
 		return ReadSession{}, err
 	}
 	if m.closed {
 		cancelGeneration()
 		httpClient.CloseIdleConnections()
-		session.closeIdleConnections()
+		session.SDKClient.CloseIdleConnections()
 		return ReadSession{}, errors.New("read sessions closed")
 	}
 	// 其他进程可在轮换后再次提交凭据；发布缓存前复核 revision。
-	account, err := m.store.GetPixiv(ctx, key.userID)
+	account, err := m.store.GetPixiv(ctx, uid)
 	if err == nil && (account.CredentialRevision != session.Revision || !account.CreatedAt.Equal(session.createdAt)) {
 		err = ErrCredentialConflict
 	}
 	if err != nil {
 		cancelGeneration()
 		httpClient.CloseIdleConnections()
-		session.closeIdleConnections()
+		session.SDKClient.CloseIdleConnections()
 		return ReadSession{}, err
 	}
-	if reused && authentication.Revision == other.authentication.Revision {
-		shared := other.transport.Transport.(*readSessionTransport).ctx
-		if err := shared.Err(); err != nil {
-			cancelGeneration()
-			httpClient.CloseIdleConnections()
-			session.closeIdleConnections()
-			return ReadSession{}, err
-		}
-		cancelGeneration()
-		generationCtx, cancelGeneration = shared, other.cancel
-		transport.ctx = shared
-		session.Version = other.session.Version
-	} else {
-		m.generation++
-		session.Version = m.generation
-	}
+	m.generation++
+	session.Version = m.generation
 	session.Invalidated = generationCtx.Done()
 	transport.version.Store(session.Version)
 	transport.createdAt = session.createdAt
 	transport.revision.Store(session.Revision)
-	m.sessions[key] = readEntry{session: session, network: network, transport: httpClient, cancel: cancelGeneration, authentication: authentication}
+	m.sessions[uid] = readEntry{session: session, network: network, transport: httpClient, cancel: cancelGeneration}
 	return session, nil
 }
 
 // Invalidate 只丢弃失败的代次，保留并发替换产生的新值。
 func (m *ReadSessions) Invalidate(uid int64, version uint64, err error) {
 	var classified *sdk.Error
-	var previous *legacysdk.Error
-	modern := errors.As(err, &classified) && (classified.Reason == sdk.Unauthorized || classified.Reason == sdk.CredentialsExpired || classified.HTTPStatus == 401)
-	legacy := errors.As(err, &previous) && (previous.Reason == legacysdk.Unauthorized || previous.Reason == legacysdk.CredentialsExpired || previous.HTTPStatus == 401)
-	if !modern && !legacy {
+	if !errors.As(err, &classified) || (classified.Reason != sdk.Unauthorized && classified.Reason != sdk.CredentialsExpired && classified.HTTPStatus != 401) {
 		return
 	}
 	m.discard(uid, version)
@@ -232,11 +178,9 @@ func (m *ReadSessions) Invalidate(uid int64, version uint64, err error) {
 func (m *ReadSessions) discard(uid int64, version uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for key, entry := range m.sessions {
-		if key.userID == uid && entry.session.Version == version {
-			entry.close()
-			delete(m.sessions, key)
-		}
+	if entry, ok := m.sessions[uid]; ok && entry.session.Version == version {
+		entry.close()
+		delete(m.sessions, uid)
 	}
 }
 
@@ -256,7 +200,7 @@ func (m *ReadSessions) Close() error {
 
 func (e readEntry) close() {
 	e.cancel()
-	e.session.closeIdleConnections()
+	e.session.SDKClient.CloseIdleConnections()
 	e.transport.CloseIdleConnections()
 }
 
@@ -330,29 +274,15 @@ func (t *readSessionTransport) CloseIdleConnections() {
 	}
 }
 
-func (s ReadSession) closeIdleConnections() {
-	if s.SDKClient != nil {
-		s.SDKClient.CloseIdleConnections()
-	} else {
-		s.Client.CloseIdleConnections()
-	}
-}
-
 // readCredentials 让已遭上游拒绝的代次明确返回认证失败，阻止 SDK 在同一代次刷新重放。
 type readCredentials struct {
 	savedCredentials
 	transport *readSessionTransport
-	seed      *pixiv.Credentials
 }
 
 func (s readCredentials) Load(ctx context.Context) (pixiv.Credentials, error) {
 	if s.transport.rejected.Load() {
 		return pixiv.Credentials{}, &sdk.Error{Operation: "pixiv.ReadSession", Reason: sdk.CredentialsExpired, HTTPStatus: http.StatusUnauthorized, Message: "read session was rejected by upstream"}
 	}
-	credentials, err := s.savedCredentials.Load(ctx)
-	if err == nil && s.seed != nil && credentials.Revision == s.seed.Revision {
-		credentials.AccessToken, credentials.ExpiresAt = s.seed.AccessToken, s.seed.ExpiresAt
-		credentials.DisplayName = s.seed.DisplayName
-	}
-	return credentials, err
+	return s.savedCredentials.Load(ctx)
 }

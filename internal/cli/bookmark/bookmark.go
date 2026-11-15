@@ -1,7 +1,7 @@
 // Package bookmark 提供 pixiv bookmark 命令组：作品与小说的收藏列表、标签、详情、添加与移除。
 //
 // 包的组成：[New] 组装命令树。
-// 分页读取与输出共用 [github.com/FlanChanXwO/pixiv-cli/internal/session] 与 [github.com/FlanChanXwO/pixiv-cli/internal/record]。
+// 分页读取与输出共用 [github.com/FlanChanXwO/pixiv-cli/internal/environment] 与 [github.com/FlanChanXwO/pixiv-cli/internal/record]。
 package bookmark
 
 import (
@@ -13,10 +13,8 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -61,13 +59,13 @@ type mutationOptions struct {
 
 type commandRunner struct {
 	env        environment.Env
-	executeSDK session.SDKExecutor
+	executeSDK environment.PixivExecutor
 }
 
 type bookmarkListItem struct {
 	kind    string
-	artwork legacysdk.Artwork
-	novel   legacysdk.Novel
+	artwork record.Artwork
+	novel   record.Novel
 }
 
 type bookmarkTagItem struct {
@@ -103,7 +101,7 @@ func (c bookmarkStreamCursor) String() string {
 }
 
 // New 构造 `pixiv bookmark` 命令组；作品与小说的收藏操作都经由同一个重放边界。
-func New(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}
 	cmd.AddCommand(a.newList(), a.newTags(), a.newDetail(), a.newAdd(), a.newRemove())
@@ -200,9 +198,9 @@ func (a commandRunner) newDetail() *cobra.Command {
 			}
 			if jsonOut {
 				if result.kind == string(target.NamespaceNovel) {
-					return a.env.PrintJSON(legacysdk.NovelBookmarkDetail{Restrict: legacysdk.Restrict(result.novel.Restrict), Tags: result.novel.Tags})
+					return a.env.PrintJSON(record.BookmarkDetail{Restrict: result.novel.Restrict, Tags: result.novel.Tags})
 				}
-				return a.env.PrintJSON(legacysdk.ArtworkBookmarkDetail{Restrict: legacysdk.Restrict(result.artwork.Restrict), Tags: result.artwork.Tags})
+				return a.env.PrintJSON(record.BookmarkDetail{Restrict: result.artwork.Restrict, Tags: result.artwork.Tags})
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
@@ -265,12 +263,12 @@ func bookmarkDetailContract() target.Contract {
 		Operation:   "bookmark detail",
 		DefaultType: string(target.NamespaceArtwork),
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: legacysdk.ReferenceKindArtwork},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: legacysdk.ReferenceKindNovel},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: target.ReferenceKindArtwork},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: target.ReferenceKindNovel},
 		},
-		URLKinds: map[legacysdk.ReferenceKind]target.URLTypeRelation{
-			legacysdk.ReferenceKindArtwork: target.URLTypeMustMatchResult,
-			legacysdk.ReferenceKindNovel:   target.URLTypeMustMatchResult,
+		URLKinds: map[target.ReferenceKind]target.URLTypeRelation{
+			target.ReferenceKindArtwork: target.URLTypeMustMatchResult,
+			target.ReferenceKindNovel:   target.URLTypeMustMatchResult,
 		},
 	}
 }
@@ -304,7 +302,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request environment.PixivRequest, id int64) error {
 				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 					if typ == string(target.NamespaceNovel) {
 						return true, client.Novel(id).AddBookmark(ctx, pixiv.BookmarkOptions{Restrict: pixiv.Restrict(opts.restrict), Tags: opts.tags})
@@ -350,7 +348,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
 				return a.env.WrapUsage(err)
 			}
-			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request session.ProxyRequest, id int64) error {
+			invoke := a.actionInvoker(cmd, opts.Options, func(ctx context.Context, request environment.PixivRequest, id int64) error {
 				return a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 					if typ == string(target.NamespaceNovel) {
 						return true, client.Novel(id).RemoveBookmark(ctx)
@@ -407,13 +405,13 @@ func bookmarkContract(operation string) target.Contract {
 		Operation:   operation,
 		DefaultType: string(target.NamespaceArtwork),
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: legacysdk.ReferenceKindUser},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: legacysdk.ReferenceKindUser},
-			{Name: "all", All: true, BareReferenceKind: legacysdk.ReferenceKindUser},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceArtwork, BareReferenceKind: target.ReferenceKindUser},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceNovel, BareReferenceKind: target.ReferenceKindUser},
+			{Name: "all", All: true, BareReferenceKind: target.ReferenceKindUser},
 		},
-		URLKinds: map[legacysdk.ReferenceKind]target.URLTypeRelation{
-			legacysdk.ReferenceKindUser:          target.URLTypeIndependent,
-			legacysdk.ReferenceKindUserBookmarks: target.URLTypeMustMatchResult,
+		URLKinds: map[target.ReferenceKind]target.URLTypeRelation{
+			target.ReferenceKindUser:          target.URLTypeIndependent,
+			target.ReferenceKindUserBookmarks: target.URLTypeMustMatchResult,
 		},
 	}
 }
@@ -454,8 +452,8 @@ func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, 
 	return result.ID, nil
 }
 
-func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Options, invoke func(context.Context, session.ProxyRequest, int64) error) func(context.Context, int64) error {
-	var request session.ProxyRequest
+func (a commandRunner) actionInvoker(cmd *cobra.Command, options environment.Options, invoke func(context.Context, environment.PixivRequest, int64) error) func(context.Context, int64) error {
+	var request environment.PixivRequest
 	initialized := false
 	return func(ctx context.Context, id int64) error {
 		if !initialized {

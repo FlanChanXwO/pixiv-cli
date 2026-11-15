@@ -11,9 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -72,7 +71,7 @@ type Input struct {
 type TypeSpec struct {
 	Name              string
 	ResultKind        Namespace
-	BareReferenceKind legacysdk.ReferenceKind
+	BareReferenceKind ReferenceKind
 	// BareTargetKind 承载没有可引用 Pixiv 页面的输入身份，例如评论 ID。设置时若同时
 	// 提供 BareReferenceKind，两者推导出的目标类型必须一致。
 	BareTargetKind Namespace
@@ -116,7 +115,7 @@ type Contract struct {
 	Operation   string
 	DefaultType string
 	Types       []TypeSpec
-	URLKinds    map[legacysdk.ReferenceKind]URLTypeRelation
+	URLKinds    map[ReferenceKind]URLTypeRelation
 	BareID      *BareIDPolicy
 }
 
@@ -126,7 +125,7 @@ type Target struct {
 	ID            int64
 	TargetKind    Namespace
 	ResultKind    Namespace
-	ReferenceKind legacysdk.ReferenceKind
+	ReferenceKind ReferenceKind
 	OwnerUserID   int64
 	All           bool
 	Source        Source
@@ -175,27 +174,26 @@ func resolveValue(ctx context.Context, value, typeName string, contract Contract
 	return targetFromReference(ref, selection, SourceURL, contract)
 }
 
-// shortcut: 契约仍保留旧引用描述符，所有命令迁移后移除该投影。
-func parseURL(value string) (legacysdk.Reference, error) {
+func parseURL(value string) (reference, error) {
 	ref, err := (&pixiv.Client{}).ParseURL(value)
 	if err != nil {
-		return legacysdk.Reference{}, err
+		return reference{}, err
 	}
 	switch ref := ref.(type) {
 	case *pixiv.ArtworkRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindArtwork, ID: ref.ID}, nil
+		return reference{Kind: ReferenceKindArtwork, ID: ref.ID}, nil
 	case *pixiv.NovelRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindNovel, ID: ref.ID}, nil
+		return reference{Kind: ReferenceKindNovel, ID: ref.ID}, nil
 	case *pixiv.UserRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindUser, ID: ref.ID}, nil
+		return reference{Kind: ReferenceKindUser, ID: ref.ID}, nil
 	case *pixiv.UserBookmarksRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindUserBookmarks, ID: ref.ID}, nil
+		return reference{Kind: ReferenceKindUserBookmarks, ID: ref.ID}, nil
 	case *pixiv.ArtworkSeriesRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindArtworkSeries, ID: ref.ID, OwnerUserID: ref.OwnerUserID}, nil
+		return reference{Kind: ReferenceKindArtworkSeries, ID: ref.ID, OwnerUserID: ref.OwnerUserID}, nil
 	case *pixiv.NovelSeriesRef:
-		return legacysdk.Reference{Kind: legacysdk.ReferenceKindNovelSeries, ID: ref.ID}, nil
+		return reference{Kind: ReferenceKindNovelSeries, ID: ref.ID}, nil
 	default:
-		return legacysdk.Reference{}, fmt.Errorf("unsupported Pixiv reference %T", ref)
+		return reference{}, fmt.Errorf("unsupported Pixiv reference %T", ref)
 	}
 }
 
@@ -232,7 +230,7 @@ func resolveRecord(source record.Record, typeName string, contract Contract) (Ta
 
 func resolveID(ctx context.Context, id int64, typeName string, contract Contract, source Source) (Target, error) {
 	if strings.TrimSpace(typeName) != "" || strings.TrimSpace(contract.DefaultType) != "" {
-		selection, err := selectType(typeName, legacysdk.Reference{}, contract)
+		selection, err := selectType(typeName, reference{}, contract)
 		if err != nil {
 			return Target{}, err
 		}
@@ -286,12 +284,12 @@ func resolveBareID(ctx context.Context, id int64, contract Contract) (Target, er
 		}
 	}
 	if found == nil {
-		return Target{}, sdk.NewError("pixiv", operation(contract), sdk.NotFound)
+		return Target{}, &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.NotFound}
 	}
 	return targetFromID(id, *found, SourceBareIDProbe, contract)
 }
 
-func selectType(typeName string, ref legacysdk.Reference, contract Contract) (TypeSpec, error) {
+func selectType(typeName string, ref reference, contract Contract) (TypeSpec, error) {
 	types, err := contractTypes(contract)
 	if err != nil {
 		return TypeSpec{}, err
@@ -331,7 +329,7 @@ func selectType(typeName string, ref legacysdk.Reference, contract Contract) (Ty
 	return *selected, nil
 }
 
-func validateURLRelation(ref legacysdk.Reference, selection TypeSpec, relation URLTypeRelation, contract Contract) error {
+func validateURLRelation(ref reference, selection TypeSpec, relation URLTypeRelation, contract Contract) error {
 	if relation != URLTypeMustMatchResult && relation != URLTypeIndependent {
 		return invalid(contract, "URL type relation is not supported")
 	}
@@ -345,7 +343,7 @@ func validateURLRelation(ref legacysdk.Reference, selection TypeSpec, relation U
 	return nil
 }
 
-func targetFromReference(ref legacysdk.Reference, selection TypeSpec, source Source, contract Contract) (Target, error) {
+func targetFromReference(ref reference, selection TypeSpec, source Source, contract Contract) (Target, error) {
 	targetKind, ok := targetKindForReference(ref.Kind)
 	if !ok {
 		return Target{}, invalid(contract, "URL kind is not a supported target")
@@ -376,30 +374,30 @@ func targetFromID(id int64, selection TypeSpec, source Source, contract Contract
 	}, nil
 }
 
-func validateRecordNamespace(recordType string, refKind legacysdk.ReferenceKind, contract Contract) error {
+func validateRecordNamespace(recordType string, refKind ReferenceKind, contract Contract) error {
 	result := Namespace(recordType)
 	switch refKind {
-	case legacysdk.ReferenceKindArtwork:
+	case ReferenceKindArtwork:
 		if result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork URL")
 		}
-	case legacysdk.ReferenceKindNovel:
+	case ReferenceKindNovel:
 		if result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel URL")
 		}
-	case legacysdk.ReferenceKindUser:
+	case ReferenceKindUser:
 		if result != NamespaceUser {
 			return invalid(contract, "record type conflicts with user URL")
 		}
-	case legacysdk.ReferenceKindUserBookmarks:
-		if recordType != string(legacysdk.ReferenceKindUserBookmarks) && result != NamespaceArtwork {
+	case ReferenceKindUserBookmarks:
+		if recordType != string(ReferenceKindUserBookmarks) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with user bookmarks URL")
 		}
-	case legacysdk.ReferenceKindArtworkSeries:
+	case ReferenceKindArtworkSeries:
 		if recordType != string(NamespaceSeries) && result != NamespaceArtwork {
 			return invalid(contract, "record type conflicts with artwork series URL")
 		}
-	case legacysdk.ReferenceKindNovelSeries:
+	case ReferenceKindNovelSeries:
 		if recordType != string(NamespaceSeries) && result != NamespaceNovel {
 			return invalid(contract, "record type conflicts with novel series URL")
 		}
@@ -409,28 +407,28 @@ func validateRecordNamespace(recordType string, refKind legacysdk.ReferenceKind,
 	return nil
 }
 
-func resultKindForReference(kind legacysdk.ReferenceKind) (Namespace, bool) {
+func resultKindForReference(kind ReferenceKind) (Namespace, bool) {
 	switch kind {
-	case legacysdk.ReferenceKindArtwork, legacysdk.ReferenceKindUserBookmarks, legacysdk.ReferenceKindArtworkSeries:
+	case ReferenceKindArtwork, ReferenceKindUserBookmarks, ReferenceKindArtworkSeries:
 		return NamespaceArtwork, true
-	case legacysdk.ReferenceKindNovel, legacysdk.ReferenceKindNovelSeries:
+	case ReferenceKindNovel, ReferenceKindNovelSeries:
 		return NamespaceNovel, true
-	case legacysdk.ReferenceKindUser:
+	case ReferenceKindUser:
 		return NamespaceUser, true
 	default:
 		return "", false
 	}
 }
 
-func targetKindForReference(kind legacysdk.ReferenceKind) (Namespace, bool) {
+func targetKindForReference(kind ReferenceKind) (Namespace, bool) {
 	switch kind {
-	case legacysdk.ReferenceKindArtwork:
+	case ReferenceKindArtwork:
 		return NamespaceArtwork, true
-	case legacysdk.ReferenceKindNovel:
+	case ReferenceKindNovel:
 		return NamespaceNovel, true
-	case legacysdk.ReferenceKindUser, legacysdk.ReferenceKindUserBookmarks:
+	case ReferenceKindUser, ReferenceKindUserBookmarks:
 		return NamespaceUser, true
-	case legacysdk.ReferenceKindArtworkSeries, legacysdk.ReferenceKindNovelSeries:
+	case ReferenceKindArtworkSeries, ReferenceKindNovelSeries:
 		return NamespaceSeries, true
 	default:
 		return "", false
@@ -523,19 +521,19 @@ func classifyProbeError(status ProbeStatus, err error, contract Contract) error 
 		return err
 	}
 	if errors.Is(err, context.Canceled) {
-		return sdk.NewError("pixiv", operation(contract), sdk.UpstreamUnavailable, sdk.WithCause(context.Canceled))
+		return &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.UpstreamUnavailable, Err: context.Canceled}
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return sdk.NewError("pixiv", operation(contract), sdk.UpstreamUnavailable, sdk.WithCause(context.DeadlineExceeded))
+		return &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.UpstreamUnavailable, Err: context.DeadlineExceeded}
 	}
 	return probeError(status, contract)
 }
 
 func probeError(status ProbeStatus, contract Contract) error {
 	if status == ProbeForbidden {
-		return sdk.NewError("pixiv", operation(contract), sdk.Forbidden)
+		return &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.Forbidden}
 	}
-	return sdk.NewError("pixiv", operation(contract), sdk.UpstreamUnavailable)
+	return &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.UpstreamUnavailable}
 }
 
 func operation(contract Contract) string {
@@ -546,5 +544,5 @@ func operation(contract Contract) string {
 }
 
 func invalid(contract Contract, detail string) error {
-	return sdk.NewError("pixiv", operation(contract), sdk.InvalidArgument, sdk.WithDetail(detail))
+	return &sdk.Error{Operation: "pixiv:" + operation(contract), Reason: sdk.InvalidArgument, Message: detail}
 }

@@ -1,437 +1,284 @@
-# Pixiv SDK (v1)
+# Go SDK
 
 [English](../en/sdk.md) | 简体中文 | [文档索引](../index-zh-CN.md)
 
-```mermaid
-flowchart LR
-    APP["你的 Go 程序"] --> PX["sdk/pixiv<br/>App API 客户端、模型、<br/>URL 引用、写操作"]
-    APP --> FB["sdk/fanbox<br/>FANBOX 客户端、模型、<br/>URL 解析"]
-    PX --> CORE["sdk<br/>Page · Cursor · Error · Resource"]
-    FB --> CORE
-```
+模块路径为 `github.com/FlanChanXwO/pixiv-cli`。SDK 提供绑定账号的 API 对象、可恢复的列表与媒体操作。应用传入凭据和连接设置，负责账号选择、配置、输出与凭据持久化。
 
-| 包 | 内容 |
+| import 后缀 | 入口与用途 |
 | --- | --- |
-| `github.com/FlanChanXwO/pixiv-cli/sdk` | 与协议无关的基础类型：分页、opaque cursor、分类错误、资源契约 |
-| `github.com/FlanChanXwO/pixiv-cli/sdk/pixiv` | Pixiv App API 客户端、模型、URL 引用、写操作 |
-| `github.com/FlanChanXwO/pixiv-cli/sdk/fanbox` | FANBOX 客户端、模型、URL 解析 |
-
-所有导出声明都带英文 GoDoc；包源码是权威的 API 摘要。
+| `sdk` | `Page[T]`、不透明的 `Cursor`、分类错误 `Error` 与 `Reason` |
+| `sdk/pixiv` | `New(store, options)` 调用已认证的 Pixiv App API；`BeginLogin(options)` 发起 PKCE 登录 |
+| `sdk/fanbox` | `New(sessionID, options)` 调用只读 FANBOX API |
+| `sdk/saucenao` | `Search(ctx, options)` 从图片字节查询 |
+| `sdk/ascii2d` | `Search(ctx, options)` 从图片字节进行色合/BOVW 查询 |
+| `sdk/download` | `New(options).Save(ctx, pages...)` 保存选定的 Pixiv 作品页 |
 
 ## 快速开始
 
-Pixiv：用已有 access token 搜索作品并保存第一张图片。示例从调用方设置的 `PIXIV_ACCESS_TOKEN` 读取 token；OAuth 轮换见下方认证章节。
+下面的函数搜索一个上游批次并保存其中的作品页。通过应用自己的私密输入渠道提供 App OAuth refresh token。内存存储仅在当前进程中保留轮换后的 token；长期登录使用持久化的 `CredentialStore`。
 
 ```go
-package main
+package example
 
 import (
 	"context"
-	"fmt"
-	"os"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/download"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+)
+
+func SaveSearch(ctx context.Context, refreshToken, directory string) (download.Report, error) {
+	store, err := pixiv.NewMemoryCredentials(pixiv.NewCredentials(refreshToken))
+	if err != nil {
+		return download.Report{}, err
+	}
+	client, err := pixiv.New(store, pixiv.Options{})
+	if err != nil {
+		return download.Report{}, err
+	}
+	defer client.CloseIdleConnections()
+	page, err := client.SearchArtworks(ctx, "landscape", pixiv.ArtworkSearchOptions{})
+	if err != nil {
+		return download.Report{}, err
+	}
+	var pages []pixiv.ArtworkPage
+	for _, artwork := range page.Items {
+		pages = append(pages, artwork.Pages...)
+	}
+	return download.New(download.Options{DownloadPath: directory}).Save(ctx, pages...)
+}
+```
+
+`pixiv.New` 构造时无网络与存储 I/O。首次操作加载凭据，必要时自动刷新。`Client.Credentials(ctx)` 可单独准备认证，省去内容请求。App refresh token 校验会拒绝 `PHPSESSID`、`refresh_token=...` 等浏览器 Cookie。
+
+## 引用与对象
+
+`client.Artwork(id)`、`User(id)`、`Novel(id)`、`ArtworkSeries(id)` 和 `NovelSeries(id)` 离线构造绑定引用。作品、用户与小说引用通过 `Get(ctx)` 加载元数据。列表返回相同的绑定对象，可直接调用操作。例如作品嵌入 `*ArtworkRef`，通过 `Author *User` 关联作者，`Pages []ArtworkPage` 中每页通过 `Artwork` 回指作品，并携带原图 `Image`。
+
+| 起点 | 常用操作 |
+| --- | --- |
+| `ArtworkRef` / `Artwork` | `Get`、`Comments`、`PostComment`、`Bookmark`、`AddBookmark`、`RemoveBookmark`、`UgoiraMetadata` |
+| `UserRef` / `User` | `Get`、`Profile`、`Artworks`、`Novels`、`ArtworkBookmarks`、`NovelBookmarks`、关注/粉丝列表与关注修改 |
+| `NovelRef` / `Novel` | `Get`、`Comments`、`PostComment`、收藏操作、`Content`、`ParseContent` |
+| `CommentRef` / `Comment` | `Reply`、`Delete`；回复目标来自所属作品/小说或评论列表 |
+| `ArtworkSeriesRef` | `Artworks(ctx, options)` 列出完整作品 |
+| `NovelSeriesRef` | `Get(ctx, options)` 同时返回元数据与 `Novels` 页 |
+| `Client` | 作品/小说/用户搜索、排行榜、推荐、关注/最新/MyPixiv 动态、`Stamps` |
+
+列表中的 `User` 可能只含摘要，`Profile(ctx)` 显式读取详细资料。`PostComment(ctx, CommentOptions{Text: "..."})` 返回带上游分配 ID 的引用；`StampID` 支持纯表情评论。修改请求发送一次，省去读回请求。注入的 transport 也应保持此语义，避免重试 POST。
+
+`NovelRef.Content(ctx)` 按 App API 契约返回 `ContentUnavailable`。应用已有小说 webview 文档时，可用 `ParseContent(rawHTML)` 本地解析，媒体仍绑定当前 client。
+
+JSON 保留元数据，移除 client 绑定及页到作品的回指。解码后若需继续操作，通过 client 重新取得引用，例如 `client.Artwork(decoded.ID).Get(ctx)`。`client.ParseURL(raw)` 离线将支持的 Pixiv 页面 URL 解析为绑定引用，`CanonicalURL()` 返回规范页面地址。FANBOX 提供自己的 `Client.ParseURL`。
+
+## 认证
+
+为一个账号实现 `pixiv.CredentialStore`：
+
+- `Load(ctx)` 返回最新 `Credentials`，包含正数 `Revision`、已知时的 `UserID` 与 token。可以省略 access token 状态，client 会按 revision 缓存它。
+- `CompareAndSwap(ctx, expectedRevision, replacement)` 仅在 revision 匹配时原子保存。SDK 传入的 `replacement.Revision == expectedRevision+1`。冲突返回 `false, nil`，持久化完成后返回 `true, nil`，保留已建立的账号身份。
+- 两个方法返回前释放存储锁，OAuth 在两次调用之间执行。冲突后 SDK 采用较新的已保存凭据；持久化失败在使用轮换后的 token 请求内容前传播。
+
+`pixiv.NewCredentials(refreshToken)` 构造 revision 为 1 的初始凭据，`NewMemoryCredentials` 校验后提供并发安全的内存存储。持久化实现通过 `Credentials.SetTokens` 恢复原始 token。token 字段在 fmt/slog 中脱敏，JSON 省略这些字段；仅在私密持久化或显式凭据传输时读取 `Value()`。
+
+### 以编程方式发起浏览器登录
+
+应用自行打开授权 URL，通过自己的 UI 取得回调 URL 或 code。`Complete` 返回的凭据应先保存，再用于内容请求。
+
+```go
+package example
+
+import (
+	"context"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
+)
+
+func Login(ctx context.Context, receive func(string) (string, error)) (pixiv.Credentials, error) {
+	session, err := pixiv.BeginLogin(pixiv.Options{})
+	if err != nil {
+		return pixiv.Credentials{}, err
+	}
+	defer session.CloseIdleConnections()
+	callback, err := receive(session.AuthorizationURL())
+	if err != nil {
+		return pixiv.Credentials{}, err
+	}
+	return session.Complete(ctx, callback)
+}
+```
+
+`AcceptsCallbackURL(raw)` 校验回调，保留会话可用性。有效的完成输入在网络 I/O 前消耗会话，交换失败或取消也会消耗；重试需发起新登录。输入无效时保留会话。
+
+## 连接与日志
+
+会发网络请求的操作均以 `ctx` 为首参数，取消与截止时间通过它传递。构造函数、引用构造、URL 解析和本地 HTML 解析均为离线操作。
+
+Pixiv `Options` 接受 `HTTPClient`、`AcceptLanguage`、`RequestInterval` 与额外的 `ResourceHosts`。HTTP client 为 nil 时创建专用 client，整请求超时由调用方 context 控制；`CloseIdleConnections()` 释放其空闲连接。注入的 client 由调用方拥有，包括代理、transport 与关闭策略。
+
+FANBOX 与 ascii2d 接受显式代理、User-Agent 和可选 FlareSolverr 设置。默认原生 transport 使用浏览器 TLS profile；注入的 `HTTPClient` 需显式提供 `Transport`，Cookie 与重定向策略由产品管理。FANBOX `Close(ctx)` 取消并等待 solver 工作，关闭前先完成原生请求。FlareSolverr 控制请求直连，其浏览器代理单独由 `FlareSolverrProxyURL` 设置，仅挑战恢复使用 solver。
+
+所有 SDK 包使用事件发生时的 `slog` 默认 logger。在应用启动时统一配置，例如导入 `log/slog` 与 `os` 后：
+
+```go
+slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+	Level: slog.LevelDebug,
+})))
+```
+
+事件记录受控的请求与决策属性，常规节流和重试使用 Debug，限流等待可能使用 Warn。SDK 错误保留 cause 供检查；记录任意错误链前应用自行执行隐私策略。CLI/MCP 在启动时安装 stderr handler，清理后恢复原默认 logger。
+
+## 分页
+
+列表返回 `sdk.Page[T]`，带有 `Items`、`Cursor` 与 `Next(ctx)`。当前页保留账号和查询绑定。空游标表示末批，随后调用 `Next` 会离线返回空页。完整消费一批后保存游标：
+
+```go
+package example
+
+import (
+	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
-func main() {
-	ctx := context.Background()
-
-	// 1. 用已有 access token 创建客户端；此步骤不联网。
-	client, err := pixiv.New(os.Getenv("PIXIV_ACCESS_TOKEN"))
+func Search(ctx context.Context, client *pixiv.Client, word, saved string,
+	consume func([]*pixiv.Artwork) error, checkpoint func(string) error) error {
+	cursor, err := sdk.ParseCursor(saved)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	defer client.CloseIdleConnections()
-
-	// 2. 搜索作品并遍历类型化分页 cursor。
-	page, err := client.SearchArtworks(ctx, pixiv.SearchArtworksRequest{Word: "miku"})
+	page, err := client.SearchArtworks(ctx, word, pixiv.ArtworkSearchOptions{Cursor: cursor})
 	if err != nil {
-		panic(err)
+		return err
 	}
-	if len(page.Items) == 0 {
-		return
+	for {
+		if err := consume(page.Items); err != nil {
+			return err
+		}
+		if err := checkpoint(page.Cursor.String()); err != nil {
+			return err
+		}
+		if page.Cursor.IsZero() {
+			return nil
+		}
+		page, err = page.Next(ctx)
+		if err != nil {
+			return err
+		}
 	}
-	first := page.Items[0]
-
-	// 3. 获取作品分页（图片资源）。
-	pages, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: first.ID})
-	if err != nil {
-		panic(err)
-	}
-	if len(pages) == 0 {
-		return
-	}
-
-	// 4. 通过 SDK 校验的资源路径保存第一张图。
-	saved, err := client.SaveResource(ctx, pages[0].Image.Resource.Ref, sdk.SaveOptions{
-		Path: "./first.png",
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("saved", saved.Path)
 }
 ```
 
-FANBOX：用会话打开，列出支持中的帖子，读取一个帖子。
+示例中的空 `saved` 开始新搜索。另行保存“已经完成”的状态：空的已保存游标也表示列表已耗尽，再次调用 `Search` 前先检查该状态。恢复时使用原查询的全部选项与同一账号。条件不匹配时在内容请求前返回 `InvalidArgument`，认证准备仍可能发生。游标续读实时结果，结果集会随上游变化。
 
-```go
-client, err := fanbox.Open(fanbox.SessionCredentials{FANBOXSESSID: sess})
-if err != nil {
-    panic(err)
-}
-defer client.CloseIdleConnections()
-page, err := client.Supporting(ctx, fanbox.SupportingRequest{})
-if err != nil {
-    panic(err)
-}
-if len(page.Items) == 0 {
-    return
-}
-post, err := client.Post(ctx, fanbox.PostRequest{PostID: page.Items[0].ID})
-if err != nil {
-    panic(err)
-}
-_ = post // post.Body 中的块携带带 Resource ref 的图片/文件资源
-```
-
-## 认证
-
-Pixiv 仅支持 App：每个内容操作都需要有效 access token。没有匿名或 Web fallback。
-
-```go
-client, creds, err := pixiv.Open(ctx, refreshToken)
-if err != nil {
-    return err
-}
-defer client.CloseIdleConnections()
-if err := saveRefreshToken(creds.RefreshToken()); err != nil {
-    return err
-}
-// token 持久化成功后，再使用 client 发起内容请求。
-```
-
-```mermaid
-sequenceDiagram
-    participant App
-    participant SDK as pixiv.Open
-    participant OAuth as Pixiv OAuth
-    App->>SDK: refresh token
-    SDK->>OAuth: 刷新
-    OAuth-->>SDK: access + 轮换后的 refresh + 用户 ID
-    SDK-->>App: Client（只持有 access token）+ Credentials
-    App->>App: 持久化 creds.RefreshToken()
-    Note over App,SDK: token 过期 → 操作返回 CredentialsExpired<br/>（客户端从不自行刷新）
-```
-
-`saveRefreshToken` 代表调用方已有的私密持久化函数。`Credentials` 还提供 `UserID`、`Username`、`ExpiresAt` 与 `AccessToken()`。SDK 只返回轮换结果；账号存储由应用负责。
-
-- `Open` 要求 OAuth 响应包含正整数账号用户 ID；否则返回 `MalformedUpstreamResponse`，不返回客户端或凭据。
-- `New(accessToken)` / `NewWith(accessToken, options)` 使用静态 token，构造时不联网。`OpenWith(ctx, refreshToken, options)` 在首次 OAuth 请求前应用连接设置。
-- 两个产品都通过 `CloseIdleConnections` 释放 SDK 创建的空闲连接；调用方提供的 `HTTPClient` 由调用方管理。
-
-### 以编程方式发起浏览器登录
-
-`BeginLogin` 创建自包含的一次性 PKCE 会话。它不打开浏览器，也不启动 listener：调用方打开 `AuthorizationURL()`，再把回调或裸 code 交给 `Complete`。
-
-```go
-session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
-if err != nil {
-    return err
-}
-defer session.CloseIdleConnections()
-// 先打开 session.AuthorizationURL()，再接收 callbackURL。
-if !session.AcceptsCallbackURL(callbackURL) {
-    return fmt.Errorf("unexpected OAuth callback")
-}
-credentials, err := session.Complete(ctx, callbackURL)
-if err != nil {
-    return err
-}
-return saveRefreshToken(credentials.RefreshToken())
-```
-
-- `AcceptsCallbackURL` 不消耗会话，也不联网。精确匹配的官方 HTTPS 回调与 `pixiv://account/login` 可省略 `state`；提供的值必须匹配会话。其他回调 URL 必须携带匹配的 `state`。
-- `IsOfficialOAuthCallbackURL` / `IsOfficialOAuthStartURL` 按精确 origin 校验浏览器输入，不联系 Pixiv。
-- 会话的格式化输出从不暴露 verifier、state、code 或回调 URL。
-
-### FANBOX
-
-```go
-client, err := fanbox.OpenWith(fanbox.SessionCredentials{FANBOXSESSID: session}, fanbox.Options{
-    ProxyURL:  "https://proxy.example:8443", // 仅原生 HTTP(S) CONNECT
-    UserAgent: "my-native-agent/1.0",          // 仅原生 header
-    FlareSolverr: &fanbox.FlareSolverrOptions{
-        URL:      "http://127.0.0.1:8191",
-        ProxyURL: "socks5://solver-upstream.example:1080",
-    },
-})
-if err != nil {
-    return err
-}
-defer client.CloseIdleConnections()
-```
-
-> [!IMPORTANT]
-> Pixiv refresh token 与 FANBOX 会话相互独立，永不互相转换。
-
-- 原生传输：tls-client Chrome 146 TLS profile。`UserAgent` 为空 = 内置 Firefox 148 HTTP header 基线。
-- FlareSolverr 为 nil 时关闭，只在严格的原生 Cloudflare challenge 之后使用；其服务 URL 与上游代理独立于原生代理。
-- 构造函数不进行网络 I/O。
-
-## 连接与日志
-
-`pixiv.Options` 配置 `HTTPClient`、`AcceptLanguage`、`Pacing`、`ResourcePolicy` 和 `Logger`；`fanbox.Options` 配置 `HTTPClient`、`ProxyURL`、`UserAgent`、`FlareSolverr` 和 `Logger`。两个产品的日志入口都是标准库 `*slog.Logger`，nil 时保持静默。
-
-```go
-logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-    Level: slog.LevelDebug,
-}))
-client, err := pixiv.NewWith(accessToken, pixiv.Options{Logger: logger})
-if err != nil {
-    return err
-}
-defer client.CloseIdleConnections()
-```
-
-传输与协议层记录请求结果和重试、节流或挑战恢复决策。`sdk_operation` 标识 SDK 方法；日志省略 query、请求头、响应体、token、Cookie 与签名 URL。应用选择日志目的地；CLI/MCP 将日志写到 stderr。
-
-## 分页
-
-列表操作返回带 opaque `Cursor` 的 `sdk.Page[T]`：
-
-```go
-request := pixiv.SearchArtworksRequest{Word: "miku"}
-for {
-    page, err := client.SearchArtworks(ctx, request)
-    if err != nil {
-        return err
-    }
-    for _, artwork := range page.Items {
-        fmt.Println(artwork.ID, artwork.Title)
-    }
-    if page.Next.IsZero() {
-        break
-    }
-    request.Cursor = page.Next
-}
-```
-
-```mermaid
-flowchart LR
-    C["Cursor"] --> P["产品"]
-    C --> O["操作"]
-    C --> V["绑定版本"]
-    C --> Q["查询摘要<br/>（+ CursorContext）"]
-    C --> I{"身份范围"}
-    I -->|"Open / OpenWith"| A["已验证账号 ID"]
-    I -->|"New / NewWith"| N["当前 Client 实例<br/>（临时）"]
-    I -->|"公开范围操作"| X["无"]
-```
-
-| Cursor 范围 | 操作 | 复用 |
-| --- | --- | --- |
-| 已验证账号 | 由 `Open`/`OpenWith` 创建的客户端上的身份范围操作（含全部 `SearchArtworks`） | 仅同一账号 |
-| Client 实例 | 由 `New`/`NewWith` 创建（无已验证 ID）的客户端上的身份范围操作 | 仅同一 Client；其他 Client 或进程得到 `InvalidCursor` |
-| 公开 | `SearchNovels`、`SearchUsers` | 任意客户端，相同查询 |
-
-> [!NOTE]
-> 用不同查询复用 cursor 会返回 `InvalidCursor`。
-
-> [!WARNING]
-> cursor 编码提供续读状态与绑定检查，不提供密码学真实性保证。它不是凭据：不要在其身份、上下文或载荷中放 secret，也不要在跨不可信边界接收 cursor 时依赖防篡改。`SearchArtworks` 的绑定版本变更还要求共享 collector、SDK 与调用方一起回滚；已签发的 version-2 cursor 无法被 version-2 之前的搜索实现消费。
-
-- `SearchArtworksRequest.Offset` 是原始 App 搜索流中的非负初始位置（默认 0），不是本地筛选后的逻辑页。续读必须与 `Cursor` 一起重复相同的 `Offset`；改变或省略非零 offset 返回 `InvalidCursor`。
-- 非零上游续读位置都是正的类型化位置：基于 offset 的操作在传输前拒绝零、负数与溢出；基于值的操作拒绝非正的 `last_order`、`max_bookmark_id`、`max_illust_id`。推荐 feed 保留显式 `offset=0` 的例外（见下）。
+JSON 解码后的页保留数据与游标，移除 `Next` 绑定。非末页通过 `sdk.ParseCursor(saved)` 恢复游标，将其放回原列表操作的 `Cursor` 选项。游标 JSON/text 均为不透明字符串，原样保存。
 
 ### 作品搜索批内续读
 
-`SearchArtworks` cursor 使用绑定版本 **2**（包括普通批次续读）；version-1 搜索 cursor 返回 `InvalidCursor`——请丢弃并重新开始。其他操作保持原版本；外层 `sdk.Cursor` 编码不变。
+调用 `client.CheckpointSearchArtworks(ctx, word, options, consumed)` 时，传入取得当前批次时的选项，包括**进入该批次的** `Cursor`。`consumed` 统计 SDK AI 筛选之后、应用自行筛选之前的条目。保存返回游标，使用相同条件经 `SearchArtworks` 恢复。创建 checkpoint 会准备凭据，可能刷新 OAuth；恢复时重新读取实时批次并跳过已消费前缀。
 
-```mermaid
-flowchart TD
-    B["用请求 R 获取的批次"] --> Q{"已全部消费？"}
-    Q -->|是| N["使用 page.Next"]
-    Q -->|"否，消费了 k 项后停止"| CP["client.CheckpointSearchArtworks(R, k)<br/>（无网络 I/O）"]
-    CP --> RES["设置 R.Cursor = checkpoint<br/>重复所有查询字段 + CursorContext"]
-```
+## 资源与下载
 
-- `consumed` 为正数，统计规范化与 AI 筛选后的 SDK 项，包括你的应用之后筛掉或跳过的项。从已续读请求创建的 checkpoint 会累加。非正/溢出 → `InvalidArgument`；超出批次的位置 → 获取时 `InvalidCursor`（绝不静默重来）。初始批次的 checkpoint 保留非零 `Offset`，重新获取该批次而不是 offset 0。
-- Text/JSON codec 支持持久化。`CursorContext` 是调用方定义的本地筛选上下文，被哈希进绑定、从不发往上游——本地筛选语义变化时必须修改它。CLI/MCP 收藏搜索为生效策略与区间共用一个上下文（无新的 CLI 参数或 MCP 字段）。
-- 重放顺序：上游批次 → 规范化项 / AI 筛选 → 已消费前缀 → 调用方筛选与逻辑上限。对稳定来源可避免遗漏与重复；重新获取实时批次**不是**快照，无法在上游插入、删除或重排时保证稳定。
+Pixiv `Image` 提供 `URL`、`Width`、`Height`、`Quality(...)`、`Open(ctx)`、`OpenResponse(ctx)` 与 `Save(ctx, path)`。`client.Image(rawURL)` 绑定允许的 CDN URL。`Open` 要求 HTTP 200，返回的 `io.ReadCloser` 由调用方关闭。需要自行解释 HTTP 状态时，`OpenResponse` 提供状态、内容类型/长度与 body。`Save` 完整读取成功后原子替换目标，父目录需事先存在。
 
-## Pixiv 读取操作
+`sdk/download` 按输入顺序保存传入的 `pixiv.ArtworkPage`。检查页码范围后，对 `artwork.Pages` 切片选页。选项控制根目录、文件名/目录模板、静态图 `Quality` 与 GIF/APNG `UgoiraFormat`。模板字段为 `{id}`、`{title}`、`{author}`、`{author_id}`、`{date}`、`{tags}` 和从零开始的 `{num}`。Ugoira 表示为一页，要求 original 质量。
 
-| 操作 | 主要输入 | 返回 | 常见错误 |
-| --- | --- | --- | --- |
-| `SearchArtworks` | word、target、sort、日期范围、type、AI 模式、横纵比、分辨率、tool、收藏区间、原始初始 `Offset` | `Page[Artwork]` | `InvalidArgument`（未知枚举、非法日期、非法收藏区间） |
-| `SearchNovels` | word、target、sort、duration | `Page[Novel]` | `InvalidArgument` |
-| `SearchUsers` | word | `Page[UserPreview]` | `InvalidArgument` |
-| `ArtworkRanking` | mode（默认 `day`）、可选 `YYYY-MM-DD` | `Page[Artwork]` | `InvalidArgument` |
-| `RecommendedArtworks` | cursor | `Page[Artwork]` | `InvalidCursor` |
-| `FollowingArtworks` | `restrict`（`public`/`private`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
-| `LatestArtworks` | content type（默认 `illust` 或 `manga`）、cursor | `Page[Artwork]` | `InvalidArgument`、`InvalidCursor` |
-| `NovelRanking` | mode（默认 `day`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
-| `RecommendedNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
-| `FollowingNovels` | `restrict`（`public`/`private`）、cursor | `Page[Novel]` | `InvalidArgument`、`InvalidCursor` |
-| `LatestNovels` | cursor | `Page[Novel]` | `InvalidCursor` |
-| `Stamps` | 无查询或 cursor 字段 | `[]Stamp` | `MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `Artwork` / `Novel` / `User` | 正整数类型化 ID | `Artwork` / `Novel` / `UserDetail` | `NotFound`、`InvalidArgument` |
-| `ArtworkSeries` / `NovelSeries` | 正整数系列 ID、cursor | 系列分页（小说另含元数据） | `InvalidCursor` |
-| `ArtworkComments` / `NovelComments` | 正整数 ID、cursor | `CommentPage` | `NotFound` |
-| `PostArtworkComment` / `ReplyArtworkComment` / `DeleteArtworkComment` | 正整数作品 ID；reply 另需正整数父评论 ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `StampArtworkComment` | 正整数作品 ID、可选 comment（纯贴图为空）、正整数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `PostNovelComment` / `ReplyNovelComment` / `DeleteNovelComment` | 正整数小说 ID；reply 另需正整数父评论 ID | post/reply 返回 `CommentMutationResult`；delete 返回 `error` | `InvalidArgument`、`MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `StampNovelComment` | 正整数小说 ID、可选 comment（纯贴图为空）、正整数 stamp ID | `CommentMutationResult` | `InvalidArgument`、`MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `UserArtworkBookmarks` / `UserArtworkBookmarkTags` / `UserNovelBookmarks` / `UserNovelBookmarkTags` | `UserID`、`Restrict`、`tag`、cursor | 类型化分页 | `InvalidArgument`、`InvalidCursor` |
-| `ArtworkBookmark` / `NovelBookmark` | 正整数作品或小说 ID | 收藏详情状态 | `InvalidArgument`、`MalformedUpstreamResponse`、分类的上游/传输错误 |
-| `AddArtworkBookmark` / `RemoveArtworkBookmark` | 正整数作品 ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、分类的上游/传输错误 |
-| `AddNovelBookmark` / `RemoveNovelBookmark` | 正整数小说 ID；add 接受 `Restrict` 与 tags | `error` | `InvalidArgument`、分类的上游/传输错误 |
-
-`NovelContent(ctx, NovelContentRequest{NovelID: id})` 在 ID 非正时返回 `InvalidArgument`，否则返回 `ContentUnavailable`；整个操作不联网。v1 App API 暂不支持结构化小说正文。
-
-### 关键语义
-
-| 主题 | 规则 |
-| --- | --- |
-| `CurrentUser` | 用已验证的正整数账号 ID 与 Android filter 调用 `/v1/user/detail`；不使用已移除的 `/v1/user/me` |
-| `SearchAIModeOnly` | 对 `Artwork.AIType == 2` 的本地批次筛选；模式包含在 cursor 绑定中 |
-| 排行 | cursor 绑定 `mode`（以及作品排行的 `date`）。`NovelRanking` 发送固定的 `for_android`，首次请求省略 `offset`，只用上游返回的正 `offset` 续读 |
-| 推荐 | `RecommendedArtworks` / `RecommendedNovels` 区分省略续读与显式 `offset=0`（只在续读时发送）。作品子类型筛选不在公开请求中；不要从调用方筛选推断它 |
-| 身份范围的用户操作 | `RelatedUsers`、`UserFollowing`、`UserFollowers`、`UserBlockedUsers` 绑定已验证账号，否则绑定 client 实例。Following/Followers 在传输与绑定前把空 `restrict` 规范化为 `public` |
-| 关注 feed | `FollowingArtworks` / `FollowingNovels`：空 `restrict` → `public`，其他值在传输前被拒绝，解析后的值绑定进 cursor |
-| `LatestArtworks` | 空类型 → `illust`；接受 `manga`；解析后的子类型被绑定；拒绝 `all`、`illust-and-ugoira`、`ugoira`。旧的 `offset` 与 `max_illust_id` cursor 形式必须为正 |
-| `LatestNovels` | 固定 `for_android`；cursor 携带正的 `max_novel_id`；不回退到 offset；续读时重复原请求字段 |
-| 评论 | 上游未提供时 total 与 access-control 保持 nil；空列表是非 nil 的空 `Items` 切片 |
-| `Stamps` | 认证的 `/v1/stamps`，无查询/续读字段。每个 `Stamp` 有正的稳定 ID 与一个 `ImageResource`（不声称尺寸或其他字段）；ref 走 opaque 资源边界，新客户端中会从 `/v1/stamps` 重新解析 |
-| 评论 post/reply | 命名空间专属的 add 端点；只有上游返回正的 `comment_id` 时才填 `CommentMutationResult.CommentID`。不是回读确认；不猜测最新评论、不回读、不自动重放结果不确定的写操作 |
-| 评论 delete | 命名空间专属的 delete 端点，使用传入的正 `comment_id`；校验本地形态，分类上游结果；归属、命名空间证明、回读与清理由应用负责 |
-| 贴图评论 | 命名空间专属的 add 端点，`stamp_id` 为独立字段；`comment` 可选（空 = 纯贴图 wire）；绝不编码为回复父级或回退为文本；同样遵循直接响应、不回读规则 |
-| 收藏详情 | `ArtworkBookmark` / `NovelBookmark` 用空 `Restrict` 与空 tags 表示未收藏。`NovelBookmark` 与 `UserNovelBookmarkTags` 遵循候选上游契约：小说收藏标签无续读，在契约验证前拒绝非零 cursor |
-| 收藏写操作 | `AddArtworkBookmark` / `RemoveArtworkBookmark` 使用作品端点。`AddNovelBookmark` / `RemoveNovelBookmark` 使用小说端点。Add 把空 `Restrict` 默认为 `public`，本地拒绝其他值。仅状态的成功，不回读，不重放 |
-| 收藏区间 | `BookmarkMin` / `BookmarkMax`：可选、含端点、非负的 App 候选区间，以 `bookmark_num_min` / `bookmark_num_max` 转发；不做 Premium 预检，不声称全局完整，不静默切换策略。应用可重新检查 `Artwork.TotalBookmarks`，并须单独报告策略与完整性 |
-
-## 错误
-
-所有失败都是带稳定 `Reason` 的 `*sdk.Error`：
-
-```text
-invalid_argument, invalid_cursor, unauthorized, credentials_expired, forbidden,
-not_found, content_unavailable, challenge_required, rate_limited, upstream_error,
-upstream_unavailable, malformed_upstream_response, resource_forbidden,
-local_state_error, removed_setting
-```
-
-`errors.Is` / `errors.As` 可用；保留 `context.Canceled` / `DeadlineExceeded`。错误链从不包含 URL、header、token、Cookie 或配置内容。
-
-```go
-if errors.Is(err, &sdk.Error{Reason: sdk.Unauthorized}) {
-    // 重新认证
-} else if sdk.ReasonOf(err) == sdk.RateLimited {
-    // 按 RetryAdvice 退避
-}
-```
-
-## 资源
-
-```mermaid
-flowchart LR
-    R["sdk.Resource"] --> U["URL + RequestHeaders<br/>进程内流式 / 代理"]
-    R --> F["Ref（opaque）"]
-    F --> OR["OpenResource"]
-    F --> SR["SaveResource<br/>原子写入"]
-    OR & SR --> V["重新校验 scheme/host/path<br/>每次重定向都过 allowlist"]
-    CDN["HTTPS Pixiv CDN URL"] --> SRU["SaveResourceURL"] --> V
-```
-
-将第一张图片流式写入调用方提供的 `io.Writer`（变量 `dst`）：
-
-```go
-page, err := client.ArtworkPages(ctx, pixiv.ArtworkPagesRequest{ArtworkID: id})
-if err != nil {
-    return err
-}
-if len(page) == 0 {
-    return nil
-}
-image := page[0].Image.Resource
-resp, err := client.OpenResource(ctx, sdk.OpenResourceRequest{Ref: image.Ref})
-if err != nil {
-    return err
-}
-defer resp.Body.Close()
-if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-    return fmt.Errorf("resource request returned status %d", resp.StatusCode)
-}
-_, err = io.Copy(dst, resp.Body)
-return err
-```
-
-如需原子写入同一资源：
-
-```go
-// 通过 SDK 校验的路径保存（重新校验 URL/重定向，原子写入）。
-saved, err := client.SaveResource(ctx, image.Ref, sdk.SaveOptions{
-    Path: "./out.png",
-})
-if err != nil {
-    return err
-}
-fmt.Println(saved.Path, saved.Size, saved.ContentType)
-```
-
-| API | 规则 |
-| --- | --- |
-| `OpenResource` | 返回上游 HTTP 状态与正文；调用方在消费正文前检查 `StatusCode`，并关闭 `Body` |
-| `SaveResource` | 原子写入目标；上游提供时 `SaveProgress.Total` = 响应 `Content-Length`；显式 header allowlist；从不发送调用方的 Cookie jar |
-| `SaveResourceURL` | 一个无 userinfo、路径非空的 HTTPS URL，host 为 `i.pximg.net`、`s.pximg.net`、`i-f.pximg.net`（或加入 `ResourcePolicy.AllowedHosts` 的 host）。每次重定向都重新校验，发送产品 `Referer`，从不发送 Cookie jar，原子写入。返回只含 `Path`、`Size`、`ContentType` 的 `sdk.SavedResource`（不含来源 URL 或签名 query）。不展开分页或批量 |
-| `ResourceResponse.Filename` | 可用时为上游建议的附件名。FANBOX 由文件名/扩展名元数据推导（不重复后缀），从不根据签名 URL 或响应 header 猜测。不做文件系统规范化——调用方选择目标前须自行校验。缺失时为空 |
-
-| Ref | Pixiv | FANBOX |
-| --- | --- | --- |
-| 包含 | 资源类型、稳定 ID、页码、可选变体 | 资源类型、所属创作者/帖子、附件 ID |
-| 从不包含 | 当前或签名的媒体 URL | 当前可用或签名的 URL（定位符轮换不改变缓存 key，ref 可跨会话重开） |
-| 重新解析 | 复用客户端持有的当前定位符，或重新获取作品/小说/用户/ugoira/小说正文/贴图元数据；每个 URL 与重定向都重新过 allowlist | 复用会话内定位符，否则重新获取所属创作者/帖子并按 ID 定位附件。URL 与文件名一起缓存在 ref 下；未命中时按资源类型**与** ID 重新解析（图片/文件 ID 重叠也不会串用） |
-| 凭据 | — | 会话 Cookie 只发给 `downloads.fanbox.cc`（以及认证的 FANBOX API）；从不发给 Pixiv/CDN 或第三方 host。`RequiresCredentials` 报告定位符是否仍需要它 |
-
-> [!IMPORTANT]
-> `Resource` 从不保存 Cookie 或 token；`RequiresCredentials` 报告资源是否仍需要调用方不可见的产品凭据。
-
-### 模型与输出安全
-
-每个实体只有一个公开模型类型；模型自带 JSON tag，直接序列化。`sdk.Resource` 可能持有可用的 `URL`、转发用的 `RequestHeaders` 与 `ExpiresAt`，供进程内流式使用，但它的 JSON 形态只包含 opaque `ref` 与可选的 `requires_credentials`。
-
-- 直接编码 `pixiv.Artwork`、`pixiv.Novel`、`pixiv.NovelContent`、`pixiv.UgoiraMetadata`、`fanbox.Post` 等公开模型。`sdk.Page[T]` 把 cursor 输出为文本，最后一页输出空串。
-- CLI 与 MCP 编码这些模型、管道 `Record` 值与类型化信封。
-- `Artwork.ContentType`（`content_type`）保留上游值：`ContentTypeIllust`（`illust`）、`ContentTypeManga`、`ContentTypeUgoira` 或原样未知字符串。原 `Kind`/`RawKind` 读取迁移到 `ContentType`；wire 字段仍为 `type`。`UserArtworksRequest.Kind` 的类型同步改为 `ContentType`。
-- `Artwork` 在搜索/详情中以指针保留上游 `IsBookmarked`、`IsMuted`、`Visible`、`SanityLevel`、`RestrictionAttributes`，另有可选 `Series`（`ID`、`Title`）。非 nil 保留显式的 `false`、`0` 或空数组；nil = 当前端点未提供。详情可提供 `TotalComments`（搜索从不合成）。viewer 状态属于执行读取的账号；不会逐条补充请求。
-
-### 可选模型字段
-
-`Tag.translated_name` 为空时省略。上游未提供图片资源时，省略整个 `User.profile_image`、`Artwork.cover`、`Novel.cover`。
-
-模型省略上游未提供的字段，而不是输出 `null` 或空值——例如 `Artwork` 省略 `updated_at`、`tools` 与 `pages`（pages 仅在详情中）。缺失的 viewer/安全字段、`series` 与 `total_comments` 被省略；显式为空的 `restriction_attributes` 保持 `[]`。缺失的 key 视为未知，不是 `false`/`0`；MCP schema 将这些字段标为可选。
-
-## URL 引用
-
-URL 解析在离线完成：Pixiv 使用 `pixiv.ParseURL(pageURL)`，FANBOX client 使用 `client.ResolveURL(ctx, fanbox.ResolveURLRequest{RawURL: pageURL})`。Pixiv 引用提供 `CanonicalURL()`，返回去除追踪参数的形式；FANBOX 引用提供 `Kind`、`CreatorID`、`PostID` 与 `Tag`。
-
-```go
-ref, err := pixiv.ParseURL(pageURL)
-if err != nil {
-    return err
-}
-canonical, err := ref.CanonicalURL()
-if err != nil {
-    return err
-}
-fmt.Println(canonical)
-```
+`Save` 同时返回 `Report` 与错误：`Files` 保留已发布文件，`Warnings` 保留诊断，`Failures` 保留逐页 cause。单页失败后继续后续页，取消时停止批次并保留部分结果。错误非 nil 时仍检查报告。FANBOX 媒体通过自己的 `Image.Save` / `File.Save` 保存。
 
 ## FANBOX
 
-- 创作者资料、帖子、标签、主页与支持中 feed、URL 解析，以及共享资源契约。
-- 已验证的原生路由位于 `api.fanbox.cc`：`post.info`、`post.listHome`、`post.listSupporting`、`post.listTagged`、`tag.getFeatured`；创作者分页跟随服务端提供的 `pageUrls`。
-- 帖子正文是结构化块；图片/文件块与其资源索引关联，包括只通过 `imageMap` / `fileMap` 提供的附件。第三方嵌入只保留 canonical 链接。受限帖子带摘要，body 为 nil。
-- Home、Supporting 与 Creators cursor 是身份范围的：绑定已验证的 FANBOX 账号 ID（非 secret，每个客户端解析一次），另一账号重放会得到 `InvalidCursor`。CreatorPosts 与 TaggedPosts 为公开范围。所有 cursor 也绑定产品、操作、绑定版本与查询摘要。
+向 `fanbox.New` 传入纯 `FANBOXSESSID` 值。构造为离线操作，`CurrentUser(ctx)` 或 `ValidateSession(ctx)` 显式验证会话。会话获取与保存由调用方负责。
+
+```go
+package example
+
+import (
+	"context"
+	"errors"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
+)
+
+func ReadPost(ctx context.Context, sessionID, postID string, consume func(*fanbox.Post) error) (err error) {
+	client, err := fanbox.New(sessionID, fanbox.Options{})
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, client.Close(context.WithoutCancel(ctx))) }()
+	post, err := client.Post(postID).Get(ctx)
+	if err != nil {
+		return err
+	}
+	return consume(post)
+}
+```
+
+`client.Creator(id).Get(ctx)` 加载创作者；`CreatorRef.Posts(ctx, PostsRequest{...})`、`client.Home` 和 `client.Supporting` 返回绑定账号与查询的页。上游隐藏正文时 `Post.Body` 为 nil。可用正文包含文本、有序 block、图片、附件及完整上游 `Payload`，后者保留未知字段与签名媒体地址。输出时自行选择要公开的字段。
+
+绑定的 `Image` / `File` 提供 `Open(ctx, OpenRequest{})` 与原子 `Save(ctx, path)`。`OpenRequest` 支持 GET/HEAD 及 `Range`、`IfNoneMatch`、`IfModifiedSince`、`IfRange`。调用方检查 `MediaResponse.StatusCode`、表示头和 `Filename` 并关闭 `Body`，HEAD/304 的 body 为空。选择本地路径时将上游文件名视为未信任输入。`Save` 要求 HTTP 200 并创建父目录。会话 Cookie 仅发送到经过校验的 FANBOX API/首页身份请求和 `downloads.fanbox.cc`，CDN 读取省略凭据。
+
+## 以图搜图
+
+自行加载来源，将图片字节传给独立 provider 包。查询所需凭据由各 provider 的选项提供。
+
+```go
+package example
+
+import (
+	"context"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk/ascii2d"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/saucenao"
+)
+
+func Sauce(ctx context.Context, image []byte, apiKey string) (saucenao.Result, error) {
+	return saucenao.Search(ctx, saucenao.Options{Image: image, APIKey: apiKey})
+}
+
+func Ascii(ctx context.Context, image []byte) (ascii2d.Result, error) {
+	return ascii2d.Search(ctx, ascii2d.Options{Image: image, Mode: ascii2d.Both})
+}
+```
+
+SauceNAO 返回有序 `Matches` 与可选 `Quota`。ascii2d 接受 JPEG/PNG/WEBP，大小上限为 `ascii2d.MaxImageBytes`（10 MiB），默认模式为 `Color`。`Both` 上传一次，分别保留 `Color`/`BOVW` 页结果。每个请求页带 `Matches` 与 `Err`，`Search` 同时返回合并错误；处理错误时保留可用的部分结果。文件/URL 加载、合并 provider 结果与补全 Pixiv 信息由调用方负责。
+
+## 错误与迁移
+
+使用 `sdk.ReasonOf(err)`、`errors.As` 或 `errors.Is(err, &sdk.Error{Reason: sdk.NotFound})`。`sdk.Error` 提供 `Reason`、`Operation`、受控 `Message`、`HTTPStatus`、可选 `RetryAfter` 与可解包的 `Err`。取消与持久化 cause 保留在错误链中。
+
+```go
+package example
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
+)
+
+func Explain(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	var failure *sdk.Error
+	if errors.As(err, &failure) {
+		return fmt.Sprintf("%s: %s (HTTP %d)", failure.Operation, failure.Reason, failure.HTTPStatus)
+	}
+	return fmt.Sprint(err)
+}
+```
+
+| Reason | 含义 |
+| --- | --- |
+| `InvalidArgument` | 参数无效、游标不匹配或对象缺少绑定 |
+| `Unauthorized`、`CredentialsExpired` | 认证被拒绝，或凭据需要续期/重新登录 |
+| `Forbidden`、`NotFound`、`ContentUnavailable` | 访问限制、对象缺失或内容不可用 |
+| `ChallengeRequired`、`RateLimited` | 浏览器挑战未解决或上游限流 |
+| `UpstreamError`、`UpstreamUnavailable`、`MalformedUpstreamResponse` | 上游失败、传输/可用性问题或无效响应 |
+| `ResourceForbidden`、`LocalStateError` | 资源来源被拒绝，或凭据/存储/本地状态失败 |
+
+`RetryAfter` 仅在上游提供有效值时出现，后续调度策略由调用方决定。
+
+从旧 SDK 迁移时，将 `Open`/`OpenWith`/`NewWith` 换为 `pixiv.New(store, options)` 或 `fanbox.New(sessionID, options)`；实体操作迁到绑定引用/对象，网络调用显式传入 `ctx`。构造时传 logger 改为 `slog.SetDefault`，错误与通用资源包装改用 `sdk.Error` 和产品媒体对象。provider 查询移到 `sdk/saucenao` / `sdk/ascii2d`，批量保存移到 `sdk/download`。模块与 import 根路径保持原样。内部归属见[架构说明](maintainers/architecture.md)，CLI 账号管理见[认证](authentication.md)。

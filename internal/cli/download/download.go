@@ -6,7 +6,6 @@ package download
 import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +17,7 @@ type Runtime struct {
 }
 
 // New 构造单一 download 叶子命令。
-func New(env environment.Env, exec session.SDKExecutor, runtime func() (Runtime, error)) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor, runtime func() (Runtime, error)) *cobra.Command {
 	return controller{env: env, execute: exec, runtime: runtime}.newDownloadCommand()
 }
 

@@ -11,11 +11,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -33,11 +31,11 @@ type listOptions struct {
 
 type commandRunner struct {
 	env        environment.Env
-	executeSDK session.SDKExecutor
+	executeSDK environment.PixivExecutor
 }
 
 // New 构造 `pixiv user` 命令组。follow 命令由组合根注入，本包不直接依赖同级的 follow 包。
-func New(env environment.Env, executeSDK session.SDKExecutor, follow func() *cobra.Command) *cobra.Command {
+func New(env environment.Env, executeSDK environment.PixivExecutor, follow func() *cobra.Command) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
 	cmd.AddCommand(
@@ -67,7 +65,7 @@ type SearchOptions struct {
 }
 
 // RunSearch 按 SearchOptions 执行用户搜索；兼容入口调用它避免复制搜索逻辑。
-func RunSearch(cmd *cobra.Command, env environment.Env, executeSDK session.SDKExecutor, args []string, opts SearchOptions) error {
+func RunSearch(cmd *cobra.Command, env environment.Env, executeSDK environment.PixivExecutor, args []string, opts SearchOptions) error {
 	return commandRunner{env: env, executeSDK: executeSDK}.runSearch(cmd, args, listOptions{
 		Options: opts.Options,
 		ndjson:  opts.NDJSON,
@@ -234,23 +232,23 @@ func (a commandRunner) bindListCommand(cmd *cobra.Command, opts *listOptions) {
 
 // resolve 统一列表命令的分页、传输覆盖与输出模式判定。autoNDJSON 保持各命令既有
 // 的自动 NDJSON 行为，不在此处统一放宽或收紧。
-func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (pagination.PagePlan, session.ProxyRequest, bool, bool, error) {
+func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON bool) (pagination.PagePlan, environment.PixivRequest, bool, bool, error) {
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 	}
 	request, err := a.env.Request(cmd, opts.Options.ProxyOptions)
 	if err != nil {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return pagination.PagePlan{}, session.ProxyRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
 		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
 		if err != nil {
-			return pagination.PagePlan{}, session.ProxyRequest{}, false, false, err
+			return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 		}
 	}
 	ndjson := opts.ndjson
@@ -334,7 +332,7 @@ func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environmen
 	if err != nil {
 		return err
 	}
-	var result legacysdk.UserDetail
+	var result record.UserDetail
 	err = a.executeSDK(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		profile, err := client.User(userID).Profile(ctx)
 		if err != nil {

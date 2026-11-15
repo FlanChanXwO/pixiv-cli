@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -95,7 +95,7 @@ func TestRemoteLoginCallbackDoesNotFollowCrossOriginRedirects(t *testing.T) {
 }
 
 func TestValidateAuthorizationURLAcceptsOnlyOfficialAppOAuthStart(t *testing.T) {
-	session, err := pixiv.BeginLogin(pixiv.LoginOptions{})
+	session, err := pixiv.BeginLogin(pixiv.Options{})
 	require.NoError(t, err)
 	require.NoError(t, validateAuthorizationURL(session.AuthorizationURL()), "a URL produced by BeginLogin must remain valid")
 

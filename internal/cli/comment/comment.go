@@ -11,11 +11,9 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -44,11 +42,11 @@ type stampsOptions struct {
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv comment` 命令及其增删改子命令；ID 统一由请求解析器确定作品或小说。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	options := options{}
 	cmd := &cobra.Command{
@@ -317,13 +315,13 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		}
 	}
 	ndjson := a.env.AutoNDJSON(cmd, opts.ndjson, jsonOut)
-	var stamps []legacysdk.Stamp
+	var stamps []record.Stamp
 	err = a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		items, err := client.Stamps(ctx)
 		if err != nil {
 			return false, err
 		}
-		stamps = make([]legacysdk.Stamp, len(items))
+		stamps = make([]record.Stamp, len(items))
 		for i, item := range items {
 			stamps[i], err = record.StampOutput(item)
 			if err != nil {
@@ -383,8 +381,8 @@ func commentWorkContract(operation string) target.Contract {
 	return target.Contract{
 		Operation: operation,
 		Types: []target.TypeSpec{
-			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceComment, BareReferenceKind: legacysdk.ReferenceKindArtwork},
-			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceComment, BareReferenceKind: legacysdk.ReferenceKindNovel},
+			{Name: string(target.NamespaceArtwork), ResultKind: target.NamespaceComment, BareReferenceKind: target.ReferenceKindArtwork},
+			{Name: string(target.NamespaceNovel), ResultKind: target.NamespaceComment, BareReferenceKind: target.ReferenceKindNovel},
 		},
 	}
 }
@@ -457,8 +455,8 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 
 	return a.exec(cmd.Context(), request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		var metadata commentPageMetadata
-		var comments []legacysdk.Comment
-		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Comment, sdk.Cursor, error) {
+		var comments []record.Comment
+		fetch := func(ctx context.Context, cursor sdk.Cursor) ([]record.Comment, sdk.Cursor, error) {
 			var page pixiv.CommentPage
 			var pageErr error
 			switch resolved.TargetKind {
@@ -473,7 +471,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 				return nil, sdk.Cursor{}, pageErr
 			}
 			metadata.set(page)
-			items := make([]legacysdk.Comment, len(page.Page.Items))
+			items := make([]record.Comment, len(page.Page.Items))
 			for i, item := range page.Page.Items {
 				items[i], pageErr = record.CommentOutput(item)
 				if pageErr != nil {
@@ -482,7 +480,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			}
 			return items, page.Page.Cursor, nil
 		}
-		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []legacysdk.Comment) error {
+		page, err := pagination.TraversePages(ctx, plan, fetch, func(items []record.Comment) error {
 			comments = append(comments, items...)
 			return nil
 		})

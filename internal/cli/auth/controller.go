@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 )
 
 // controller 保存 auth 命令树共用的执行环境和延迟打开账号、登录服务的端口。
@@ -28,6 +27,6 @@ func (a controller) accountService(ctx context.Context) (AccountService, error) 
 }
 
 // loginService 打开浏览器登录使用的账号登录服务。
-func (a controller) loginService(ctx context.Context) (session.LoginService, error) {
+func (a controller) loginService(ctx context.Context) (LoginService, error) {
 	return a.support.Login(ctx)
 }

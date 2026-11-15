@@ -10,12 +10,10 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -35,11 +33,11 @@ const recommendationKindAll = "all"
 
 type commandRunner struct {
 	env  environment.Env
-	exec session.SDKExecutor
+	exec environment.PixivExecutor
 }
 
 // New 构造 `pixiv recommended` 命令，保留各输出格式的提交时机。
-func New(env environment.Env, exec session.SDKExecutor) *cobra.Command {
+func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
 	opts := options{contentType: string(pixiv.ArtworkCategoryAll)}
 	cmd := &cobra.Command{
@@ -145,31 +143,31 @@ func validKind(kind string) bool {
 	return kind == recommendationKindAll || kind == string(pixiv.ArtworkCategoryIllust) || kind == string(pixiv.ArtworkCategoryManga) || kind == string(target.NamespaceNovel) || kind == string(target.NamespaceUser)
 }
 
-func (a commandRunner) runOne(ctx context.Context, request session.ProxyRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
+func (a commandRunner) runOne(ctx context.Context, request environment.PixivRequest, plan pagination.PagePlan, jsonOut, ndjson bool, kind string, artworkFilter searchfilter.Filter) error {
 	format := record.FormatOf(jsonOut, ndjson)
 	if kind == string(pixiv.ArtworkCategoryIllust) || kind == string(pixiv.ArtworkCategoryManga) {
-		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[legacysdk.Artwork]{
-			PostFilter: func(items []legacysdk.Artwork) []legacysdk.Artwork {
+		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.Artwork]{
+			PostFilter: func(items []record.Artwork) []record.Artwork {
 				return filterRecommendedArtworks(items, artworkFilter)
 			},
-			Print:       func(items []legacysdk.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
-			RecordValue: func(item legacysdk.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+			Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+			RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
+		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 			return fetchRecommendedArtworks(client)(ctx, cursor)
 		})
 	}
 	if kind == string(target.NamespaceNovel) {
-		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[legacysdk.Novel]{
-			Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
-			RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
-		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.Novel]{
+			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+			RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
+		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			return fetchRecommendedNovels(client)(ctx, cursor)
 		})
 	}
-	return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[legacysdk.UserPreview]{
-		Print:       func(items []legacysdk.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
-		RecordValue: func(item legacysdk.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
-	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+	return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.UserPreview]{
+		Print:       func(items []record.UserPreview, _ int) error { return display.PrintUserPreviews(a.env.Out, items) },
+		RecordValue: func(item record.UserPreview) (any, error) { return record.RecordFromUserPreview(item) },
+	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.UserPreview, sdk.Cursor, error) {
 		return fetchRecommendedUsers(client)(ctx, cursor)
 	})
 }
@@ -181,11 +179,11 @@ func resolveArtworkFilter(kind, contentType string) (searchfilter.Filter, error)
 	return searchfilter.NormalizeFilter("", contentType)
 }
 
-func filterRecommendedArtworks(items []legacysdk.Artwork, filter searchfilter.Filter) []legacysdk.Artwork {
+func filterRecommendedArtworks(items []record.Artwork, filter searchfilter.Filter) []record.Artwork {
 	if filter.ContentType == "" || filter.ContentType == searchfilter.ContentTypeAll {
 		return items
 	}
-	filtered := make([]legacysdk.Artwork, 0, len(items))
+	filtered := make([]record.Artwork, 0, len(items))
 	for _, item := range items {
 		if filter.Matches(0, string(item.ContentType)) {
 			filtered = append(filtered, item)
@@ -194,13 +192,13 @@ func filterRecommendedArtworks(items []legacysdk.Artwork, filter searchfilter.Fi
 	return filtered
 }
 
-func fetchRecommendedArtworks(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
-	return func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Artwork, sdk.Cursor, error) {
+func fetchRecommendedArtworks(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
+	return func(ctx context.Context, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 		result, err := client.RecommendedArtworks(ctx, pixiv.RecommendedArtworksOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Artwork, len(result.Items))
+		items := make([]record.Artwork, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.ArtworkOutput(item, false)
 			if err != nil {
@@ -211,13 +209,13 @@ func fetchRecommendedArtworks(client *pixiv.Client) func(context.Context, sdk.Cu
 	}
 }
 
-func fetchRecommendedNovels(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
-	return func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+func fetchRecommendedNovels(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
+	return func(ctx context.Context, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		result, err := client.RecommendedNovels(ctx, pixiv.RecommendedNovelsOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.Novel, len(result.Items))
+		items := make([]record.Novel, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.NovelOutput(item)
 			if err != nil {
@@ -228,13 +226,13 @@ func fetchRecommendedNovels(client *pixiv.Client) func(context.Context, sdk.Curs
 	}
 }
 
-func fetchRecommendedUsers(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
-	return func(ctx context.Context, cursor sdk.Cursor) ([]legacysdk.UserPreview, sdk.Cursor, error) {
+func fetchRecommendedUsers(client *pixiv.Client) func(context.Context, sdk.Cursor) ([]record.UserPreview, sdk.Cursor, error) {
+	return func(ctx context.Context, cursor sdk.Cursor) ([]record.UserPreview, sdk.Cursor, error) {
 		result, err := client.RecommendedUsers(ctx, pixiv.RecommendedUsersOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
 		}
-		items := make([]legacysdk.UserPreview, len(result.Items))
+		items := make([]record.UserPreview, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.RecommendationOutput(item)
 			if err != nil {
@@ -250,7 +248,7 @@ func fetchRecommendedUsers(client *pixiv.Client) func(context.Context, sdk.Curso
 func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, plan pagination.PagePlan) (bool, error) {
 	encoder := json.NewEncoder(a.env.Out)
 	committed := false
-	writeArtworks := func(items []legacysdk.Artwork) error {
+	writeArtworks := func(items []record.Artwork) error {
 		for _, item := range items {
 			record, err := record.RecordFromArtwork(item)
 			if err != nil {
@@ -263,8 +261,8 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 		}
 		return nil
 	}
-	var visualItems []legacysdk.Artwork
-	if err := pagination.PageItems(ctx, plan, fetchRecommendedArtworks(client), func(items []legacysdk.Artwork) error {
+	var visualItems []record.Artwork
+	if err := pagination.PageItems(ctx, plan, fetchRecommendedArtworks(client), func(items []record.Artwork) error {
 		visualItems = append(visualItems, items...)
 		return nil
 	}); err != nil {
@@ -274,7 +272,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 		return committed, err
 	}
 
-	if err := pagination.PageItems(ctx, plan, fetchRecommendedNovels(client), func(items []legacysdk.Novel) error {
+	if err := pagination.PageItems(ctx, plan, fetchRecommendedNovels(client), func(items []record.Novel) error {
 		for _, item := range items {
 			record, err := record.RecordFromNovel(item)
 			if err != nil {
@@ -289,7 +287,7 @@ func (a commandRunner) runAllNDJSON(ctx context.Context, client *pixiv.Client, p
 	}); err != nil {
 		return committed, err
 	}
-	err := pagination.PageItems(ctx, plan, fetchRecommendedUsers(client), func(items []legacysdk.UserPreview) error {
+	err := pagination.PageItems(ctx, plan, fetchRecommendedUsers(client), func(items []record.UserPreview) error {
 		for _, item := range items {
 			record, err := record.RecordFromUserPreview(item)
 			if err != nil {

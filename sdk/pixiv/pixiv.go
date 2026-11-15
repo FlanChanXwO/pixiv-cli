@@ -12,7 +12,7 @@
 // attachments retain the client's resource policy and account binding.
 // All content requests require credentials; configuration and account selection
 // remain with the caller. Logs use the current slog default logger; use
-// [slog.SetDefault] to route events into the application's handler.
+// slog.SetDefault to route events into the application's handler.
 //
 // [ArtworkRef.Comments] and [NovelRef.Comments] return [CommentPage] batches.
 // Use [ArtworkRef.PostComment] or [NovelRef.PostComment] to publish text or a
@@ -55,15 +55,14 @@ package pixiv
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 // Options configures the connection shared by App, OAuth, and resource requests.
@@ -98,7 +97,7 @@ func New(store CredentialStore, options Options) (*Client, error) {
 	if store == nil {
 		return nil, newError("New", sdk.InvalidArgument, "credential store is required", nil)
 	}
-	httpClient, owned := api.NewHTTPClient(options.HTTPClient, options.RequestInterval, protocolLogger())
+	httpClient, owned := api.NewHTTPClient(options.HTTPClient, options.RequestInterval)
 	return &Client{store: store, http: httpClient, ownsHTTP: owned, language: strings.TrimSpace(options.AcceptLanguage), resourceHosts: append([]string(nil), options.ResourceHosts...), gate: make(chan struct{}, 1)}, nil
 }
 
@@ -129,7 +128,7 @@ func (c *Client) bindIdentity(id int64) error {
 }
 
 func (c *Client) app(value Credentials) *api.Client {
-	return api.New(api.Config{HTTPClient: c.http, AccessToken: value.AccessToken.Value(), UserID: value.UserID, AcceptLanguage: c.language, ResourceHosts: c.resourceHosts, Logger: protocolLogger()})
+	return api.New(api.Config{HTTPClient: c.http, AccessToken: value.AccessToken.Value(), UserID: value.UserID, AcceptLanguage: c.language, ResourceHosts: c.resourceHosts})
 }
 
 // getJSON is the safe read boundary: only a definite 401 permits one auth replay.
@@ -151,31 +150,4 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, out
 		return classifyError(path, err, false)
 	}
 	return nil
-}
-
-// defaultHandler resolves slog's current handler for each protocol log event.
-// shortcut: protocol clients require logger parameters, remove this bridge when they call slog Context functions directly.
-type defaultHandler func() slog.Handler
-
-// Enabled consults the current default handler, including after construction.
-func (h defaultHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return h().Enabled(ctx, level)
-}
-
-// Handle forwards the protocol record with its original context and timestamp.
-func (h defaultHandler) Handle(ctx context.Context, record slog.Record) error {
-	return h().Handle(ctx, record)
-}
-
-// WithAttrs preserves late resolution while attaching the protocol's attributes.
-func (h defaultHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return defaultHandler(func() slog.Handler { return h().WithAttrs(attrs) })
-}
-
-// WithGroup preserves late resolution while grouping the protocol's attributes.
-func (h defaultHandler) WithGroup(name string) slog.Handler {
-	return defaultHandler(func() slog.Handler { return h().WithGroup(name) })
-}
-func protocolLogger() *slog.Logger {
-	return slog.New(defaultHandler(func() slog.Handler { return slog.Default().Handler() }))
 }

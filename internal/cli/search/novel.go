@@ -8,9 +8,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -28,7 +26,7 @@ type novelOptions struct {
 
 // NewNovel 构造 `pixiv novel` 命令组，其 search 叶子与 `pixiv search --type novel`
 // 共用同一套执行逻辑。
-func NewNovel(env environment.Env, executeSDK session.SDKExecutor) *cobra.Command {
+func NewNovel(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
 	cmd := &cobra.Command{Use: "novel", Short: "Query Pixiv novels"}
 	cmd.AddCommand(a.newNovelSearchCommand())
@@ -98,14 +96,14 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 		}
 	}
 	word := strings.Join(args, " ")
-	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		result, searchErr := client.SearchNovels(ctx, word, pixiv.NovelSearchOptions{
 			Target: target, Sort: pixiv.SortMode(opts.sortMode), Duration: period, Cursor: cursor,
 		})
 		if searchErr != nil {
 			return nil, sdk.Cursor{}, searchErr
 		}
-		items := make([]legacysdk.Novel, len(result.Items))
+		items := make([]record.Novel, len(result.Items))
 		for i, item := range result.Items {
 			items[i], err = record.NovelOutput(item)
 			if err != nil {
@@ -114,9 +112,9 @@ func (a commandRunner) runNovelSearch(cmd *cobra.Command, args []string, opts no
 		}
 		return items, result.Cursor, nil
 	}
-	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[legacysdk.Novel]{
-		Print:       func(items []legacysdk.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
-		RecordValue: func(item legacysdk.Novel) (any, error) { return record.RecordFromNovel(item) },
+	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, opts.ndjson), record.List[record.Novel]{
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
 	}, fetch)
 }
 

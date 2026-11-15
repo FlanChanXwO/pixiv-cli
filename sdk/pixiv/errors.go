@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 func newError(operation string, reason sdk.Reason, message string, cause error) *sdk.Error {

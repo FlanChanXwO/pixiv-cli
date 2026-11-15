@@ -5,24 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-func retryAfterFor(err error, now time.Time) (time.Duration, bool) {
+func retryAfterFor(err error) (time.Duration, bool) {
 	var current *sdk.Error
 	if errors.As(err, &current) && current.Reason == sdk.RateLimited && current.RetryAfter != nil && *current.RetryAfter > 0 {
 		return *current.RetryAfter, true
 	}
-	var typed *legacysdk.Error
-	if !errors.As(err, &typed) || typed.Reason != legacysdk.RateLimited || !typed.Retry.Safe || !typed.Retry.HasAfter {
-		return 0, false
-	}
-	retryAfter := typed.Retry.After.Sub(now)
-	if retryAfter <= 0 {
-		return 0, false
-	}
-	return retryAfter, true
+	return 0, false
 }
 
 func mapSelectionError(err, lastRateLimit error, now time.Time) error {
@@ -31,13 +22,14 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 		if errors.Is(err, ErrAccountPoolExhausted) {
 			return poolExhaustedError(lastRateLimit, nil, now)
 		}
-		return legacysdk.NewError("pixiv", "account_pool", legacysdk.LocalStateError, legacysdk.WithDetail("account_pool_state_error"), legacysdk.WithCause(err))
+		failure := &sdk.Error{Operation: "pixiv:account_pool", Reason: sdk.LocalStateError, Message: "account_pool_state_error"}
+		return fmt.Errorf("%w: %w", failure, err)
 	}
 	switch selectionErr.Reason {
 	case PoolSelectionNoLocalAccount:
-		return legacysdk.NewError("pixiv", "account_pool", legacysdk.Unauthorized, legacysdk.WithDetail("account_pool_no_local_account"))
+		return &sdk.Error{Operation: "pixiv:account_pool", Reason: sdk.Unauthorized, Message: "account_pool_no_local_account"}
 	case PoolSelectionNoSchedulable:
-		return legacysdk.NewError("pixiv", "account_pool", legacysdk.LocalStateError, legacysdk.WithDetail("account_pool_no_schedulable_account"))
+		return &sdk.Error{Operation: "pixiv:account_pool", Reason: sdk.LocalStateError, Message: "account_pool_no_schedulable_account"}
 	case PoolSelectionAllFrozen:
 		return poolSelectionRateLimit("account_pool_all_frozen", selectionErr.EarliestFrozenUntil, nil, now)
 	case PoolSelectionExhausted:
@@ -47,26 +39,14 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 	}
 }
 
-func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) *legacysdk.Error {
-	opts := []legacysdk.ErrorOption{legacysdk.WithDetail(detail)}
-	if retry, ok := poolRetryAdvice(earliest, now); ok {
-		opts = append(opts, legacysdk.WithRetry(retry))
+func poolSelectionRateLimit(detail string, earliest *int64, cause error, now time.Time) *sdk.Error {
+	failure := &sdk.Error{Operation: "pixiv:account_pool", Reason: sdk.RateLimited, Message: detail, Err: cause}
+	if earliest != nil {
+		if wait := time.Unix(*earliest, 0).Sub(now); wait > 0 {
+			failure.RetryAfter = &wait
+		}
 	}
-	if cause != nil {
-		opts = append(opts, legacysdk.WithCause(cause))
-	}
-	return legacysdk.NewError("pixiv", "account_pool", legacysdk.RateLimited, opts...)
-}
-
-func poolRetryAdvice(earliest *int64, now time.Time) (legacysdk.RetryAdvice, bool) {
-	if earliest == nil {
-		return legacysdk.RetryAdvice{}, false
-	}
-	after := time.Unix(*earliest, 0)
-	if !after.After(now) {
-		return legacysdk.RetryAdvice{}, false
-	}
-	return legacysdk.RetryAdvice{Safe: true, After: after, HasAfter: true}, true
+	return failure
 }
 
 func poolExhaustedError(lastRateLimit error, earliest *int64, now time.Time) error {
@@ -77,9 +57,11 @@ func poolExhaustedError(lastRateLimit error, earliest *int64, now time.Time) err
 	return &accountPoolExhaustedError{classified: classified}
 }
 
-type accountPoolExhaustedError struct{ classified *legacysdk.Error }
+type accountPoolExhaustedError struct{ classified *sdk.Error }
 
-func (e *accountPoolExhaustedError) Error() string { return e.classified.Error() }
+func (e *accountPoolExhaustedError) Error() string {
+	return fmt.Sprintf("%s: %s", e.classified.Error(), e.classified.Err.Error())
+}
 
 func (e *accountPoolExhaustedError) Unwrap() []error {
 	return []error{ErrAccountPoolExhausted, e.classified}

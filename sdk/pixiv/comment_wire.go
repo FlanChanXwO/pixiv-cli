@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/api"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
+	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv/internal/api"
 )
 
 func commentRoutes(novel bool) (list, add, remove, parameter string) {

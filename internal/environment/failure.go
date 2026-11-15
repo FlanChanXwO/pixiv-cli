@@ -10,7 +10,6 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
@@ -94,26 +93,14 @@ func ErrorText(err error) (text string) {
 		return err.Error()
 	}
 	var current *sdk.Error
-	var legacy *legacysdk.Error
-	var reason sdk.Reason
-	var detail string
-	var httpStatus int
-	login := "pixiv auth login"
-	switch {
-	case errors.As(err, &current):
-		reason, detail, httpStatus = current.Reason, current.Message, current.HTTPStatus
-	case errors.As(err, &legacy):
-		reason, detail, httpStatus = sdk.Reason(legacy.Reason), legacy.Detail, legacy.HTTPStatus
-		if legacy.Product == "fanbox" {
-			login = "pixiv fanbox auth import"
-		}
-	default:
+	if !errors.As(err, &current) {
 		return err.Error()
 	}
+	reason, detail, httpStatus := current.Reason, current.Message, current.HTTPStatus
 	switch reason {
 	case sdk.Unauthorized, sdk.CredentialsExpired:
-		return fmt.Sprintf("not logged in; run %q", login)
-	case sdk.InvalidArgument, sdk.Reason(legacysdk.InvalidCursor):
+		return `not logged in; run "pixiv auth login"`
+	case sdk.InvalidArgument:
 		if httpStatus == 0 {
 			if detail == "" {
 				return "invalid argument; check the command's --help"

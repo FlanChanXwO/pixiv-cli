@@ -9,10 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	legacypixiv "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
-	"github.com/FlanChanXwO/pixiv-cli/internal/session"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -56,12 +55,12 @@ func TestRunSDKListClosesSpoolOnFailure(t *testing.T) {
 	t.Setenv("TMP", tempDir)
 	t.Setenv("TEMP", tempDir)
 	var out bytes.Buffer
-	execute := func(ctx context.Context, _ session.ProxyRequest, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
+	execute := func(ctx context.Context, _ environment.PixivRequest, attempt func(context.Context, int64, *pixiv.Client) (bool, error)) error {
 		_, err := attempt(ctx, 9, nil)
 		return err
 	}
 	before := spoolNames(t, tempDir)
-	err := record.RunSDKList(context.Background(), &out, io.Discard, execute, session.ProxyRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.List[int]{}, func(context.Context, int64, *pixiv.Client, sdk.Cursor) ([]int, sdk.Cursor, error) {
+	err := record.RunSDKList(context.Background(), &out, io.Discard, execute, environment.PixivRequest{}, pagination.PagePlan{Page: 1, Limit: 1}, record.FormatJSON, record.List[int]{}, func(context.Context, int64, *pixiv.Client, sdk.Cursor) ([]int, sdk.Cursor, error) {
 		return nil, sdk.Cursor{}, retryableErr
 	})
 	if !errors.Is(err, retryableErr) || out.Len() != 0 {
@@ -84,7 +83,7 @@ func spoolNames(t *testing.T, dir string) []string {
 }
 
 func TestArtworkRecordPreservesContentType(t *testing.T) {
-	value, err := record.RecordFromArtwork(legacypixiv.Artwork{ID: 101, ContentType: "future_art"})
+	value, err := record.RecordFromArtwork(record.Artwork{ID: 101, ContentType: "future_art"})
 	if err != nil {
 		t.Fatal(err)
 	}

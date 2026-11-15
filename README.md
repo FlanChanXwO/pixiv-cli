@@ -20,7 +20,7 @@ Unofficial CLI and MCP server for Pixiv: search, browse, bookmark, follow and do
 flowchart LR
     U["You / scripts"] --> CLI["pixiv CLI"]
     A["AI agents"] --> MCP["pixiv mcp<br/>stdio · HTTP+OAuth"]
-    CLI --> SDK["shared core<br/>(also a public Go SDK)"]
+    CLI --> SDK["public Go SDK<br/>(account-bound API objects)"]
     MCP --> SDK
     SDK --> PX["Pixiv App API<br/>(authenticated only)"]
     SDK -.-> FB["Pixiv Fanbox<br/>(read-only, FANBOXSESSID)"]
@@ -145,7 +145,7 @@ An authorized HTTP connector acts on the **server's** files and network (e.g. re
 | [Authentication](docs/en/authentication.md) | Login, remote hand-off, token import/export |
 | [CLI reference](docs/en/cli-reference.md) | Commands, flags, config, downloads, MCP startup |
 | [MCP tools](docs/en/mcp-tools.md) · [MCP Apps gallery](docs/en/mcp-gallery.md) | Tool schemas, output, HTTP authorization, Gallery UI |
-| [Go SDK](docs/en/sdk.md) | Embedding the same core in Go programs |
+| [Go SDK](docs/en/sdk.md) | API objects, caller-owned credentials, reverse search and page downloads in Go |
 | [Architecture](docs/en/maintainers/architecture.md) · [MCP server](docs/en/maintainers/architecture-mcp.md) | Package boundaries and runtime flow |
 | [Coding standards](docs/en/maintainers/coding-standards.md) | Go conventions for contributors |
 | [Development](docs/en/maintainers/development.md) · [CI](docs/en/maintainers/ci.md) · [Release](docs/en/maintainers/release.md) | Toolchain, tests, PR gates, releases |

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/outputs"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/schemas"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
@@ -115,8 +114,8 @@ func (t pixivTools) novelSeriesHandler(ctx context.Context, in novelSeriesIn) (*
 	if err != nil {
 		return outputs.NovelSeriesError(err)
 	}
-	var series legacysdk.NovelSeries
-	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]legacysdk.Novel, sdk.Cursor, error) {
+	var series record.NovelSeries
+	items, more, err := toolhost.CollectSDKWith(ctx, t.app, plan, func(ctx context.Context, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		result, err := client.NovelSeries(in.SeriesID).Get(ctx, pixiv.NovelSeriesOptions{Cursor: cursor})
 		if err != nil {
 			return nil, sdk.Cursor{}, err
@@ -127,7 +126,7 @@ func (t pixivTools) novelSeriesHandler(ctx context.Context, in novelSeriesIn) (*
 				return nil, sdk.Cursor{}, err
 			}
 		}
-		novels := make([]legacysdk.Novel, len(result.Novels.Items))
+		novels := make([]record.Novel, len(result.Novels.Items))
 		for i, novel := range result.Novels.Items {
 			novels[i], err = record.NovelOutput(novel)
 			if err != nil {

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
@@ -126,12 +125,12 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 		err  error
 		want string
 	}{
-		{fmt.Errorf("saving account: %w; closing store: %w", legacysdk.NewError("pixiv", "Open", legacysdk.Unauthorized), errors.New("close failed")), `saving account: not logged in; run "pixiv auth login"; closing store: close failed`},
+		{fmt.Errorf("saving account: %w; closing store: %w", &sdk.Error{Operation: "Open", Reason: sdk.Unauthorized}, errors.New("close failed")), `saving account: not logged in; run "pixiv auth login"; closing store: close failed`},
 		{fmt.Errorf("search: %w", reversesearch.NewError(reversesearch.CodeUpstreamHTTPStatus, "SauceNAO returned an unsuccessful HTTP status", &sdk.Error{Reason: sdk.UpstreamUnavailable, HTTPStatus: 503})), "search: SauceNAO returned an unsuccessful HTTP status"},
 		{errors.New("first\nsecond\x1b[31m"), `first\nsecond\x1b[31m`},
-		{fmt.Errorf("write: %w", errors.Join(legacysdk.NewError("pixiv", "Open", legacysdk.Unauthorized), errors.New("close failed"))), `write: not logged in; run "pixiv auth login"; close failed`},
-		{legacysdk.NewError("pixiv", "Search", legacysdk.InvalidArgument), "invalid argument; check the command's --help"},
-		{legacysdk.NewError("pixiv", "Search", legacysdk.InvalidArgument, legacysdk.WithHTTPStatus(400)), "upstream returned HTTP 400 (Bad Request); check service availability and account access before trying again"},
+		{fmt.Errorf("write: %w", errors.Join(&sdk.Error{Operation: "Open", Reason: sdk.Unauthorized}, errors.New("close failed"))), `write: not logged in; run "pixiv auth login"; close failed`},
+		{&sdk.Error{Operation: "Search", Reason: sdk.InvalidArgument}, "invalid argument; check the command's --help"},
+		{&sdk.Error{Operation: "Search", Reason: sdk.InvalidArgument, HTTPStatus: 400}, "upstream returned HTTP 400 (Bad Request); check service availability and account access before trying again"},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			var stderr bytes.Buffer

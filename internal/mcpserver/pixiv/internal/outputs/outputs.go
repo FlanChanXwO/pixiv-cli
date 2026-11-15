@@ -10,7 +10,6 @@ package outputs
 import (
 	"fmt"
 
-	legacysdk "github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -87,8 +86,8 @@ func RecommendedError(err error) (*mcp.CallToolResult, Recommended, error) {
 
 // TrendingTags 承载 trending_tags_illust 工具的输出。
 type TrendingTags struct {
-	Tags []legacysdk.TrendingTag `json:"tags"`
-	Text string                  `json:"text"`
+	Tags []record.TrendingTag `json:"tags"`
+	Text string               `json:"text"`
 }
 
 // TrendingTagsResult 用 out.Text 生成摘要；没有标签时仍返回成功结果。
@@ -98,13 +97,13 @@ func TrendingTagsResult(out TrendingTags, isError bool) *mcp.CallToolResult {
 
 // TrendingTagsError 返回 isError 的趋势标签结果，tags 为空数组。
 func TrendingTagsError(err error) (*mcp.CallToolResult, TrendingTags, error) {
-	out := TrendingTags{Tags: []legacysdk.TrendingTag{}, Text: "Error: " + err.Error()}
+	out := TrendingTags{Tags: []record.TrendingTag{}, Text: "Error: " + err.Error()}
 	return TrendingTagsResult(out, true), out, nil
 }
 
 // Comments 承载评论工具的输出；Total 与 AccessControl 可能缺失。
 type Comments struct {
-	Comments      []legacysdk.Comment         `json:"comments"`
+	Comments      []record.Comment            `json:"comments"`
 	Pagination    toolhost.PaginationOut      `json:"pagination"`
 	Total         *int64                      `json:"total,omitempty"`
 	AccessControl *pixiv.CommentAccessControl `json:"access_control,omitempty"`
@@ -120,7 +119,7 @@ func CommentsResult(out Comments, isError bool, message string) *mcp.CallToolRes
 
 // CommentsError 返回 isError 的评论结果，列表为空、分页为第一页。
 func CommentsError(err error) (*mcp.CallToolResult, Comments, error) {
-	out := Comments{Comments: []legacysdk.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
+	out := Comments{Comments: []record.Comment{}, Pagination: toolhost.PaginationOut{PaginationOut: pagination.PaginationOut{Page: 1}}}
 	return CommentsResult(out, true, errorMessage(err)), out, nil
 }
 
@@ -142,7 +141,7 @@ func NovelContentError(err error) (*mcp.CallToolResult, NovelContent, error) {
 
 // NovelSeries 承载 novel_series 工具的输出。
 type NovelSeries struct {
-	Series     legacysdk.NovelSeries  `json:"series"`
+	Series     record.NovelSeries     `json:"series"`
 	Records    []record.Record        `json:"records"`
 	Pagination toolhost.PaginationOut `json:"pagination"`
 }

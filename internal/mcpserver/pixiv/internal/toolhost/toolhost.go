@@ -3,8 +3,8 @@
 //
 // 包的组成：[App] 与 [NewApp] 是调用宿主，[SDKPorts]、[Account] 与
 // [ReverseSearchPorts] 由组合根注入，[AddTool] 注册工具并附加诊断与惰性账号快照。
-// [ReadSDK]、[App.SDKReadExecutor] 与 [App.OpenSDKClient] 使用新 SDK；
-// [Read]、[Write] 保留旧领域入口。分页适配在 paging.go 与 sdk_paging.go，
+// [ReadSDK]、[WriteSDK]、[App.SDKReadExecutor] 与 [App.OpenSDKClient] 提供领域入口。
+// 分页适配在 paging.go 与 sdk_paging.go，
 // cursor 封装在 cursor.go，具体工具在 tools 包。
 package toolhost
 
@@ -13,13 +13,10 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk"
-	"github.com/FlanChanXwO/pixiv-cli/internal/legacy/sdk/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
-	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -38,11 +35,10 @@ type LocalDownloads struct {
 // SDKPorts 让 MCP 打开独立认证快照，并在账号池的重放边界内执行操作。实现由组合根
 // 注入；MCP 通过这组函数取用依赖。
 type SDKPorts struct {
-	// ExecuteSDK 为已迁移的工具装配新 SDK；其余工具保留旧端口。
+	// ExecuteSDK 在账号池边界内执行 SDK 操作。
 	ExecuteSDK   SDKExecutor
 	OpenSDKLease SDKLease
 	// ResolveSDKAccount 保留 stdio 的池选择；HTTP 沿用 ResolveAccount 的固定快照。
-	// shortcut: 新旧工具的账号选择入口并存，旧工具迁移完成后统一。
 	ResolveSDKAccount func(context.Context, Account) (Account, error)
 	Downloads         *LocalDownloads
 	Media             *mediaproxy.Service
@@ -52,9 +48,6 @@ type SDKPorts struct {
 	Login *accounts.Login
 	// ResolveAccount 固定一次业务调用使用的本地账号；不读取或刷新上游凭据。
 	ResolveAccount func(context.Context, Account) (Account, error)
-	Execute        func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
-	// Read 服务 HTTP 的只读会话；stdio 下留空，读取走 Execute 的账号池。
-	Read func(context.Context, Account, func(context.Context, *pixiv.Client) (bool, error)) error
 	// ReverseSearch 保存启动时注入的反向搜图能力与配置快照。它的 HTTP client、代理和
 	// 凭据由组合根构造，MCP 输入无法覆盖。
 	ReverseSearch ReverseSearchPorts
@@ -122,58 +115,6 @@ func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler 
 	toolrun.AddTool(app.calls, server, tool, func(ctx context.Context, request *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		ctx = context.WithValue(ctx, accountSnapshotKey{}, &accountSnapshot{app: app})
 		return handler(ctx, request, input)
-	})
-}
-
-// ReadExecutor 固定调用账号；HTTP 使用只读会话，stdio 使用账号池执行端口。
-func (a *App) ReadExecutor() pagination.Execute[*pixiv.Client] {
-	if a.sdk.Execute == nil && a.sdk.Read == nil {
-		return nil
-	}
-	return func(ctx context.Context, attempt func(context.Context, *pixiv.Client) (bool, error)) error {
-		account, err := a.resolveAccount(ctx)
-		if err != nil {
-			return err
-		}
-		if a.sdk.Read != nil {
-			return a.sdk.Read(ctx, account, attempt)
-		}
-		return a.sdk.Execute(ctx, account, attempt)
-	}
-}
-
-// Read 在固定账号的执行边界内运行一次读操作，复用分页读取的账号快照。
-func Read[T any](a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) (T, error)) (T, error) {
-	var zero T
-	execute := a.ReadExecutor()
-	if execute == nil {
-		return zero, sdk.NewError("pixiv", "PagedRead", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
-	}
-	var result T
-	err := execute(ctx, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		var err error
-		result, err = invoke(ctx, client)
-		return false, err
-	})
-	if err != nil {
-		return zero, err
-	}
-	return result, nil
-}
-
-// Write 在账号池重放边界内执行一次写操作；是否提交与重放由会话端口决定。
-func Write(a *App, ctx context.Context, invoke func(context.Context, *pixiv.Client) error) error {
-	if a.sdk.Execute == nil {
-		return sdk.NewError("pixiv", "Write", sdk.LocalStateError,
-			sdk.WithDetail("sdk pooled operation is not configured"))
-	}
-	account, err := a.resolveAccount(ctx)
-	if err != nil {
-		return err
-	}
-	return a.sdk.Execute(ctx, account, func(ctx context.Context, client *pixiv.Client) (bool, error) {
-		return true, invoke(ctx, client)
 	})
 }
 
