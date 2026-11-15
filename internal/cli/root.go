@@ -159,20 +159,26 @@ func (a *app) runtimeConfig() (config.Config, error) {
 
 func (a *app) openAccounts(ctx context.Context) (*account.Store, error) {
 	a.storeMu.Lock()
-	defer a.storeMu.Unlock()
-	if a.store != nil {
-		return a.store, nil
+	store := a.store
+	a.storeMu.Unlock()
+	if store != nil {
+		return store, nil
 	}
 	directory, err := config.AppDataDir()
 	if err != nil {
 		return nil, fmt.Errorf("determine home directory: %w", err)
 	}
-	store, err := account.Open(ctx, directory)
+	// 打开时不持有 storeMu：并发请求各自等待文件锁，才能响应各自的取消。
+	store, err = account.Open(ctx, directory)
 	if err != nil {
 		return nil, err
 	}
-	a.store = store
-	return store, nil
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
+	if a.store == nil {
+		a.store = store
+	}
+	return a.store, nil
 }
 
 func (a *app) pixivAccounts(ctx context.Context) (*auth.Accounts, auth.LoginService, error) {
