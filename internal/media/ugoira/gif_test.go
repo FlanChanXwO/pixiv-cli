@@ -10,6 +10,8 @@ import (
 	"image/gif"
 	"io"
 	"math"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +167,15 @@ func TestGIFTransparentFullPalette(t *testing.T) {
 		if got := color.NRGBAModel.Convert(decoded.Image[0].At(x, 0)); got != src.NRGBAAt(x, 0) {
 			t.Fatalf("pixel %d: %v, want %v", x, got, src.NRGBAAt(x, 0))
 		}
+	}
+}
+
+func TestGIFIndexedFrameLimit(t *testing.T) {
+	// 帧表重复引用同一成员；总量检查在第一帧解码后、其余帧读取前拒绝。
+	const width = math.MaxUint16
+	frames := slices.Repeat([]Frame{{File: "a.png", Delay: 80}}, maxGIFIndexedBytes/width+1)
+	input := Input{ZipPath: writeFrameArchive(t, []frameZipEntry{{"a.png", framePNG(t, image.NewNRGBA(image.Rect(0, 0, width, 1)))}}), Frames: frames}
+	if err := encodeGIF(t.Context(), io.Discard, input); err == nil || !strings.Contains(err.Error(), "indexed frame limit") {
+		t.Fatalf("oversized GIF animation: %v", err)
 	}
 }
