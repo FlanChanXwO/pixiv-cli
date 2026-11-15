@@ -9,6 +9,8 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/sdk/internal/cloudflare"
 )
 
+const solverCloseTimeout = 10 * time.Second
+
 type clearanceKey struct {
 	proxy, solver, solverProxy, agent string
 	connection                        *http.Client
@@ -67,8 +69,11 @@ func (entry *clearanceEntry) release(ctx context.Context) error {
 	}
 	clearancePool.Unlock()
 	if browser != nil {
-		// Shared solves are joined and remote sessions are destroyed even after cancellation.
-		return browser.Close(context.WithoutCancel(ctx))
+		// Shared solves are joined and remote sessions are destroyed even after cancellation;
+		// the deadline keeps an unresponsive solver from holding a canceled Search.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), solverCloseTimeout)
+		defer cancel()
+		return browser.Close(ctx)
 	}
 	return nil
 }

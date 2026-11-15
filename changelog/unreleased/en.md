@@ -18,3 +18,9 @@
 - MCP Gallery records identify images with readable objects (`artwork_id`, `page_index`, `quality`, or `user_id`) instead of opaque strings.
 - FANBOX commands and tools reject `api.fanbox.cc` and `downloads.fanbox.cc` URLs instead of reading the host as a creator ID.
 - CLI and MCP error messages for upstream, validation and pagination failures are reworded.
+
+## Fixed
+
+- Ugoira GIF conversion now fails before encoding when its frames would need more than 1 GiB of memory, instead of exhausting it.
+- A canceled ascii2d search no longer waits indefinitely for an unresponsive FlareSolverr to close its session, and an oversized FlareSolverr response is rejected.
+- Pixiv media URLs that name a non-default port on a media host are rejected.

@@ -13,6 +13,9 @@ import (
 
 const maxGIFPaletteColors = 256
 
+// gif.EncodeAll 需要全部索引帧同时在内存中，每像素一字节；逐帧上限管不到这个总量。
+const maxGIFIndexedBytes = 1 << 30
+
 func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 	archive, err := openFrameArchive(ctx, input)
 	if err != nil {
@@ -38,6 +41,9 @@ func encodeGIF(ctx context.Context, output io.Writer, input Input) (err error) {
 			size = current.Rect.Size()
 			if size.X > math.MaxUint16 || size.Y > math.MaxUint16 {
 				return fmt.Errorf("frame %q size %dx%d exceeds GIF uint16 dimensions", frame.File, size.X, size.Y)
+			}
+			if uint64(len(input.Frames))*uint64(size.X)*uint64(size.Y) > maxGIFIndexedBytes {
+				return fmt.Errorf("%d GIF frames of %dx%d exceed the indexed frame limit %d bytes", len(input.Frames), size.X, size.Y, maxGIFIndexedBytes)
 			}
 		}
 		if err := statistics.addFrame(ctx, current); err != nil {

@@ -62,7 +62,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 解码估算将宽、高分别向上对齐到 32 像素，按每像素 24 字节计入 JPEG 系数、像素平面与转换空间。这一保守估算可能比之前按色型估算更早拒绝超大的灰度或其他低通道图片。
 
-**编码与内存** —— GIF 两遍读取 ZIP：先用全局 RGB Wu 直方图生成一个调色板，再以蛇形 Floyd–Steinberg 抖动生成完整索引帧，交给 `gif.EncodeAll`。输出前保留全部索引帧，约占帧数 × 宽 × 高字节，另加元数据；彩色帧逐帧解码。APNG 使用 `png.Encode` 将每个变化矩形编码为 RGBA8，暂存该帧的压缩 PNG，再将 IDAT 数据转写为动画块，使用 Source 混合与 None disposal。逐帧预算之外还会保留这些动画缓冲。
+**编码与内存** —— GIF 两遍读取 ZIP：先用全局 RGB Wu 直方图生成一个调色板，再以蛇形 Floyd–Steinberg 抖动生成完整索引帧，交给 `gif.EncodeAll`。输出前保留全部索引帧，约占帧数 × 宽 × 高字节，另加元数据，总量超过 `maxGIFIndexedBytes`（1 GiB）时在第一帧解码后拒绝；彩色帧逐帧解码。APNG 使用 `png.Encode` 将每个变化矩形编码为 RGBA8，暂存该帧的压缩 PNG，再将 IDAT 数据转写为动画块，使用 Source 混合与 None disposal。逐帧预算之外还会保留这些动画缓冲。
 
 最近色匹配对每个像素扫描至多 256 个调色板颜色，因此大型 GIF 帧会花费更多量化 CPU 时间，并更久占用共享编码槽；每行之间检查取消。完全透明像素保持索引零并丢弃接收的抖动误差，避免隐藏 RGB 改变相邻可见颜色。
 
