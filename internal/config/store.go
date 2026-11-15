@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -67,15 +68,17 @@ func (s Store) load(c *Config) error {
 	}
 	if err := toml.Unmarshal(body, c); err != nil {
 		// go-toml 的类型错误只带 Go 字段名；补上行号与该行的键，用户才能定位要改的值。
-		// 只取等号左侧，避免把配置值（可能是 API key）写进错误。
 		var decodeErr *toml.DecodeError
 		if !errors.As(err, &decodeErr) {
 			return fmt.Errorf("config.toml: %w", err)
 		}
 		line, _ := decodeErr.Position()
 		lines := strings.Split(string(body), "\n")
-		if key, _, found := strings.Cut(lines[min(max(line, 1), len(lines))-1], "="); found {
-			return fmt.Errorf("config.toml line %d, key %q: %w", line, strings.TrimSpace(key), err)
+		name, _, _ := strings.Cut(lines[min(max(line, 1), len(lines))-1], "=")
+		name = strings.TrimSpace(name)
+		// 出错行可能位于多行字符串内，等号左侧是配置值；只报告已声明的键名。
+		if slices.ContainsFunc(Keys(), func(key string) bool { return key == name || strings.HasSuffix(key, "."+name) }) {
+			return fmt.Errorf("config.toml line %d, key %q: %w", line, name, err)
 		}
 		return fmt.Errorf("config.toml line %d: %w", line, err)
 	}

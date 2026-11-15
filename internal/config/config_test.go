@@ -80,4 +80,9 @@ func TestTypeMismatchNamesKeyWithoutValue(t *testing.T) {
 	_, err = store.Current()
 	require.ErrorContains(t, err, `line 2, key "saucenao_api_key"`)
 	require.NotContains(t, err.Error(), "987654321")
+	// 多行字符串内的出错行，等号左侧属于配置值。
+	require.NoError(t, os.WriteFile(path, []byte("[reverse_search]\nsaucenao_api_key = \"\"\"\nSECRET_TOKEN=abc\\q\n\"\"\"\n"), 0o600))
+	_, err = store.Current()
+	require.ErrorContains(t, err, "config.toml line 3")
+	require.NotContains(t, err.Error(), "SECRET_TOKEN")
 }
