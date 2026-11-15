@@ -13,3 +13,9 @@
 - New `config.toml` files use a template with English comments and defaults. Existing files are preserved.
 - `pixiv config set reverse_search.saucenao_api_key VALUE` accepts the API key as an argument. `config get` prints its effective value, including an environment override, directly instead of `<redacted>`.
 - Simplify Ugoira GIF/APNG encoding with standard-library codecs; output images may have subtle visual differences.
+
+## Fixed
+
+- Ugoira GIF conversion now fails before encoding when its frames would need more than 1 GiB of memory, instead of exhausting it.
+- A canceled ascii2d search no longer waits indefinitely for an unresponsive FlareSolverr to close its session, and an oversized FlareSolverr response is rejected.
+- Pixiv media URLs that name a non-default port on a media host are rejected.

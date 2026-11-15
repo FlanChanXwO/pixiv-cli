@@ -13,3 +13,9 @@
 - 新建的 `config.toml` 使用带英文注释和默认值的模板，已有文件保持原样。
 - `pixiv config set reverse_search.saucenao_api_key VALUE` 支持通过参数传入 API key；`config get` 直接输出生效值，包括环境变量覆盖的值，原来的 `<redacted>` 隐藏行为已移除。
 - 使用标准库编解码器精简 Ugoira GIF/APNG 动图编码，输出画面可能有细微差异。
+
+## 修复
+
+- Ugoira 转 GIF 时，全部帧所需内存超过 1 GiB 会在编码前报错，不再耗尽内存。
+- 取消 ascii2d 搜索后，不再无限等待无响应的 FlareSolverr 关闭会话；过大的 FlareSolverr 响应会被拒绝。
+- 拒绝在媒体主机上指定非默认端口的 Pixiv 媒体 URL。
