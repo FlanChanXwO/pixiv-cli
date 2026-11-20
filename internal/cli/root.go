@@ -150,7 +150,7 @@ func (a *app) pixivCommands(env environment.Env) []*cobra.Command {
 		timeline.New(env, a.executePixiv),
 		mypixiv.New(env, a.executePixiv),
 		user.New(env, a.executePixiv, func() *cobra.Command { return follow.New(env, a.executePixiv) }),
-		vector.New(env, config.Store{Files: secretfile.ConfigFiles{}}),
+		vector.New(env, config.Store{Files: secretfile.ConfigFiles{}}, a.openVectorPixiv),
 		bookmark.New(env, a.executePixiv),
 		follow.New(env, a.executePixiv),
 	}
@@ -306,6 +306,28 @@ func (a *app) openPixiv(ctx context.Context, request environment.PixivRequest) (
 		return nil, err
 	}
 	return a.pixivLease(ctx, store, userID, options)
+}
+
+func (a *app) openVectorPixiv(ctx context.Context, request environment.PixivRequest) (int64, *pixiv.Client, func() error, error) {
+	store, err := a.openAccounts(ctx)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	options, _, err := a.pixivSettings(request)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	options.OnArtwork = nil
+	userID, err := a.selectedPixiv(ctx, request.UserID)
+	if err != nil {
+		options.HTTPClient.CloseIdleConnections()
+		return 0, nil, nil, err
+	}
+	lease, err := a.pixivLease(ctx, store, userID, options)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	return userID, lease.Value(), lease.Close, nil
 }
 
 func (a *app) readSession(ctx context.Context, request environment.PixivRequest) (mediaproxy.Session, error) {

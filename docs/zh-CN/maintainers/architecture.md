@@ -217,7 +217,13 @@ flowchart LR
 
 索引包括作品、页面、向量、收藏成员关系和状态五张表。页面 URL 变化清除该页各模型的旧向量与失败标记；换模型保留彼此独立的向量。写入使用外部同步锁，读取沿用 SQLite 默认 busy handler、rollback journal 与调用方取消。`application_id` 和 `user_version` 拒绝其他应用与未知版本数据库，与旧账号库只读导入相互独立。
 
-`internal/cli/vector` 负责状态/清理的展示和确认；`config.Store.WriteVector` 一次原子替换私有配置文件，提交整个向量配置组。`vector.api_key` 在配置展示与诊断格式化时脱敏。
+`internal/cli/vector` 负责配置、同步、状态和清理的展示与确认；`config.Store.WriteVector` 一次原子替换私有配置文件，提交整个向量配置组。`vector.api_key` 在配置展示与诊断格式化时脱敏。
+
+收藏同步通过组合根传入的固定账号打开函数取得 client，关闭 `OnArtwork` 并绕过账号池重放。作品快照在批次的成员关系/续读位置事务前提交，失败时保留上次位置；页面结果各自提交。
+
+### `internal/vectormodel`
+
+负责规范化的云端服务/模型身份、Gemini `embedContent`、向量校验/归一化与受控多模态试算，不依赖 Pixiv、CLI 或配置包。`vectorindex.Embedder` 由模型使用方定义，CLI 按全局/本次命令代理配置构造模型。云端错误只展示状态分类并保留取消，不携带响应正文或凭据；禁用重定向以保护自定义 API key 请求头。
 
 ### `internal/config`
 
