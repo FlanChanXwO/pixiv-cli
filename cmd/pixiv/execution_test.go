@@ -29,19 +29,18 @@ func TestUsageErrorExitCode(t *testing.T) {
 }
 
 func TestCommandFailureLogging(t *testing.T) {
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
 	for _, format := range []string{"text", "json"} {
 		for _, level := range []string{"info", "debug"} {
 			t.Run(format+"/"+level, func(t *testing.T) {
-				home := t.TempDir()
-				t.Setenv("HOME", home)
-				t.Setenv("USERPROFILE", home)
+				isolatedHome(t)
 				t.Setenv("PIXIV_LOG_FORMAT", format)
 				t.Setenv("PIXIV_LOG_LEVEL", level)
 				var output, diagnostics bytes.Buffer
 				code := cli.Run(t.Context(), []string{"pixiv", "auth", "import", "abcdef", "--proxy", "http://synthetic-user:synthetic-password@127.0.0.1:1"}, strings.NewReader(""), &output, &diagnostics)
 				require.Equal(t, 1, code)
 				text := diagnostics.String()
-				require.Contains(t, text, "error:")
+				require.Contains(t, text, "错误：")
 				require.NotContains(t, text, "synthetic-user")
 				require.NotContains(t, text, "synthetic-password")
 				if level == "debug" {
@@ -55,6 +54,7 @@ func TestCommandFailureLogging(t *testing.T) {
 					require.Contains(t, text, "Command failed")
 					require.Contains(t, text, "call_id")
 					if format == "json" {
+						require.Contains(t, text, `"msg":"Command failed"`)
 						require.Contains(t, text, `"level":"ERROR"`)
 						require.Regexp(t, `"source":\{[^\n]+/cli/root.go"`, text)
 					} else {

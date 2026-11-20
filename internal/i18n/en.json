@@ -557,7 +557,6 @@
   "reverse.by": " by ",
   "reverse.unknown_provider": "unknown provider",
   "output.warning_prefix": "warning: ",
-  "output.command_failed": "Command failed",
   "model.downloading": "Downloading %s",
   "error.prompt_not_tty": "interactive prompt is only available on a TTY",
   "display.type_illust": "illust",

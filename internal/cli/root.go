@@ -522,7 +522,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	ndjsonOutput := environment.WritesNDJSON(target) || environment.OutputNDJSON(target)
 	if err != nil && !(ndjsonOutput && errors.Is(err, syscall.EPIPE)) && a.logs.Ctx != nil {
 		attrs := []slog.Attr{slog.Any(logging.AttrError, err)}
-		a.logs.Logger.LogAttrs(a.logs.Ctx, a.logs.FailureLevel, a.language.Text("output.command_failed"), attrs...)
+		a.logs.Logger.LogAttrs(a.logs.Ctx, a.logs.FailureLevel, "Command failed", attrs...)
 	}
 	return a.exitWithNDJSONScope(err, ndjsonOutput)
 }

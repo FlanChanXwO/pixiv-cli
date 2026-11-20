@@ -557,7 +557,6 @@
   "reverse.by": " 作者：",
   "reverse.unknown_provider": "未知服务商",
   "output.warning_prefix": "警告：",
-  "output.command_failed": "命令失败",
   "model.downloading": "正在下载 %s",
   "error.prompt_not_tty": "交互提示需要在终端中使用",
   "display.type_illust": "插画",
