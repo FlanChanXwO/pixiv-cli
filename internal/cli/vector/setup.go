@@ -59,7 +59,7 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			return err
 		}
 		if local {
-			_, err = fmt.Fprintln(env.Err, "Local models download about 1.5 GB from Hugging Face plus ONNX Runtime from NuGet. Queries are processed locally.")
+			_, err = fmt.Fprintf(env.Err, "%s: tokenizer.model, onnx/vision_model.onnx and onnx/text_model.onnx (about 1.5 GB from Hugging Face), plus ONNX Runtime from NuGet.\nInstall directory: %s\nQueries are processed locally.\n", model, vectorindex.Directory(root))
 		} else {
 			_, err = fmt.Fprintf(env.Err, "Artwork thumbnails (including private bookmarks and R18) and queries will be uploaded to %s and may incur usage charges.\n", base)
 		}
