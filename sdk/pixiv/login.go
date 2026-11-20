@@ -43,7 +43,7 @@ type LoginSession struct {
 
 // BeginLogin generates PKCE and state without network I/O, browser access or a
 // listener. Options.HTTPClient and RequestInterval control the later exchange;
-// AcceptLanguage and ResourceHosts apply only to content/resource clients.
+// AcceptLanguage, ResourceHosts, and OnArtwork apply only to content/resource clients.
 func BeginLogin(options Options) (*LoginSession, error) {
 	verifier, challenge, err := oauth.GeneratePKCEPair()
 	if err != nil {

@@ -71,6 +71,11 @@ import (
 // An injected HTTPClient, including its Transport, must not retry POST requests:
 // the SDK sends each mutation once and relies on the caller's transport to do the same.
 type Options struct {
+	// OnArtwork receives each successfully mapped artwork before the operation returns,
+	// including locally filtered works, recommendation/tag samples, and works mapped
+	// before a later batch error. ctx belongs to that operation. The callback must
+	// be safe for concurrent use and should return quickly. BeginLogin ignores it.
+	OnArtwork       func(context.Context, *Artwork)
 	HTTPClient      *http.Client
 	AcceptLanguage  string
 	RequestInterval time.Duration
@@ -88,6 +93,7 @@ type Client struct {
 	resourceHosts []string
 	gate          chan struct{}
 	cached        *Credentials // Protected by gate; a pointer keeps token fields opaque in value diagnostics.
+	onArtwork     func(context.Context, *Artwork)
 	userID        atomic.Int64 // Identity reads must not race its first binding.
 }
 
@@ -98,7 +104,7 @@ func New(store CredentialStore, options Options) (*Client, error) {
 		return nil, newError("New", sdk.InvalidArgument, "credential store is required", nil)
 	}
 	httpClient, owned := api.NewHTTPClient(options.HTTPClient, options.RequestInterval)
-	return &Client{store: store, http: httpClient, ownsHTTP: owned, language: strings.TrimSpace(options.AcceptLanguage), resourceHosts: append([]string(nil), options.ResourceHosts...), gate: make(chan struct{}, 1)}, nil
+	return &Client{store: store, onArtwork: options.OnArtwork, http: httpClient, ownsHTTP: owned, language: strings.TrimSpace(options.AcceptLanguage), resourceHosts: append([]string(nil), options.ResourceHosts...), gate: make(chan struct{}, 1)}, nil
 }
 
 // Format keeps cached credentials and connection settings out of diagnostics.

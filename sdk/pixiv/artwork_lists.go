@@ -63,7 +63,7 @@ func (c *Client) artworks(ctx context.Context, path string, base url.Values, tok
 		if (path == api.PathIllustSeries || path == api.PathIllustMyPixiv) && w.User.ID <= 0 {
 			return sdk.Page[*Artwork]{}, newError(path, sdk.MalformedUpstreamResponse, "missing artwork author", nil)
 		}
-		items[i], err = c.mapArtwork(w)
+		items[i], err = c.mapArtwork(ctx, w)
 		if err != nil {
 			return sdk.Page[*Artwork]{}, err
 		}

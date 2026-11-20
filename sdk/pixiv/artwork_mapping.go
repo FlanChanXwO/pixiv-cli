@@ -2,12 +2,13 @@ package pixiv
 
 import (
 	"cmp"
+	"context"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
-func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
+func (c *Client) mapArtwork(ctx context.Context, w artworkWire) (*Artwork, error) {
 	if w.ID <= 0 {
 		return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "missing artwork ID", nil)
 	}
@@ -71,6 +72,9 @@ func (c *Client) mapArtwork(w artworkWire) (*Artwork, error) {
 	}
 	if a.ContentType != ContentTypeUgoira && w.PageCount > 0 && len(a.Pages) != w.PageCount {
 		return nil, newError("Artwork", sdk.MalformedUpstreamResponse, "incomplete artwork pages", nil)
+	}
+	if c.onArtwork != nil {
+		c.onArtwork(ctx, a)
 	}
 	return a, nil
 }

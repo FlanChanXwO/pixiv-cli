@@ -46,7 +46,7 @@ func (c *Client) TrendingArtworkTags(ctx context.Context) ([]TrendingTag, error)
 		if w.Tag == "" || !w.Artwork.Present || !w.Artwork.Valid {
 			return nil, newError(path, sdk.MalformedUpstreamResponse, "invalid trending tag", nil)
 		}
-		artwork, err := c.mapArtwork(w.Artwork.Value)
+		artwork, err := c.mapArtwork(ctx, w.Artwork.Value)
 		if err != nil {
 			return nil, err
 		}

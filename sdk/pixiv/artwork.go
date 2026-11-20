@@ -78,7 +78,7 @@ func (r *ArtworkRef) Get(ctx context.Context) (*Artwork, error) {
 	if raw.Illust.ID != r.ID {
 		return nil, newError("Artwork.Get", sdk.MalformedUpstreamResponse, "artwork ID does not match request", nil)
 	}
-	return r.client.mapArtwork(*raw.Illust)
+	return r.client.mapArtwork(ctx, *raw.Illust)
 }
 
 // ArtworkSeriesSummary links an artwork to its bound series and supplied title.

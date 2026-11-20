@@ -34,7 +34,7 @@ Exception: when one file must import both products' package in the same role, al
 
 ## SDK calling conventions
 
-The SDK is a pure API library with page-level download support. Callers supply connection settings through each package's `Options`, own configuration and account selection, and provide Pixiv credential storage through `CredentialStore`. The SDK supplies an in-memory store and refreshes tokens through revision-checked persistence before using them.
+The SDK is a pure API library with page-level download support. Callers supply connection settings through each package's `Options`, own configuration and account selection, and provide Pixiv credential storage through `CredentialStore`. Pixiv also accepts the optional `OnArtwork` observation callback; recording and configuration remain caller-owned. The SDK supplies an in-memory store and refreshes tokens through revision-checked persistence before using them.
 
 | Contract | Rule |
 | --- | --- |
