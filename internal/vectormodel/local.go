@@ -63,7 +63,7 @@ func openLocal(options Options) (*localModel, error) {
 		gpu, dir := gpuPath(options.Directory)
 		plugin = filepath.Join(dir, gpu.library)
 		if _, err := os.Stat(plugin); err != nil {
-			return nil, gpuError(err)
+			return nil, gpuError(options.Name, err)
 		}
 	}
 	native, err := openNative(filepath.Join(runtimeDir, platform.library))
@@ -93,14 +93,14 @@ func (m *localModel) image(ctx context.Context, data []byte) ([]float32, error) 
 		m.vision, err = m.native.session(ctx, filepath.Join(m.directory, "onnx", "vision_model.onnx"), m.plugin)
 		if err != nil {
 			if m.plugin != "" {
-				err = gpuError(err)
+				err = gpuError(m.spec.name, err)
 			}
 			return nil, err
 		}
 	}
 	vector, err := m.native.infer(ctx, m.vision, "pixel_values", unsafe.Pointer(&pixels[0]), len(pixels)*4, []int64{1, 3, int64(m.spec.size), int64(m.spec.size)}, nativeFloat)
 	if err != nil && m.plugin != "" && ctx.Err() == nil {
-		err = gpuError(err)
+		err = gpuError(m.spec.name, err)
 	}
 	return vector, err
 }
@@ -164,6 +164,6 @@ func gpuPath(directory string) (nativeSpec, string) {
 	return spec, filepath.Join(directory, "runtime", "webgpu-"+gpuVersion+"-"+spec.platform)
 }
 
-func gpuError(err error) error {
-	return fmt.Errorf("GPU unavailable; run \"pixiv vector setup --device cpu\": %w", err)
+func gpuError(name string, err error) error {
+	return fmt.Errorf("GPU unavailable; run \"pixiv vector setup --model %s --device cpu\": %w", name, err)
 }
