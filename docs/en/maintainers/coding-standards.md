@@ -178,7 +178,11 @@ func (e Env) ParsePlan(cmd *cobra.Command, limit, page int) (pagination.PagePlan
 
 ## Program output
 
-Logs, error strings, CLI output, and MCP result text are English, independent of comment language. Machine-output channels, HTTP authorization, and truthful structured failures are hard constraints in [AGENTS.md](../../../AGENTS.md).
+Localize CLI help, prompts, human-readable results and application diagnostics, login/OAuth pages, and the MCP gallery UI through the embedded English/Simplified Chinese catalogs in `internal/i18n`. Locale selection and ownership follow [Interface localization](architecture.md#interface-localization).
+
+Log message templates, original `Error()` strings, and application-generated MCP tool result text stay English. Translate application errors at the interface boundary while preserving their original causes and `errors.Is`/`errors.As` behavior. Keep upstream error details and user content in their original language.
+
+Preserve command/flag spellings, JSON/NDJSON fields and values, MCP schemas and error codes across locales. Machine-output channels, HTTP authorization, and truthful structured failures remain hard constraints in [AGENTS.md](../../../AGENTS.md).
 
 ## Package documentation and comments
 
