@@ -6,11 +6,11 @@ package comment
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -51,7 +51,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "comment ID",
-		Short: "List artwork or novel comments",
+		Short: "help.list_artwork_or_novel_comments",
 		Args:  env.ExactArgs(1, "pixiv comment [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args[0], options)
@@ -60,7 +60,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	env.BindCommonFlags(cmd, &options.Options)
 	environment.BindNDJSONFlag(cmd, &options.ndjson)
 	environment.BindListFlags(cmd, &options.limit, &options.page)
-	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
+	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "flag.entity_type_artwork_or_novel_required")
 	env.BindTextValue(cmd, 1, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	cmd.AddCommand(a.newCreate(), a.newDelete(), a.newReply(), a.newStamp(), a.newStamps())
@@ -71,13 +71,13 @@ func (a commandRunner) newCreate() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "create ID",
-		Short: "Create an artwork or novel comment",
+		Short: "help.create_an_artwork_or_novel_comment",
 		Args:  a.env.ExactArgs(1, "pixiv comment create [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runCreate(cmd, args[0], opts)
 		},
 	}
-	a.bindMutationFlags(cmd, &opts, "comment body (required)")
+	a.bindMutationFlags(cmd, &opts, "flag.comment_required")
 	return cmd
 }
 
@@ -85,7 +85,7 @@ func (a commandRunner) newDelete() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "delete COMMENT_ID",
-		Short: "Delete an artwork or novel comment",
+		Short: "help.delete_an_artwork_or_novel_comment",
 		Args:  a.env.ExactArgs(1, "pixiv comment delete [options] COMMENT_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDelete(cmd, args[0], opts)
@@ -99,14 +99,14 @@ func (a commandRunner) newReply() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "reply ID",
-		Short: "Reply to an artwork or novel comment",
+		Short: "help.reply_to_an_artwork_or_novel_comment",
 		Args:  a.env.ExactArgs(1, "pixiv comment reply [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runReply(cmd, args[0], opts)
 		},
 	}
-	a.bindMutationFlags(cmd, &opts, "comment body (required)")
-	cmd.Flags().Int64Var(&opts.parentCommentID, "parent-comment-id", 0, "parent comment ID (required)")
+	a.bindMutationFlags(cmd, &opts, "flag.comment_required")
+	cmd.Flags().Int64Var(&opts.parentCommentID, "parent-comment-id", 0, "flag.parent_comment_id_required")
 	return cmd
 }
 
@@ -114,14 +114,14 @@ func (a commandRunner) newStamp() *cobra.Command {
 	opts := mutationOptions{}
 	cmd := &cobra.Command{
 		Use:   "stamp ID",
-		Short: "Create a stamp comment on an artwork or novel",
+		Short: "help.create_a_stamp_comment_on_an_artwork_or",
 		Args:  a.env.ExactArgs(1, "pixiv comment stamp [options] ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runStamp(cmd, args[0], opts)
 		},
 	}
-	a.bindMutationFlags(cmd, &opts, "optional comment body (empty for sticker-only)")
-	cmd.Flags().Int64Var(&opts.stampID, "stamp-id", 0, "stamp ID (required)")
+	a.bindMutationFlags(cmd, &opts, "flag.comment_optional")
+	cmd.Flags().Int64Var(&opts.stampID, "stamp-id", 0, "flag.stamp_id_required")
 	return cmd
 }
 
@@ -129,7 +129,7 @@ func (a commandRunner) newStamps() *cobra.Command {
 	opts := stampsOptions{}
 	cmd := &cobra.Command{
 		Use:   "stamps",
-		Short: "List available comment stamps",
+		Short: "help.list_available_comment_stamps",
 		Args:  a.env.ExactArgs(0, "pixiv comment stamps [options]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runStamps(cmd, opts)
@@ -144,7 +144,7 @@ func (a commandRunner) newStamps() *cobra.Command {
 
 func (a commandRunner) bindMutationFlags(cmd *cobra.Command, opts *mutationOptions, commentUsage string) {
 	a.env.BindCommonFlags(cmd, &opts.Options)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", "", "entity type: artwork or novel (required)")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", "", "flag.entity_type_artwork_or_novel_required")
 	if commentUsage != "" {
 		cmd.Flags().StringVar(&opts.comment, "comment", "", commentUsage)
 	}
@@ -157,7 +157,7 @@ func (a commandRunner) runCreate(cmd *cobra.Command, arg string, opts mutationOp
 		return err
 	}
 	if opts.comment == "" {
-		return errors.New("--comment is required")
+		return i18n.Errorf("error.comment_is_required")
 	}
 	resolved, err := target.Resolve(cmd.Context(), target.Input{Value: arg, Type: opts.typ}, commentWorkContract("comment create"))
 	if err != nil {
@@ -179,7 +179,7 @@ func (a commandRunner) runCreate(cmd *cobra.Command, arg string, opts mutationOp
 		case target.NamespaceNovel:
 			result, err = client.Novel(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment})
 		default:
-			return true, errors.New("comment target must be artwork or novel")
+			return true, i18n.Errorf("error.comment_target_must_be_artwork_or_novel")
 		}
 		return true, err
 	})
@@ -212,7 +212,7 @@ func (a commandRunner) runDelete(cmd *cobra.Command, arg string, opts mutationOp
 		case string(target.NamespaceNovel):
 			return true, client.NovelComment(resolved.ID).Delete(ctx)
 		default:
-			return true, errors.New("type must be one of artwork, novel")
+			return true, i18n.Errorf("error.type_must_be_one_of_artwork_novel")
 		}
 	})
 	if err != nil {
@@ -226,10 +226,10 @@ func (a commandRunner) runReply(cmd *cobra.Command, arg string, opts mutationOpt
 		return err
 	}
 	if opts.comment == "" {
-		return errors.New("--comment is required")
+		return i18n.Errorf("error.comment_is_required")
 	}
 	if opts.parentCommentID <= 0 {
-		return errors.New("--parent-comment-id must be positive")
+		return i18n.Errorf("error.parent_comment_id_must_be_positive")
 	}
 	resolved, err := target.Resolve(cmd.Context(), target.Input{Value: arg, Type: opts.typ}, commentWorkContract("comment reply"))
 	if err != nil {
@@ -251,7 +251,7 @@ func (a commandRunner) runReply(cmd *cobra.Command, arg string, opts mutationOpt
 		case target.NamespaceNovel:
 			result, err = client.Novel(resolved.ID).Comment(opts.parentCommentID).Reply(ctx, pixiv.CommentOptions{Text: opts.comment})
 		default:
-			return true, errors.New("comment target must be artwork or novel")
+			return true, i18n.Errorf("error.comment_target_must_be_artwork_or_novel")
 		}
 		return true, err
 	})
@@ -267,7 +267,7 @@ func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOpt
 	}
 	// 只发 stamp 的评论会显式保留空的 --comment，SDK 据此区分纯贴纸和带文字评论。
 	if opts.stampID <= 0 {
-		return errors.New("--stamp-id must be positive")
+		return i18n.Errorf("error.stamp_id_must_be_positive")
 	}
 	resolved, err := target.Resolve(cmd.Context(), target.Input{Value: arg, Type: opts.typ}, commentWorkContract("comment stamp"))
 	if err != nil {
@@ -289,7 +289,7 @@ func (a commandRunner) runStamp(cmd *cobra.Command, arg string, opts mutationOpt
 		case target.NamespaceNovel:
 			result, err = client.Novel(resolved.ID).PostComment(ctx, pixiv.CommentOptions{Text: opts.comment, StampID: opts.stampID})
 		default:
-			return true, errors.New("comment target must be artwork or novel")
+			return true, i18n.Errorf("error.comment_target_must_be_artwork_or_novel")
 		}
 		return true, err
 	})
@@ -305,7 +305,7 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -349,7 +349,7 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 		return record.WriteJSONValue(a.env.Out, record.NewListOutput(values, pagination.PagePlan{Page: 1, OneBatch: true}, pagination.PageResult{Returned: len(stamps)}))
 	}
 	if len(stamps) == 0 {
-		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 		return err
 	}
 	for _, item := range stamps {
@@ -362,10 +362,10 @@ func (a commandRunner) runStamps(cmd *cobra.Command, opts stampsOptions) error {
 
 func validateCommentType(cmd *cobra.Command, typ string) error {
 	if !cmd.Flags().Changed("type") {
-		return errors.New("--type is required for comment")
+		return i18n.Errorf("error.type_is_required_for_comment")
 	}
 	if typ != string(target.NamespaceArtwork) && typ != string(target.NamespaceNovel) {
-		return errors.New("type must be one of artwork, novel")
+		return i18n.Errorf("error.type_must_be_one_of_artwork_novel")
 	}
 	return nil
 }
@@ -401,7 +401,7 @@ func (a commandRunner) writeMutationResult(jsonOut bool, commentID int64) error 
 	if jsonOut {
 		return a.env.PrintJSON(commentMutationOut{CommentID: commentID})
 	}
-	_, err := fmt.Fprintf(a.env.Out, "Posted comment %d\n", commentID)
+	_, err := fmt.Fprintf(a.env.Out, a.env.Text("output.posted_comment"), commentID)
 	return err
 }
 
@@ -409,7 +409,7 @@ func (a commandRunner) writeDeleteResult(jsonOut bool, commentID int64) error {
 	if jsonOut {
 		return a.env.PrintJSON(commentDeleteOut{Deleted: true})
 	}
-	_, err := fmt.Fprintf(a.env.Out, "Deleted comment %d\n", commentID)
+	_, err := fmt.Fprintf(a.env.Out, a.env.Text("output.deleted_comment"), commentID)
 	return err
 }
 
@@ -442,7 +442,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -465,7 +465,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			case target.NamespaceNovel:
 				page, pageErr = client.Novel(resolved.ID).Comments(ctx, pixiv.CommentsOptions{Cursor: cursor})
 			default:
-				return nil, sdk.Cursor{}, errors.New("comment target must be artwork or novel")
+				return nil, sdk.Cursor{}, i18n.Errorf("error.comment_target_must_be_artwork_or_novel")
 			}
 			if pageErr != nil {
 				return nil, sdk.Cursor{}, pageErr
@@ -511,7 +511,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 			return true, nil
 		}
 		if len(comments) == 0 {
-			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 			return false, err
 		}
 		for _, item := range comments {

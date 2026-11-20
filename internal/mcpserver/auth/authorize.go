@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/frontend"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 const authorizationLifetime = 10 * time.Minute
@@ -59,6 +60,7 @@ type authorizer struct {
 }
 
 type consentPage struct {
+	Language                                              i18n.Locale
 	Action, ClientName, RedirectOrigin, RedirectURI, CSRF string
 	Verified                                              bool
 }
@@ -107,6 +109,9 @@ func (a *authorizer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if reply.Page != nil {
+		reply.Page.Language = i18n.AcceptLanguage(r.Header.Get("Accept-Language"))
+		w.Header().Set("Content-Language", reply.Page.Language.String())
+		w.Header().Add("Vary", "Accept-Language")
 		// Chromium 同时约束表单后的重定向；只放行已精确匹配的 callback origin。
 		// 注册 origin 只作为精确的 form-action 目标写入 CSP。
 		source := strings.NewReplacer(";", "%3B", "*", "%2A", "'", "%27").Replace(reply.Page.RedirectOrigin)

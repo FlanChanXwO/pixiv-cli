@@ -2,8 +2,8 @@ package pagination
 
 import (
 	"context"
-	"errors"
-	"fmt"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // Stream 描述一个保持自身 upstream 顺序的实体流。多个 Stream 会按切片顺序
@@ -60,7 +60,7 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 				return nil, zeroState, PageResult{}, err
 			}
 			if _, exists := seen[cursor.String()]; exists {
-				return nil, zeroState, PageResult{}, fmt.Errorf("pagination stream %d cursor repeated: %s", streamIndex, cursor.String())
+				return nil, zeroState, PageResult{}, i18n.Errorf("error.pagination_stream_cursor_repeated", streamIndex, cursor.String())
 			}
 			seen[cursor.String()] = struct{}{}
 			batch, next, err := stream.Fetch(ctx, cursor)
@@ -87,7 +87,7 @@ func collectStreamsFrom[T any, C Cursor](ctx context.Context, plan PagePlan, str
 						return nil, zeroState, PageResult{}, err
 					}
 					if checkpoint.IsZero() {
-						return nil, zeroState, PageResult{}, errors.New("stream checkpoint cursor must not be zero")
+						return nil, zeroState, PageResult{}, i18n.Errorf("error.stream_checkpoint_cursor_must_not_be_zero")
 					}
 					matched = matched[:remaining]
 					state.Cursors[streamIndex] = checkpoint

@@ -3,11 +3,11 @@ package environment
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strconv"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -150,14 +150,14 @@ func resolve(command *cobra.Command, args []string, spec InputSpec) (resolvedInp
 		return resolved, nil
 	}
 	if spec.Reader == nil {
-		return resolvedInput{}, errors.New("stdin input reader is not configured")
+		return resolvedInput{}, i18n.Errorf("error.stdin_input_reader_is_not_configured")
 	}
 
 	switch spec.Codec {
 	case TextValue:
 		value, err := ReadValue(spec.Reader)
 		if err != nil {
-			return resolvedInput{}, fmt.Errorf("read stdin value: %w", err)
+			return resolvedInput{}, i18n.Errorf("error.read_stdin_value", err)
 		}
 		if value != "" {
 			resolved.args = append(resolved.args, value)
@@ -168,7 +168,7 @@ func resolve(command *cobra.Command, args []string, spec InputSpec) (resolvedInp
 	case TextOrRecord:
 		mode, reader, value, err := resolveTextOrRecord(spec.Reader)
 		if err != nil {
-			return resolvedInput{}, fmt.Errorf("read stdin input: %w", err)
+			return resolvedInput{}, i18n.Errorf("error.read_stdin_input", err)
 		}
 		resolved.mode = mode
 		resolved.reader = reader
@@ -177,7 +177,7 @@ func resolve(command *cobra.Command, args []string, spec InputSpec) (resolvedInp
 		}
 		return resolved, nil
 	default:
-		return resolvedInput{}, fmt.Errorf("unsupported stdin codec %q", spec.Codec)
+		return resolvedInput{}, i18n.Errorf("error.unsupported_stdin_codec", spec.Codec)
 	}
 }
 
@@ -250,7 +250,7 @@ func IsTTY(reader io.Reader) bool {
 // ReadValue 读完整个流并只去掉一个行尾 LF 或 CRLF；不去空白、不拆词、不设大小上限。
 func ReadValue(reader io.Reader) (string, error) {
 	if reader == nil {
-		return "", errors.New("stdin input reader is nil")
+		return "", i18n.Errorf("error.stdin_input_reader_is_nil")
 	}
 	body, err := io.ReadAll(reader)
 	if err != nil {

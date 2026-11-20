@@ -2,8 +2,9 @@ package record
 
 import (
 	"encoding/json"
-	"errors"
 	"strconv"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // RecordFromArtwork 将作品输出快照映射为管道记录。
@@ -59,7 +60,7 @@ func recordsFrom[T any](items []T, project func(T) (Record, error)) ([]Record, e
 
 func recordFromValue(value any, sourceID int64, recordType, url string) (Record, error) {
 	if sourceID <= 0 {
-		return Record{}, errors.New("record id must be positive")
+		return Record{}, i18n.Errorf("error.record_id_must_be_positive")
 	}
 	body, err := json.Marshal(value)
 	if err != nil {

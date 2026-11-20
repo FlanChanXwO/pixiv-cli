@@ -20,14 +20,16 @@ func (a commandRunner) runUsers(ctx context.Context, request environment.PixivRe
 
 func (a commandRunner) runArtworkList(ctx context.Context, request environment.PixivRequest, plan pagination.PagePlan, format record.Format, fetch func(context.Context, int64, *pixiv.Client, sdk.Cursor) (sdk.Page[*pixiv.Artwork], error)) error {
 	return runList(a, ctx, request, plan, format, fetch, func(item *pixiv.Artwork) (record.Artwork, error) { return record.ArtworkOutput(item, false) }, record.List[record.Artwork]{
-		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+		Print: func(items []record.Artwork, _ int) error {
+			return display.PrintArtworks(a.env.Out, a.env.Language, items)
+		},
 		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 	})
 }
 
 func (a commandRunner) runNovelList(ctx context.Context, request environment.PixivRequest, plan pagination.PagePlan, format record.Format, fetch func(context.Context, int64, *pixiv.Client, sdk.Cursor) (sdk.Page[*pixiv.Novel], error)) error {
 	return runList(a, ctx, request, plan, format, fetch, record.NovelOutput, record.List[record.Novel]{
-		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, a.env.Language, items) },
 		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
 	})
 }

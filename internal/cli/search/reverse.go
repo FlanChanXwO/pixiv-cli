@@ -3,13 +3,13 @@ package search
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
@@ -41,7 +41,7 @@ func (a commandRunner) runReverseSearch(cmd *cobra.Command, source string, opts 
 	}
 	jsonOut := false
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	if !opts.ndjson {
 		jsonOut, err = a.env.ResolveJSON(a.env.JSONOverride(cmd, opts.Options))
@@ -78,7 +78,7 @@ func resolveReverseSearchProvider(value string) (reversesearch.Provider, error) 
 	case reversesearch.ProviderSauceNAO, reversesearch.ProviderASCII2DColor, reversesearch.ProviderASCII2DBOVW, reversesearch.ProviderAll:
 		return provider, nil
 	default:
-		return "", errors.New("provider must be one of saucenao, ascii2d-color, ascii2d-bovw, all")
+		return "", i18n.Errorf("error.provider_must_be_one_of_saucenao_ascii2d_color")
 	}
 }
 
@@ -93,7 +93,7 @@ func isReverseSearchSource(source string) bool {
 
 func validateReverseSearchFlags(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
-		return errors.New("--ndjson cannot be used with --json")
+		return i18n.Errorf("error.ndjson_cannot_be_used_with_json")
 	}
 	for _, name := range []string{
 		"search-by", "sort", "period", "start-date", "end-date", "rating", "type", "content-type",
@@ -101,7 +101,7 @@ func validateReverseSearchFlags(cmd *cobra.Command) error {
 		"bookmark-strategy", "limit", "page",
 	} {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s is not supported for image sources", name)
+			return i18n.Errorf("error.is_not_supported_for_image_sources", name)
 		}
 	}
 	return nil
@@ -141,7 +141,7 @@ func (a commandRunner) writeReverseSearchResponse(response reversesearch.Respons
 			Records: records, ProviderErrors: nonNil(response.ProviderErrors), Partial: response.Partial,
 		})
 	}
-	return printReverseSearchHuman(a.env.Out, response.Results)
+	return printReverseSearchHuman(a.env.Out, a.env.Language, response.Results)
 }
 
 func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, error) {
@@ -156,7 +156,7 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 		}
 		identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName)
 		if err != nil {
-			return nil, errors.New("reverse search returned an invalid Pixiv identity")
+			return nil, i18n.Errorf("error.reverse_search_returned_an_invalid_pixiv_identity")
 		}
 		records = append(records, identity)
 	}
@@ -165,7 +165,7 @@ func reverseSearchRecords(results []reversesearch.Result) ([]record.Record, erro
 
 func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err error) {
 	if ref == nil {
-		return "", errors.New("reverse search returned an invalid Pixiv identity")
+		return "", i18n.Errorf("error.reverse_search_returned_an_invalid_pixiv_identity")
 	}
 	switch ref.Type {
 	case reversesearch.PixivRefUser:
@@ -173,13 +173,13 @@ func reverseSearchIdentity(ref *reversesearch.PixivRef) (recordType string, err 
 	case reversesearch.PixivRefArtwork:
 		return string(target.NamespaceArtwork), nil
 	default:
-		return "", errors.New("reverse search returned an invalid Pixiv identity")
+		return "", i18n.Errorf("error.reverse_search_returned_an_invalid_pixiv_identity")
 	}
 }
 
-func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) error {
+func printReverseSearchHuman(out io.Writer, language i18n.Locale, results []reversesearch.Result) error {
 	for _, result := range results {
-		line := "external result"
+		line := language.Text("reverse.external")
 		if result.Pixiv != nil {
 			typeName, identityErr := reverseSearchIdentity(result.Pixiv)
 			if identityErr != nil {
@@ -187,7 +187,7 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 			}
 			identity, err := record.NewIdentityRecord(result.Pixiv.ID, typeName)
 			if err != nil {
-				return errors.New("reverse search returned an invalid Pixiv identity")
+				return i18n.Errorf("error.reverse_search_returned_an_invalid_pixiv_identity")
 			}
 			line = identity.URL()
 		}
@@ -195,7 +195,7 @@ func printReverseSearchHuman(out io.Writer, results []reversesearch.Result) erro
 			line += " — " + title
 		}
 		if author := display.SafeLine(result.Author); author != "" {
-			line += " by " + author
+			line += language.Text("reverse.by") + author
 		}
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err
@@ -210,9 +210,9 @@ func (a commandRunner) writeReverseSearchWarning(response reversesearch.Response
 		failed = append(failed, string(providerError.Provider))
 	}
 	if len(failed) == 0 {
-		failed = append(failed, "unknown provider")
+		failed = append(failed, a.env.Text("reverse.unknown_provider"))
 	}
-	_, err := fmt.Fprintf(a.env.Err, "warning: reverse search completed partially; failed providers: %s\n", strings.Join(failed, ", "))
+	_, err := fmt.Fprintf(a.env.Err, a.env.Text("output.warning_reverse_search_completed_partially_failed_providers"), strings.Join(failed, ", "))
 	return err
 }
 

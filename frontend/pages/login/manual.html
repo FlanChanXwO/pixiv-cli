@@ -1,13 +1,13 @@
 <!-- 手动登录页：显示 Pixiv 登录链接和回填回调 URL 的表单。 -->
 {{define "content"}}
 <main class="pv-card">
-  <h1>Finish signing in</h1>
+  <h1>{{.Language.Text "login.finish"}}</h1>
   <p class="pv-lead">
-    Open <a class="pv-link" id="pixiv-login-link" href="{{.LoginURL}}">Pixiv login</a>, then paste the returned sign-in address or value.
+    {{.Language.Text "login.open"}}<a class="pv-link" id="pixiv-login-link" href="{{.LoginURL}}">{{.Language.Text "login.link"}}</a>{{.Language.Text "login.paste"}}
   </p>
   <form class="pv-form" method="post" action="/manual">
-    <span class="pv-field"><input name="login_result" autofocus autocomplete="off" spellcheck="false" placeholder="Paste the returned sign-in address or value"></span>
-    <button class="pv-submit" type="submit">Submit</button>
+    <span class="pv-field"><input name="login_result" autofocus autocomplete="off" spellcheck="false" placeholder="{{.Language.Text "login.placeholder"}}"></span>
+    <button class="pv-submit" type="submit">{{.Language.Text "login.submit"}}</button>
   </form>
 </main>
 {{end}}

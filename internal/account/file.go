@@ -3,12 +3,11 @@ package account
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"time"
 	"unicode/utf8"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
 
@@ -47,7 +46,7 @@ func decodeDocument(body []byte, missing bool) (document, bool, error) {
 		return document{}, true, nil
 	}
 	if !utf8.Valid(body) || !json.Valid(body) {
-		return document{}, false, errors.New("account: invalid JSON")
+		return document{}, false, i18n.Errorf("error.account_invalid_json")
 	}
 	var identity map[string]json.RawMessage
 	// 合法 JSON 的非对象根节点没有本格式的 schema，按首次迁移处理。
@@ -60,16 +59,16 @@ func decodeDocument(body []byte, missing bool) (document, bool, error) {
 	}
 	var version int
 	if err := json.Unmarshal(identity["version"], &version); err != nil || version < 1 {
-		return document{}, false, errors.New("account: invalid file version")
+		return document{}, false, i18n.Errorf("error.account_invalid_file_version")
 	}
 	if version > authVersion {
-		return document{}, false, fmt.Errorf("account: version %d is newer than supported version %d; upgrade pixiv-cli", version, authVersion)
+		return document{}, false, i18n.Errorf("error.account_version_is_newer_than_supported_version_upgrade", version, authVersion)
 	}
 	var file fileDocument
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&file); err != nil {
-		return document{}, false, errors.New("account: invalid account file fields")
+		return document{}, false, i18n.Errorf("error.account_invalid_account_file_fields")
 	}
 	doc := document{Schema: file.Schema, Version: file.Version, LastUserID: file.LastUserID}
 	if file.Pixiv != nil {
@@ -77,7 +76,7 @@ func decodeDocument(body []byte, missing bool) (document, bool, error) {
 	}
 	for i, entry := range file.Pixiv {
 		if entry.Pool == nil || entry.RefreshToken == nil {
-			return document{}, false, errors.New("account: missing Pixiv credential or pool membership")
+			return document{}, false, i18n.Errorf("error.account_missing_pixiv_credential_or_pool_membership")
 		}
 		doc.Pixiv[i] = entry.Pixiv
 		doc.Pixiv[i].Pool = *entry.Pool
@@ -88,7 +87,7 @@ func decodeDocument(body []byte, missing bool) (document, bool, error) {
 	}
 	for i, entry := range file.Fanbox {
 		if entry.SessionID == nil {
-			return document{}, false, errors.New("account: missing FANBOX credential")
+			return document{}, false, i18n.Errorf("error.account_missing_fanbox_credential")
 		}
 		doc.Fanbox[i] = entry.Fanbox
 		doc.Fanbox[i].Credential = credential.New([]byte(*entry.SessionID))
@@ -101,30 +100,30 @@ func decodeDocument(body []byte, missing bool) (document, bool, error) {
 
 func (d document) validate() error {
 	if d.Schema != authSchema || d.Version != authVersion || d.Pixiv == nil || d.Fanbox == nil {
-		return errors.New("account: invalid account file structure")
+		return i18n.Errorf("error.account_invalid_account_file_structure")
 	}
 	seen := make(map[int64]bool, len(d.Pixiv))
 	markerFound := d.LastUserID == 0
 	for _, a := range d.Pixiv {
 		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || a.Credential.Empty() || !utf8.Valid(a.Credential.Copy()) {
-			return errors.New("account: invalid or duplicate Pixiv account")
+			return i18n.Errorf("error.account_invalid_or_duplicate_pixiv_account")
 		}
 		if !utcTime(a.CreatedAt) || !utcTime(a.UpdatedAt) || (a.PremiumCheckedAt != nil && !utcTime(*a.PremiumCheckedAt)) || (a.Pool.FrozenUntil != nil && !utcTime(*a.Pool.FrozenUntil)) {
-			return errors.New("account: invalid Pixiv timestamp")
+			return i18n.Errorf("error.account_invalid_pixiv_timestamp")
 		}
 		seen[a.UserID] = true
 		markerFound = markerFound || a.UserID == d.LastUserID
 	}
 	if !markerFound {
-		return errors.New("account: pool marker account is missing")
+		return i18n.Errorf("error.account_pool_marker_account_is_missing")
 	}
 	seen = make(map[int64]bool, len(d.Fanbox))
 	for _, a := range d.Fanbox {
 		if a.UserID <= 0 || a.CredentialRevision <= 0 || seen[a.UserID] || a.Credential.Empty() || !utf8.Valid(a.Credential.Copy()) {
-			return errors.New("account: invalid or duplicate FANBOX account")
+			return i18n.Errorf("error.account_invalid_or_duplicate_fanbox_account")
 		}
 		if !utcTime(a.CreatedAt) || !utcTime(a.UpdatedAt) || !utcTime(a.ValidatedAt) {
-			return errors.New("account: invalid FANBOX timestamp")
+			return i18n.Errorf("error.account_invalid_fanbox_timestamp")
 		}
 		seen[a.UserID] = true
 	}
@@ -147,7 +146,7 @@ func (s *Store) write(doc document) error {
 		file.Fanbox[i] = fanboxFile{a, &value}
 	}
 	if err := secretfile.WriteJSON(s.path, file); err != nil {
-		return fmt.Errorf("account: write file: %w", err)
+		return i18n.Errorf("error.account_write_file", err)
 	}
 	return nil
 }

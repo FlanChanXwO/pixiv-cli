@@ -3,12 +3,12 @@ package bookmark
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -25,7 +25,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 		return a.runAllTags(cmd, args, opts)
 	}
 	if opts.typ != string(target.NamespaceArtwork) && opts.typ != string(target.NamespaceNovel) {
-		return errors.New("bookmark tags type must be one of artwork, novel, all")
+		return i18n.Errorf("error.bookmark_tags_type_must_be_one_of_artwork")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -43,7 +43,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -93,7 +93,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts listOptio
 			return true, nil
 		}
 		if len(items) == 0 {
-			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 			return false, err
 		}
 		for _, item := range items {
@@ -122,7 +122,7 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -164,7 +164,7 @@ func (a commandRunner) runAllTags(cmd *cobra.Command, args []string, opts listOp
 			}
 		} else {
 			if len(items) == 0 {
-				_, err := fmt.Fprintln(a.env.Err, "No results.")
+				_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 				return false, err
 			}
 			for _, item := range items {
@@ -188,7 +188,7 @@ func bookmarkArtworkTagStream(client *pixiv.Client, userID int64, opts listOptio
 				return nil, bookmarkStreamCursor{}, err
 			}
 			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark artwork tag checkpoint exceeds upstream batch")
+				return nil, bookmarkStreamCursor{}, i18n.Errorf("error.bookmark_artwork_tag_checkpoint_exceeds_upstream_batch")
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
@@ -210,7 +210,7 @@ func bookmarkNovelTagStream(client *pixiv.Client, userID int64, opts listOptions
 				return nil, bookmarkStreamCursor{}, err
 			}
 			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark novel tag checkpoint exceeds upstream batch")
+				return nil, bookmarkStreamCursor{}, i18n.Errorf("error.bookmark_novel_tag_checkpoint_exceeds_upstream_batch")
 			}
 			items := make([]bookmarkTagItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {

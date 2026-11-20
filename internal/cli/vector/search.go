@@ -3,13 +3,13 @@ package vector
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -24,10 +24,10 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 	var source string
 	var noSync, ndjson bool
 	var limit, page int
-	cmd := &cobra.Command{Use: "search [QUERY]", Short: "Search the local artwork vector index", Args: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "search [QUERY]", Short: "help.search_the_local_artwork_vector_index", Args: func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Changed("image") {
 			if strings.TrimSpace(source) == "" {
-				return env.WrapUsage(errors.New("--image requires a source"))
+				return env.WrapUsage(i18n.Errorf("error.image_requires_a_source"))
 			}
 			return env.ExactArgs(0, "pixiv vector search --image PATH_OR_URL")(cmd, args)
 		}
@@ -35,7 +35,7 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 			return err
 		}
 		if strings.TrimSpace(args[0]) == "" {
-			return env.WrapUsage(errors.New("query must not be empty"))
+			return env.WrapUsage(i18n.Errorf("error.query_must_not_be_empty"))
 		}
 		return nil
 	}, RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,7 +54,7 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 			return env.WrapUsage(err)
 		}
 		if ndjson && cmd.Flags().Changed("json") {
-			return env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+			return env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 		}
 		jsonOut := false
 		if !ndjson {
@@ -74,13 +74,13 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 		}
 		var warnings []string
 		if result.Index.Pending > 0 {
-			warnings = append(warnings, fmt.Sprintf("%d pages are not embedded yet; run \"pixiv vector sync\"", result.Index.Pending))
+			warnings = append(warnings, fmt.Sprintf(env.Text("format.pages_are_not_embedded_yet_run_pixiv_vector"), result.Index.Pending))
 		}
 		if result.Index.Error != "" {
-			warnings = append(warnings, "vector catch-up stopped: "+result.Index.Error)
+			warnings = append(warnings, fmt.Sprintf(env.Text("vector.catchup_stopped"), result.Index.Error))
 		}
 		if len(warnings) > 0 {
-			if _, err = fmt.Fprintln(env.Err, "warning: "+strings.Join(warnings, "; ")); err != nil {
+			if _, err = fmt.Fprintln(env.Err, env.Text("output.warning_prefix")+strings.Join(warnings, "; ")); err != nil {
 				return err
 			}
 		}
@@ -88,7 +88,7 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 			return env.PrintJSON(result)
 		}
 		if len(result.Records) == 0 {
-			_, err = fmt.Fprintln(env.Err, "No results.")
+			_, err = fmt.Fprintln(env.Err, env.Text("output.no_results"))
 			return err
 		}
 		if stream {
@@ -119,10 +119,10 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 			}
 			artworks = append(artworks, record.Artwork{ID: id, Title: snapshot.Title, User: snapshot.User, TotalBookmarks: snapshot.TotalBookmarks})
 		}
-		return display.PrintArtworksRanked(env.Out, artworks, plan.Skip)
+		return display.PrintArtworksRanked(env.Out, env.Language, artworks, plan.Skip)
 	}}
-	cmd.Flags().StringVar(&source, "image", "", "image file or HTTP(S) URL")
-	cmd.Flags().BoolVar(&noSync, "no-sync", false, "search existing vectors without catch-up")
+	cmd.Flags().StringVar(&source, "image", "", "flag.image_file_or_http_s_url")
+	cmd.Flags().BoolVar(&noSync, "no-sync", false, "flag.search_existing_vectors_without_catch_up")
 	environment.BindListFlags(cmd, &limit, &page)
 	env.BindCommonFlags(cmd, &options)
 	environment.BindNDJSONFlag(cmd, &ndjson)

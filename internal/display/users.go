@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
 
@@ -21,7 +22,7 @@ func PrintUserPreviews(out io.Writer, users []record.UserPreview) error {
 
 // PrintUserDetail 只展示人可读且有值的文本字段；固定计数保留零值，以免把公开的
 // “没有作品/关注”误报为字段缺失。完整机器可读字段由 --json 输出记录快照。
-func PrintUserDetail(out io.Writer, result record.UserDetail) error {
+func PrintUserDetail(out io.Writer, language i18n.Locale, result record.UserDetail) error {
 	identity := Identity(result.User.Name, result.User.ID)
 	if result.User.Account != "" {
 		identity = fmt.Sprintf("%s (@%s, %d)", SafeLine(result.User.Name), SafeLine(result.User.Account), result.User.ID)
@@ -30,7 +31,7 @@ func PrintUserDetail(out io.Writer, result record.UserDetail) error {
 	if result.User.Comment != "" {
 		lines = append(lines, SafeLine(result.User.Comment))
 	}
-	lines = append(lines, fmt.Sprintf("%d artworks · %d manga · %d novels · %d following", result.Profile.TotalIllusts, result.Profile.TotalManga, result.Profile.TotalNovels, result.Profile.TotalFollowUsers))
+	lines = append(lines, fmt.Sprintf(language.Text("format.artworks_manga_novels_following"), result.Profile.TotalIllusts, result.Profile.TotalManga, result.Profile.TotalNovels, result.Profile.TotalFollowUsers))
 	var profile []string
 	if webpage := publicWebpage(result.Profile.Webpage); webpage != "" {
 		profile = append(profile, SafeLine(webpage))
@@ -62,7 +63,7 @@ func PrintUserDetail(out io.Writer, result record.UserDetail) error {
 		{"comment", result.Workspace.Comment},
 	} {
 		if field.value != "" {
-			lines = append(lines, fmt.Sprintf("%s: %s", field.name, SafeLine(field.value)))
+			lines = append(lines, fmt.Sprintf("%s: %s", language.Text("workspace."+field.name), SafeLine(field.value)))
 		}
 	}
 	for _, line := range lines {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 	"github.com/spf13/cobra"
@@ -13,13 +14,13 @@ import (
 
 // RunAutomaticCheck 在业务命令成功后展示稳定版更新提示。所有错误只写
 // stderr，不改变已成功命令的退出码，也不进入 stdout/MCP JSON-RPC。
-func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() (config.Config, error)) {
+func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, language i18n.Locale, loadRuntime func() (config.Config, error)) {
 	if !shouldCheck(cmd) {
 		return
 	}
 	runtimeConfig, err := loadRuntime()
 	if err != nil {
-		warning(errOut, "load automatic update configuration", err)
+		warning(errOut, language, language.Text("update.load_config"), err)
 		return
 	}
 	if !runtimeConfig.Update.CheckEnabled {
@@ -27,27 +28,27 @@ func RunAutomaticCheck(cmd *cobra.Command, errOut io.Writer, loadRuntime func() 
 	}
 	proxy, err := automaticProxy(cmd, runtimeConfig)
 	if err != nil {
-		warning(errOut, "read automatic update proxy override", err)
+		warning(errOut, language, language.Text("update.read_proxy"), err)
 		return
 	}
 	checker, err := NewAutomaticChecker(proxy)
 	if err != nil {
-		warning(errOut, "create automatic update checker", err)
+		warning(errOut, language, language.Text("update.create_checker"), err)
 		return
 	}
 	notice, err := checker.Check(cmd.Context(), selfupdate.AutomaticUpdateRequest{BuildInfo: version.Current()})
 	if err != nil {
-		warning(errOut, "check for updates", err)
+		warning(errOut, language, language.Text("update.check"), err)
 		return
 	}
 	if notice == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(errOut, "Update available: %s → %s (run %q)\n", notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
+	_, _ = fmt.Fprintf(errOut, language.Text("output.update_available_run"), notice.CurrentVersion, notice.LatestVersion, notice.UpdateCommand)
 }
 
-func warning(errOut io.Writer, action string, err error) {
-	_, _ = fmt.Fprintf(errOut, "warning: %s: %v\n", action, err)
+func warning(errOut io.Writer, language i18n.Locale, action string, err error) {
+	_, _ = fmt.Fprintf(errOut, language.Text("output.warning_441"), action, language.ErrorText(err))
 }
 
 func shouldCheck(cmd *cobra.Command) bool {
@@ -82,7 +83,7 @@ func automaticProxy(cmd *cobra.Command, runtimeConfig config.Config) (string, er
 		return runtimeConfig.Network.HTTPSProxy, nil
 	}
 	if proxyFlag != nil && proxyFlag.Changed && noProxyFlag != nil && noProxyFlag.Changed {
-		return "", fmt.Errorf("use either --proxy or --no-proxy, not both")
+		return "", i18n.Errorf("error.use_either_proxy_or_no_proxy_not_both")
 	}
 	if noProxyFlag != nil && noProxyFlag.Changed {
 		return "", nil
@@ -90,7 +91,7 @@ func automaticProxy(cmd *cobra.Command, runtimeConfig config.Config) (string, er
 	if proxyFlag != nil && proxyFlag.Changed {
 		proxy, err := cmd.Flags().GetString("proxy")
 		if err != nil {
-			return "", fmt.Errorf("read --proxy: %w", err)
+			return "", i18n.Errorf("error.read_proxy", err)
 		}
 		return proxy, nil
 	}

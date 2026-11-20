@@ -2,8 +2,8 @@ package account
 
 import (
 	"context"
-	"errors"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -49,7 +49,7 @@ func (s LoginStart) AcceptsCallbackURL(rawURL string) bool {
 // Complete 兑换凭据并持久化；保存后读取失败时仍返回已保存的身份，供调用方报告部分成功。
 func (s LoginService) Complete(ctx context.Context, start LoginStart, request LoginCompleteRequest) (Pixiv, error) {
 	if start.session == nil {
-		return Pixiv{}, errors.New("login session is not initialized")
+		return Pixiv{}, i18n.Errorf("error.login_session_is_not_initialized")
 	}
 	// 登录只执行一次；这里只释放该 SDK session 自己创建的 HTTP 传输。
 	defer start.session.CloseIdleConnections()

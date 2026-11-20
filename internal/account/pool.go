@@ -2,10 +2,10 @@ package account
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"slices"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // Strategy 确定每次操作在合格账号中采用的选择顺序。
@@ -82,14 +82,14 @@ func (e *PoolSelectionError) Error() string {
 // SetPixivSchedulable 原子修改一组账号的池成员资格；任一 UID 不存在时整批保留原值。
 func (s *Store) SetPixivSchedulable(ctx context.Context, userIDs []int64, enabled bool) error {
 	if len(userIDs) == 0 {
-		return errors.New("account: account pool requires at least one user id")
+		return i18n.Errorf("error.account_account_pool_requires_at_least_one_user")
 	}
 	return s.update(ctx, func(doc *document) error {
 		seen := make(map[int64]bool, len(userIDs))
 		now := time.Now().UTC()
 		for _, id := range userIDs {
 			if id <= 0 || seen[id] {
-				return errors.New("account: invalid or duplicate pool user id")
+				return i18n.Errorf("error.account_invalid_or_duplicate_pool_user_id")
 			}
 			seen[id] = true
 			index := slices.IndexFunc(doc.Pixiv, func(a Pixiv) bool { return a.UserID == id })
@@ -175,7 +175,7 @@ func (s *Store) SelectPixiv(ctx context.Context, now int64, attempted []int64, c
 			return err
 		}
 		if !slices.ContainsFunc(snapshot.Candidates, func(a PoolCandidate) bool { return a.UserID == id }) {
-			return fmt.Errorf("account: pool chooser selected uid %d outside transaction snapshot", id)
+			return i18n.Errorf("error.account_pool_chooser_selected_uid_outside_transaction_snapshot", id)
 		}
 		for i := range doc.Pixiv {
 			if doc.Pixiv[i].UserID == id {

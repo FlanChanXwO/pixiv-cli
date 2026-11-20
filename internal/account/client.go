@@ -3,12 +3,12 @@ package account
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -43,7 +43,7 @@ func (s *Store) ImportPixiv(ctx context.Context, refreshToken string, options pi
 func (s *Store) savePixivLogin(ctx context.Context, credentials pixiv.Credentials) (Pixiv, error) {
 	a := Pixiv{UserID: credentials.UserID, Username: credentials.DisplayName, Credential: credentials.RefreshToken}
 	if err := s.SavePixivCredential(ctx, a); err != nil {
-		return Pixiv{}, fmt.Errorf("save pixiv account: %w", err)
+		return Pixiv{}, i18n.Errorf("error.save_pixiv_account", err)
 	}
 	saved, err := s.GetPixiv(ctx, a.UserID)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *Store) savePixivLogin(ctx context.Context, credentials pixiv.Credential
 func (s *Store) OpenFanboxClient(ctx context.Context, userID int64, options fanbox.Options) (*fanbox.Client, error) {
 	a, err := s.GetFanbox(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("select fanbox account: %w", err)
+		return nil, i18n.Errorf("error.select_fanbox_account", err)
 	}
 	return fanbox.New(a.Credential.Value(), options)
 }
@@ -74,7 +74,7 @@ func (s *Store) ImportFanbox(ctx context.Context, session string, options fanbox
 	}
 	a := Fanbox{UserID: user.UserID, DisplayName: user.DisplayName, CreatorID: user.CreatorID, Credential: credential.New([]byte(session)), ValidatedAt: time.Now().UTC()}
 	if err := s.SaveFanboxCredential(ctx, a); err != nil {
-		return Fanbox{}, fmt.Errorf("save fanbox account: %w", err)
+		return Fanbox{}, i18n.Errorf("error.save_fanbox_account", err)
 	}
 	return s.GetFanbox(ctx, a.UserID)
 }

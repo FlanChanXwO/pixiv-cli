@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	"github.com/FlanChanXwO/pixiv-cli/internal/netdiagnostic"
 )
@@ -133,7 +134,7 @@ func (l *Loader) loadURL(ctx context.Context, source string) (*Snapshot, error) 
 			}
 		} else if len(via) >= 10 {
 			// 保持 net/http 的既有默认重定向限制；这不是反向搜图新增的重试策略。
-			return errors.New("stopped after 10 redirects")
+			return i18n.Errorf("error.stopped_after_10_redirects")
 		}
 		return validateSourceURL(next.URL.String())
 	}

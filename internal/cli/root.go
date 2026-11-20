@@ -41,6 +41,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
@@ -61,6 +62,7 @@ import (
 )
 
 type app struct {
+	language       i18n.Locale
 	in             io.Reader
 	out, errOut    io.Writer
 	pipelineSignal *environment.BrokenPipe
@@ -79,7 +81,7 @@ func (a *app) logger() *slog.Logger { return a.logs.Logger }
 func (a *app) newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "pixiv",
-		Short:         "Pixiv CLI and MCP server",
+		Short:         "help.pixiv_cli_and_mcp_server",
 		Version:       version.Current().Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -95,12 +97,12 @@ func (a *app) newRootCommand() *cobra.Command {
 			}
 			if requirement.StartupHooks {
 				if err := selfupdate.CleanupPendingWindowsUpdate(); err != nil {
-					return &environment.StartupError{Err: fmt.Errorf("clean pending update: %w", err)}
+					return &environment.StartupError{Err: i18n.Errorf("error.clean_pending_update", err)}
 				}
 				if urlscheme.AutomaticPersistentHandlerSupported() {
 					if err := urlscheme.EnsurePersistentIfNeeded(cmd.Context()); err != nil {
 						// 这项桌面集成不能阻断原命令，也不能把系统/本机路径写入 stderr。
-						fmt.Fprintln(a.errOut, "warning: persistent pixiv:// callback handler was not initialized")
+						fmt.Fprintln(a.errOut, a.language.Text("output.warning_persistent_pixiv_callback_handler_was_not_initialized_351"))
 					}
 				}
 			}
@@ -116,7 +118,7 @@ func (a *app) newRootCommand() *cobra.Command {
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			if environment.For(cmd).AutomaticUpdate {
-				update.RunAutomaticCheck(cmd, a.errOut, a.runtimeConfig)
+				update.RunAutomaticCheck(cmd, a.errOut, a.language, a.runtimeConfig)
 			}
 		},
 	}
@@ -136,6 +138,7 @@ func (a *app) newRootCommand() *cobra.Command {
 	cmd.AddCommand(a.newFanboxCommandGroup(env))
 	cmd.AddCommand(mcp.New(env, a.runPixivMCP, mcp.InitAuth))
 	cmd.AddCommand(update.New(env, a.runtimeConfig))
+	environment.LocalizeCommands(cmd, a.language)
 	return cmd
 }
 
@@ -175,7 +178,7 @@ func (a *app) openAccounts(ctx context.Context) (*account.Store, error) {
 	}
 	directory, err := config.AppDataDir()
 	if err != nil {
-		return nil, fmt.Errorf("determine home directory: %w", err)
+		return nil, i18n.Errorf("error.determine_home_directory", err)
 	}
 	store, err := account.Open(ctx, directory)
 	if err != nil {
@@ -353,14 +356,14 @@ func (a *app) searchVectorResolved(ctx context.Context, input vectorindex.Search
 		}
 	}
 	if choices != 1 {
-		return result, &vectorindex.SearchError{Code: "invalid_request", Cause: errors.New("provide exactly one text query or image")}
+		return result, &vectorindex.SearchError{Code: "invalid_request", Cause: i18n.Errorf("error.provide_exactly_one_text_query_or_image")}
 	}
 	c, err := (config.Store{Files: secretfile.ConfigFiles{}}).Current()
 	if err != nil {
 		return result, err
 	}
 	if c.Vector.Model == "" {
-		return result, &vectorindex.SearchError{Code: "not_set_up", Cause: errors.New("vector search is not set up; run \"pixiv vector setup\"")}
+		return result, &vectorindex.SearchError{Code: "not_set_up", Cause: i18n.Errorf("error.vector_search_is_not_set_up_run_pixiv")}
 	}
 	proxy := c.Network.HTTPSProxy
 	if request.HTTPSProxyOverride != nil {
@@ -492,7 +495,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	}
 	closeState := &lifecycle.CloseState{}
 	a := app{
-		in: in, out: out, errOut: errOut, closeState: closeState,
+		language: i18n.System(),
+		in:       in, out: out, errOut: errOut, closeState: closeState,
 		pipelineSignal: &environment.BrokenPipe{}, mcpSignal: &environment.BrokenPipe{},
 		logs:      &logging.State{Logger: logging.Discard()},
 		storeSlot: make(chan struct{}, 1),
@@ -505,7 +509,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut
 	cmd.SetOut(out)
 	cmd.SetErr(errOut)
 	cmd.SetArgs(args[1:])
-	cmd.SetContext(ctx)
+	cmd.SetContext(i18n.WithLocale(ctx, a.language))
 	target := cmd
 	if found, _, findErr := cmd.Find(args[1:]); findErr == nil && found != nil {
 		target = found
@@ -532,19 +536,19 @@ func (a *app) exitWithNDJSONScope(err error, ndjsonOutput bool) int {
 	}
 	var startupErr *environment.StartupError
 	if errors.As(err, &startupErr) {
-		fmt.Fprintln(a.errOut, startupErr.Err)
+		fmt.Fprintln(a.errOut, environment.ErrorText(startupErr.Err, a.language))
 		return 1
 	}
 	var usageErr *environment.UsageError
 	if errors.As(err, &usageErr) {
-		fmt.Fprintln(a.errOut, "error:", environment.ErrorText(usageErr.Err))
+		fmt.Fprintln(a.errOut, a.language.Text("output.error"), environment.ErrorText(usageErr.Err, a.language))
 		return 2
 	}
 	var pipelineErr *record.PipelineDiagnosticError
 	if errors.As(err, &pipelineErr) {
 		return 1
 	}
-	fmt.Fprintln(a.errOut, "error:", environment.ErrorText(err))
+	fmt.Fprintln(a.errOut, a.language.Text("output.error"), environment.ErrorText(err, a.language))
 	return 1
 }
 
@@ -573,7 +577,7 @@ func isQuietConfigCommand(cmd *cobra.Command) bool {
 // enablePipelineSignal 安装 NDJSON 专用的 SIGPIPE 策略。command owner 只在确定输出记录流时
 // 调用，其他命令保留平台的默认 SIGPIPE 行为，否则普通输出被关闭管道截断会被误判为成功。
 func (a *app) commandEnv() environment.Env {
-	return environment.New(a.in, a.out, a.errOut, environment.NewUsageError, a.pipelineSignal.Enable, func(override *bool) (bool, error) {
+	env := environment.New(a.in, a.out, a.errOut, environment.NewUsageError, a.pipelineSignal.Enable, func(override *bool) (bool, error) {
 		if override != nil {
 			return *override, nil
 		}
@@ -583,6 +587,8 @@ func (a *app) commandEnv() environment.Env {
 		}
 		return runtime.Output.JSON, nil
 	})
+	env.Language = a.language
+	return env
 }
 
 // newAuthCommand 组装 pixiv auth 组；账号服务延迟到第一次访问 auth 子命令时才打开账号文件。

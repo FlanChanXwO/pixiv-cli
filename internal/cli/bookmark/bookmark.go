@@ -6,13 +6,13 @@ package bookmark
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -103,7 +103,7 @@ func (c bookmarkStreamCursor) String() string {
 // New 构造 `pixiv bookmark` 命令组；作品与小说的收藏操作都经由同一个重放边界。
 func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
-	cmd := &cobra.Command{Use: "bookmark", Short: "Manage artwork and novel bookmarks"}
+	cmd := &cobra.Command{Use: "bookmark", Short: "help.manage_artwork_and_novel_bookmarks"}
 	cmd.AddCommand(a.newList(), a.newTags(), a.newDetail(), a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
 	return cmd
@@ -113,16 +113,16 @@ func (a commandRunner) newList() *cobra.Command {
 	opts := listOptions{typ: string(target.NamespaceArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "list [USER_ID_OR_URL]",
-		Short: "List artwork or novel bookmarks",
+		Short: "help.list_artwork_or_novel_bookmarks",
 		Args:  a.env.MaxArgs(1, "pixiv bookmark list [options] [USER_ID_OR_URL]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runList(cmd, args, opts)
 		},
 	}
 	a.bindListFlags(cmd, &opts)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
-	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_novel_or_all")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.bookmark_visibility_public_or_private")
+	cmd.Flags().StringVar(&opts.tag, "tag", "", "flag.filter_by_bookmark_tag")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -132,15 +132,15 @@ func (a commandRunner) newTags() *cobra.Command {
 	opts := listOptions{typ: string(target.NamespaceArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "tags [USER_ID_OR_URL]",
-		Short: "List artwork or novel bookmark tags",
+		Short: "help.list_artwork_or_novel_bookmark_tags",
 		Args:  a.env.MaxArgs(1, "pixiv bookmark tags [options] [USER_ID_OR_URL]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTags(cmd, args, opts)
 		},
 	}
 	a.bindListFlags(cmd, &opts)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, or all")
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_novel_or_all")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.bookmark_visibility_public_or_private")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -150,12 +150,12 @@ func (a commandRunner) newDetail() *cobra.Command {
 	opts := detailOptions{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail ARTWORK_ID_OR_NOVEL_ID_OR_URL",
-		Short: "Show the current user's bookmark detail",
+		Short: "help.show_the_current_user_s_bookmark_detail",
 		Args: func(cmd *cobra.Command, args []string) error {
 			usage := "pixiv bookmark detail [options] ARTWORK_ID_OR_NOVEL_ID_OR_URL"
 			if opts.input.Mode() == environment.RecordMode {
 				if len(args) != 0 {
-					return fmt.Errorf("usage: %s", usage)
+					return i18n.Errorf("error.usage", usage)
 				}
 				return nil
 			}
@@ -189,7 +189,7 @@ func (a commandRunner) newDetail() *cobra.Command {
 					result.kind = string(target.NamespaceNovel)
 					result.novel, err = client.Novel(resolved.ID).Bookmark(ctx)
 				default:
-					err = errors.New("bookmark detail type must be artwork or novel")
+					err = i18n.Errorf("error.bookmark_detail_type_must_be_artwork_or_novel")
 				}
 				return false, err
 			})
@@ -204,21 +204,21 @@ func (a commandRunner) newDetail() *cobra.Command {
 			}
 			restrict, tags := result.restrictAndTags()
 			if restrict == "" {
-				_, err = fmt.Fprintln(a.env.Out, "No bookmark")
+				_, err = fmt.Fprintln(a.env.Out, a.env.Text("output.no_bookmark"))
 				return err
 			}
-			if _, err := fmt.Fprintf(a.env.Out, "Bookmarked · %s\n", display.SafeLine(string(restrict))); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, a.env.Text("output.bookmarked"), display.SafeLine(string(restrict))); err != nil {
 				return err
 			}
 			for i, tag := range tags {
 				tags[i] = display.SafeLine(tag)
 			}
-			_, err = fmt.Fprintf(a.env.Out, "Tags: %s\n", strings.Join(tags, ", "))
+			_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.tags"), strings.Join(tags, ", "))
 			return err
 		},
 	}
 	a.env.BindCommonFlags(cmd, &opts.Options)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_or_novel")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -229,7 +229,7 @@ func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, op
 	if opts.input.Mode() == environment.RecordMode {
 		body, err := io.ReadAll(opts.input.Reader(a.env.In))
 		if err != nil {
-			return target.Input{}, fmt.Errorf("read bookmark detail record: %w", err)
+			return target.Input{}, i18n.Errorf("error.read_bookmark_detail_record", err)
 		}
 		source, err := record.ParseRecordJSON(body)
 		if err != nil {
@@ -239,7 +239,7 @@ func (a commandRunner) bookmarkDetailInput(cmd *cobra.Command, args []string, op
 		return resolved, nil
 	}
 	if len(args) != 1 {
-		return target.Input{}, errors.New("bookmark detail requires one artwork or novel ID/URL")
+		return target.Input{}, i18n.Errorf("error.bookmark_detail_requires_one_artwork_or_novel_id")
 	}
 	resolved.Value = args[0]
 	return resolved, nil
@@ -281,7 +281,7 @@ func bookmarkMutationType(typ string) (string, error) {
 	case string(target.NamespaceArtwork), string(target.NamespaceNovel):
 		return typ, nil
 	default:
-		return "", fmt.Errorf("type %q is not supported by this command", typ)
+		return "", i18n.Errorf("error.type_is_not_supported_by_this_command", typ)
 	}
 }
 
@@ -289,7 +289,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	opts := mutationOptions{typ: string(target.NamespaceArtwork), restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [ARTWORK_ID_OR_NOVEL_ID]",
-		Short: "Bookmark an artwork or novel",
+		Short: "help.bookmark_an_artwork_or_novel",
 		Args:  a.env.ActionInputArgs("pixiv bookmark add [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateRestrict(opts.restrict); err != nil {
@@ -325,10 +325,10 @@ func (a commandRunner) newAdd() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
-	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "bookmark tag; may be repeated")
-	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_or_novel")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.bookmark_visibility_public_or_private")
+	cmd.Flags().StringArrayVar(&opts.tags, "tag", nil, "flag.bookmark_tag_may_be_repeated")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "flag.record_failure_strategy_skip_or_fail_fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -338,7 +338,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	opts := mutationOptions{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "remove [ARTWORK_ID_OR_NOVEL_ID]",
-		Short: "Remove an artwork or novel bookmark",
+		Short: "help.remove_an_artwork_or_novel_bookmark",
 		Args:  a.env.ActionInputArgs("pixiv bookmark remove [options] [ARTWORK_ID_OR_NOVEL_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			typ, err := bookmarkMutationType(opts.typ)
@@ -371,8 +371,8 @@ func (a commandRunner) newRemove() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork or novel")
-	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_or_novel")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "flag.record_failure_strategy_skip_or_fail_fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -396,7 +396,7 @@ func (a commandRunner) runList(cmd *cobra.Command, args []string, opts listOptio
 	case "all":
 		return a.runAllList(cmd, args, opts)
 	default:
-		return errors.New("bookmark list type must be one of artwork, novel, all")
+		return i18n.Errorf("error.bookmark_list_type_must_be_one_of_artwork")
 	}
 }
 
@@ -429,7 +429,7 @@ func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, 
 	if state.Mode() == environment.RecordMode {
 		body, err := io.ReadAll(state.Reader(a.env.In))
 		if err != nil {
-			return 0, fmt.Errorf("read bookmark target record: %w", err)
+			return 0, i18n.Errorf("error.read_bookmark_target_record", err)
 		}
 		source, err := record.ParseRecordJSON(body)
 		if err != nil {
@@ -438,7 +438,7 @@ func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, 
 		resolved.Record = &source
 	} else {
 		if len(args) != 1 {
-			return 0, errors.New("bookmark target requires one user ID or URL")
+			return 0, i18n.Errorf("error.bookmark_target_requires_one_user_id_or_url")
 		}
 		resolved.Value = args[0]
 	}
@@ -447,7 +447,7 @@ func (a commandRunner) resolveBookmarkUserID(cmd *cobra.Command, args []string, 
 		return 0, err
 	}
 	if result.TargetKind != target.NamespaceUser {
-		return 0, errors.New("bookmark target must identify a user")
+		return 0, i18n.Errorf("error.bookmark_target_must_identify_a_user")
 	}
 	return result.ID, nil
 }
@@ -473,6 +473,6 @@ func validateRestrict(value string) error {
 	case "", pixiv.RestrictPublic, pixiv.RestrictPrivate:
 		return nil
 	default:
-		return errors.New("restrict must be one of: public, private; see pixiv bookmark --help")
+		return i18n.Errorf("error.restrict_must_be_one_of_public_private_see")
 	}
 }

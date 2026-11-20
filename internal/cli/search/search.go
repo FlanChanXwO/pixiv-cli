@@ -7,7 +7,6 @@ package search
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
@@ -79,7 +79,7 @@ func New(env environment.Env, executeSDK environment.PixivExecutor, reverseSearc
 	}
 	cmd := &cobra.Command{
 		Use:     "search [WORD]",
-		Short:   "Search artworks, novels, or users",
+		Short:   "help.search_artworks_novels_or_users",
 		Example: "pixiv search \"miku\" --json",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if opts.trendingTags {
@@ -94,23 +94,23 @@ func New(env environment.Env, executeSDK environment.PixivExecutor, reverseSearc
 	env.BindCommonFlags(cmd, &opts.Options)
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "search field: tag-partial, tag-exact, title-caption, tag-title-caption")
-	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "sort mode: date_desc, date_asc, popular_desc")
-	flags.StringVar(&opts.period, "period", "", "time range: day, week, month, half-year, year")
-	flags.StringVar(&opts.startDate, "start-date", "", "inclusive start date: YYYY-MM-DD")
-	flags.StringVar(&opts.endDate, "end-date", "", "inclusive end date: YYYY-MM-DD")
-	flags.StringVar(&opts.rating, "rating", "", "local rating filter: sfw, r18, r18g, mature, all")
-	flags.StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user")
-	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "artwork type filter: all, illust-and-ugoira, illust, manga, ugoira")
-	flags.BoolVar(&opts.trendingTags, "trending-tags", false, "return the complete current artwork trending-tag list; WORD and list pagination are not accepted")
-	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "resolution filter: all, high, medium, low")
-	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "aspect ratio filter: all, landscape, portrait, square")
-	flags.StringVar(&opts.drawTool, "draw-tool", "", "exact drawing tool name from the versioned drawing-tool catalog")
-	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "AI artwork filter: all, exclude, only")
-	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "minimum public bookmark count; strategy controls filtering completeness")
-	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "maximum public bookmark count; strategy controls filtering completeness")
-	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(searchfilter.BookmarkStrategyAuto), "bookmark count strategy: auto, local, best_effort, server")
-	flags.StringVar(&opts.provider, "provider", "", "reverse search provider: saucenao, ascii2d-color, ascii2d-bovw, all")
+	flags.StringVar(&opts.searchBy, "search-by", opts.searchBy, "flag.search_field_tag_partial_tag_exact_title_caption_376")
+	flags.StringVar(&opts.sortMode, "sort", opts.sortMode, "flag.sort_mode_date_desc_date_asc_popular_desc")
+	flags.StringVar(&opts.period, "period", "", "flag.time_range_day_week_month_half_year_year")
+	flags.StringVar(&opts.startDate, "start-date", "", "flag.inclusive_start_date_yyyy_mm_dd")
+	flags.StringVar(&opts.endDate, "end-date", "", "flag.inclusive_end_date_yyyy_mm_dd")
+	flags.StringVar(&opts.rating, "rating", "", "flag.local_rating_filter_sfw_r18_r18g_mature_all")
+	flags.StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_novel_user")
+	flags.StringVar(&opts.contentType, "content-type", opts.contentType, "flag.artwork_type_filter_all_illust_and_ugoira_illust")
+	flags.BoolVar(&opts.trendingTags, "trending-tags", false, "flag.return_the_complete_current_artwork_trending_tag_list")
+	flags.StringVar(&opts.resolution, "resolution", opts.resolution, "flag.resolution_filter_all_high_medium_low")
+	flags.StringVar(&opts.aspectRatio, "aspect-ratio", opts.aspectRatio, "flag.aspect_ratio_filter_all_landscape_portrait_square")
+	flags.StringVar(&opts.drawTool, "draw-tool", "", "flag.exact_drawing_tool_name_from_the_versioned_drawing")
+	flags.StringVar(&opts.aiMode, "ai-mode", opts.aiMode, "flag.ai_artwork_filter_all_exclude_only")
+	flags.IntVar(&opts.bookmarkMin, "bookmark-min", 0, "flag.minimum_public_bookmark_count_strategy_controls_filtering_completeness")
+	flags.IntVar(&opts.bookmarkMax, "bookmark-max", 0, "flag.maximum_public_bookmark_count_strategy_controls_filtering_completeness")
+	flags.StringVar(&opts.bookmarkStrategy, "bookmark-strategy", string(searchfilter.BookmarkStrategyAuto), "flag.bookmark_count_strategy_auto_local_best_effort_server")
+	flags.StringVar(&opts.provider, "provider", "", "flag.reverse_search_provider_saucenao_ascii2d_color_ascii2d_bovw")
 	environment.BindListFlags(cmd, &opts.limit, &opts.page)
 	env.BindTextValueWhen(cmd, 1, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.trendingTags })
 	environment.Bind(cmd, environment.Normal())
@@ -168,7 +168,7 @@ func (a commandRunner) artworkSearchParams(cmd *cobra.Command, opts options) (ar
 		return artworkSearchParams{}, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return artworkSearchParams{}, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return artworkSearchParams{}, a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -191,7 +191,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		return a.runReverseSearch(cmd, source, opts)
 	}
 	if cmd.Flags().Changed("provider") {
-		return a.env.WrapUsage(errors.New("--provider is only supported for image sources"))
+		return a.env.WrapUsage(i18n.Errorf("error.provider_is_only_supported_for_image_sources"))
 	}
 	if opts.trendingTags {
 		if err := validateTrendingTagsFlags(cmd); err != nil {
@@ -259,7 +259,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 	}
 	if params.bookmarkMin != nil || params.bookmarkMax != nil || cmd.Flags().Changed("bookmark-strategy") {
 		if params.bookmarkMin == nil && params.bookmarkMax == nil {
-			return errors.New("--bookmark-strategy requires --bookmark-min or --bookmark-max")
+			return i18n.Errorf("error.bookmark_strategy_requires_bookmark_min_or_bookmark_max")
 		}
 		strategy, err := resolveBookmarkFilterStrategy(opts.bookmarkStrategy)
 		if err != nil {
@@ -291,7 +291,9 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts options) erro
 		return items, result.Cursor, nil
 	}
 	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, params.request, params.plan, record.FormatOf(params.jsonOut, params.ndjson), record.List[record.Artwork]{
-		Print:       func(items []record.Artwork, start int) error { return display.PrintArtworks(a.env.Out, items) },
+		Print: func(items []record.Artwork, start int) error {
+			return display.PrintArtworks(a.env.Out, a.env.Language, items)
+		},
 		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 	}, fetch)
 }
@@ -357,10 +359,10 @@ func (a commandRunner) writeArtworkResults(jsonOut, ndjson bool, plan pagination
 		return record.WriteJSONValue(a.env.Out, artworkSearchOut{ListOutput: record.NewListOutput(records, plan, pagination.PageResult{Returned: len(records), HasMore: !page.Cursor.IsZero()}), Filter: filter})
 	}
 	if len(items) == 0 {
-		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 		return err
 	}
-	return display.PrintArtworks(a.env.Out, items)
+	return display.PrintArtworks(a.env.Out, a.env.Language, items)
 }
 
 func (a commandRunner) runTrendingTags(cmd *cobra.Command, options environment.Options) error {
@@ -418,7 +420,7 @@ func resolveSearchBy(value string) (pixiv.SearchTarget, error) {
 	case searchTargetTagTitleCaption:
 		return pixiv.SearchTargetKeyword, nil
 	default:
-		return "", fmt.Errorf("search-by must be one of %s, %s, %s, %s", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption, searchTargetTagTitleCaption)
+		return "", i18n.Errorf("error.search_by_must_be_one_of_397", searchTargetTagPartial, searchTargetTagExact, searchTargetTitleCaption, searchTargetTagTitleCaption)
 	}
 }
 
@@ -427,7 +429,7 @@ func resolveEntityType(value string) (string, error) {
 	case string(target.NamespaceArtwork), string(target.NamespaceNovel), string(target.NamespaceUser):
 		return value, nil
 	default:
-		return "", errors.New("type must be one of artwork, novel, user")
+		return "", i18n.Errorf("error.type_must_be_one_of_artwork_novel_user")
 	}
 }
 
@@ -437,20 +439,20 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 	}
 	for _, name := range []string{"content-type", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy"} {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s is only supported when --type artwork", name)
+			return i18n.Errorf("error.is_only_supported_when_type_artwork", name)
 		}
 	}
 	if entity == string(target.NamespaceNovel) {
 		for _, name := range []string{"start-date", "end-date", "rating"} {
 			if cmd.Flags().Changed(name) {
-				return fmt.Errorf("--%s is not supported when --type novel", name)
+				return i18n.Errorf("error.is_not_supported_when_type_novel", name)
 			}
 		}
 		return nil
 	}
 	for _, name := range []string{"search-by", "sort", "period", "start-date", "end-date", "rating"} {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s is only supported when --type artwork or novel", name)
+			return i18n.Errorf("error.is_only_supported_when_type_artwork_or_novel", name)
 		}
 	}
 	return nil
@@ -458,11 +460,11 @@ func validateEntityFlags(cmd *cobra.Command, entity string) error {
 
 func validateTrendingTagsFlags(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("type") || cmd.Flags().Changed("content-type") {
-		return errors.New("--trending-tags cannot be combined with --type or --content-type")
+		return i18n.Errorf("error.trending_tags_cannot_be_combined_with_type_or")
 	}
 	for _, name := range []string{"search-by", "sort", "period", "start-date", "end-date", "rating", "resolution", "aspect-ratio", "draw-tool", "ai-mode", "bookmark-min", "bookmark-max", "bookmark-strategy", "limit", "page", "ndjson"} {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s is not supported with --trending-tags", name)
+			return i18n.Errorf("error.is_not_supported_with_trending_tags", name)
 		}
 	}
 	return nil
@@ -474,7 +476,7 @@ func resolveAIMode(value string) (pixiv.SearchAIMode, error) {
 	case pixiv.SearchAIModeAll, pixiv.SearchAIModeExclude, pixiv.SearchAIModeOnly:
 		return mode, nil
 	default:
-		return "", errors.New("ai-mode must be one of all, exclude, only")
+		return "", i18n.Errorf("error.ai_mode_must_be_one_of_all_exclude")
 	}
 }
 
@@ -484,7 +486,7 @@ func resolveAspectRatio(value string) (pixiv.SearchAspectRatio, error) {
 	case pixiv.SearchAspectRatioAll, pixiv.SearchAspectRatioLandscape, pixiv.SearchAspectRatioPortrait, pixiv.SearchAspectRatioSquare:
 		return ratio, nil
 	default:
-		return "", errors.New("aspect-ratio must be one of all, landscape, portrait, square")
+		return "", i18n.Errorf("error.aspect_ratio_must_be_one_of_all_landscape")
 	}
 }
 
@@ -494,7 +496,7 @@ func resolveResolution(value string) (pixiv.SearchResolution, error) {
 	case pixiv.SearchResolutionAll, pixiv.SearchResolutionHigh, pixiv.SearchResolutionMedium, pixiv.SearchResolutionLow:
 		return resolution, nil
 	default:
-		return "", errors.New("resolution must be one of all, high, medium, low")
+		return "", i18n.Errorf("error.resolution_must_be_one_of_all_high_medium")
 	}
 }
 
@@ -502,20 +504,20 @@ func resolveBookmarkRange(cmd *cobra.Command, opts options) (*int, *int, error) 
 	var bookmarkMin, bookmarkMax *int
 	if cmd.Flags().Changed("bookmark-min") {
 		if opts.bookmarkMin < 0 {
-			return nil, nil, errors.New("bookmark-min must be greater than or equal to zero")
+			return nil, nil, i18n.Errorf("error.bookmark_min_must_be_greater_than_or_equal")
 		}
 		minimum := opts.bookmarkMin
 		bookmarkMin = &minimum
 	}
 	if cmd.Flags().Changed("bookmark-max") {
 		if opts.bookmarkMax < 0 {
-			return nil, nil, errors.New("bookmark-max must be greater than or equal to zero")
+			return nil, nil, i18n.Errorf("error.bookmark_max_must_be_greater_than_or_equal")
 		}
 		maximum := opts.bookmarkMax
 		bookmarkMax = &maximum
 	}
 	if bookmarkMin != nil && bookmarkMax != nil && *bookmarkMin > *bookmarkMax {
-		return nil, nil, errors.New("bookmark-min cannot be greater than bookmark-max")
+		return nil, nil, i18n.Errorf("error.bookmark_min_cannot_be_greater_than_bookmark_max")
 	}
 	return bookmarkMin, bookmarkMax, nil
 }
@@ -527,7 +529,7 @@ func resolveBookmarkFilterStrategy(value string) (searchfilter.BookmarkStrategy,
 	case searchfilter.BookmarkStrategyAuto, searchfilter.BookmarkStrategyLocal, searchfilter.BookmarkStrategyBestEffort, searchfilter.BookmarkStrategyServer:
 		return searchfilter.BookmarkStrategy(value), nil
 	default:
-		return "", errors.New("bookmark-strategy must be one of auto, local, best_effort, server")
+		return "", i18n.Errorf("error.bookmark_strategy_must_be_one_of_auto_local")
 	}
 }
 
@@ -556,7 +558,7 @@ func resolvePeriod(value string) (pixiv.DurationFilter, error) {
 	case periodYear:
 		return "within_year", nil
 	default:
-		return "", errors.New("period must be one of day, week, month, half-year, year")
+		return "", i18n.Errorf("error.period_must_be_one_of_day_week_month")
 	}
 }
 
@@ -564,13 +566,13 @@ func resolveDateRange(opts options, period pixiv.DurationFilter) (pixiv.Duration
 	startDate := strings.TrimSpace(opts.startDate)
 	endDate := strings.TrimSpace(opts.endDate)
 	if period != "" && (startDate != "" || endDate != "") {
-		return "", "", "", errors.New("period cannot be combined with start-date or end-date")
+		return "", "", "", i18n.Errorf("error.period_cannot_be_combined_with_start_date_or")
 	}
 	if startDate != "" && !validDate(startDate) || endDate != "" && !validDate(endDate) {
-		return "", "", "", errors.New("start-date and end-date must use YYYY-MM-DD")
+		return "", "", "", i18n.Errorf("error.start_date_and_end_date_must_use_yyyy")
 	}
 	if startDate != "" && endDate != "" && startDate > endDate {
-		return "", "", "", errors.New("start-date cannot be later than end-date")
+		return "", "", "", i18n.Errorf("error.start_date_cannot_be_later_than_end_date")
 	}
 	if startDate, endDate, ok := quickDateRange(string(period), time.Now()); ok {
 		return "", startDate, endDate, nil
@@ -608,6 +610,6 @@ func validateSort(value string) error {
 	case "", pixiv.SortModeDateDesc, pixiv.SortModeDateAsc, pixiv.SortModePopularDesc:
 		return nil
 	default:
-		return errors.New("sort must be one of: date_desc, date_asc, popular_desc; see pixiv search --help")
+		return i18n.Errorf("error.sort_must_be_one_of_date_desc_date")
 	}
 }

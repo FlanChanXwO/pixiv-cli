@@ -3,11 +3,11 @@ package record
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"regexp"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 var positiveIntegerJSON = regexp.MustCompile(`^[1-9][0-9]*$`)
@@ -23,7 +23,7 @@ var prohibitedRecordMetadataKeys = map[string]struct{}{
 // MarshalJSON 保留记录中的未知字段，并始终输出一个 JSON 对象。
 func (r Record) MarshalJSON() ([]byte, error) {
 	if r.fields == nil {
-		return nil, errors.New("record is not initialized")
+		return nil, i18n.Errorf("error.record_is_not_initialized")
 	}
 	return json.Marshal(r.fields)
 }
@@ -64,18 +64,18 @@ func decodeRecordObject(data []byte) (map[string]any, error) {
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("invalid record JSON object: %w", err)
+		return nil, i18n.Errorf("error.invalid_record_json_object", err)
 	}
 	// 一条记录必须恰好是一个 JSON 值：第二个值或尾随字节都拒绝。
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		if err == nil {
-			return nil, errors.New("invalid record JSON object: trailing content after object")
+			return nil, i18n.Errorf("error.invalid_record_json_object_trailing_content_after_object")
 		}
-		return nil, fmt.Errorf("invalid record JSON object: trailing content after object: %w", err)
+		return nil, i18n.Errorf("error.invalid_record_json_object_trailing_content_after_object_655", err)
 	}
 	fields, ok := value.(map[string]any)
 	if !ok {
-		return nil, errors.New("invalid record JSON object: record must be a JSON object")
+		return nil, i18n.Errorf("error.invalid_record_json_object_record_must_be_a")
 	}
 	return fields, nil
 }
@@ -115,17 +115,17 @@ func normalizeRecordMetadataKey(key string) string {
 
 func normalizeRecordID(raw any, exists bool) (string, error) {
 	if !exists {
-		return "", errors.New("record id is required")
+		return "", i18n.Errorf("error.record_id_is_required")
 	}
 	if stringID, ok := raw.(string); ok {
 		if stringID == "" {
-			return "", errors.New("record id must be a non-empty string")
+			return "", i18n.Errorf("error.record_id_must_be_a_non_empty_string")
 		}
 		return stringID, nil
 	}
 	number, ok := raw.(json.Number)
 	if !ok || !positiveIntegerJSON.MatchString(number.String()) {
-		return "", errors.New("record id must be a non-empty string or positive integer")
+		return "", i18n.Errorf("error.record_id_must_be_a_non_empty_string_659")
 	}
 	return number.String(), nil
 }
@@ -133,14 +133,14 @@ func normalizeRecordID(raw any, exists bool) (string, error) {
 func validateStringField(fields map[string]any, name string) error {
 	raw, ok := fields[name]
 	if !ok {
-		return fmt.Errorf("record %s is required", name)
+		return i18n.Errorf("error.record_is_required", name)
 	}
 	value, ok := raw.(string)
 	if !ok {
-		return fmt.Errorf("record %s must be a string", name)
+		return i18n.Errorf("error.record_must_be_a_string", name)
 	}
 	if value == "" {
-		return fmt.Errorf("record %s must be a non-empty string", name)
+		return i18n.Errorf("error.record_must_be_a_non_empty_string", name)
 	}
 	return nil
 }

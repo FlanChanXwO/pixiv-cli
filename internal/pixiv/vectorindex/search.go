@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 )
@@ -32,7 +33,7 @@ func (e *SearchError) Error() string { return e.Cause.Error() }
 // Unwrap 保留取消与具体错误类型。
 func (e *SearchError) Unwrap() error { return e.Cause }
 
-var errTimeLimit = errors.New("vector catch-up time limit reached")
+var errTimeLimit = i18n.Errorf("error.vector_catch_up_time_limit_reached")
 
 // CatchUpStatus 标识搜索前的补算结果。
 type CatchUpStatus string
@@ -79,7 +80,7 @@ type SearchResponse struct {
 // Search 在可用时补算，再扫描当前模型空间；补算失败仍可搜索已保存的向量。
 func Search(ctx context.Context, root string, input SearchInput, options SearchOptions) (result SearchResponse, err error) {
 	if (strings.TrimSpace(input.Query) == "") == (len(input.Image) == 0) {
-		return result, errors.New("provide exactly one text query or image")
+		return result, i18n.Errorf("error.provide_exactly_one_text_query_or_image")
 	}
 	plan, err := pagination.ParseInput(input.Page, input.Limit)
 	if err != nil {
@@ -199,12 +200,12 @@ func (s *Store) rank(ctx context.Context, model string, query []float32, plan pa
 			return nil, page, err
 		}
 		if len(query) == 0 || len(vector) != len(query)*4 {
-			return nil, page, errors.New("model vector dimensions changed")
+			return nil, page, i18n.Errorf("error.model_vector_dimensions_changed")
 		}
 		for i, value := range query {
 			v := math.Float32frombits(binary.LittleEndian.Uint32(vector[i*4:]))
 			if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-				return nil, page, errors.New("invalid stored vector")
+				return nil, page, i18n.Errorf("error.invalid_stored_vector")
 			}
 			c.Score += float64(value) * float64(v)
 		}

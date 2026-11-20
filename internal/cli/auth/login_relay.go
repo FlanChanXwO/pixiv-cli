@@ -1,12 +1,12 @@
 package auth
 
 import (
-	"errors"
 	"net"
 	"net/url"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/pflag"
 )
 
@@ -46,10 +46,10 @@ func configuredRelayServerOptions(cmd *pflag.FlagSet, opts accountLoginOptions, 
 		return relayServerOptions{}, false, nil
 	}
 	if result.PublicURL == "" || result.ListenAddr == "" {
-		return relayServerOptions{}, false, errors.New("remote login relay requires login_relay_public_url and login_relay_listen_addr")
+		return relayServerOptions{}, false, i18n.Errorf("error.remote_login_relay_requires_login_relay_public_url")
 	}
 	if (result.TLSCertFile == "") != (result.TLSKeyFile == "") {
-		return relayServerOptions{}, false, errors.New("remote login relay TLS requires both certificate and key files")
+		return relayServerOptions{}, false, i18n.Errorf("error.remote_login_relay_tls_requires_both_certificate_and")
 	}
 	if err := validateRelayServerOptions(result); err != nil {
 		return relayServerOptions{}, false, err
@@ -60,14 +60,14 @@ func configuredRelayServerOptions(cmd *pflag.FlagSet, opts accountLoginOptions, 
 func validateRelayServerOptions(opts relayServerOptions) error {
 	publicURL, err := url.Parse(strings.TrimSpace(opts.PublicURL))
 	if err != nil || publicURL == nil || (publicURL.Scheme != "http" && publicURL.Scheme != "https") || publicURL.Host == "" || publicURL.User != nil || publicURL.RawQuery != "" || publicURL.Fragment != "" {
-		return errors.New("invalid remote login relay public URL")
+		return i18n.Errorf("error.invalid_remote_login_relay_public_url")
 	}
 	host, _, err := net.SplitHostPort(opts.ListenAddr)
 	if err != nil || strings.TrimSpace(host) == "" {
-		return errors.New("remote login relay listen address must include host and port")
+		return i18n.Errorf("error.remote_login_relay_listen_address_must_include_host")
 	}
 	if publicURL.Scheme == "https" && opts.TLSCertFile == "" && !isLoopbackHost(host) {
-		return errors.New("HTTPS relay without TLS PEM must listen on loopback for a same-host reverse proxy")
+		return i18n.Errorf("error.https_relay_without_tls_pem_must_listen_on")
 	}
 	return nil
 }

@@ -5,13 +5,13 @@ package whoami
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/auth"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
 )
@@ -21,33 +21,33 @@ func New(env environment.Env, current func(context.Context) (*auth.AccountSummar
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "whoami",
-		Short: "Show the current local Pixiv account",
+		Short: "help.show_the_current_local_pixiv_account",
 		Args:  env.ExactArgs(0, "pixiv whoami [--json]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			account, err := current(cmd.Context())
 			if err != nil {
 				if sdk.ReasonOf(err) == sdk.Unauthorized {
-					return errors.New(`not logged in; run "pixiv auth login"`)
+					return i18n.Errorf("error.not_logged_in_run_pixiv_auth_login")
 				}
 				return err
 			}
 			if jsonOut {
 				return env.PrintJSON(auth.AccountJSON(*account))
 			}
-			return printText(env.Out, account)
+			return printText(env.Out, env.Language, account)
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "flag.print_json")
 	env.BindNoInput(cmd)
 	environment.SetOffline(cmd)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
-func printText(out io.Writer, account *auth.AccountSummary) error {
+func printText(out io.Writer, language i18n.Locale, account *auth.AccountSummary) error {
 	line := display.Identity(account.Username, account.UserID)
 	if account.Username != "" && account.Premium != nil && *account.Premium {
-		line += " · Premium"
+		line += " · " + language.Text("account.premium")
 	}
 	_, err := fmt.Fprintln(out, line)
 	return err

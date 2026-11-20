@@ -9,15 +9,16 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUsageErrorExitCode(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	isolatedHome(t)
 	var output, diagnostics bytes.Buffer
 	code := cli.Run(t.Context(), []string{"pixiv", "search", "--unknown-flag"}, strings.NewReader(""), &output, &diagnostics)
 	require.Equal(t, 2, code)
@@ -29,16 +30,15 @@ func TestCommandFailureLogging(t *testing.T) {
 	for _, format := range []string{"text", "json"} {
 		for _, level := range []string{"info", "debug"} {
 			t.Run(format+"/"+level, func(t *testing.T) {
-				home := t.TempDir()
-				t.Setenv("HOME", home)
-				t.Setenv("USERPROFILE", home)
+				isolatedHome(t)
+				t.Setenv("LC_ALL", "zh_CN.UTF-8")
 				t.Setenv("PIXIV_LOG_FORMAT", format)
 				t.Setenv("PIXIV_LOG_LEVEL", level)
 				var output, diagnostics bytes.Buffer
 				code := cli.Run(t.Context(), []string{"pixiv", "auth", "import", "abcdef", "--proxy", "http://synthetic-user:synthetic-password@127.0.0.1:1"}, strings.NewReader(""), &output, &diagnostics)
 				require.Equal(t, 1, code)
 				text := diagnostics.String()
-				require.Contains(t, text, "error:")
+				require.Contains(t, text, "错误：")
 				require.NotContains(t, text, "synthetic-user")
 				require.NotContains(t, text, "synthetic-password")
 				if level == "debug" {
@@ -52,6 +52,7 @@ func TestCommandFailureLogging(t *testing.T) {
 					require.Contains(t, text, "Command failed")
 					require.Contains(t, text, "call_id")
 					if format == "json" {
+						require.Contains(t, text, `"msg":"Command failed"`)
 						require.Contains(t, text, `"level":"ERROR"`)
 						require.Regexp(t, `"source":\{[^\n]+/cli/root.go"`, text)
 					} else {
@@ -65,9 +66,7 @@ func TestCommandFailureLogging(t *testing.T) {
 }
 
 func TestAuthUIDFailureDoesNotEchoCredentials(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	isolatedHome(t)
 	t.Setenv("PIXIV_LOG_FORMAT", "json")
 	var output, diagnostics bytes.Buffer
 	code := cli.Run(t.Context(), []string{"pixiv", "auth", "check"}, strings.NewReader("refresh-token-canary"), &output, &diagnostics)
@@ -142,6 +141,24 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 }
 
 type failedErrorOutput struct{ err error }
+
+func TestLocalizedInputErrorKeepsCause(t *testing.T) {
+	for _, tc := range []struct {
+		cause error
+		want  string
+	}{
+		{pagination.ErrLimitNegative, "limit 必须为零或正整数"},
+		{fmt.Errorf("unknown command %q for %q", `bad"command`, "pixiv nested"), `未知命令 "bad\"command"（命令路径："pixiv nested"）`},
+		{errors.New(`unknown command "bad" for "pixiv" with context`), `unknown command "bad" for "pixiv" with context`},
+	} {
+		err := fmt.Errorf("execute: %w", tc.cause)
+		before := err.Error()
+		require.Equal(t, "execute: "+tc.want, environment.ErrorText(err, i18n.Chinese))
+		require.Equal(t, before, environment.ErrorText(err, i18n.English))
+		require.Equal(t, before, err.Error())
+		require.ErrorIs(t, err, tc.cause)
+	}
+}
 
 func (f failedErrorOutput) Write([]byte) (int, error) { return 0, f.err }
 

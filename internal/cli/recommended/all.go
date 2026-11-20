@@ -43,7 +43,7 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 			return false, err
 		}
 		for _, contentType := range []searchfilter.ContentType{searchfilter.ContentTypeIllust, searchfilter.ContentTypeManga} {
-			if err := display.PrintArtworks(spool, filterRecommendedArtworks(items, searchfilter.Filter{ContentType: contentType})); err != nil {
+			if err := display.PrintArtworks(spool, a.env.Language, filterRecommendedArtworks(items, searchfilter.Filter{ContentType: contentType})); err != nil {
 				return false, err
 			}
 		}
@@ -54,7 +54,7 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 		}
 	}
 	if err := record.RunSDKList(ctx, spool, io.Discard, execute, environment.PixivRequest{}, plan, format, record.List[record.Novel]{
-		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(spool, items) },
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(spool, a.env.Language, items) },
 		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
 	}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 		return fetchRecommendedNovels(client)(ctx, cursor)
@@ -86,7 +86,7 @@ func (a commandRunner) runAll(ctx context.Context, client *pixiv.Client, plan pa
 			return false, err
 		}
 		if info.Size() == 0 {
-			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 			return false, err
 		}
 	}

@@ -2,10 +2,10 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/creachadair/tomledit"
 	"github.com/creachadair/tomledit/parser"
 	"github.com/creachadair/tomledit/transform"
@@ -49,13 +49,13 @@ func (s Store) Set(key, raw string) error {
 	case *bool:
 		parsed, err := strconv.ParseBool(strings.TrimSpace(raw))
 		if err != nil {
-			return fmt.Errorf("%s expects bool: %w", key, err)
+			return i18n.Errorf("error.expects_bool", key, err)
 		}
 		value = parsed
 	case *int64, **int64:
 		parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 		if err != nil {
-			return fmt.Errorf("%s expects integer: %w", key, err)
+			return i18n.Errorf("error.expects_integer", key, err)
 		}
 		value = parsed
 	}
@@ -96,7 +96,7 @@ func (s Store) edit(key string, value *parser.Value) error {
 		}
 	} else if entry != nil {
 		if entry.IsSection() {
-			return fmt.Errorf("config key %q is a table", key)
+			return i18n.Errorf("error.config_key_is_a_table", key)
 		}
 		// 只更新值，保留原有键的行尾与前置注释。
 		entry.Value.X = value.X
@@ -154,7 +154,7 @@ func insert(doc *tomledit.Document, path []string, value parser.Value) error {
 			parent.Value.X = append(table, mapping)
 			return nil
 		}
-		return fmt.Errorf("config key %q is not a table", strings.Join(path[:length], "."))
+		return i18n.Errorf("error.config_key_is_not_a_table", strings.Join(path[:length], "."))
 	}
 	// 没有显式父表时写入顶层点分键，兼容已有点分键定义的隐式表。
 	if doc.Global == nil {
@@ -173,7 +173,7 @@ func lookupTable(file map[string]any, path ...string) (map[string]any, error) {
 		var ok bool
 		file, ok = raw.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("config: %s must be a table", strings.Join(path[:index+1], "."))
+			return nil, i18n.Errorf("error.config_must_be_a_table", strings.Join(path[:index+1], "."))
 		}
 	}
 	return file, nil
@@ -187,7 +187,7 @@ func (s Store) WriteVector(value *Vector) error {
 	}
 	doc, err := tomledit.Parse(bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("config.toml: invalid TOML")
+		return i18n.Errorf("error.config_toml_invalid_toml")
 	}
 	var source *tomledit.Document
 	if value != nil {
@@ -215,7 +215,7 @@ func (s Store) WriteVector(value *Vector) error {
 		input := source.First(parts...)
 		if entry != nil {
 			if entry.IsSection() {
-				return fmt.Errorf("config key %q is a table", key)
+				return i18n.Errorf("error.config_key_is_a_table", key)
 			}
 			entry.Value.X = input.Value.X
 		} else if err := insert(doc, parts, input.Value); err != nil {
@@ -228,7 +228,7 @@ func (s Store) WriteVector(value *Vector) error {
 	}
 	var decoded Config
 	if err := toml.Unmarshal(out.Bytes(), &decoded); err != nil {
-		return fmt.Errorf("config.toml: invalid TOML")
+		return i18n.Errorf("error.config_toml_invalid_toml")
 	}
 	path, err := s.Path()
 	if err != nil {

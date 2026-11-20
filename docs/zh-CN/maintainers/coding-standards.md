@@ -178,7 +178,11 @@ func (e Env) ParsePlan(cmd *cobra.Command, limit, page int) (pagination.PagePlan
 
 ## 程序输出
 
-日志、错误字符串、CLI 输出和 MCP 结果文本一律用英文，与注释语言无关。机器输出通道、HTTP 授权与如实返回结构化错误属于 [AGENTS.md](../../../AGENTS.md) 的硬约束。
+CLI 帮助、交互提示、人类可读结果和应用诊断、登录/OAuth 页面及 MCP 画廊界面，通过 `internal/i18n` 的内嵌英文、简体中文词典本地化。语言选择与职责归属遵循[界面本地化](architecture.md#界面本地化)契约。
+
+日志消息模板、原始 `Error()` 字符串以及应用生成的 MCP 工具结果文本继续使用英文。应用错误在界面输出边界翻译，同时保留原始原因及 `errors.Is`/`errors.As` 行为。上游错误详情与用户内容保留原文。
+
+命令/flag 拼写、JSON/NDJSON 字段与值、MCP schema 和错误码在不同语言下保持一致。机器输出通道、HTTP 授权与如实返回结构化错误仍属于 [AGENTS.md](../../../AGENTS.md) 的硬约束。
 
 ## 包文档与注释
 

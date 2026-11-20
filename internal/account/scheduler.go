@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/lifecycle"
 	"github.com/FlanChanXwO/pixiv-cli/internal/logging"
 )
@@ -28,12 +29,12 @@ func (s Scheduler) Run(ctx context.Context, selection Selection, attempt func(co
 	}
 	if selection.Mode == SelectionFixed {
 		if selection.UserID <= 0 {
-			return errors.New("account: fixed user id must be positive")
+			return i18n.Errorf("error.account_fixed_user_id_must_be_positive")
 		}
 		return attempt(ctx, selection.UserID, &lifecycle.Attempt{})
 	}
 	if selection.Mode != SelectionPool {
-		return errors.New("account: invalid selection mode")
+		return i18n.Errorf("error.account_invalid_selection_mode")
 	}
 	attempted := make([]int64, 0)
 	var lastRateLimit error

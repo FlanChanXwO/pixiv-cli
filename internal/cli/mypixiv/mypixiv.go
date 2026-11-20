@@ -3,10 +3,10 @@ package mypixiv
 
 import (
 	"context"
-	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -33,7 +33,7 @@ type commandRunner struct {
 // 但各自执行时都会重新选择账号。
 func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, exec: exec}
-	cmd := &cobra.Command{Use: "mypixiv", Short: "Browse authenticated MyPixiv data"}
+	cmd := &cobra.Command{Use: "mypixiv", Short: "help.browse_authenticated_mypixiv_data"}
 	cmd.AddCommand(a.newUsersCommand(), a.newWorksCommand())
 	env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
@@ -44,7 +44,7 @@ func (a commandRunner) newUsersCommand() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "users",
-		Short: "List MyPixiv users for the authenticated account",
+		Short: "help.list_mypixiv_users_for_the_authenticated_account",
 		Args:  a.env.ExactArgs(0, "pixiv mypixiv users"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runUsers(cmd, opts)
@@ -62,7 +62,7 @@ func (a commandRunner) newWorksCommand() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "works [USER_ID]",
-		Short: "Browse MyPixiv works or one user's works",
+		Short: "help.browse_mypixiv_works_or_one_user_s_works",
 		Args:  a.env.MaxArgs(1, "pixiv mypixiv works [USER_ID] --type artwork|manga|novel"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runWorks(cmd, args, opts)
@@ -71,7 +71,7 @@ func (a commandRunner) newWorksCommand() *cobra.Command {
 	a.env.BindCommonFlags(cmd, &opts.Options)
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	environment.BindListFlags(cmd, &opts.limit, &opts.page)
-	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "required entity type: artwork or novel")
+	cmd.Flags().StringVarP(&opts.contentType, "type", "t", "", "flag.required_entity_type_artwork_or_novel")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -88,7 +88,7 @@ func (a commandRunner) runUsers(cmd *cobra.Command, opts options) error {
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -147,7 +147,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -180,7 +180,7 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 		}
 		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Novel]{
 			RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
-			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, a.env.Language, items) },
 		}, fetch)
 	}
 	fetch := func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
@@ -205,6 +205,8 @@ func (a commandRunner) runWorks(cmd *cobra.Command, args []string, opts options)
 	}
 	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
 		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+		Print: func(items []record.Artwork, _ int) error {
+			return display.PrintArtworks(a.env.Out, a.env.Language, items)
+		},
 	}, fetch)
 }

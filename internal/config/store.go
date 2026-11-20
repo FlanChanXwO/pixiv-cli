@@ -3,11 +3,11 @@ package config
 import (
 	_ "embed"
 	"errors"
-	"fmt"
 	"os"
 	"slices"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -71,7 +71,7 @@ func (s Store) load(c *Config) error {
 		// 这里只报告行号与该行的键，不转述原始消息。
 		var decodeErr *toml.DecodeError
 		if !errors.As(err, &decodeErr) {
-			return errors.New("config.toml: invalid TOML")
+			return i18n.Errorf("error.config_toml_invalid_toml")
 		}
 		line, _ := decodeErr.Position()
 		lines := strings.Split(string(body), "\n")
@@ -79,9 +79,9 @@ func (s Store) load(c *Config) error {
 		name = strings.TrimSpace(name)
 		// 出错行可能位于多行字符串内，等号左侧是配置值；只报告已声明的键名。
 		if slices.ContainsFunc(Keys(), func(key string) bool { return key == name || strings.HasSuffix(key, "."+name) }) {
-			return fmt.Errorf("config.toml line %d: key %q has invalid TOML or a value of the wrong type", line, name)
+			return i18n.Errorf("error.config_toml_line_key_has_invalid_toml_or", line, name)
 		}
-		return fmt.Errorf("config.toml line %d: invalid TOML", line)
+		return i18n.Errorf("error.config_toml_line_invalid_toml", line)
 	}
 	applyEnvironment(c)
 	return nil

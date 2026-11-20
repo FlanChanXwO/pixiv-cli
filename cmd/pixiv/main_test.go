@@ -2,13 +2,80 @@ package main_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 )
+
+func TestInterfaceLanguage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	for _, command := range []string{"", "fanbox", "vector"} {
+		args := []string{"pixiv"}
+		if command != "" {
+			args = append(args, command)
+		}
+		args = append(args, "--help")
+		var out, diagnostic bytes.Buffer
+		if code := cli.Run(context.Background(), args, strings.NewReader(""), &out, &diagnostic); code != 0 || diagnostic.Len() != 0 {
+			t.Fatalf("%v: code=%d stderr=%s", args, code, &diagnostic)
+		}
+		if !strings.Contains(out.String(), "用法：") || !strings.Contains(out.String(), "选项：") {
+			t.Fatalf("%v: untranslated help: %s", args, &out)
+		}
+	}
+	var out, diagnostic bytes.Buffer
+	if code := cli.Run(context.Background(), []string{"pixiv", "--unknown"}, strings.NewReader(""), &out, &diagnostic); code != 2 || !strings.Contains(diagnostic.String(), "未知选项") {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, &out, &diagnostic)
+	}
+}
+
+func TestInterfaceLanguageKeepsMachineOutput(t *testing.T) {
+	home := isolatedHome(t)
+	seedPixivAccount(t, home, "Bookmark · 原文用户", true)
+	t.Setenv("LC_ALL", "C")
+	english, diagnostic, code := runCLI(t, "whoami", "--json")
+	if code != 0 || diagnostic != "" {
+		t.Fatalf("English JSON: code=%d stderr=%s", code, diagnostic)
+	}
+	t.Setenv("LC_ALL", "zh_TW.UTF-8")
+	chinese, diagnostic, code := runCLI(t, "whoami", "--json")
+	if code != 0 || diagnostic != "" || chinese != english {
+		t.Fatalf("Chinese JSON changed: code=%d stdout=%s stderr=%s", code, chinese, diagnostic)
+	}
+	human, diagnostic, code := runCLI(t, "whoami")
+	if code != 0 || diagnostic != "" || human != "Bookmark · 原文用户 (12345678) · 高级会员\n" {
+		t.Fatalf("Chinese text: code=%d stdout=%s stderr=%s", code, human, diagnostic)
+	}
+}
+
+func TestInterfaceInputDiagnostics(t *testing.T) {
+	isolatedHome(t)
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"does-not-exist"}, `未知命令 "does-not-exist"（命令路径："pixiv"）`},
+		{[]string{"rankign"}, `你可能想输入：\n\tranking`},
+		{[]string{"search", "cat", "--limit", "-1"}, "limit 必须为零或正整数"},
+		{[]string{"search", "cat", "--page", "0"}, "page 必须为正整数"},
+		{[]string{"search", "cat", "--page", "2"}, "--page 需要正整数 --limit"},
+		{[]string{"search", "cat", "--limit", fmt.Sprint(int(^uint(0) >> 1)), "--page", "3"}, "page 和 limit 导致逻辑结果偏移量溢出"},
+		{[]string{"fanbox", "posts", "artist", "--limit", "-1"}, "limit 必须为零或正整数"},
+	} {
+		stdout, stderr, code := runCLI(t, tc.args...)
+		if code != 1 || stdout != "" || !strings.Contains(stderr, tc.want) {
+			t.Fatalf("%v: code=%d stdout=%s stderr=%s", tc.args, code, stdout, stderr)
+		}
+	}
+}
 
 const versionSmokeConfig = "[update]\ncheck_enabled = false\n"
 
@@ -87,7 +154,7 @@ type isolatedProcessEnv struct {
 	home   string
 }
 
-// isolatedEnv 同时关闭临时用户目录中的自动更新，避免网络提示污染命令 stderr。
+// isolatedEnv 固定英文并关闭临时目录中的自动更新，避免宿主语言和网络提示影响断言。
 func isolatedEnv(t *testing.T) isolatedProcessEnv {
 	var env isolatedProcessEnv
 	t.Helper()
@@ -100,6 +167,7 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 		env.values = append(env.values, entry)
 	}
 	env.values = append(env.values,
+		"LC_ALL=C",
 		"HOME="+env.home,
 		"APPDATA="+env.home,
 		"LOCALAPPDATA="+env.home,
@@ -117,6 +185,7 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 
 func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
+		"LC_ALL", "LC_MESSAGES", "LANG",
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY",
 	} {

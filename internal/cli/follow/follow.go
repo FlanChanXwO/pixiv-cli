@@ -3,9 +3,9 @@ package follow
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -30,7 +30,7 @@ type commandRunner struct {
 // New 构造 `pixiv follow` 命令；关注与取消关注都要求已认证账号。
 func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
-	cmd := &cobra.Command{Use: "follow", Short: "Manage followed users"}
+	cmd := &cobra.Command{Use: "follow", Short: "help.manage_followed_users"}
 	cmd.AddCommand(a.newAdd(), a.newRemove())
 	env.BindNoInput(cmd)
 	return cmd
@@ -40,7 +40,7 @@ func (a commandRunner) newAdd() *cobra.Command {
 	opts := options{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "add [USER_ID]",
-		Short: "Follow a user",
+		Short: "help.follow_a_user",
 		Args:  a.env.ActionInputArgs("pixiv follow add [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateFollowRestrict(opts.restrict); err != nil {
@@ -65,8 +65,8 @@ func (a commandRunner) newAdd() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
-	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.follow_visibility_public_or_private")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "flag.record_failure_strategy_skip_or_fail_fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -76,7 +76,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 	opts := options{}
 	cmd := &cobra.Command{
 		Use:   "remove [USER_ID]",
-		Short: "Unfollow a user",
+		Short: "help.unfollow_a_user",
 		Args:  a.env.ActionInputArgs("pixiv follow remove [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := record.RecordFailureStrategy(opts.onError); err != nil {
@@ -98,7 +98,7 @@ func (a commandRunner) newRemove() *cobra.Command {
 		},
 	}
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
-	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	cmd.Flags().StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "flag.record_failure_strategy_skip_or_fail_fast")
 	opts.input = a.env.BindTextOrRecord(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -131,7 +131,7 @@ func resolveFollowUserID(ctx context.Context, value, operation string) (int64, e
 		}},
 	})
 	if err != nil {
-		return 0, fmt.Errorf("user_id: %w", err)
+		return 0, i18n.Errorf("error.user_id", err)
 	}
 	return resolved.ID, nil
 }

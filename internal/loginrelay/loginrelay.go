@@ -21,6 +21,8 @@ import (
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // Session 提供单次登录的 HTTP handler，不创建 listener 或操作账号库。
@@ -247,11 +249,11 @@ func New(ctx context.Context, publicURL, loginURL string, acceptsCallback func(s
 		select {
 		case <-finalReady:
 			ok := finalStatus
-			WriteFinalPage(w, ok)
+			WriteFinalPage(w, ok, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 		case <-r.Context().Done():
-			WriteFinalPage(w, false)
+			WriteFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 		case <-ctx.Done():
-			WriteFinalPage(w, false)
+			WriteFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 		}
 	})
 
@@ -309,12 +311,13 @@ func handoffRelayDeepLink(origin, sessionID, proof string) string {
 }
 
 // WriteFinalPage 仅渲染固定成功/失败文案，不回显凭据或服务端诊断。
-func WriteFinalPage(w http.ResponseWriter, ok bool) {
+func WriteFinalPage(w http.ResponseWriter, ok bool, locale i18n.Locale) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Language", locale.String())
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 	}
-	if err := writeResult(w, ok); err != nil {
-		http.Error(w, "could not render login page", http.StatusInternalServerError)
+	if err := writeResult(w, ok, locale); err != nil {
+		http.Error(w, locale.Text("login.render_failed"), http.StatusInternalServerError)
 	}
 }

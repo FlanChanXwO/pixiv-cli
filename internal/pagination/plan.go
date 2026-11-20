@@ -2,20 +2,21 @@ package pagination
 
 import (
 	"context"
-	"errors"
 	"math"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // 校验失败的原因；调用方按自己的输出契约翻译其中需要改写的文本。
 var (
 	// ErrLimitNegative 表示 limit 为负数。
-	ErrLimitNegative = errors.New("limit must be zero or a positive integer")
+	ErrLimitNegative = i18n.Errorf("error.limit_negative")
 	// ErrPageNotPositive 表示显式给出的 page 不是正整数。
-	ErrPageNotPositive = errors.New("page must be a positive integer")
+	ErrPageNotPositive = i18n.Errorf("error.page_not_positive")
 	// ErrPageRequiresLimit 表示给了 page 却没有正数 limit。
-	ErrPageRequiresLimit = errors.New("--page requires --limit to be a positive integer")
+	ErrPageRequiresLimit = i18n.Errorf("error.page_requires_limit")
 	// ErrOffsetOverflow 表示 page 与 limit 相乘溢出。
-	ErrOffsetOverflow = errors.New("page and limit overflow the logical result offset")
+	ErrOffsetOverflow = i18n.Errorf("error.offset_overflow")
 )
 
 // ParsePlan 校验 limit/page 的组合并生成逻辑分页计划。limitSet 与 pageSet 区分“省略”
@@ -83,7 +84,7 @@ func ParseInput(page, limit *int) (PagePlan, error) {
 	}
 	if page != nil {
 		if limit == nil || *limit <= 0 {
-			return PagePlan{}, errors.New("page requires limit to be a positive integer")
+			return PagePlan{}, i18n.Errorf("error.page_requires_limit_to_be_a_positive_integer")
 		}
 		if *page-1 > math.MaxInt / *limit {
 			return PagePlan{}, ErrOffsetOverflow

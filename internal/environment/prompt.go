@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"golang.org/x/term"
 )
 
-var errPromptNotTTY = errors.New("interactive prompt is only available on a TTY")
+var errPromptNotTTY = i18n.Errorf("error.prompt_not_tty")
 
 // terminalFD 要求输入和输出都是终端：提示写往 out，密码从终端的 fd 读取而不回显。
 func terminalFD(in io.Reader, out io.Writer) (int, error) {
@@ -55,7 +56,7 @@ func (e Env) PromptInput(message, defaultValue string) (string, error) {
 		if value = strings.TrimSpace(value); value != "" {
 			return value, nil
 		}
-		if err := writePrompt(e.Out, "value cannot be empty\n"); err != nil {
+		if err := writePrompt(e.Out, "%s", e.Text("prompt.empty")); err != nil {
 			return "", err
 		}
 	}
@@ -81,7 +82,7 @@ func (e Env) PromptSecret(message string) (string, error) {
 		if value := strings.TrimSpace(string(raw)); value != "" {
 			return value, nil
 		}
-		if err := writePrompt(e.Out, "value cannot be empty\n"); err != nil {
+		if err := writePrompt(e.Out, "%s", e.Text("prompt.empty")); err != nil {
 			return "", err
 		}
 	}
@@ -90,7 +91,7 @@ func (e Env) PromptSecret(message string) (string, error) {
 // PromptSelect 打印编号选项并返回用户选择的那一项。
 func (e Env) PromptSelect(message string, options []string) (string, error) {
 	if len(options) == 0 {
-		return "", errors.New("no available options")
+		return "", i18n.Errorf("error.no_available_options")
 	}
 	if _, err := terminalFD(e.In, e.Out); err != nil {
 		return "", err
@@ -110,7 +111,7 @@ func (e Env) PromptSelect(message string, options []string) (string, error) {
 		if n, convErr := strconv.Atoi(line); convErr == nil && n >= 1 && n <= len(options) {
 			return strings.TrimSpace(options[n-1]), nil
 		}
-		if err := writePrompt(e.Out, "enter a number between 1 and %d\n", len(options)); err != nil {
+		if err := writePrompt(e.Out, e.Text("prompt.number"), len(options)); err != nil {
 			return "", err
 		}
 	}
@@ -122,9 +123,9 @@ func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
 		return false, err
 	}
 	reader := bufio.NewReader(e.In)
-	label := fmt.Sprintf("%s (Y/n): ", message)
+	label := fmt.Sprintf(e.Text("prompt.confirm_yes"), message)
 	if !defaultValue {
-		label = fmt.Sprintf("%s (y/N): ", message)
+		label = fmt.Sprintf(e.Text("prompt.confirm_no"), message)
 	}
 	for {
 		line, err := readLine(reader, e.Out, label)
@@ -139,7 +140,7 @@ func (e Env) PromptConfirm(message string, defaultValue bool) (bool, error) {
 		case "n", "no":
 			return false, nil
 		}
-		if err := writePrompt(e.Out, "%q is not a valid answer, please try again.\n", line); err != nil {
+		if err := writePrompt(e.Out, e.Text("prompt.answer"), line); err != nil {
 			return false, err
 		}
 	}

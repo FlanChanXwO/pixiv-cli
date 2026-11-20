@@ -3,12 +3,11 @@ package bookmark
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -34,7 +33,7 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -87,9 +86,9 @@ func (a commandRunner) runAllList(cmd *cobra.Command, args []string, opts listOp
 				var err error
 				switch item.kind {
 				case string(target.NamespaceArtwork):
-					err = display.PrintArtworks(&staged, []record.Artwork{item.artwork})
+					err = display.PrintArtworks(&staged, a.env.Language, []record.Artwork{item.artwork})
 				case string(target.NamespaceNovel):
-					err = display.PrintNovels(&staged, []record.Novel{item.novel})
+					err = display.PrintNovels(&staged, a.env.Language, []record.Novel{item.novel})
 				}
 				if err != nil {
 					return false, err
@@ -111,7 +110,7 @@ func bookmarkArtworkStream(client *pixiv.Client, userID int64, opts listOptions)
 				return nil, bookmarkStreamCursor{}, err
 			}
 			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark artwork checkpoint exceeds upstream batch")
+				return nil, bookmarkStreamCursor{}, i18n.Errorf("error.bookmark_artwork_checkpoint_exceeds_upstream_batch")
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
@@ -137,7 +136,7 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 				return nil, bookmarkStreamCursor{}, err
 			}
 			if cursor.consumed > len(result.Items) {
-				return nil, bookmarkStreamCursor{}, errors.New("bookmark novel checkpoint exceeds upstream batch")
+				return nil, bookmarkStreamCursor{}, i18n.Errorf("error.bookmark_novel_checkpoint_exceeds_upstream_batch")
 			}
 			items := make([]bookmarkListItem, 0, len(result.Items)-cursor.consumed)
 			for _, item := range result.Items[cursor.consumed:] {
@@ -155,7 +154,7 @@ func bookmarkNovelStream(client *pixiv.Client, userID int64, opts listOptions) p
 
 func bookmarkCheckpoint(cursor bookmarkStreamCursor, position int) (bookmarkStreamCursor, error) {
 	if position <= 0 {
-		return bookmarkStreamCursor{}, errors.New("bookmark checkpoint position must be positive")
+		return bookmarkStreamCursor{}, i18n.Errorf("error.bookmark_checkpoint_position_must_be_positive")
 	}
 	return bookmarkStreamCursor{upstream: cursor.upstream, consumed: cursor.consumed + position}, nil
 }
@@ -167,7 +166,7 @@ func (item bookmarkListItem) record() (record.Record, error) {
 	case string(target.NamespaceNovel):
 		return record.RecordFromNovel(item.novel)
 	default:
-		return record.Record{}, fmt.Errorf("unsupported bookmark item kind %q", item.kind)
+		return record.Record{}, i18n.Errorf("error.unsupported_bookmark_item_kind", item.kind)
 	}
 }
 
@@ -188,7 +187,7 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -218,7 +217,9 @@ func (a commandRunner) runArtworkList(cmd *cobra.Command, args []string, opts li
 	}
 	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
 		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
-		Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+		Print: func(items []record.Artwork, _ int) error {
+			return display.PrintArtworks(a.env.Out, a.env.Language, items)
+		},
 	}, fetch)
 }
 
@@ -239,7 +240,7 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -269,6 +270,6 @@ func (a commandRunner) runNovelList(cmd *cobra.Command, args []string, opts list
 	}
 	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.executeSDK, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Novel]{
 		RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
-		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+		Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, a.env.Language, items) },
 	}, fetch)
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	_ "github.com/ncruces/go-sqlite3/driver"
 )
@@ -33,12 +33,12 @@ func importLegacy(ctx context.Context, path string) (document, error) {
 		escaped := (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
 		db, err := sql.Open("sqlite3", "file:"+escaped+"?mode=ro")
 		if err != nil {
-			return fmt.Errorf("account: open legacy database: %w", err)
+			return i18n.Errorf("error.account_open_legacy_database", err)
 		}
 		defer func() { returnErr = errors.Join(returnErr, db.Close()) }()
 		tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 		if err != nil {
-			return fmt.Errorf("account: read legacy snapshot: %w", err)
+			return i18n.Errorf("error.account_read_legacy_snapshot", err)
 		}
 		defer func() {
 			if err := tx.Rollback(); !errors.Is(err, sql.ErrTxDone) {
@@ -58,7 +58,7 @@ func importLegacy(ctx context.Context, path string) (document, error) {
 		return tx.Commit()
 	})
 	if err != nil {
-		return document{}, fmt.Errorf("account: migrate legacy database: %w", err)
+		return document{}, i18n.Errorf("error.account_migrate_legacy_database", err)
 	}
 	return doc, nil
 }
@@ -69,13 +69,13 @@ func legacyVersion(ctx context.Context, tx *sql.Tx) (int, error) {
 		return 0, err
 	}
 	if applicationID != legacyApplicationID {
-		return 0, fmt.Errorf("legacy database belongs to another application (application_id=0x%X)", applicationID)
+		return 0, i18n.Errorf("error.legacy_database_belongs_to_another_application_application_id", applicationID)
 	}
 	if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
 		return 0, err
 	}
 	if version < 1 || version > legacyLatestVersion {
-		return 0, fmt.Errorf("unsupported legacy database version %d", version)
+		return 0, i18n.Errorf("error.unsupported_legacy_database_version", version)
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT version FROM schema_migration ORDER BY version`)
 	if err != nil {
@@ -90,14 +90,14 @@ func legacyVersion(ctx context.Context, tx *sql.Tx) (int, error) {
 		}
 		applied++
 		if next != applied {
-			return 0, errors.New("legacy migration ledger has a version gap")
+			return 0, i18n.Errorf("error.legacy_migration_ledger_has_a_version_gap")
 		}
 	}
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 	if applied != version {
-		return 0, errors.New("legacy migration ledger does not match user_version")
+		return 0, i18n.Errorf("error.legacy_migration_ledger_does_not_match_user_version")
 	}
 	return version, nil
 }
@@ -135,14 +135,14 @@ func readLegacyPixiv(ctx context.Context, tx *sql.Tx, version int, doc *document
 		a.Pool.FrozenUntil = legacyOptionalTime(frozen)
 		if premium.Valid {
 			if premium.Int64 != 0 && premium.Int64 != 1 {
-				return errors.New("invalid legacy premium status")
+				return i18n.Errorf("error.invalid_legacy_premium_status")
 			}
 			value := premium.Int64 == 1
 			a.PremiumStatus = &value
 		}
 		if selected {
 			if doc.LastUserID != 0 {
-				return errors.New("multiple legacy pool markers")
+				return i18n.Errorf("error.multiple_legacy_pool_markers")
 			}
 			doc.LastUserID = a.UserID
 		}

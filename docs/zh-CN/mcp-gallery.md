@@ -15,6 +15,8 @@ flowchart LR
     J --> MP
 ```
 
+画廊优先使用 `hostContext.locale`，宿主未提供语言时按 `navigator.languages` 选择。中文地区变体统一使用简体中文，其他不受支持的语言使用英文。宿主改变语言时，画廊原地更新文字、提示和无障碍名称，保留当前页码、缩放、已加载媒体及未保存的收藏设置。标题、标签、作者名和简介保留原文。双语词典随画廊资源内嵌，翻译无需网络请求。
+
 ## MCP Apps 作品预览
 
 - `pixiv_show_gallery`、`pixiv_show_artwork` 与 `pixiv_artwork_media` 把结果关联到 Gallery UI（`text/html;profile=mcp-app`、`_meta.ui.resourceUri`）。稳定的 `ui://pixiv-cli/gallery` 始终可读；工具引用由渲染后前端（含注入的 canonical 媒体 origin）派生的 `ui://pixiv-cli/gallery/sha256-<digest>` 别名，避免宿主 UI 缓存掩盖更新。历史别名在新读取时交付当前视图——digest 是缓存标识，不是完整性保证。

@@ -3,9 +3,9 @@ package account
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -43,7 +43,7 @@ func (s savedCredentials) CompareAndSwap(ctx context.Context, expected int64, re
 func (s *Store) OpenSDKClient(ctx context.Context, userID int64, options pixiv.Options) (*pixiv.Client, error) {
 	account, err := s.GetPixiv(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("select pixiv account: %w", err)
+		return nil, i18n.Errorf("error.select_pixiv_account", err)
 	}
 	return pixiv.New(savedCredentials{store: s, userID: userID, createdAt: account.CreatedAt}, options)
 }

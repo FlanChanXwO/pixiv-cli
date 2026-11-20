@@ -5,12 +5,11 @@ package user
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -37,7 +36,7 @@ type commandRunner struct {
 // New 构造 `pixiv user` 命令组。follow 命令由组合根注入，本包不直接依赖同级的 follow 包。
 func New(env environment.Env, executeSDK environment.PixivExecutor, follow func() *cobra.Command) *cobra.Command {
 	a := commandRunner{env: env, executeSDK: executeSDK}
-	cmd := &cobra.Command{Use: "user", Short: "Query a Pixiv user"}
+	cmd := &cobra.Command{Use: "user", Short: "help.query_a_pixiv_user"}
 	cmd.AddCommand(
 		a.newSearchCommand(),
 		a.newDetailCommand(),
@@ -78,7 +77,7 @@ func (a commandRunner) newSearchCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:     "search WORD",
-		Short:   "Search users",
+		Short:   "help.search_users",
 		Example: "pixiv user search \"miku\" --json",
 		Args:    a.env.MinArgs(1, "pixiv user search [options] WORD"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -95,7 +94,7 @@ func (a commandRunner) newDetailCommand() *cobra.Command {
 	var opts environment.Options
 	cmd := &cobra.Command{
 		Use:   "detail USER_ID",
-		Short: "Show one user's complete profile",
+		Short: "help.show_one_user_s_complete_profile",
 		Args:  a.env.ExactArgs(1, "pixiv user detail [options] USER_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDetail(cmd, args[0], opts)
@@ -111,14 +110,14 @@ func (a commandRunner) newArtworksCommand() *cobra.Command {
 	opts := listOptions{illustType: string(pixiv.ContentTypeIllust)}
 	cmd := &cobra.Command{
 		Use:   "artworks [USER_ID]",
-		Short: "List a user's artworks",
+		Short: "help.list_a_user_s_artworks",
 		Args:  a.env.MaxArgs(1, "pixiv user artworks [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runArtworks(cmd, args, opts)
 		},
 	}
 	a.bindListCommand(cmd, &opts)
-	cmd.Flags().StringVarP(&opts.illustType, "type", "t", opts.illustType, "illust type: illust, manga, ugoira")
+	cmd.Flags().StringVarP(&opts.illustType, "type", "t", opts.illustType, "flag.illust_type_illust_manga_ugoira")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -128,15 +127,15 @@ func (a commandRunner) newBookmarksCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "bookmarks [USER_ID]",
-		Short: "List a user's bookmarks",
+		Short: "help.list_a_user_s_bookmarks",
 		Args:  a.env.MaxArgs(1, "pixiv user bookmarks [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runBookmarks(cmd, args, opts)
 		},
 	}
 	a.bindListCommand(cmd, &opts)
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "bookmark visibility (public or private)")
-	cmd.Flags().StringVar(&opts.tag, "tag", "", "filter by bookmark tag")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.bookmark_visibility_public_or_private")
+	cmd.Flags().StringVar(&opts.tag, "tag", "", "flag.filter_by_bookmark_tag")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -146,14 +145,14 @@ func (a commandRunner) newFollowingCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "following [USER_ID]",
-		Short: "List users followed by a user",
+		Short: "help.list_users_followed_by_a_user",
 		Args:  a.env.MaxArgs(1, "pixiv user following [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runFollowing(cmd, args, opts)
 		},
 	}
 	a.bindListCommand(cmd, &opts)
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.follow_visibility_public_or_private")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -163,7 +162,7 @@ func (a commandRunner) newNovelsCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "novels [USER_ID]",
-		Short: "List a user's novels",
+		Short: "help.list_a_user_s_novels",
 		Args:  a.env.MaxArgs(1, "pixiv user novels [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runNovels(cmd, args, opts)
@@ -179,14 +178,14 @@ func (a commandRunner) newFollowersCommand() *cobra.Command {
 	opts := listOptions{restrict: string(pixiv.RestrictPublic)}
 	cmd := &cobra.Command{
 		Use:   "followers [USER_ID]",
-		Short: "List a user's followers",
+		Short: "help.list_a_user_s_followers",
 		Args:  a.env.MaxArgs(1, "pixiv user followers [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runFollowers(cmd, args, opts)
 		},
 	}
 	a.bindListCommand(cmd, &opts)
-	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "follow visibility (public or private)")
+	cmd.Flags().StringVar(&opts.restrict, "restrict", opts.restrict, "flag.follow_visibility_public_or_private")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -196,7 +195,7 @@ func (a commandRunner) newRelatedCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "related USER_ID",
-		Short: "List users related to a user",
+		Short: "help.list_users_related_to_a_user",
 		Args:  a.env.ExactArgs(1, "pixiv user related [options] USER_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runRelated(cmd, args[0], opts)
@@ -212,7 +211,7 @@ func (a commandRunner) newBlockedCommand() *cobra.Command {
 	opts := listOptions{}
 	cmd := &cobra.Command{
 		Use:   "blocked [USER_ID]",
-		Short: "List users blocked by a user",
+		Short: "help.list_users_blocked_by_a_user",
 		Args:  a.env.MaxArgs(1, "pixiv user blocked [options] [USER_ID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runBlocked(cmd, args, opts)
@@ -242,7 +241,7 @@ func (a commandRunner) resolve(cmd *cobra.Command, opts listOptions, autoNDJSON 
 		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return pagination.PagePlan{}, environment.PixivRequest{}, false, false, a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -277,7 +276,7 @@ func resolveUserID(ctx context.Context, value, operation string) (int64, error) 
 		}},
 	})
 	if err != nil {
-		return 0, fmt.Errorf("user_id: %w", err)
+		return 0, i18n.Errorf("error.user_id", err)
 	}
 	return resolved.ID, nil
 }
@@ -347,7 +346,7 @@ func (a commandRunner) runDetail(cmd *cobra.Command, arg string, opts environmen
 	if jsonOut {
 		return a.env.PrintJSON(result)
 	}
-	return display.PrintUserDetail(a.env.Out, result)
+	return display.PrintUserDetail(a.env.Out, a.env.Language, result)
 }
 
 func (a commandRunner) runArtworks(cmd *cobra.Command, args []string, opts listOptions) error {

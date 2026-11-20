@@ -15,6 +15,8 @@ flowchart LR
     J --> MP
 ```
 
+The gallery follows `hostContext.locale`, falling back to `navigator.languages` when the host omits a locale. Chinese regional variants use Simplified Chinese; other unsupported languages use English. Host locale changes update text, tooltips and accessible names in place, preserving the current page, zoom, loaded media and unsaved bookmark settings. Titles, tags, author names and captions remain in their original language. Both catalogs are embedded in the gallery resource and require no translation network calls.
+
 ## MCP Apps artwork previews
 
 - `pixiv_show_gallery`, `pixiv_show_artwork` and `pixiv_artwork_media` associate results with the Gallery UI (`text/html;profile=mcp-app`, `_meta.ui.resourceUri`). Stable `ui://pixiv-cli/gallery` stays readable; tools reference a `ui://pixiv-cli/gallery/sha256-<digest>` alias derived from the rendered frontend (including the injected canonical media origin) so host UI caching cannot hide updates. Historical aliases deliver the current view on a fresh read — the digest is a cache identity, not an integrity guarantee.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
 
@@ -35,7 +36,7 @@ func mapSelectionError(err, lastRateLimit error, now time.Time) error {
 	case PoolSelectionExhausted:
 		return poolExhaustedError(lastRateLimit, selectionErr.EarliestFrozenUntil, now)
 	default:
-		return fmt.Errorf("account pool state store returned unknown selection reason %q", selectionErr.Reason)
+		return i18n.Errorf("error.account_pool_state_store_returned_unknown_selection_reason", selectionErr.Reason)
 	}
 }
 

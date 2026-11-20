@@ -11,10 +11,10 @@ package account
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 )
@@ -47,7 +47,7 @@ func (s *Store) withLock(ctx context.Context, action func() error) error {
 func (s *Store) read(ctx context.Context) (document, error) {
 	body, err := secretfile.ReadPrivateFile(s.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return document{}, fmt.Errorf("account: read file: %w", err)
+		return document{}, i18n.Errorf("error.account_read_file", err)
 	}
 	doc, migrate, err := decodeDocument(body, errors.Is(err, os.ErrNotExist))
 	if err != nil {

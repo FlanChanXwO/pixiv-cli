@@ -3,12 +3,12 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 )
@@ -38,7 +38,7 @@ type AccountSummary struct {
 func (s *Accounts) ImportSession(ctx context.Context, sessionValue string, setDefault bool, proxyOverride *string) (AccountSummary, error) {
 	sessionValue = strings.TrimSpace(sessionValue)
 	if sessionValue == "" {
-		return AccountSummary{}, errors.New("FANBOX session value is required")
+		return AccountSummary{}, i18n.Errorf("error.fanbox_session_value_is_required")
 	}
 	options, err := s.connectionOptions(proxyOverride)
 	if err != nil {
@@ -50,11 +50,11 @@ func (s *Accounts) ImportSession(ctx context.Context, sessionValue string, setDe
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {
-		return AccountSummary{}, fmt.Errorf("read fanbox default account: %w", err)
+		return AccountSummary{}, i18n.Errorf("error.read_fanbox_default_account", err)
 	}
 	if setDefault || !hasDefault {
 		if err := s.defaults.SetFanboxDefaultUserID(user.UserID); err != nil {
-			return AccountSummary{}, fmt.Errorf("set fanbox default account: %w", err)
+			return AccountSummary{}, i18n.Errorf("error.set_fanbox_default_account", err)
 		}
 	}
 	isDefault, err := s.isDefault(ctx, user.UserID)
@@ -90,10 +90,10 @@ func (s *Accounts) ListAccounts(ctx context.Context) ([]AccountSummary, error) {
 func (s *Accounts) RemoveAccount(ctx context.Context, userID int64) error {
 	defaultID, explicit, err := s.defaults.ReadFanboxDefaultUserID()
 	if err != nil {
-		return fmt.Errorf("read fanbox default account: %w", err)
+		return i18n.Errorf("error.read_fanbox_default_account", err)
 	}
 	if explicit && defaultID == userID {
-		return fmt.Errorf("cannot remove fanbox account %d while it is the explicit default; use `pixiv fanbox auth use --auto` or select another account first", userID)
+		return i18n.Errorf("error.cannot_remove_fanbox_account_while_it_is_the", userID)
 	}
 	if err := s.store.RemoveFanbox(ctx, userID); err != nil {
 		return err
@@ -167,7 +167,7 @@ func (s *Accounts) selectedUserID(ctx context.Context) (int64, error) {
 	} else if ok {
 		if _, err := s.store.GetFanbox(ctx, userID); err != nil {
 			if errors.Is(err, account.ErrFanboxNotFound) {
-				return 0, fmt.Errorf("configured default fanbox account %d is missing", userID)
+				return 0, i18n.Errorf("error.configured_default_fanbox_account_is_missing", userID)
 			}
 			return 0, err
 		}

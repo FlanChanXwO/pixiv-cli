@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	// 导入 provider 会执行各自的 init 注册。
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/chromium"
@@ -11,6 +10,7 @@ import (
 	_ "github.com/FlanChanXwO/pixiv-cli/internal/browsercookies/safari"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/browsercookies"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // SystemBrowserProvider 把浏览器 cookie provider 的受约束读取结果
@@ -42,10 +42,10 @@ func (SystemBrowserProvider) ReadSession(ctx context.Context, browser, profileID
 		return "", err
 	}
 	if len(secrets) == 0 {
-		return "", errors.New("browser profile does not contain a FANBOXSESSID cookie")
+		return "", i18n.Errorf("error.browser_profile_does_not_contain_a_fanboxsessid_cookie")
 	}
 	if len(secrets) > 1 {
-		return "", fmt.Errorf("browser profile contains multiple FANBOXSESSID cookies")
+		return "", i18n.Errorf("error.browser_profile_contains_multiple_fanboxsessid_cookies")
 	}
 	return secrets[0].Value(), nil
 }
