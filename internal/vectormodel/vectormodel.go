@@ -24,6 +24,9 @@ import (
 	"strings"
 )
 
+// ErrTextTooLong 表示本地查询超出含 EOS 的固定上下文长度。
+var ErrTextTooLong = errors.New("local text query is too long")
+
 const defaultBase = "https://generativelanguage.googleapis.com"
 
 // Options 指定模型、本地资产目录和云端服务；APIKey 仅用于请求头。

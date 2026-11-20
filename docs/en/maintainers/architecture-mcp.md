@@ -38,6 +38,8 @@ The root directly composes `internal/account` stores, gates and read sessions an
 
 Pixiv `internal/toolhost/cursor.go` owns the outer MCP cursor envelope, including query/account binding and inner SDK cursor text. It uses public `sdk.ParseCursor`; SDK-private cursor codecs stay inside the SDK. Existing MCP continuation tokens keep their wire contract.
 
+Vector search is always registered. Its narrow `SDKPorts.VectorSearch` port reaches the shared `vectorindex.Search` through the CLI composition root. Input/source/pagination validation precedes account/model access. The root reads vector configuration per call and resolves the HTTP-selected account only when needed; the CLI and MCP share catch-up and ranking. Structured failures expose fixed codes while preserving `isError=true`.
+
 ## Gallery and media
 
 | Package | Owns |

@@ -17,6 +17,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/gallery"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -51,6 +52,8 @@ type SDKPorts struct {
 	// ReverseSearch 保存启动时注入的反向搜图能力与配置快照。它的 HTTP client、代理和
 	// 凭据由组合根构造，MCP 输入无法覆盖。
 	ReverseSearch ReverseSearchPorts
+	// VectorSearch 延迟解析账号，让配置与输入失败先于账号读取。
+	VectorSearch func(context.Context, vectorindex.SearchInput, string, func(context.Context) (Account, error)) (vectorindex.SearchResponse, error)
 	// Logger 接收执行边界日志；nil 时工具保持静默。
 	Logger *slog.Logger
 }
@@ -120,3 +123,6 @@ func AddTool[In, Out any](app *App, server *mcp.Server, tool *mcp.Tool, handler 
 
 // ResolveAccount 返回本次工具调用固定的账号；同一调用内多次调用结果一致。
 func (a *App) ResolveAccount(ctx context.Context) (Account, error) { return a.resolveAccount(ctx) }
+
+// VectorAccount 保留 stdio 池选择与 HTTP 固定账号，在向量配置校验后才调用。
+func (a *App) VectorAccount(ctx context.Context) (Account, error) { return a.resolveSDKAccount(ctx) }

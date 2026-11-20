@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
-	"path/filepath"
-	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/internal/toolhost"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/toolrun"
@@ -185,36 +182,9 @@ func reverseSearchOutputSchema() map[string]any {
 
 func (t pixivTools) reverseSearchHandler(ctx context.Context, input reverseSearchInput) (*mcp.CallToolResult, reverseSearchOutput, error) {
 	out := emptyReverseSearchOutput()
-	if (input.Source == nil) == (input.Image == nil) {
-		return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
-	}
-	var source string
-	if input.Source != nil {
-		source = *input.Source
-		if strings.HasPrefix(strings.ToLower(source), "file://") {
-			parsed, err := url.Parse(source)
-			// file URI 只接受 server 本机绝对路径；带 authority、查询或片段时直接拒绝。
-			if err != nil || parsed.User != nil || (parsed.Host != "" && !strings.EqualFold(parsed.Host, "localhost")) || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(source, "#") || strings.ContainsRune(parsed.Path, 0) {
-				return reverseSearchError(reversesearch.CodeInvalidSource), out, nil
-			}
-			source = filepath.FromSlash(parsed.Path)
-			// Windows 的 file:///C:/... 多出一个前导分隔符，需要去掉；其他平台保持原样。
-			if len(source) > 0 && filepath.VolumeName(source[1:]) != "" {
-				source = source[1:]
-			}
-			if !filepath.IsAbs(source) || strings.HasPrefix(filepath.ToSlash(source), "//") {
-				return reverseSearchError(reversesearch.CodeInvalidSource), out, nil
-			}
-		}
-	} else {
-		source = input.Image.DownloadURL
-		parsed, err := url.Parse(source)
-		if strings.TrimSpace(input.Image.FileID) == "" || err != nil || parsed.Host == "" || parsed.User != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
-		}
-	}
-	if strings.TrimSpace(source) == "" {
-		return reverseSearchError(reversesearch.CodeInvalidRequest), out, nil
+	source, code := imageSource(input.Source, input.Image)
+	if code != "" {
+		return reverseSearchError(code), out, nil
 	}
 	ports := t.app.ReverseSearchPorts()
 	if ports.Searcher == nil {

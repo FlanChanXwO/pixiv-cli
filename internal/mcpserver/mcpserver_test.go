@@ -169,3 +169,29 @@ func cursorArtworkPage(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintf(w, `{"illusts":[{"id":101,"title":"artwork","type":"illust","create_date":"2026-01-01T00:00:00Z","user":{"id":42,"name":"artist"},"width":640,"height":480,"meta_single_page":{"original_image_url":"https://i.pximg.net/a.jpg"},"page_count":1}],"next_url":%s}`, next)
 }
+
+func TestVectorSearchRejectsBeforeAccountAccess(t *testing.T) {
+	server := mcpserver.New(pixiv.SDKPorts{ResolveAccount: func(context.Context, pixiv.Account) (pixiv.Account, error) {
+		panic("invalid input must not read accounts")
+	}}, pixiv.Account{}, tools.SDKPorts{}, nil)
+	c, s := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(t.Context(), s, nil)
+	require.NoError(t, err)
+	defer ss.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "vector", Version: "1"}, nil).Connect(t.Context(), c, nil)
+	require.NoError(t, err)
+	defer session.Close()
+	for i, args := range []map[string]any{{}, {"query": "x", "source": "secret-canary"}, {"query": "x", "page": 1}, {"query": "x"}} {
+		result, err := session.CallTool(t.Context(), &mcp.CallToolParams{Name: "pixiv_vector_search", Arguments: args})
+		require.NoError(t, err)
+		require.True(t, result.IsError)
+		wire, err := json.Marshal(result)
+		require.NoError(t, err)
+		require.NotContains(t, string(wire), "secret-canary")
+		expected := "invalid_request"
+		if i == 3 {
+			expected = "not_set_up"
+		}
+		require.Contains(t, string(wire), `"error":"`+expected+`"`)
+	}
+}

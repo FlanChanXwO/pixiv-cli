@@ -63,7 +63,7 @@ sequenceDiagram
 | DCR 注册表 | ≤ 1024 个 client。满时新注册替换任意一个既无 owner 批准也无授权的 client，匿名注册无法耗尽注册表；压力下待批准 client 可能需要重新注册 |
 | 批准标记 | owner 明确同意会在签发 code 前持久保护该 client；DCR 元数据无法设置这个私有标记。已有授权（包括旧状态文件中已撤销的授权）也会保护其 client；重置在清除授权前保留批准。1024 个都受保护 → `temporarily_unavailable`（503）；管理员需在停机时检查私有状态中陈旧的已批准 client 与授权。拒绝未知私有字段的旧版本二进制无法读取含该标记的状态 |
 | 待处理条目 | owner 会话、表单与 code 各 ≤ 1024，满时 `temporarily_unavailable`（503），不驱逐。会话/表单 10 分钟过期（= code 寿命），在下次读取 auth 状态时回收 |
-| 截止时间 | HTTP header 准入 10 秒。工具执行、媒体传输与关闭没有新增完成截止时间。这些上限针对未认证资源增长，不是上游媒体大小 |
+| 截止时间 | HTTP header 准入 10 秒。工具执行、媒体传输与关闭没有新增完成截止时间。向量搜索在页面／批次之间检查共用的 30 秒补算预算。这些上限针对未认证资源增长，不是上游媒体大小 |
 
 ## Pixiv 账号选择
 
@@ -167,6 +167,22 @@ flowchart LR
 作品 record 使用 `type:"artwork"`，`content_type` 保留上游类别（`illust`、`manga`、`ugoira` 或未知值），ID 保持字符串。空标签译名和缺失的 `profile_image`/`cover` 字段省略。
 
 **输出安全** —— record 保留公开字段，需要时附带 opaque 资源引用；从不含解析/签名 URL、请求头、Cookie、过期元数据、access token 或其他传输凭据（小说内容块与评论/头像图片同理）。结构化结果使用公开 SDK 模型与类型化信封。FANBOX 第一方资源携带 opaque `ref` 与可选 `requires_credentials`，绝不含 `url`、`request_headers` 或 `expires_at`。
+
+## 向量搜索
+
+先在终端执行 `pixiv vector setup` 和 `pixiv vector sync`，再使用 `pixiv_vector_search`。工具在 stdio 与 HTTP 下始终注册。每次调用读取当前向量配置，setup、模型或设备切换、clear 无需重启 MCP 即可生效；其他启动配置保留原有重启要求。
+
+`query`（文字）、`source`、宿主 `image` 三者恰好提供一个。图片字段、本地文件 URI 校验及服务器本机文件／网络访问沿用[反向搜图](#反向搜图)。可选 `limit`、`page` 沿用共享列表规则：省略 limit 返回 30 条，0 返回全部，page 需要正数 limit。输入错误在账号或模型访问之前返回。
+
+```json
+{"query":"樱花树下穿红裙的人","limit":10}
+```
+
+输出为 `{records, pagination, index}`。作品快照保留资源无关字段，附加最高分页面的 `match: {score, page_index}`。结果来自当前模型的本机索引，跨账号共享，可能包含私密／R18 内容。分数是当前模型的余弦相似度。`index` 提供 `model`、`pages`、`pending`、`catch_up`、`bookmarks_read` 与可选 `error`。补算状态为 `complete`、`time_limit`、`busy`、`skipped` 或 `stopped`；存在待算页时文字提示执行 `pixiv vector sync`。CLI／MCP 共用 30 秒补算预算，在页面／批次之间检查，当前页完成后再停止。
+
+调用会写本机索引；云端模型会上传缩略图与查询并可能计费。注解为 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=false`、`openWorldHint=true`。setup、sync 与清理均通过 CLI 执行。
+
+失败保留结构化输出，设置 `isError=true` 与 `error`：`not_set_up`、`invalid_request`、反向搜图的来源错误代码、`text_too_long`、`unsupported_image`、`model_unavailable`、`index_unavailable`、`sync_failed`、`canceled` 或 `unknown`。零向量且补算失败时返回错误；已有索引可用时继续搜索，并在 `index` 保留补算错误。输出与日志隐藏输入、临时路径、key 与上游响应正文。
 
 ## 反向搜图
 
@@ -314,6 +330,7 @@ flowchart LR
 | --- | --- |
 | `pixiv_search_illust` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`start_date`、`end_date`、`content_type`、`ai_mode`、`aspect_ratio`、`resolution`、精确 `tool`、收藏区间/策略、`illust_filter`、`page`、`limit`。SDK 打开前校验枚举/日期。默认批次 `cursor` 保留收藏策略 checkpoint；省略 `page`/`limit`，重复相同查询、筛选与策略。 |
 | `pixiv_search_novel` | 必填 `word`；可选 `search_target`、`sort`、`duration`、`novel_filter`、`page`、`limit`。分级、文本长度、仅原创有意不发布。 |
+| `pixiv_vector_search` | `query`、`source`、宿主 `image` 恰好一个；可选 `page`、`limit`。见[向量搜索](#向量搜索)。 |
 | `pixiv_reverse_search` | `source` 或宿主 `image` 恰好一个；可选 `provider`。见[反向搜图](#反向搜图)。 |
 | `pixiv_illust_detail` | 正整数 `illust_id` 或受支持的作品 `url` 恰好一个；返回一条安全 record。 |
 | `pixiv_novel_detail` / `pixiv_novel_content` | 正整数 `novel_id`；元数据 / 保留的 `content_unavailable` 兼容工具（空内容块，不调用已拒绝端点）。 |

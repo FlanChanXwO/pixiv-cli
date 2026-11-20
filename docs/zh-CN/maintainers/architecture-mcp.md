@@ -38,6 +38,8 @@ flowchart TB
 
 Pixiv 的 `internal/toolhost/cursor.go` 拥有外层 MCP cursor 信封，包含查询/账号绑定与内层 SDK cursor 文本；通过公开 `sdk.ParseCursor` 解码，SDK 私有 cursor codec 留在 SDK 内。现有 MCP 续页 token 保持 wire 契约。
 
+向量搜索始终注册；窄端口 `SDKPorts.VectorSearch` 经 CLI 组合根调用共用的 `vectorindex.Search`。输入、来源与分页在账号／模型访问前校验。组合根每次读取向量配置，按需解析 HTTP 已选账号；CLI 与 MCP 共用补算和排序。结构化失败使用固定代码并保留 `isError=true`。
+
 ## Gallery 与媒体
 
 | 包 | 负责 |

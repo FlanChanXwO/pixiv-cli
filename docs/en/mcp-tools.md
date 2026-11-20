@@ -63,7 +63,7 @@ sequenceDiagram
 | DCR registry | ≤ 1024 clients. At capacity a new registration replaces an arbitrary client with neither owner approval nor a grant, so anonymous registrations cannot exhaust it; a pending client may need to re-register under pressure |
 | Approval marker | Explicit owner consent durably protects a client before a code is issued; DCR metadata cannot set this private marker. Existing grants (including revoked ones from older state files) also protect clients; reset keeps approval before clearing grants. All 1024 protected → `temporarily_unavailable` (503); admins review stale approved clients/grants in private state while stopped. Older binaries rejecting unknown private-state fields cannot read state with the marker |
 | Pending entries | Owner sessions, forms and codes: ≤ 1024 each, `temporarily_unavailable` (503) at capacity, no eviction. Sessions/forms expire after 10 min (= code lifetime), reclaimed on the next auth state read |
-| Deadlines | HTTP header admission 10 s. Tool execution, media transfer and shutdown have no new completion deadline. These bounds address unauthenticated growth, not upstream media size |
+| Deadlines | HTTP header admission 10 s. Tool execution, media transfer and shutdown have no new completion deadline. Vector search checks its shared 30-second catch-up budget between pages/batches. These bounds address unauthenticated growth, not upstream media size |
 
 ## Pixiv account selection
 
@@ -167,6 +167,22 @@ flowchart LR
 Artwork records use `type:"artwork"` and `content_type` for the original upstream category (`illust`, `manga`, `ugoira`, or an unknown value). IDs remain strings. Empty translated tag names and absent `profile_image`/`cover` fields are omitted.
 
 **Output safety** — records keep public fields and an opaque resource reference when needed; never resolved/signed URLs, request headers, Cookies, expiry metadata, access tokens or other transport credentials (same for novel content blocks and comment/profile images). Structured results use the public SDK models and typed envelopes. FANBOX first-party resources carry opaque `ref` and optional `requires_credentials`, never `url`, `request_headers` or `expires_at`.
+
+## Vector search
+
+Run `pixiv vector setup` and `pixiv vector sync` in a terminal before using `pixiv_vector_search`. It is always registered in stdio and HTTP. Each call reads the current vector configuration, so setup, model/device changes and clear take effect without restarting MCP; other startup settings retain their restart requirements.
+
+Provide exactly one of `query` (text), `source` or host `image`. Image fields, local file URI validation and server-local filesystem/network access follow [reverse image search](#reverse-image-search). Optional `limit` and `page` follow the shared list rules: omitted limit returns 30 results, 0 returns all, and page needs a positive limit. Invalid inputs are rejected before account or model access.
+
+```json
+{"query":"a red dress under cherry blossoms","limit":10}
+```
+
+The output is `{records, pagination, index}`. Resource-free artwork snapshots include `match: {score, page_index}` for their highest-scoring page. Results use the current model's local index across accounts and can include private/R18 content. Scores are model-specific cosine similarities. `index` exposes `model`, `pages`, `pending`, `catch_up`, `bookmarks_read` and optional `error`. Catch-up is `complete`, `time_limit`, `busy`, `skipped` or `stopped`; pending pages produce a text reminder to run `pixiv vector sync`. The shared CLI/MCP catch-up budget is 30 seconds, checked between pages/batches; an active page finishes before stopping.
+
+Calls may write the index and upload thumbnails/queries to the configured cloud model with usage charges. Annotations are `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=true`. Setup, sync and clearing are CLI operations.
+
+Failures preserve structured output with `isError=true` and an `error` code: `not_set_up`, `invalid_request`, source error codes from reverse image search, `text_too_long`, `unsupported_image`, `model_unavailable`, `index_unavailable`, `sync_failed`, `canceled` or `unknown`. Zero vectors plus a catch-up failure returns an error; a usable older index can still return results with the catch-up error in `index`. Inputs, temporary paths, keys and upstream response bodies stay out of results and logs.
 
 ## Reverse image search
 
@@ -314,6 +330,7 @@ Artwork records from `search_illust` and `illust_detail` keep upstream `is_bookm
 | --- | --- |
 | `pixiv_search_illust` | Required `word`; optional `search_target`, `sort`, `duration`, `start_date`, `end_date`, `content_type`, `ai_mode`, `aspect_ratio`, `resolution`, exact `tool`, bookmark range/strategy, `illust_filter`, `page`, `limit`. Enum/date validation before the SDK opens. Default-batch `cursor` keeps bookmark strategy checkpoints; omit `page`/`limit`, repeat query, filters and strategy. |
 | `pixiv_search_novel` | Required `word`; optional `search_target`, `sort`, `duration`, `novel_filter`, `page`, `limit`. Rating, text-length, original-only intentionally unpublished. |
+| `pixiv_vector_search` | Exactly one of `query`, `source`, host `image`; optional `page`, `limit`. See [vector search](#vector-search). |
 | `pixiv_reverse_search` | Exactly one of `source` or host `image`; optional `provider`. See [reverse image search](#reverse-image-search). |
 | `pixiv_illust_detail` | Exactly one of positive `illust_id` or a supported artwork `url`; one safe record. |
 | `pixiv_novel_detail` / `pixiv_novel_content` | Positive `novel_id`; metadata / retained `content_unavailable` compatibility tool (empty blocks, rejected endpoint not called). |

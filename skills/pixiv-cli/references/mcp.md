@@ -32,6 +32,10 @@ Standard read-only, destructive, idempotent and open-world annotations are appro
 
 Do not treat a local fixture or successful launch as proof that a cloud connector completed authorization.
 
+## Vector search
+
+Run `pixiv vector setup` and `pixiv vector sync` in the server terminal first. `pixiv_vector_search` is always available in discovery; provide exactly one `query`, `source`, or host `image`, plus optional `page`/`limit`. It reads vector settings on each call without restarting MCP, shares CLI catch-up/ranking, and returns `{records, pagination, index}` with best-page `match`. Results span accounts and can include private/R18 snapshots. Calls save local state and cloud models upload thumbnails/queries with possible charges; authorize that scope. Pending pages prompt a terminal sync. Failures expose fixed structured `error` codes with `isError=true`; keep all source/attachment/private paths and keys out of logs and replies.
+
 ## Reverse-search attachments
 
 For MCP reverse search, provide exactly one of `source` (a server-local regular-file path, local `file://` URI, or HTTP(S) URL) or `image`. The tool publishes `_meta["openai/fileParams"] = ["image"]`; the top-level image object has required string `download_url` and non-empty `file_id`, plus optional string `mime_type` and `file_name`, with no extra fields. Use only the host-supplied HTTP(S) download URL; file IDs are not addresses.

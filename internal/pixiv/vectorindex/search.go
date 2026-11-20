@@ -20,6 +20,18 @@ const (
 	searchBatch   = 30
 )
 
+// SearchError 保留原始错误供 CLI 使用，并向 MCP 提供固定阶段分类。
+type SearchError struct {
+	Code  string
+	Cause error
+}
+
+// Error 返回完整的原始诊断。
+func (e *SearchError) Error() string { return e.Cause.Error() }
+
+// Unwrap 保留取消与具体错误类型。
+func (e *SearchError) Unwrap() error { return e.Cause }
+
 var errTimeLimit = errors.New("vector catch-up time limit reached")
 
 // CatchUpStatus 标识搜索前的补算结果。
@@ -73,6 +85,15 @@ func Search(ctx context.Context, root string, input SearchInput, options SearchO
 	if err != nil {
 		return result, err
 	}
+	code := "index_unavailable"
+	defer func() {
+		if err != nil {
+			var classified *SearchError
+			if !errors.As(err, &classified) {
+				err = &SearchError{Code: code, Cause: err}
+			}
+		}
+	}()
 	var release func() error
 	acquired := false
 	result.Index.CatchUp = CatchUpSkipped
@@ -128,8 +149,9 @@ func Search(ctx context.Context, root string, input SearchInput, options SearchO
 		return result, err
 	}
 	if counts.Pages == 0 && syncErr != nil {
-		return result, syncErr
+		return result, &SearchError{Code: "sync_failed", Cause: syncErr}
 	}
+	code = "model_unavailable"
 	var vector []float32
 	if len(input.Image) > 0 {
 		vector, err = options.Embedder.Image(ctx, input.Image)
@@ -139,6 +161,7 @@ func Search(ctx context.Context, root string, input SearchInput, options SearchO
 	if err != nil {
 		return result, err
 	}
+	code = "index_unavailable"
 	result.Records, result.Pagination, err = store.rank(ctx, options.Model, vector, plan, input.Limit)
 	return result, err
 }
