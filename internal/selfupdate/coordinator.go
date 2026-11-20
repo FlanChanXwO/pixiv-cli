@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate/release"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
 )
@@ -72,27 +73,27 @@ func NewUpdateCoordinator(options UpdateCoordinatorOptions) (*UpdateCoordinator,
 func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) (UpdateResult, error) {
 	source, err := c.sourceDetector.Detect(request.BuildInfo)
 	if err != nil {
-		return UpdateResult{}, fmt.Errorf("detect installation source: %w", err)
+		return UpdateResult{}, i18n.Errorf("error.detect_installation_source_w", err)
 	}
 	if source == InstallSourceDevelopment {
-		return UpdateResult{}, fmt.Errorf("development builds cannot update themselves")
+		return UpdateResult{}, i18n.Errorf("error.development_builds_cannot_update_themselves")
 	}
 	current, err := release.ParseSemanticVersion(request.BuildInfo.Version)
 	if err != nil {
-		return UpdateResult{}, fmt.Errorf("parse current build version %q: %w", request.BuildInfo.Version, err)
+		return UpdateResult{}, i18n.Errorf("error.parse_current_build_version_q_w", request.BuildInfo.Version, err)
 	}
 	checked, err := c.releaseChecker.Check(ctx, ReleaseCheckOptions{
 		IncludePrerelease: request.IncludePrerelease,
 		Automatic:         false,
 	})
 	if err != nil {
-		return UpdateResult{}, fmt.Errorf("check available releases: %w", err)
+		return UpdateResult{}, i18n.Errorf("error.check_available_releases_w", err)
 	}
 	result := UpdateResult{Source: source, CurrentVersion: request.BuildInfo.Version}
 	if checked.Release != nil {
 		candidate, err := release.ParseSemanticVersion(checked.Release.TagName)
 		if err != nil {
-			return UpdateResult{}, fmt.Errorf("parse selected GitHub release tag %q: %w", checked.Release.TagName, err)
+			return UpdateResult{}, i18n.Errorf("error.parse_selected_github_release_tag_q_w", checked.Release.TagName, err)
 		}
 		latest := checked.Release.TagName
 		result.LatestVersion = &latest
@@ -128,11 +129,11 @@ func (c *UpdateCoordinator) Execute(ctx context.Context, request UpdateRequest) 
 	case InstallSourceGoInstall:
 		command := Command{Name: "go", Args: []string{"install", goInstallPackage + "@" + checked.Release.TagName}}
 		if err := c.commandRunner.Run(ctx, command); err != nil {
-			return UpdateResult{}, fmt.Errorf("run go install update: %w", err)
+			return UpdateResult{}, i18n.Errorf("error.run_go_install_update_w", err)
 		}
 	case InstallSourceRelease:
 		if err := c.releaseInstaller.Install(ctx, *checked.Release); err != nil {
-			return UpdateResult{}, fmt.Errorf("install release update %q: %w", checked.Release.TagName, err)
+			return UpdateResult{}, i18n.Errorf("error.install_release_update_q_w", checked.Release.TagName, err)
 		}
 	}
 	return result, nil
@@ -144,7 +145,7 @@ func homebrewChannelSwitchRequested(source InstallSource, includePrerelease bool
 
 func (c *UpdateCoordinator) runHomebrew(ctx context.Context, action, formula string) error {
 	if err := c.commandRunner.Run(ctx, Command{Name: "brew", Args: []string{action, formula}}); err != nil {
-		return fmt.Errorf("Homebrew %s %q: %w", action, formula, err)
+		return i18n.Errorf("error.homebrew_s_q_w", action, formula, err)
 	}
 	return nil
 }
@@ -152,14 +153,14 @@ func (c *UpdateCoordinator) runHomebrew(ctx context.Context, action, formula str
 // switchHomebrewFormula 先移除冲突 formula，再安装目标；第二步失败时恢复用户原先的渠道。
 func (c *UpdateCoordinator) switchHomebrewFormula(ctx context.Context, previousFormula, targetFormula string) error {
 	if err := c.runHomebrew(ctx, "uninstall", previousFormula); err != nil {
-		return fmt.Errorf("remove Homebrew formula %q before switching to %q: %w", previousFormula, targetFormula, err)
+		return i18n.Errorf("error.remove_homebrew_formula_q_before_switching_to_q_w", previousFormula, targetFormula, err)
 	}
 	installErr := c.runHomebrew(ctx, "install", targetFormula)
 	if installErr == nil {
 		return nil
 	}
 	if rollbackErr := c.runHomebrew(ctx, "install", previousFormula); rollbackErr != nil {
-		return fmt.Errorf("install Homebrew formula %q after removing %q: %w; rollback reinstall %q failed: %v", targetFormula, previousFormula, installErr, previousFormula, rollbackErr)
+		return i18n.Errorf("error.install_homebrew_formula_q_after_removing_q_w_rollback_reinstall_q_failed_v", targetFormula, previousFormula, installErr, previousFormula, rollbackErr)
 	}
-	return fmt.Errorf("install Homebrew formula %q after removing %q: %w; rollback reinstall %q succeeded", targetFormula, previousFormula, installErr, previousFormula)
+	return i18n.Errorf("error.install_homebrew_formula_q_after_removing_q_w_rollback_reinstall_q_succeeded", targetFormula, previousFormula, installErr, previousFormula)
 }

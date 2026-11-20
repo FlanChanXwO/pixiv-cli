@@ -2,9 +2,10 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // errInvalidProxy 标记代理配置错误，包装它的错误统一保留这段稳定分类文本。
@@ -20,10 +21,10 @@ func HTTPClient(proxyValue string) (*http.Client, error) {
 	}
 	proxyURL, err := url.Parse(proxyValue)
 	if err != nil {
-		return nil, fmt.Errorf("parse proxy URL: %w", errInvalidProxy)
+		return nil, i18n.Errorf("error.parse_proxy_url", errInvalidProxy)
 	}
 	if proxyURL.Host == "" || (proxyURL.Scheme != "http" && proxyURL.Scheme != "https" && proxyURL.Scheme != "socks5" && proxyURL.Scheme != "socks5h") {
-		return nil, fmt.Errorf("proxy URL must use http, https, socks5, or socks5h: %w", errInvalidProxy)
+		return nil, i18n.Errorf("error.proxy_url_must_use_http_https_socks5_or", errInvalidProxy)
 	}
 	transport.Proxy = http.ProxyURL(proxyURL)
 	return client, nil

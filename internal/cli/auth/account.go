@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
@@ -54,7 +54,7 @@ type accountPoolChangeOptions struct {
 func (a controller) newAccountCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Manage local Pixiv authentication",
+		Short: "help.manage_local_pixiv_authentication",
 		Args:  a.env.ExactArgs(0, "pixiv auth <command>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -82,14 +82,14 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 	opts := accountExportOptions{}
 	cmd := &cobra.Command{
 		Use:   "export [UID]",
-		Short: "Export stored authentication",
+		Short: "help.export_stored_authentication",
 		Args:  a.env.MaxArgs(1, "pixiv auth export [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.force && !cmd.Flags().Changed("output") {
-				return errors.New("--force requires --output")
+				return i18n.Errorf("error.force_requires_output")
 			}
 			if opts.all && len(args) != 0 {
-				return errors.New("--all cannot be combined with a UID")
+				return i18n.Errorf("error.all_cannot_be_combined_with_a_uid")
 			}
 			userID := int64(0)
 			if len(args) == 1 {
@@ -109,12 +109,12 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 			}
 			if cmd.Flags().Changed("output") {
 				if strings.TrimSpace(opts.output) == "" {
-					return errors.New("--output requires a path")
+					return i18n.Errorf("error.output_requires_a_path")
 				}
 				if err := a.support.WriteBundle(opts.output, result.Bundle, opts.force); err != nil {
 					return err
 				}
-				return writeAuthExportStdout(a.env.Out, []byte(fmt.Sprintf("Exported %d accounts to %s\n", result.AccountCount, display.SafeLine(opts.output))))
+				return writeAuthExportStdout(a.env.Out, []byte(fmt.Sprintf(a.env.Text("format.exported_accounts_to"), result.AccountCount, display.SafeLine(opts.output))))
 			}
 			if opts.all {
 				return writeAuthExportStdout(a.env.Out, result.Bundle)
@@ -122,9 +122,9 @@ func (a controller) newAccountExportCommand() *cobra.Command {
 			return writeAuthExportStdout(a.env.Out, []byte(result.RefreshToken+"\n"))
 		},
 	}
-	cmd.Flags().BoolVar(&opts.all, "all", false, "export all stored accounts; cannot be combined with UID")
-	cmd.Flags().StringVar(&opts.output, "output", "", "write a versioned authentication bundle to PATH")
-	cmd.Flags().BoolVar(&opts.force, "force", false, "replace an existing output file; requires --output")
+	cmd.Flags().BoolVar(&opts.all, "all", false, "flag.export_all_stored_accounts_cannot_be_combined_with")
+	cmd.Flags().StringVar(&opts.output, "output", "", "flag.write_a_versioned_authentication_bundle_to_path")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "flag.replace_an_existing_output_file_requires_output")
 	a.env.BindTextValueWhen(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
 	environment.Bind(cmd, environment.Execution{})
 	return cmd
@@ -134,13 +134,13 @@ func (a controller) newAccountListCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List accounts",
+		Short: "help.list_accounts",
 		Args:  a.env.ExactArgs(0, "pixiv auth list [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountList(cmd.Context(), jsonOut)
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "flag.print_json")
 	a.env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -160,31 +160,31 @@ func (a controller) accountList(ctx context.Context, jsonOut bool) error {
 		return a.env.PrintJSON(out)
 	}
 	if len(out.Accounts) == 0 {
-		_, err := fmt.Fprintln(a.env.Err, "No results.")
+		_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 		return err
 	}
 	for _, acct := range out.Accounts {
-		if err := printAccount(a.env.Out, acct); err != nil {
+		if err := printAccount(a.env.Out, a.env.Language, acct); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func printAccount(out io.Writer, acct accountOut) error {
+func printAccount(out io.Writer, language i18n.Locale, acct accountOut) error {
 	marker := " "
 	if acct.Default {
 		marker = "*"
 	}
 	line := marker + " " + display.Identity(acct.Username, acct.UserID)
 	if valueOrFalse(acct.PremiumStatus) {
-		line += "  Premium"
+		line += "  " + language.Text("account.premium")
 	}
 	if valueOrFalse(acct.Schedulable) {
-		line += "  pool"
+		line += "  " + language.Text("account.pool")
 	}
 	if acct.PoolFrozenUntil != nil {
-		line += "  frozen until " + acct.PoolFrozenUntil.UTC().Format(time.RFC3339)
+		line += "  " + language.Text("account.frozen") + acct.PoolFrozenUntil.UTC().Format(time.RFC3339)
 	}
 	_, err := fmt.Fprintln(out, line)
 	return err
@@ -202,7 +202,7 @@ func accountIdentity(list accountListOut, userID int64) string {
 func (a controller) newAccountPoolCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pool",
-		Short: "Manage account pool scheduling",
+		Short: "help.manage_account_pool_scheduling",
 		Args:  a.env.ExactArgs(0, "pixiv auth pool <command>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -222,7 +222,7 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show account pool scheduling status",
+		Short: "help.show_account_pool_scheduling_status",
 		Args:  a.env.ExactArgs(0, "pixiv auth pool status [--json]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			service, err := a.accountService(cmd.Context())
@@ -237,22 +237,22 @@ func (a controller) newAccountPoolStatusCommand() *cobra.Command {
 			if jsonOut {
 				return a.env.PrintJSON(out)
 			}
-			state := "disabled"
+			state := a.env.Text("state.disabled")
 			if out.Enabled {
-				state = "enabled"
+				state = a.env.Text("state.enabled")
 			}
-			if _, err := fmt.Fprintf(a.env.Out, "Account pool: %s (%s)\n", state, display.SafeLine(out.Strategy)); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, a.env.Text("output.account_pool"), state, display.SafeLine(out.Strategy)); err != nil {
 				return err
 			}
 			for _, acct := range out.Accounts {
-				if err := printAccount(a.env.Out, acct); err != nil {
+				if err := printAccount(a.env.Out, a.env.Language, acct); err != nil {
 					return err
 				}
 			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "flag.print_json")
 	a.env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -262,13 +262,13 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 	opts := accountPoolChangeOptions{}
 	cmd := &cobra.Command{
 		Use:   name + " [UID...]",
-		Short: fmt.Sprintf("%s accounts in the pool", strings.Title(name)),
+		Short: "help.pool_" + name,
 		Args: func(_ *cobra.Command, args []string) error {
 			if opts.all && len(args) > 0 {
-				return errors.New("--all cannot be combined with UIDs")
+				return i18n.Errorf("error.all_cannot_be_combined_with_uids")
 			}
 			if !opts.all && len(args) == 0 {
-				return errors.New("at least one UID is required unless --all is used")
+				return i18n.Errorf("error.at_least_one_uid_is_required_unless_all")
 			}
 			return nil
 		},
@@ -297,18 +297,18 @@ func (a controller) newAccountPoolChangeCommand(name string, schedulable bool) *
 			}
 			accounts := formatUIDs(userIDs)
 			if opts.all {
-				accounts = "all accounts"
+				accounts = a.env.Text("account.all")
 			}
 			if schedulable {
-				_, err = fmt.Fprintf(a.env.Out, "Added %s to the account pool\n", accounts)
+				_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.added_to_the_account_pool"), accounts)
 			} else {
-				_, err = fmt.Fprintf(a.env.Out, "Removed %s from the account pool\n", accounts)
+				_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.removed_from_the_account_pool"), accounts)
 			}
 			return err
 		},
 	}
-	cmd.Flags().BoolVar(&opts.all, "all", false, "apply to every stored account")
-	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&opts.all, "all", false, "flag.apply_to_every_stored_account")
+	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
 	a.env.BindTextValueWhen(cmd, 0, -1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -330,15 +330,15 @@ func (a controller) newAccountRemoveCommand() *cobra.Command {
 	opts := accountRemoveOptions{}
 	cmd := &cobra.Command{
 		Use:   "remove [UID]",
-		Short: "Remove an account",
+		Short: "help.remove_an_account",
 		Args:  a.env.MaxArgs(1, "pixiv auth remove [UID] [--yes]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountRemove(cmd.Context(), args, opts)
 		},
 	}
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	flags.BoolVar(&opts.yes, "yes", false, "skip confirmation in interactive terminals")
+	flags.BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
+	flags.BoolVar(&opts.yes, "yes", false, "flag.skip_confirmation_in_interactive_terminals")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -353,17 +353,17 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 	if err != nil {
 		return err
 	}
-	userID, err := a.resolveExistingUID(list, args, "Select account to remove")
+	userID, err := a.resolveExistingUID(list, args, a.env.Text("account.select_remove"))
 	if err != nil {
 		return err
 	}
 	if a.env.CanPrompt() && !opts.yes {
-		ok, err := a.env.PromptConfirm(fmt.Sprintf("Remove uid %d?", userID), false)
+		ok, err := a.env.PromptConfirm(fmt.Sprintf(a.env.Text("format.remove_uid"), userID), false)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			return errors.New("account removal canceled")
+			return i18n.Errorf("error.account_removal_canceled")
 		}
 	}
 	_, defaultUserID, err := service.remove(userID)
@@ -373,9 +373,9 @@ func (a controller) accountRemove(ctx context.Context, args []string, opts accou
 	if opts.jsonOut {
 		return a.env.PrintJSON(map[string]int64{"removed_user_id": userID, "default_user_id": defaultUserID})
 	}
-	line := "Removed " + accountIdentity(list, userID)
+	line := a.env.Text("account.removed") + accountIdentity(list, userID)
 	if list.defaultUserID() == userID && defaultUserID != 0 {
-		line += "; now using " + accountIdentity(list, defaultUserID)
+		line += a.env.Text("account.now_using") + accountIdentity(list, defaultUserID)
 	}
 	_, err = fmt.Fprintln(a.env.Out, line)
 	return err
@@ -385,13 +385,13 @@ func (a controller) newAccountUseCommand() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "use [UID]",
-		Short: "Set the default account",
+		Short: "help.set_the_default_account",
 		Args:  a.env.MaxArgs(1, "pixiv auth use [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.accountUse(cmd.Context(), args, jsonOut)
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "flag.print_json")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -417,7 +417,7 @@ func (a controller) accountUse(ctx context.Context, args []string, jsonOut bool)
 	if jsonOut {
 		return a.env.PrintJSON(map[string]int64{"default_user_id": userID})
 	}
-	_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, userID))
+	_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.now_using"), accountIdentity(list, userID))
 	return err
 }
 
@@ -425,7 +425,7 @@ func (a controller) newAccountCheckCommand() *cobra.Command {
 	opts := accountCheckOptions{}
 	cmd := &cobra.Command{
 		Use:   "check [UID]",
-		Short: "Validate an account token",
+		Short: "help.validate_an_account_token",
 		Args:  a.env.MaxArgs(1, "pixiv auth check [UID]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			userID := int64(0)
@@ -439,7 +439,7 @@ func (a controller) newAccountCheckCommand() *cobra.Command {
 			return a.accountCheck(cmd, userID, opts)
 		},
 	}
-	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	cmd.Flags().BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
 	a.env.BindTextValue(cmd, 0, 1, 0)
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	environment.Bind(cmd, environment.Normal())
@@ -466,7 +466,7 @@ func (a controller) accountCheck(cmd *cobra.Command, userID int64, opts accountC
 	if opts.jsonOut {
 		return a.env.PrintJSON(out)
 	}
-	if _, err := fmt.Fprintf(a.env.Out, "Token valid for %s\n", display.Identity(result.Username, result.UserID)); err != nil {
+	if _, err := fmt.Fprintf(a.env.Out, a.env.Text("output.token_valid_for"), display.Identity(result.Username, result.UserID)); err != nil {
 		return err
 	}
 	return nil
@@ -476,11 +476,11 @@ func (a controller) newAccountRefreshCommand() *cobra.Command {
 	opts := accountRefreshOptions{}
 	cmd := &cobra.Command{
 		Use:   "refresh [UID]",
-		Short: "Refresh account credentials and membership status",
+		Short: "help.refresh_account_credentials_and_membership_status",
 		Args:  a.env.MaxArgs(1, "pixiv auth refresh [UID] [--all]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.all && len(args) != 0 {
-				return errors.New("--all cannot be combined with a UID")
+				return i18n.Errorf("error.all_cannot_be_combined_with_a_uid")
 			}
 			userID := int64(0)
 			if len(args) == 1 {
@@ -494,8 +494,8 @@ func (a controller) newAccountRefreshCommand() *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.all, "all", false, "refresh every stored account")
-	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.BoolVar(&opts.all, "all", false, "flag.refresh_every_stored_account")
+	flags.BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
 	a.env.BindTextValueWhen(cmd, 0, 1, 0, func(_ *cobra.Command, _ []string) bool { return !opts.all })
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	environment.Bind(cmd, environment.Normal())
@@ -522,7 +522,7 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 			userIDs = append(userIDs, account.UserID)
 		}
 		if len(userIDs) == 0 {
-			return errors.New("no accounts")
+			return i18n.Errorf("error.no_accounts")
 		}
 	}
 	results := make([]accountOut, 0, len(userIDs))
@@ -544,9 +544,9 @@ func (a controller) accountRefresh(cmd *cobra.Command, userID int64, opts accoun
 	for _, account := range results {
 		label := ""
 		if valueOrFalse(account.PremiumStatus) {
-			label = " · Premium"
+			label = " · " + a.env.Text("account.premium")
 		}
-		if _, err := fmt.Fprintf(a.env.Out, "Refreshed %s%s\n", display.Identity(account.Username, account.UserID), label); err != nil {
+		if _, err := fmt.Fprintf(a.env.Out, a.env.Text("output.refreshed"), display.Identity(account.Username, account.UserID), label); err != nil {
 			return err
 		}
 	}
@@ -558,10 +558,10 @@ func (a controller) resolveExistingUID(list accountListOut, args []string, promp
 		return parseAuthUID(args[0])
 	}
 	if !a.env.CanPrompt() {
-		return 0, errors.New("uid is required")
+		return 0, i18n.Errorf("error.uid_is_required")
 	}
 	if len(list.Accounts) == 0 {
-		return 0, errors.New("no accounts")
+		return 0, i18n.Errorf("error.no_accounts")
 	}
 	options := make([]string, 0, len(list.Accounts))
 	for _, acct := range list.Accounts {
@@ -577,7 +577,7 @@ func (a controller) resolveExistingUID(list accountListOut, args []string, promp
 	}
 	fields := strings.Fields(selected)
 	if len(fields) == 0 {
-		return 0, errors.New("uid cannot be empty")
+		return 0, i18n.Errorf("error.uid_cannot_be_empty")
 	}
 	return parseAuthUID(fields[0])
 }

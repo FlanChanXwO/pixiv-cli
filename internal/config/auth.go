@@ -1,9 +1,9 @@
 package config
 
 import (
-	"fmt"
 	"strconv"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -57,7 +57,7 @@ func (s Store) readDefaultUserID(product string) (int64, bool, error) {
 		}
 	}
 	if id <= 0 {
-		return 0, false, fmt.Errorf("config: %s.auth.default_user_id must be a positive integer", product)
+		return 0, false, i18n.Errorf("error.config_auth_default_user_id_must_be_a", product)
 	}
 	return id, true, nil
 }

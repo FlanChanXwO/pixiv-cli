@@ -7,6 +7,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/vectormodel"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -19,7 +20,7 @@ type OpenClient func(context.Context, environment.PixivRequest) (int64, *pixiv.C
 
 func syncCommand(env environment.Env, store config.Store, open OpenClient) *cobra.Command {
 	var options environment.Options
-	cmd := &cobra.Command{Use: "sync", Short: "Synchronize bookmarks and embed pending pages", Args: env.ExactArgs(0, "pixiv vector sync [--json]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "sync", Short: "help.synchronize_bookmarks_and_embed_pending_pages", Args: env.ExactArgs(0, "pixiv vector sync [--json]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
 		c, err := store.Current()
 		if err != nil {
 			return err
@@ -55,7 +56,7 @@ func syncCommand(env environment.Env, store config.Store, open OpenClient) *cobr
 			return err
 		}
 		if !acquired {
-			return errors.New("vector sync is busy")
+			return i18n.Errorf("error.vector_sync_is_busy")
 		}
 		defer func() { err = errors.Join(err, release()) }()
 		db, err := vectorindex.Open(cmd.Context(), root)
@@ -70,7 +71,7 @@ func syncCommand(env environment.Env, store config.Store, open OpenClient) *cobr
 		var progress func(int, int) error
 		if file, ok := env.Err.(interface{ Fd() uintptr }); ok && term.IsTerminal(int(file.Fd())) {
 			progress = func(done, total int) error {
-				_, err := fmt.Fprintf(env.Err, "\rEmbedding %d/%d pages", done, total)
+				_, err := fmt.Fprintf(env.Err, env.Text("output.embedding_pages"), done, total)
 				return err
 			}
 		}
@@ -92,9 +93,9 @@ func syncCommand(env environment.Env, store config.Store, open OpenClient) *cobr
 }
 
 func writeSyncReport(env environment.Env, r vectorindex.SyncReport) error {
-	_, err := fmt.Fprintf(env.Out, "Bookmarks: %d checked, %d new\nMerged: %d recorded artworks\nSkipped records: %d\nEmbedded: %d pages\nUnavailable: %d pages\nFailed: %d pages\nIndex: %d artworks, %d pages, %d pending (%s)\n", r.Bookmarks.Checked, r.Bookmarks.New, r.Merged, r.SkippedRecords, r.Embedded, r.Unavailable, r.Failed, r.Index.Artworks, r.Index.Pages, r.Index.Pending, r.Model)
+	_, err := fmt.Fprintf(env.Out, env.Text("output.bookmarks_checked_new_merged_recorded_artworks_skipped_records"), r.Bookmarks.Checked, r.Bookmarks.New, r.Merged, r.SkippedRecords, r.Embedded, r.Unavailable, r.Failed, r.Index.Artworks, r.Index.Pages, r.Index.Pending, r.Model)
 	if r.Stopped != nil {
-		_, stopErr := fmt.Fprintf(env.Out, "Stopped: %s\n", *r.Stopped)
+		_, stopErr := fmt.Fprintf(env.Out, env.Text("output.stopped"), *r.Stopped)
 		err = errors.Join(err, stopErr)
 	}
 	return err

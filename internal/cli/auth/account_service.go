@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
 
@@ -139,7 +138,7 @@ func (s AccountService) importAccount(ctx context.Context, request accountImport
 	service := s.Pixiv
 	validatedToken := strings.TrimSpace(request.TokenInput)
 	if validatedToken == "" {
-		return accountImportOut{}, errors.New("refresh token cannot be empty")
+		return accountImportOut{}, i18n.Errorf("error.refresh_token_cannot_be_empty")
 	}
 	before, err := service.ListAccounts(ctx)
 	if err != nil {
@@ -236,12 +235,12 @@ func (s AccountService) setPool(ctx context.Context, userIDs []int64, schedulabl
 	service := s.Pixiv
 	if all {
 		if len(userIDs) != 0 {
-			return errors.New("--all cannot be combined with UIDs")
+			return i18n.Errorf("error.all_cannot_be_combined_with_uids")
 		}
 		return service.SetAllPoolSchedulable(ctx, schedulable)
 	}
 	if len(userIDs) == 0 {
-		return errors.New("at least one UID is required unless --all is used")
+		return i18n.Errorf("error.at_least_one_uid_is_required_unless_all")
 	}
 	return service.SetPoolSchedulable(ctx, userIDs, schedulable)
 }
@@ -269,7 +268,7 @@ func (s AccountService) export(request accountExportRequest) (accountExportResul
 			}
 		}
 		if selected == nil {
-			return accountExportResult{}, fmt.Errorf("account uid %d not found", request.UserID)
+			return accountExportResult{}, i18n.Errorf("error.account_uid_not_found", request.UserID)
 		}
 	}
 	bundle := authExportBundle{Schema: authExportBundleSchema, Version: authExportBundleVersion, Accounts: make([]authExportSecretAccount, 0, len(selected))}
@@ -305,7 +304,7 @@ func (s AccountService) remove(userID int64) (accountOut, int64, error) {
 		}
 	}
 	if !found {
-		return accountOut{}, 0, fmt.Errorf("account uid %d not found", userID)
+		return accountOut{}, 0, i18n.Errorf("error.account_uid_not_found", userID)
 	}
 	if err := service.RemoveAccount(context.Background(), userID); err != nil {
 		return accountOut{}, 0, err
@@ -391,59 +390,59 @@ func accountImportOutFrom(account AccountSummary, status string) accountImportOu
 func parseAuthUID(raw string) (int64, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return 0, errors.New("uid cannot be empty")
+		return 0, i18n.Errorf("error.uid_cannot_be_empty")
 	}
 	userID, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || userID <= 0 {
-		return 0, errors.New("invalid uid: expected a positive integer")
+		return 0, i18n.Errorf("error.invalid_uid_expected_a_positive_integer")
 	}
 	return userID, nil
 }
 
 func encodeAuthExportBundle(bundle *authExportBundle) ([]byte, error) {
 	if bundle == nil || len(bundle.Accounts) == 0 {
-		return nil, errors.New("auth export bundle has no accounts")
+		return nil, i18n.Errorf("error.auth_export_bundle_has_no_accounts")
 	}
 	return json.Marshal(bundle)
 }
 
 func decodeAuthExportBundle(body []byte) (*authExportBundle, error) {
 	if err := rejectDuplicateObjectKeys(body); err != nil {
-		return nil, fmt.Errorf("invalid auth export bundle: %w", err)
+		return nil, i18n.Errorf("error.invalid_auth_export_bundle", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
 	decoder.DisallowUnknownFields()
 	var bundle authExportBundle
 	if err := decoder.Decode(&bundle); err != nil {
-		return nil, fmt.Errorf("invalid auth export bundle: %w", err)
+		return nil, i18n.Errorf("error.invalid_auth_export_bundle", err)
 	}
 	if dec := json.NewDecoder(bytes.NewReader(body)); true {
 		dec.UseNumber()
 		_ = dec.Decode(new(json.RawMessage))
 		if dec.More() {
-			return nil, errors.New("auth export bundle has trailing JSON")
+			return nil, i18n.Errorf("error.auth_export_bundle_has_trailing_json")
 		}
 	}
 	if bundle.Schema != authExportBundleSchema || bundle.Version != authExportBundleVersion {
-		return nil, errors.New("unsupported auth export bundle schema or version")
+		return nil, i18n.Errorf("error.unsupported_auth_export_bundle_schema_or_version")
 	}
 	if len(bundle.Accounts) == 0 {
-		return nil, errors.New("auth export bundle has no accounts")
+		return nil, i18n.Errorf("error.auth_export_bundle_has_no_accounts")
 	}
 	seen := make(map[int64]struct{}, len(bundle.Accounts))
 	for _, account := range bundle.Accounts {
 		if account.UserID <= 0 || account.RefreshToken == "" {
-			return nil, errors.New("auth export bundle contains an invalid account")
+			return nil, i18n.Errorf("error.auth_export_bundle_contains_an_invalid_account")
 		}
 		if _, duplicate := seen[account.UserID]; duplicate {
-			return nil, fmt.Errorf("auth export bundle contains duplicate account %d", account.UserID)
+			return nil, i18n.Errorf("error.auth_export_bundle_contains_duplicate_account", account.UserID)
 		}
 		seen[account.UserID] = struct{}{}
 	}
 	if bundle.DefaultUserID != 0 {
 		if _, ok := seen[bundle.DefaultUserID]; !ok {
-			return nil, errors.New("auth export bundle default does not name an included account")
+			return nil, i18n.Errorf("error.auth_export_bundle_default_does_not_name_an")
 		}
 	}
 	return &bundle, nil
@@ -492,7 +491,7 @@ func rejectDuplicateObjectKeys(body []byte) error {
 		case string:
 			if top.expectKey {
 				if _, duplicate := top.seen[value]; duplicate {
-					return fmt.Errorf("auth export bundle JSON has duplicate object key %q", value)
+					return i18n.Errorf("error.auth_export_bundle_json_has_duplicate_object_key", value)
 				}
 				top.seen[value] = struct{}{}
 				top.expectKey = false

@@ -4,11 +4,11 @@ package series
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -36,7 +36,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	options := options{}
 	cmd := &cobra.Command{
 		Use:   "series SERIES_ID_OR_URL",
-		Short: "List the artworks or novels in a series",
+		Short: "help.list_the_artworks_or_novels_in_a_series",
 		Args:  env.ExactArgs(1, "pixiv series [options] SERIES_ID_OR_URL"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args[0], options)
@@ -45,7 +45,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	env.BindCommonFlags(cmd, &options.Options)
 	environment.BindNDJSONFlag(cmd, &options.ndjson)
 	environment.BindListFlags(cmd, &options.limit, &options.page)
-	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "entity type: artwork or novel (required)")
+	cmd.Flags().StringVarP(&options.typ, "type", "t", "", "flag.entity_type_artwork_or_novel_required")
 	env.BindTextValue(cmd, 1, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -53,7 +53,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 
 func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	if !cmd.Flags().Changed("type") {
-		return errors.New("--type is required for series")
+		return i18n.Errorf("error.type_is_required_for_series")
 	}
 	if err := validateSeriesType(opts.typ); err != nil {
 		return err
@@ -72,7 +72,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -87,7 +87,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	case target.NamespaceArtwork:
 		return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, record.FormatOf(jsonOut, ndjson), record.List[record.Artwork]{
 			Print: func(items []record.Artwork, start int) error {
-				return display.PrintArtworksRanked(a.env.Out, items, start)
+				return display.PrintArtworksRanked(a.env.Out, a.env.Language, items, start)
 			},
 			RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
@@ -107,7 +107,7 @@ func (a commandRunner) run(cmd *cobra.Command, arg string, opts options) error {
 	case target.NamespaceNovel:
 		return a.runNovel(cmd, request, resolved.ID, plan, jsonOut, ndjson)
 	default:
-		return errors.New("type must be one of artwork, novel")
+		return i18n.Errorf("error.type_must_be_one_of_artwork_novel")
 	}
 }
 
@@ -116,7 +116,7 @@ func validateSeriesType(value string) error {
 	case string(target.NamespaceArtwork), string(target.NamespaceNovel):
 		return nil
 	default:
-		return errors.New("type must be one of artwork, novel")
+		return i18n.Errorf("error.type_must_be_one_of_artwork_novel")
 	}
 }
 
@@ -194,14 +194,14 @@ func (a commandRunner) runNovel(cmd *cobra.Command, request environment.PixivReq
 			return true, nil
 		}
 		if len(novels) == 0 {
-			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 			return false, err
 		}
 		for index, novel := range novels {
 			if _, err := fmt.Fprintf(a.env.Out, "#%d ", plan.Skip+index+1); err != nil {
 				return true, err
 			}
-			if err := display.PrintNovels(a.env.Out, []record.Novel{novel}); err != nil {
+			if err := display.PrintNovels(a.env.Out, a.env.Language, []record.Novel{novel}); err != nil {
 				return true, err
 			}
 		}

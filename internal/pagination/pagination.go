@@ -11,8 +11,8 @@ package pagination
 
 import (
 	"context"
-	"errors"
-	"fmt"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // Cursor 约束分页算法所需的最小 continuation 契约：实现必须让零值表示没有
@@ -33,10 +33,10 @@ type PagePlan struct {
 
 func (p PagePlan) validate() error {
 	if p.Skip < 0 {
-		return errors.New("page skip must be zero or positive")
+		return i18n.Errorf("error.page_skip_must_be_zero_or_positive")
 	}
 	if p.Limit < 0 {
-		return errors.New("page limit must be zero or positive")
+		return i18n.Errorf("error.page_limit_must_be_zero_or_positive")
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func traversePagesFrom[T any, C Cursor](ctx context.Context, plan PagePlan, init
 		}
 		// 稳定文本而非实现身份用于判重，支持不透明的值或指针 cursor。
 		if _, exists := seen[cursor.String()]; exists {
-			return result, fmt.Errorf("pagination cursor repeated: %s", cursor.String())
+			return result, i18n.Errorf("error.pagination_cursor_repeated", cursor.String())
 		}
 		seen[cursor.String()] = struct{}{}
 		items, next, err := fetch(ctx, cursor)

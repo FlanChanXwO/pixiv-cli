@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/fanbox/browse"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -45,7 +45,7 @@ func New(env environment.Env, open fanboxcli.Opener, downloadPath func() (string
 	a := commandRunner{env: env, open: open, downloadPath: downloadPath}
 	cmd := &cobra.Command{
 		Use:   "download SOURCE...",
-		Short: "Download posts and their assets from FANBOX",
+		Short: "help.download_posts_and_their_assets_from_fanbox",
 		Args:  env.MinArgs(1, "pixiv fanbox download SOURCE..."),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args)
@@ -100,11 +100,11 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 	creatorSeg := safePathSegment(post.CreatorID)
 	postSeg := safePathSegment(post.ID)
 	if creatorSeg == "" || postSeg == "" {
-		return fmt.Errorf("post %s from creator %s has no usable path identity", post.ID, post.CreatorID)
+		return i18n.Errorf("error.post_from_creator_has_no_usable_path_identity", post.ID, post.CreatorID)
 	}
 	dir := filepath.Join(baseDir, creatorSeg, postSeg)
 	if !pathInsideBase(dir, baseDir) {
-		return fmt.Errorf("post %s from creator %s resolves outside the download directory", post.ID, post.CreatorID)
+		return i18n.Errorf("error.post_from_creator_resolves_outside_the_download_directory", post.ID, post.CreatorID)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -117,26 +117,26 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 		return err
 	}
 	if post.IsRestricted {
-		return fmt.Errorf("post %s is restricted; metadata saved to %s", post.ID, dir)
+		return i18n.Errorf("error.post_is_restricted_metadata_saved_to", post.ID, dir)
 	}
 	if post.Body == nil {
-		return fmt.Errorf("post %s has no body in its detail response", post.ID)
+		return i18n.Errorf("error.post_has_no_body_in_its_detail_response", post.ID)
 	}
 	save := func(id, name, locator string, write func(context.Context, string) error) error {
 		name = safePathSegment(assetFilename(id, name, locator))
 		if name == "" {
-			return fmt.Errorf("asset %s in post %s has no usable filename", id, post.ID)
+			return i18n.Errorf("error.asset_in_post_has_no_usable_filename", id, post.ID)
 		}
 		if strings.EqualFold(name, postMetadataFilename) {
 			name = safePathSegment(id) + "_" + name
 		}
 		path := filepath.Join(dir, name)
 		if !pathInsideBase(path, baseDir) {
-			return fmt.Errorf("asset %s in post %s resolves outside the download directory", id, post.ID)
+			return i18n.Errorf("error.asset_in_post_resolves_outside_the_download_directory", id, post.ID)
 		}
 		if previous, exists := seen[path]; exists {
 			if previous.id != id {
-				return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
+				return i18n.Errorf("error.assets_and_in_post_resolve_to_the_same", previous.id, id, post.ID)
 			}
 			return nil
 		}
@@ -144,7 +144,7 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 			for _, previous := range seen {
 				if os.SameFile(current, previous.file) {
 					if previous.id != id {
-						return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
+						return i18n.Errorf("error.assets_and_in_post_resolve_to_the_same", previous.id, id, post.ID)
 					}
 					return nil
 				}

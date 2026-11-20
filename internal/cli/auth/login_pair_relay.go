@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 )
 
@@ -57,8 +58,8 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relay
 	}
 	cleanup := func() { closeServer(true) }
 	abort := func() { closeServer(false) }
-	fmt.Fprintf(a.env.Err, "Remote Pixiv login relay is listening on %s.\n", listener.Addr().String())
-	fmt.Fprintf(a.env.Err, "Open remote Pixiv login session:\n%s\n", session.URL)
+	fmt.Fprintf(a.env.Err, a.env.Text("output.remote_pixiv_login_relay_is_listening_on"), listener.Addr().String())
+	fmt.Fprintf(a.env.Err, a.env.Text("output.open_remote_pixiv_login_session"), session.URL)
 
 	select {
 	case callback := <-session.Callback:
@@ -70,9 +71,9 @@ func (a controller) waitForHandoffRelayLoginCode(ctx context.Context, opts relay
 		cleanup()
 		if err != nil {
 			// ServeTLS 的底层错误会包含 PEM 的绝对路径，不能越过 CLI 错误边界。
-			return "", func(bool) {}, cleanup, errors.New("remote login relay server failed; verify its listener and TLS configuration")
+			return "", func(bool) {}, cleanup, i18n.Errorf("error.remote_login_relay_server_failed_verify_its_listener")
 		}
-		return "", func(bool) {}, cleanup, errors.New("remote login relay stopped before sign-in completed")
+		return "", func(bool) {}, cleanup, i18n.Errorf("error.remote_login_relay_stopped_before_sign_in_completed")
 	case <-ctx.Done():
 		abort()
 		return "", func(bool) {}, cleanup, ctx.Err()

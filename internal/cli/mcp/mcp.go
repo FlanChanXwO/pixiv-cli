@@ -6,7 +6,6 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -14,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/auth"
 	"github.com/spf13/cobra"
 )
@@ -31,7 +31,7 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 	var port int
 	cmd := &cobra.Command{
 		Use:     "mcp",
-		Short:   "Run unified Pixiv/FANBOX MCP over stdio (default) or HTTP (--port)",
+		Short:   "help.run_unified_pixiv_fanbox_mcp_over_stdio_default",
 		Example: "pixiv mcp\npixiv mcp --port 1270\npixiv mcp --port 1270 --base-url https://mcp.example.com",
 		Args:    env.ExactArgs(0, "pixiv mcp"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -42,7 +42,7 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 			request := Request{HTTPSProxyOverride: proxyOverride}
 			if !cmd.Flags().Changed("port") {
 				if cmd.Flags().Changed("host") || cmd.Flags().Changed("base-url") {
-					return errors.New("--host and --base-url require --port")
+					return i18n.Errorf("error.host_and_base_url_require_port")
 				}
 			} else {
 				listen, base, err := endpoint(hostAddr, port, baseURL, cmd.Flags().Changed("base-url"))
@@ -54,17 +54,17 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 			return run(cmd.Context(), request)
 		},
 	}
-	cmd.Flags().IntVar(&port, "port", 0, "Enable HTTP on this port (1-65535); omitted uses stdio")
-	cmd.Flags().StringVar(&hostAddr, "host", "127.0.0.1", "HTTP listen host; requires --port")
-	cmd.Flags().StringVar(&baseURL, "base-url", "", "Canonical public URL; requires --port and HTTPS outside loopback")
+	cmd.Flags().IntVar(&port, "port", 0, "flag.enable_http_on_this_port_1_65535_omitted")
+	cmd.Flags().StringVar(&hostAddr, "host", "127.0.0.1", "flag.http_listen_host_requires_port")
+	cmd.Flags().StringVar(&baseURL, "base-url", "", "flag.canonical_public_url_requires_port_and_https_outside")
 
 	env.BindProxyFlags(cmd, &options)
 	environment.BindInput(cmd, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0})
 	environment.Bind(cmd, environment.PixivMCP())
-	auth := &cobra.Command{Use: "auth", Short: "Manage the MCP owner"}
+	auth := &cobra.Command{Use: "auth", Short: "help.manage_the_mcp_owner"}
 	var reset bool
 	init := &cobra.Command{
-		Use: "init", Short: "Initialize the MCP owner and print its secret once",
+		Use: "init", Short: "help.initialize_the_mcp_owner_and_print_its_secret",
 		Args: env.ExactArgs(0, "pixiv mcp auth init"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			secret, err := initAuth(cmd.Context(), reset)
@@ -73,7 +73,7 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 			}
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), secret)
 			if err != nil {
-				return fmt.Errorf("MCP owner saved but secret output failed; run pixiv mcp auth init --reset to recover: %w", err)
+				return i18n.Errorf("error.mcp_owner_saved_but_secret_output_failed_run", err)
 			}
 			return nil
 		},
@@ -81,7 +81,7 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 	// 本地 owner 管理不能继承 server 的启动、账号和日志副作用。
 	environment.Bind(auth, environment.Execution{})
 	environment.BindInput(init, environment.InputSpec{Codec: environment.NoInput, MinArgs: 0, MaxArgs: 0})
-	init.Flags().BoolVar(&reset, "reset", false, "Rotate the owner secret and revoke all OAuth grants; keep clients and selected account")
+	init.Flags().BoolVar(&reset, "reset", false, "flag.rotate_the_owner_secret_and_revoke_all_oauth")
 	auth.AddCommand(init)
 	cmd.AddCommand(auth)
 	return cmd
@@ -90,19 +90,19 @@ func New(env environment.Env, run func(context.Context, Request) error, initAuth
 // endpoint 只从显式启动参数推导公开 origin，避免 Host 等请求头影响回调地址。
 func endpoint(host string, port int, rawBase string, explicitBase bool) (string, string, error) {
 	if port < 1 || port > 65535 {
-		return "", "", errors.New("--port must be an integer from 1 to 65535")
+		return "", "", i18n.Errorf("error.port_must_be_an_integer_from_1_to")
 	}
 	if host == "" || strings.TrimSpace(host) != host || strings.ContainsAny(host, "/?#@[]\\") || (net.ParseIP(host) == nil && strings.Contains(host, ":")) {
-		return "", "", errors.New("--host must be a hostname or unbracketed IP address")
+		return "", "", i18n.Errorf("error.host_must_be_a_hostname_or_unbracketed_ip")
 	}
 	listen := net.JoinHostPort(host, strconv.Itoa(port))
 	if _, err := url.Parse("http://" + listen); err != nil {
-		return "", "", errors.New("invalid --host")
+		return "", "", i18n.Errorf("error.invalid_host")
 	}
 	if !explicitBase {
 		ip := net.ParseIP(host)
 		if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-			return "", "", errors.New("non-loopback --host requires --base-url")
+			return "", "", i18n.Errorf("error.non_loopback_host_requires_base_url")
 		}
 		rawBase = "http://" + listen
 	}
@@ -114,7 +114,7 @@ func endpoint(host string, port int, rawBase string, explicitBase bool) (string,
 	base.Host = strings.ToLower(base.Host)
 	ip := net.ParseIP(base.Hostname())
 	if base.Scheme != "https" && base.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		return "", "", errors.New("non-loopback --base-url requires HTTPS")
+		return "", "", i18n.Errorf("error.non_loopback_base_url_requires_https")
 	}
 	return listen, base.String(), nil
 }

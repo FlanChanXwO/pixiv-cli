@@ -2,8 +2,6 @@ package vectormodel
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +9,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/eliben/go-sentencepiece"
 )
 
@@ -34,7 +33,7 @@ func localPaths(directory, name string) (modelSpec, nativeSpec, string, string, 
 	spec := localModels[name]
 	platform, ok := nativePlatforms[runtime.GOOS+"/"+runtime.GOARCH]
 	if !ok {
-		return spec, platform, "", "", fmt.Errorf("local vector models are unsupported on %s/%s; use a cloud model", runtime.GOOS, runtime.GOARCH)
+		return spec, platform, "", "", i18n.Errorf("error.local_vector_models_are_unsupported_on_s_s_use_a_cloud_model", runtime.GOOS, runtime.GOARCH)
 	}
 	modelDir := filepath.Join(directory, "models", spec.name+"@"+spec.revision)
 	runtimeDir := filepath.Join(directory, "runtime", "onnxruntime-"+runtimeVersion+"-"+platform.platform)
@@ -43,7 +42,7 @@ func localPaths(directory, name string) (modelSpec, nativeSpec, string, string, 
 
 func openLocal(options Options) (*localModel, error) {
 	if options.Device != "" && options.Device != "cpu" && options.Device != "gpu" {
-		return nil, errors.New("local vector device must be cpu or gpu")
+		return nil, i18n.Errorf("error.local_vector_device_must_be_cpu_or_gpu")
 	}
 	spec, platform, modelDir, runtimeDir, err := localPaths(options.Directory, options.Name)
 	if err != nil {
@@ -52,10 +51,10 @@ func openLocal(options Options) (*localModel, error) {
 	for _, dir := range []string{modelDir, runtimeDir} {
 		info, err := os.Stat(dir)
 		if err != nil {
-			return nil, fmt.Errorf("local vector assets are unavailable; run \"pixiv vector setup\": %w", err)
+			return nil, i18n.Errorf("error.local_vector_assets_are_unavailable_run_pixiv_vector_setup_w", err)
 		}
 		if !info.IsDir() {
-			return nil, errors.New("local vector asset directory is invalid; run vector setup")
+			return nil, i18n.Errorf("error.local_vector_asset_directory_is_invalid_run_vector_setup")
 		}
 	}
 	plugin := ""
@@ -83,7 +82,7 @@ func (m *localModel) image(ctx context.Context, data []byte) ([]float32, error) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
-		return nil, errors.New("local vector model is closed")
+		return nil, i18n.Errorf("error.local_vector_model_is_closed")
 	}
 	pixels, err := pixels(ctx, data, m.spec.size)
 	if err != nil {
@@ -115,7 +114,7 @@ func (m *localModel) textVector(ctx context.Context, text string) ([]float32, er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
-		return nil, errors.New("local vector model is closed")
+		return nil, i18n.Errorf("error.local_vector_model_is_closed")
 	}
 	var err error
 	if m.tokenizer == nil {
@@ -126,7 +125,7 @@ func (m *localModel) textVector(ctx context.Context, text string) ([]float32, er
 	}
 	tokens := m.tokenizer.Encode(strings.ToLower(text))
 	if len(tokens)+1 > textLength {
-		return nil, fmt.Errorf("%w: maximum %d tokens including EOS", ErrTextTooLong, textLength)
+		return nil, i18n.Errorf("error.w_maximum_d_tokens_including_eos", ErrTextTooLong, textLength)
 	}
 	ids := make([]int64, textLength)
 	for i, t := range tokens {
@@ -165,5 +164,5 @@ func gpuPath(directory string) (nativeSpec, string) {
 }
 
 func gpuError(name string, err error) error {
-	return fmt.Errorf("GPU unavailable; run \"pixiv vector setup --model %s --device cpu\": %w", name, err)
+	return i18n.Errorf("error.gpu_unavailable_run_pixiv_vector_setup_model_s_device_cpu_w", name, err)
 }

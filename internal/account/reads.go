@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -52,7 +53,7 @@ func (m *ReadSessions) cached(ctx context.Context, uid int64, network string) (r
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
-		return readEntry{}, false, errors.New("read sessions closed")
+		return readEntry{}, false, i18n.Errorf("error.read_sessions_closed")
 	}
 	a, err := m.store.GetPixiv(ctx, uid)
 	// 单次查询取消不代表凭据失效，不能连带终止共享传输或触发轮换。
@@ -143,7 +144,7 @@ func (m *ReadSessions) OpenSDK(ctx context.Context, uid int64, network string, o
 		cancelGeneration()
 		httpClient.CloseIdleConnections()
 		session.SDKClient.CloseIdleConnections()
-		return ReadSession{}, errors.New("read sessions closed")
+		return ReadSession{}, i18n.Errorf("error.read_sessions_closed")
 	}
 	// 其他进程可在轮换后再次提交凭据；发布缓存前复核 revision。
 	account, err := m.store.GetPixiv(ctx, uid)

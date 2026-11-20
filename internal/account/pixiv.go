@@ -3,10 +3,10 @@ package account
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // Pixiv 保存本地 Pixiv 账号与凭据版本；Credential 只经显式认证或文件编码读取。
@@ -42,7 +42,7 @@ func (m *Membership) UnmarshalJSON(body []byte) error {
 		return err
 	}
 	if value.Enabled == nil {
-		return errors.New("account: missing pool enabled flag")
+		return i18n.Errorf("error.account_missing_pool_enabled_flag")
 	}
 	m.Enabled = *value.Enabled
 	m.FrozenUntil = value.FrozenUntil

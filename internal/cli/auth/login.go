@@ -14,6 +14,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/loginrelay"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
 	"github.com/pkg/browser"
@@ -60,7 +61,7 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 	opts := accountLoginOptions{addr: defaultLoginAddr}
 	cmd := &cobra.Command{
 		Use:     "login",
-		Short:   "Login with the Pixiv browser OAuth flow",
+		Short:   "help.login_with_the_pixiv_browser_oauth_flow",
 		Example: "pixiv auth login --use",
 		Args:    a.env.ExactArgs(0, "pixiv auth login [--json] [--no-open] [--addr 127.0.0.1:0] [--use] [--timeout DURATION] [--relay-public-url URL] [--relay-listen-addr ADDR]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,15 +69,15 @@ func (a controller) newAccountLoginCommand() *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
-	flags.BoolVar(&opts.noOpen, "no-open", false, "do not open the browser")
-	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "local loopback callback address; use 127.0.0.1:0 for an available port")
-	flags.BoolVar(&opts.useAfterLogin, "use", false, "set as default account after login")
-	flags.DurationVar(&opts.timeout, "timeout", 0, "maximum time to wait for login flow; 0 adds no deadline")
-	flags.StringVar(&opts.relayPublicURL, "relay-public-url", "", "public URL for this remote login relay")
-	flags.StringVar(&opts.relayListenAddr, "relay-listen-addr", "", "listen address for this remote login relay")
-	flags.StringVar(&opts.relayTLSCertFile, "relay-tls-cert-file", "", "PEM certificate file for this remote login relay")
-	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "PEM private key file for this remote login relay")
+	flags.BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
+	flags.BoolVar(&opts.noOpen, "no-open", false, "flag.do_not_open_the_browser")
+	flags.StringVar(&opts.addr, "addr", defaultLoginAddr, "flag.local_loopback_callback_address_use_127_0_0")
+	flags.BoolVar(&opts.useAfterLogin, "use", false, "flag.set_as_default_account_after_login")
+	flags.DurationVar(&opts.timeout, "timeout", 0, "flag.maximum_time_to_wait_for_login_flow_0")
+	flags.StringVar(&opts.relayPublicURL, "relay-public-url", "", "flag.public_url_for_this_remote_login_relay")
+	flags.StringVar(&opts.relayListenAddr, "relay-listen-addr", "", "flag.listen_address_for_this_remote_login_relay")
+	flags.StringVar(&opts.relayTLSCertFile, "relay-tls-cert-file", "", "flag.pem_certificate_file_for_this_remote_login_relay")
+	flags.StringVar(&opts.relayTLSKeyFile, "relay-tls-key-file", "", "flag.pem_private_key_file_for_this_remote_login")
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	a.env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
@@ -158,7 +159,7 @@ func (a controller) accountLogin(cmd *cobra.Command, opts accountLoginOptions) e
 	if opts.jsonOut {
 		return a.env.PrintJSON(out)
 	}
-	_, err = fmt.Fprintf(a.env.Out, "Logged in as %s\n", display.Identity(out.Username, out.UserID))
+	_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.logged_in_as"), display.Identity(out.Username, out.UserID))
 	return err
 }
 
@@ -185,7 +186,7 @@ func (a controller) waitForLoginCode(ctx context.Context, addr string, acceptsCa
 		if err != nil {
 			return "", login.notifyFinal, login.cleanup, err
 		}
-		return "", login.notifyFinal, login.cleanup, errors.New("login server stopped before sign-in completed")
+		return "", login.notifyFinal, login.cleanup, i18n.Errorf("error.login_server_stopped_before_sign_in_completed")
 	case <-ctx.Done():
 		login.cleanup()
 		return "", login.notifyFinal, login.cleanup, ctx.Err()
@@ -246,39 +247,44 @@ func (s *loginServer) waitFinalPage(w http.ResponseWriter, r *http.Request) {
 	defer s.finalPageWaiters.Done()
 	select {
 	case ok := <-s.finalCh:
-		writeLoginFinalPage(w, ok)
+		writeLoginFinalPage(w, ok, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 	case <-r.Context().Done():
-		writeLoginFinalPage(w, false)
+		writeLoginFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 	case <-s.ctx.Done():
-		writeLoginFinalPage(w, false)
+		writeLoginFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 	}
 }
 
 func (s *loginServer) installHandler(ctx context.Context) {
 	s.initializeErrors()
 	if err := urlscheme.EnsurePersistentIfNeeded(ctx); err != nil {
-		s.writeErr("warning: persistent pixiv:// callback handler is unavailable: %v\n", err)
+		s.writeErr(s.controller.env.Text("login.console_0"), err)
 	}
 	cleanup, err := urlscheme.Install(ctx, "http://"+s.actualAddr+"/callback")
 	if err != nil {
-		s.writeErr("warning: pixiv:// callback handler is unavailable: %v\n", err)
+		s.writeErr(s.controller.env.Text("login.console_1"), err)
 	} else if cleanup != nil {
 		s.handlerCleanup = cleanup
-		s.writeErr("Registered pixiv:// callback handler for this login attempt.\n")
-		s.writeErr("After confirming the Pixiv account, keep this terminal open while the browser shows the final result.\n")
+		s.writeErr("%s", s.controller.env.Text("login.console_2"))
+		s.writeErr("%s", s.controller.env.Text("login.console_3"))
 	}
 }
 
 func (s *loginServer) initializeErrors() {
 	var errOutMu sync.Mutex
 	s.writeErr = func(format string, args ...any) {
+		for i, arg := range args {
+			if cause, ok := arg.(error); ok {
+				args[i] = s.controller.env.Language.ErrorText(cause)
+			}
+		}
 		errOutMu.Lock()
 		defer errOutMu.Unlock()
 		fmt.Fprintf(s.controller.env.Err, format, args...)
 	}
 	s.reportInvalidSubmission = func(err error) {
 		if err != nil {
-			s.writeErr("invalid login submission: %v\n", err)
+			s.writeErr(s.controller.env.Text("login.console_4"), err)
 		}
 	}
 }
@@ -286,7 +292,7 @@ func (s *loginServer) initializeErrors() {
 func (s *loginServer) serve(loginURL string, noOpen bool) {
 	s.initializeErrors()
 	openTerminalRelay := func(rawURL string) error {
-		s.writeErr("Detected Pixiv authorization relay page; opening Pixiv relay URL once.\n")
+		s.writeErr("%s", s.controller.env.Text("login.console_5"))
 		return browser.OpenURL(rawURL)
 	}
 	mux := http.NewServeMux()
@@ -295,12 +301,12 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 			http.NotFound(w, r)
 			return
 		}
-		writeLoginForm(w, loginURL)
+		writeLoginForm(w, loginURL, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 	})
 	mux.HandleFunc("/callback", s.handleCallback)
 	mux.HandleFunc("/manual", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			writeLoginForm(w, loginURL)
+			writeLoginForm(w, loginURL, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 			return
 		}
 		if r.Method != http.MethodPost {
@@ -309,7 +315,7 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 		}
 		if err := r.ParseForm(); err != nil {
 			s.reportInvalidSubmission(err)
-			writeLoginFinalPage(w, false)
+			writeLoginFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 			return
 		}
 		input := r.Form.Get("login_result")
@@ -317,14 +323,14 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 		if result.Relayed && result.Err == nil {
 			// fallback 页面可能经 SSH 转发在另一台机器的浏览器中打开。relay 必须由
 			// 当前请求的浏览器继续，不能在运行 CLI 的无 GUI 主机上调用 xdg-open。
-			s.writeErr("Detected Pixiv authorization relay page; continuing it in the current browser.\n")
+			s.writeErr("%s", s.controller.env.Text("login.console_6"))
 			w.Header().Set("Location", result.RelayURL)
 			w.WriteHeader(http.StatusSeeOther)
 			return
 		}
 		s.reportInvalidSubmission(result.Err)
 		if result.Err != nil {
-			writeLoginFinalPage(w, false)
+			writeLoginFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 			return
 		}
 		// 与 /callback 相同：Add 必须先于 submit，避免与 notifyFinal 的 Wait 竞态。
@@ -352,7 +358,7 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 	enableTerminalFallback := s.controller.env.CanPrompt()
 	if !noOpen {
 		if err := browser.OpenURL(loginURL); err != nil {
-			s.writeErr("warning: could not open browser: %v\n", err)
+			s.writeErr(s.controller.env.Text("login.console_7"), err)
 		}
 	}
 	if enableTerminalFallback {
@@ -361,24 +367,24 @@ func (s *loginServer) serve(loginURL string, noOpen bool) {
 }
 
 func (s *loginServer) writeLoginInstructions(loginURL string, noOpen bool) {
-	s.writeErr("Open this Pixiv login URL:\n%s\n", loginURL)
+	s.writeErr(s.controller.env.Text("login.console_8"), loginURL)
 	if noOpen {
-		s.writeErr("Browser opening is disabled; use the manual fallback page or terminal prompt.\n")
+		s.writeErr("%s", s.controller.env.Text("login.console_9"))
 		if tunnelCommand, tunnelErr := loginSSHTunnelCommand(s.actualAddr); tunnelErr != nil {
-			s.writeErr("warning: could not generate the SSH tunnel hint for this login listener.\n")
+			s.writeErr("%s", s.controller.env.Text("login.console_10"))
 		} else {
-			s.writeErr("When this CLI runs on an SSH host, forward its loopback listener from the browser machine:\n  %s\n", tunnelCommand)
+			s.writeErr(s.controller.env.Text("login.console_11"), tunnelCommand)
 		}
-		s.writeErr("An SSH tunnel alone cannot receive Pixiv's final app link; remote browser login requires a desktop handoff.\n")
+		s.writeErr("%s", s.controller.env.Text("login.console_12"))
 	} else {
-		s.writeErr("Complete sign-in in your browser; the local page will receive the result.\n")
+		s.writeErr("%s", s.controller.env.Text("login.console_13"))
 	}
-	s.writeErr("Manual fallback page: http://%s/\n", s.actualAddr)
+	s.writeErr(s.controller.env.Text("login.console_14"), s.actualAddr)
 }
 
 func (s *loginServer) promptForLoginInput(openTerminalRelay func(string) error) {
 	for {
-		input, err := s.controller.env.PromptInput("Paste the returned Pixiv sign-in address, relay address, or value", "")
+		input, err := s.controller.env.PromptInput(s.controller.env.Text("prompt.paste_the_returned_pixiv_sign_in_address_relay"), "")
 		if err != nil {
 			return
 		}
@@ -402,14 +408,14 @@ func (s *loginServer) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawQuery == "" {
 		// macOS helper 将 callback 放入 fragment，避免授权码进入 loopback GET 请求和浏览器历史。
 		// 浏览器脚本会先清空 fragment，再通过本地 POST 提交给 /manual 并等待最终页。
-		writeLoginCallbackRelayPage(w)
+		writeLoginCallbackRelayPage(w, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 		return
 	}
 	result := loginCodeFromInput(callbackURLFromRequest(r), s.acceptsCallback)
 	s.reportInvalidSubmission(result.Err)
 	if result.Err != nil {
 		// 输入校验失败可立即回失败页；不泄露敏感细节。
-		writeLoginFinalPage(w, false)
+		writeLoginFinalPage(w, false, i18n.AcceptLanguage(r.Header.Get("Accept-Language")))
 		return
 	}
 	// 先登记最终页 waiter，再 submit 放行主流程，保证 notifyFinal.Wait 可见该 waiter。
@@ -423,35 +429,37 @@ func (s *loginServer) handleCallback(w http.ResponseWriter, r *http.Request) {
 func loginSSHTunnelCommand(addr string) (string, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "", fmt.Errorf("parse login listener address: %w", err)
+		return "", i18n.Errorf("error.parse_login_listener_address", err)
 	}
 	if host == "" || port == "" {
-		return "", errors.New("login listener address is incomplete")
+		return "", i18n.Errorf("error.login_listener_address_is_incomplete")
 	}
 	return fmt.Sprintf("ssh -N -L %s:%s:%s USER@SERVER", port, host, port), nil
 }
 
 // writeLoginForm 渲染包含 Pixiv 登录链接和手动回填表单的页面。
-func writeLoginForm(w http.ResponseWriter, loginURL string) {
+func writeLoginForm(w http.ResponseWriter, loginURL string, locale i18n.Locale) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := loginrelay.WriteManual(w, loginURL); err != nil {
-		http.Error(w, "could not render login page", http.StatusInternalServerError)
+	w.Header().Set("Content-Language", locale.String())
+	if err := loginrelay.WriteManual(w, loginURL, locale); err != nil {
+		http.Error(w, locale.Text("login.render_failed"), http.StatusInternalServerError)
 	}
 }
 
 // writeLoginCallbackRelayPage 将 helper 传来的 fragment 安全地转为本地 POST。
 // fragment 不会随 GET 发送给 loopback，脚本会在提交前将其从浏览器地址和历史记录中清除。
-func writeLoginCallbackRelayPage(w http.ResponseWriter) {
+func writeLoginCallbackRelayPage(w http.ResponseWriter, locale i18n.Locale) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := loginrelay.WriteCallbackRelay(w); err != nil {
-		http.Error(w, "could not render login page", http.StatusInternalServerError)
+	w.Header().Set("Content-Language", locale.String())
+	if err := loginrelay.WriteCallbackRelay(w, locale); err != nil {
+		http.Error(w, locale.Text("login.render_failed"), http.StatusInternalServerError)
 	}
 }
 
 // writeLoginFinalPage 在 OAuth 真正完成后返回最终页。
 // 成功/失败标题与正文均居中；失败页使用固定文案，不回显敏感原因。
-func writeLoginFinalPage(w http.ResponseWriter, ok bool) {
-	loginrelay.WriteFinalPage(w, ok)
+func writeLoginFinalPage(w http.ResponseWriter, ok bool, locale i18n.Locale) {
+	loginrelay.WriteFinalPage(w, ok, locale)
 }
 
 // classifyLoginInput 只解析并校验用户提交；HTTP fallback 可以让原浏览器继续 relay，
@@ -476,10 +484,10 @@ func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expec
 		return result
 	}
 	if result.RelayURL == "" {
-		return loginInputResult{loginServerResult: loginServerResult{Err: errors.New("pixiv authorization relay URL is empty")}, Relayed: true}
+		return loginInputResult{loginServerResult: loginServerResult{Err: i18n.Errorf("error.pixiv_authorization_relay_url_is_empty")}, Relayed: true}
 	}
 	if err := openRelay(result.RelayURL); err != nil {
-		return loginInputResult{loginServerResult: loginServerResult{Err: fmt.Errorf("could not open pixiv authorization relay URL: %w", err)}, Relayed: true}
+		return loginInputResult{loginServerResult: loginServerResult{Err: i18n.Errorf("error.could_not_open_pixiv_authorization_relay_url", err)}, Relayed: true}
 	}
 	return loginInputResult{Relayed: true, RelayURL: result.RelayURL}
 }
@@ -489,20 +497,20 @@ func loginInputFromText(input string, acceptsCallback callbackURLAccepter, expec
 func loginCodeFromInput(input string, acceptsCallback callbackURLAccepter) loginServerResult {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return loginServerResult{Err: errors.New("sign-in result cannot be empty")}
+		return loginServerResult{Err: i18n.Errorf("error.sign_in_result_cannot_be_empty")}
 	}
 	if strings.Contains(input, "://") || strings.HasPrefix(input, "/") {
 		parsed, err := url.Parse(input)
 		if err != nil {
-			return loginServerResult{Err: errors.New("invalid sign-in address")}
+			return loginServerResult{Err: i18n.Errorf("error.invalid_sign_in_address")}
 		}
 		if parsed.RawQuery != "" {
 			if acceptsCallback == nil || !acceptsCallback(input) {
-				return loginServerResult{Err: errors.New("sign-in address does not match this login session")}
+				return loginServerResult{Err: i18n.Errorf("error.sign_in_address_does_not_match_this_login")}
 			}
 			return loginServerResult{Code: input}
 		}
-		return loginServerResult{Err: errors.New("sign-in address did not include required details")}
+		return loginServerResult{Err: i18n.Errorf("error.sign_in_address_did_not_include_required_details")}
 	}
 	return loginServerResult{Code: input}
 }
@@ -532,21 +540,21 @@ func pixivLoginChallenge(loginURL string) string {
 
 func validateLoginAddr(addr string) error {
 	if strings.TrimSpace(addr) == "" {
-		return errors.New("--addr cannot be empty")
+		return i18n.Errorf("error.addr_cannot_be_empty")
 	}
 	if addr == defaultLoginAddr {
 		return nil
 	}
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return fmt.Errorf("invalid --addr %q: %w", addr, err)
+		return i18n.Errorf("error.invalid_addr", addr, err)
 	}
 	if strings.EqualFold(host, "localhost") {
 		return nil
 	}
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
-		return fmt.Errorf("--addr must bind to a loopback address, got %q", addr)
+		return i18n.Errorf("error.addr_must_bind_to_a_loopback_address_got", addr)
 	}
 	return nil
 }
@@ -585,10 +593,10 @@ func pixivPostRedirectRelayURL(rawURL, expectedChallenge string) (string, bool, 
 	}
 	returnTo, ok := pixivPostRedirectReturnTo(rawURL)
 	if !ok {
-		return "", true, errors.New("invalid Pixiv authorization relay URL")
+		return "", true, i18n.Errorf("error.invalid_pixiv_authorization_relay_url")
 	}
 	if !pixivAuthStartMatchesChallenge(returnTo, expectedChallenge) {
-		return "", true, errors.New("Pixiv authorization relay URL does not match this login attempt")
+		return "", true, i18n.Errorf("error.pixiv_authorization_relay_url_does_not_match_this")
 	}
 	return strings.TrimSpace(rawURL), true, nil
 }

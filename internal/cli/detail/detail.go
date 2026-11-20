@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -43,31 +43,31 @@ func New(env environment.Env, executeSDK environment.PixivExecutor) *cobra.Comma
 	options := Options{typ: string(target.NamespaceArtwork)}
 	cmd := &cobra.Command{
 		Use:   "detail [ID_OR_URL]",
-		Short: "Show one artwork, novel, or user",
+		Short: "help.show_one_artwork_novel_or_user",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.run(cmd, args, options)
 		},
 	}
 	env.BindCommonFlags(cmd, &options.Options)
-	cmd.Flags().BoolVar(&options.ndjson, "ndjson", false, "print one canonical record per line")
+	cmd.Flags().BoolVar(&options.ndjson, "ndjson", false, "flag.print_one_canonical_record_per_line")
 	options.input = env.BindTextOrRecord(cmd, 1, 1, 0)
-	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork, novel, user")
-	cmd.Flags().BoolVar(&options.content, "content", false, "for novels, read structured novel content instead of metadata")
+	cmd.Flags().StringVarP(&options.typ, "type", "t", options.typ, "flag.entity_type_artwork_novel_user")
+	cmd.Flags().BoolVar(&options.content, "content", false, "flag.for_novels_read_structured_novel_content_instead_of")
 	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
 
 func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) error {
 	if cmd.Flags().Changed("json") && cmd.Flags().Changed("ndjson") {
-		return errors.New("--json and --ndjson cannot be used together")
+		return i18n.Errorf("error.json_and_ndjson_cannot_be_used_together")
 	}
 	if opts.input.Mode() == environment.RecordMode {
 		return a.runRecords(cmd, opts)
 	}
 	a.markNDJSON(cmd, opts.ndjson)
 	if len(args) != 1 {
-		return errors.New("detail requires one ID or URL")
+		return i18n.Errorf("error.detail_requires_one_id_or_url")
 	}
 	entity, err := resolveEntity(opts.typ)
 	if err != nil {
@@ -85,7 +85,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string, opts Options) erro
 
 func validateContentEntity(content bool, entity string) error {
 	if content && entity != string(target.NamespaceNovel) {
-		return errors.New("--content is only supported when --type novel")
+		return i18n.Errorf("error.content_is_only_supported_when_type_novel")
 	}
 	if content {
 		// App v1 的正文 endpoint 已被拒绝；在构造 request 和打开账号池前返回
@@ -210,7 +210,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return display.PrintArtworkDetail(a.env.Out, result)
+		return display.PrintArtworkDetail(a.env.Out, a.env.Language, result)
 	case string(target.NamespaceNovel):
 		var result record.Novel
 		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
@@ -234,7 +234,7 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return display.PrintNovelDetail(a.env.Out, result)
+		return display.PrintNovelDetail(a.env.Out, a.env.Language, result)
 	case string(target.NamespaceUser):
 		var result record.UserDetail
 		err := a.executeSDK(ctx, request, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
@@ -258,9 +258,9 @@ func (a commandRunner) runOneWithOutput(ctx context.Context, cmd *cobra.Command,
 		if jsonOut {
 			return a.env.PrintJSON(result)
 		}
-		return display.PrintUserDetail(a.env.Out, result)
+		return display.PrintUserDetail(a.env.Out, a.env.Language, result)
 	default:
-		return errors.New("type must be one of artwork, novel, user")
+		return i18n.Errorf("error.type_must_be_one_of_artwork_novel_user")
 	}
 }
 
@@ -284,7 +284,7 @@ func entityForRecord(typ string, explicit bool, requested string) (string, error
 		return "", err
 	}
 	if wanted != inferred {
-		return "", fmt.Errorf("record type %q is incompatible with --type %q", typ, requested)
+		return "", i18n.Errorf("error.record_type_is_incompatible_with_type", typ, requested)
 	}
 	return wanted, nil
 }
@@ -298,7 +298,7 @@ func resolveRecordEntity(typ string) (string, error) {
 	case string(target.NamespaceUser):
 		return string(target.NamespaceUser), nil
 	default:
-		return "", fmt.Errorf("unsupported record type %q", typ)
+		return "", i18n.Errorf("error.unsupported_record_type", typ)
 	}
 }
 
@@ -309,7 +309,7 @@ func resolveEntity(value string) (string, error) {
 	case string(target.NamespaceNovel), string(target.NamespaceUser):
 		return value, nil
 	default:
-		return "", errors.New("type must be one of artwork, novel, user")
+		return "", i18n.Errorf("error.type_must_be_one_of_artwork_novel_user")
 	}
 }
 

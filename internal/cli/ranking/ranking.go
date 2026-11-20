@@ -3,11 +3,11 @@ package ranking
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -36,7 +36,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	options := options{typ: string(target.NamespaceArtwork), mode: string(pixiv.RankingModeDay)}
 	cmd := &cobra.Command{
 		Use:   "ranking",
-		Short: "Show artwork or novel ranking",
+		Short: "help.show_artwork_or_novel_ranking",
 		Args:  env.ExactArgs(0, "pixiv ranking [options]"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.run(cmd, options)
@@ -45,9 +45,9 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	env.BindCommonFlags(cmd, &options.Options)
 	environment.BindNDJSONFlag(cmd, &options.ndjson)
 	flags := cmd.Flags()
-	flags.StringVarP(&options.typ, "type", "t", options.typ, "entity type: artwork or novel")
-	flags.StringVar(&options.mode, "mode", options.mode, "ranking mode: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; the last nine require authentication")
-	flags.StringVar(&options.date, "date", "", "YYYY-MM-DD (artwork ranking only)")
+	flags.StringVarP(&options.typ, "type", "t", options.typ, "flag.entity_type_artwork_or_novel")
+	flags.StringVar(&options.mode, "mode", options.mode, "flag.ranking_mode_day_day_male_day_female_week")
+	flags.StringVar(&options.date, "date", "", "flag.yyyy_mm_dd_artwork_ranking_only")
 	environment.BindListFlags(cmd, &options.limit, &options.page)
 	env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
@@ -56,10 +56,10 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 
 func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	if opts.typ != string(target.NamespaceArtwork) && opts.typ != string(target.NamespaceNovel) {
-		return errors.New("type must be one of: artwork, novel")
+		return i18n.Errorf("error.type_must_be_one_of_artwork_novel_333")
 	}
 	if opts.typ == string(target.NamespaceNovel) && cmd.Flags().Changed("date") {
-		return errors.New("--date is only supported when --type artwork")
+		return i18n.Errorf("error.date_is_only_supported_when_type_artwork")
 	}
 	switch pixiv.RankingMode(opts.mode) {
 	case "", pixiv.RankingModeDay, pixiv.RankingModeDayMale, pixiv.RankingModeDayFemale, pixiv.RankingModeWeek,
@@ -68,7 +68,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 		pixiv.RankingModeWeekRookieManga, pixiv.RankingModeDayR18, pixiv.RankingModeDayMaleR18,
 		pixiv.RankingModeDayFemaleR18, pixiv.RankingModeWeekR18, pixiv.RankingModeWeekR18G:
 	default:
-		return errors.New("mode must be one of: day, day_male, day_female, week, week_original, week_rookie, month, day_manga, week_manga, month_manga, week_rookie_manga, day_r18, day_male_r18, day_female_r18, week_r18, week_r18g; see pixiv ranking --help")
+		return i18n.Errorf("error.mode_must_be_one_of_day_day_male")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -79,7 +79,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 		return err
 	}
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -113,7 +113,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 					if _, err := fmt.Fprintf(a.env.Out, "#%d ", position); err != nil {
 						return err
 					}
-					if err := display.PrintNovels(a.env.Out, []record.Novel{item}); err != nil {
+					if err := display.PrintNovels(a.env.Out, a.env.Language, []record.Novel{item}); err != nil {
 						return err
 					}
 				}
@@ -138,7 +138,7 @@ func (a commandRunner) run(cmd *cobra.Command, opts options) error {
 	return record.RunSDKList(cmd.Context(), a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.Artwork]{
 		RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 		Print: func(items []record.Artwork, start int) error {
-			return display.PrintArtworksRanked(a.env.Out, items, start)
+			return display.PrintArtworksRanked(a.env.Out, a.env.Language, items, start)
 		},
 	}, fetch)
 }

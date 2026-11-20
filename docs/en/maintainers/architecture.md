@@ -100,6 +100,10 @@ Owns the `pixiv://` URL scheme: platform handler installation, callback dispatch
 
 Only exact `pixiv://account/login` and `pixiv://account/remote-login` enter the current round; the active loopback wins; remote callbacks go only to the active one-shot hand-off; other URLs go to the handler persisted in the manifest. Desktop state stores only the current hand-off's relay origin, session ID and capability; the server stores no device record; the SDK exposes none of it. The remote callback accepts only a one-shot result URL on the same relay base; `internal/cli` opens the non-sensitive final page and waits for exchange.
 
+### Interface localization
+
+`internal/i18n` owns embedded English/Simplified Chinese message catalogs and locale resolution. CLI command owners carry the invocation locale in `environment.Env`; shared record output reads the same locale from its execution context. Application errors defer translation until CLI rendering and keep their English `Error()` and original error chain for machine callers. Login/OAuth owners select a locale per HTTP request; the frontend resource package stays resource-only. The gallery owner injects its catalog subset into the self-contained page, where DOM message bindings react to host locale changes without rebuilding the view. No mutable process-wide locale or persisted locale setting is used.
+
 ### Cross-cutting concerns
 
 One owner per concern; no other layer implements it again.

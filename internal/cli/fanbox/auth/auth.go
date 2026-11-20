@@ -43,7 +43,7 @@ func New(env environment.Env, accounts func(context.Context) (*Accounts, error),
 	a := commandRunner{env: env, accounts: accounts, browser: browser}
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Manage local FANBOX authentication",
+		Short: "help.manage_local_fanbox_authentication",
 		Args:  env.ExactArgs(0, "pixiv fanbox auth <command>"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

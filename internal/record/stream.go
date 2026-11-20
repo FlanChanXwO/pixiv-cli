@@ -6,8 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // PipelineDiagnosticError 表示错误已经按管道契约写入 stderr。它让根命令保留
@@ -74,7 +75,7 @@ func ConsumeNDJSONRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 		// 副作用的动作命令中绝不能把这些字节当成可执行记录。EOF 则允许携带
 		// 最后一行合法 NDJSON，仍按正常路径处理。
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return fmt.Errorf("read NDJSON input: %w", readErr)
+			return i18n.Errorf("error.read_ndjson_input", readErr)
 		}
 		if len(line) > 0 {
 			lineNumber++
@@ -136,7 +137,7 @@ func RecordFailureStrategy(value string) (bool, error) {
 	case RecordFailureFailFast:
 		return true, nil
 	default:
-		return false, errors.New("on-error must be one of: skip, fail-fast")
+		return false, i18n.Errorf("error.on_error_must_be_one_of_skip_fail")
 	}
 }
 
@@ -173,7 +174,7 @@ func diagnosticRecordIdentity(line []byte) (string, string) {
 func RequiredRecordID(value Record) (int64, error) {
 	id, err := parsePositiveInt64(value.ID(), "record id")
 	if err != nil {
-		return 0, fmt.Errorf("record id must be a positive integer: %w", err)
+		return 0, i18n.Errorf("error.record_id_must_be_a_positive_integer", err)
 	}
 	return id, nil
 }

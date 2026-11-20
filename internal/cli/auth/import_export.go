@@ -3,7 +3,6 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func writeAuthExportStdout(writer io.Writer, body []byte) error {
 func parseAuthExportUID(raw string) (int64, error) {
 	userID, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil || userID <= 0 {
-		return 0, errors.New("uid must be a positive integer")
+		return 0, i18n.Errorf("error.uid_must_be_a_positive_integer")
 	}
 	return userID, nil
 }
@@ -51,7 +51,7 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 	var input authImportInput
 	cmd := &cobra.Command{
 		Use:     "import [REFRESH_TOKEN]",
-		Short:   "Import or replace an account",
+		Short:   "help.import_or_replace_an_account",
 		Example: "pixiv auth import YOUR_REFRESH_TOKEN",
 		Args:    a.env.MaxArgs(1, "pixiv auth import [REFRESH_TOKEN]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -59,7 +59,7 @@ func (a controller) newAccountImportCommand() *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.BoolVar(&opts.jsonOut, "json", false, "print JSON")
+	flags.BoolVar(&opts.jsonOut, "json", false, "flag.print_json")
 	a.env.BindProxyFlags(cmd, &opts.ProxyOptions)
 	a.bindAuthImportInput(cmd, &input)
 	a.env.BindNoInput(cmd)
@@ -82,14 +82,14 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 		}
 		list, err := service.listWithContext(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("bundle imported; read resulting account identities: %w", err)
+			return i18n.Errorf("error.bundle_imported_read_resulting_account_identities", err)
 		}
 		for _, account := range result.Accounts {
-			if _, err := fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(account.Status), display.Identity(account.Username, account.UserID)); err != nil {
+			if _, err := fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(a.env.Language, account.Status), display.Identity(account.Username, account.UserID)); err != nil {
 				return err
 			}
 		}
-		_, err = fmt.Fprintf(a.env.Out, "Now using %s\n", accountIdentity(list, result.defaultUserID))
+		_, err = fmt.Fprintf(a.env.Out, a.env.Text("output.now_using"), accountIdentity(list, result.defaultUserID))
 		return err
 	}
 	proxyOverride, err := environment.ProxyOverride(cmd, opts.ProxyOptions)
@@ -114,7 +114,7 @@ func (a controller) accountImport(cmd *cobra.Command, args []string, opts accoun
 	if opts.jsonOut {
 		return a.env.PrintJSON(result)
 	}
-	_, err = fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(result.Status), display.Identity(result.Username, result.UserID))
+	_, err = fmt.Fprintf(a.env.Out, "%s %s\n", importVerb(a.env.Language, result.Status), display.Identity(result.Username, result.UserID))
 	return err
 }
 
@@ -127,15 +127,15 @@ func (a controller) bindAuthImportInput(cmd *cobra.Command, target *authImportIn
 			}
 			body, err := io.ReadAll(a.env.In)
 			if err != nil {
-				return fmt.Errorf("read auth import stdin: %w", err)
+				return i18n.Errorf("error.read_auth_import_stdin", err)
 			}
 			first, hasValue := environment.FirstNonWhitespace(body)
 			if hasValue && first == '{' {
 				if !json.Valid(body) {
-					return errors.New("invalid auth export bundle JSON")
+					return i18n.Errorf("error.invalid_auth_export_bundle_json")
 				}
 				if cmd.Flags().Changed("proxy") || cmd.Flags().Changed("no-proxy") {
-					return errors.New("bundle import cannot be combined with --proxy or --no-proxy")
+					return i18n.Errorf("error.bundle_import_cannot_be_combined_with_proxy_or")
 				}
 				*target = authImportInput{bundle: body}
 				environment.SetOffline(ctxCmd)
@@ -160,9 +160,9 @@ func (a controller) resolveRefreshTokenInput(args []string, input authImportInpu
 		return input.token, nil
 	}
 	if a.env.CanPrompt() {
-		return a.env.PromptSecret("Refresh token")
+		return a.env.PromptSecret(a.env.Text("prompt.refresh_token"))
 	}
-	if _, err := fmt.Fprint(a.env.Err, "refresh token: "); err != nil {
+	if _, err := fmt.Fprint(a.env.Err, a.env.Text("output.refresh_token")); err != nil {
 		return "", err
 	}
 	return readRefreshTokenInput(a.env.In)
@@ -182,17 +182,17 @@ func readRefreshTokenInput(r io.Reader) (string, error) {
 		token = strings.TrimSuffix(token, "\n")
 	}
 	if strings.ContainsAny(token, "\r\n") {
-		return "", errors.New("refresh token input must contain exactly one line")
+		return "", i18n.Errorf("error.refresh_token_input_must_contain_exactly_one_line")
 	}
 	if token == "" {
-		return "", errors.New("refresh token cannot be empty")
+		return "", i18n.Errorf("error.refresh_token_cannot_be_empty")
 	}
 	return token, nil
 }
 
-func importVerb(status string) string {
+func importVerb(language i18n.Locale, status string) string {
 	if status == accountImportStatusUpdated {
-		return "Updated"
+		return language.Text("account.updated")
 	}
-	return "Imported"
+	return language.Text("account.imported")
 }

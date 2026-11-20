@@ -22,10 +22,12 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // ErrTextTooLong 表示本地查询超出含 EOS 的固定上下文长度。
-var ErrTextTooLong = errors.New("local text query is too long")
+var ErrTextTooLong = i18n.Errorf("error.local_text_query_is_too_long")
 
 const defaultBase = "https://generativelanguage.googleapis.com"
 
@@ -56,18 +58,18 @@ func CanonicalBase(raw string) (string, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
-		return "", errors.New("invalid vector service URL")
+		return "", i18n.Errorf("error.invalid_vector_service_url")
 	}
 	u.Scheme, u.Host = strings.ToLower(u.Scheme), strings.ToLower(u.Host)
 	ip := net.ParseIP(u.Hostname())
 	loopback := u.Hostname() == "localhost" || ip != nil && ip.IsLoopback()
 	if u.Scheme != "https" && !(u.Scheme == "http" && loopback) {
-		return "", errors.New("vector service URL requires HTTPS except on loopback")
+		return "", i18n.Errorf("error.vector_service_url_requires_https_except_on_loopback")
 	}
 	u.RawPath = strings.TrimSuffix(strings.TrimRight(u.EscapedPath(), "/"), "/v1")
 	u.Path, err = url.PathUnescape(u.RawPath)
 	if err != nil {
-		return "", errors.New("invalid vector service URL path")
+		return "", i18n.Errorf("error.invalid_vector_service_url_path")
 	}
 	if u.Port() == "443" && u.Scheme == "https" || u.Port() == "80" && u.Scheme == "http" {
 		u.Host = u.Hostname()
@@ -83,7 +85,7 @@ var modelName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // Identifier 返回与鉴权和设备无关的向量身份。
 func Identifier(name, base string) (string, error) {
 	if !modelName.MatchString(name) {
-		return "", errors.New("invalid vector model ID")
+		return "", i18n.Errorf("error.invalid_vector_model_id")
 	}
 	if spec, ok := localModels[name]; ok {
 		return name + "@" + spec.revision, nil
@@ -112,7 +114,7 @@ func Open(options Options, client *http.Client) (*Model, error) {
 		return nil, err
 	}
 	if strings.TrimSpace(options.APIKey) == "" {
-		return nil, errors.New("vector service API key is required; run \"pixiv vector setup\"")
+		return nil, i18n.Errorf("error.vector_service_api_key_is_required_run_pixiv_vector_setup")
 	}
 	options.BaseURL = base
 	m := &Model{options: options, http: *client}
@@ -160,7 +162,7 @@ func (m *Model) embed(ctx context.Context, part any) (result []float32, err erro
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.options.BaseURL+"/v1beta/models/"+m.options.Name+":embedContent", bytes.NewReader(body))
 	if err != nil {
-		return nil, errors.New("invalid vector request")
+		return nil, i18n.Errorf("error.invalid_vector_request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-goog-api-key", m.options.APIKey)
@@ -169,12 +171,12 @@ func (m *Model) embed(ctx context.Context, part any) (result []float32, err erro
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("vector service transport failed")
+		return nil, i18n.Errorf("error.vector_service_transport_failed")
 	}
 	defer func() {
 		if closeErr := response.Body.Close(); closeErr != nil {
 			result = nil
-			err = errors.Join(err, errors.New("vector response close failed"))
+			err = errors.Join(err, i18n.Errorf("error.vector_response_close_failed"))
 		}
 	}()
 	if response.StatusCode != http.StatusOK {
@@ -190,13 +192,13 @@ func (m *Model) embed(ctx context.Context, part any) (result []float32, err erro
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("invalid vector service response")
+		return nil, i18n.Errorf("error.invalid_vector_service_response")
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("invalid vector service response")
+		return nil, i18n.Errorf("error.invalid_vector_service_response")
 	}
 	return normalize(value.Embedding.Values)
 }
@@ -205,12 +207,12 @@ func normalize(values []float32) ([]float32, error) {
 	var norm float64
 	for _, v := range values {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
-			return nil, errors.New("vector contains a non-finite value")
+			return nil, i18n.Errorf("error.vector_contains_a_non_finite_value")
 		}
 		norm += float64(v) * float64(v)
 	}
 	if norm == 0 {
-		return nil, errors.New("vector is empty or zero")
+		return nil, i18n.Errorf("error.vector_is_empty_or_zero")
 	}
 	norm = math.Sqrt(norm)
 	for i := range values {
@@ -244,10 +246,10 @@ func (m *Model) Probe(ctx context.Context) (int, error) {
 	}
 	img, err := m.Image(ctx, data)
 	if err != nil {
-		return 0, fmt.Errorf("multimodal image probe failed: %w", err)
+		return 0, i18n.Errorf("error.multimodal_image_probe_failed_w", err)
 	}
 	if len(text) != len(img) {
-		return 0, errors.New("text and image vector dimensions differ")
+		return 0, i18n.Errorf("error.text_and_image_vector_dimensions_differ")
 	}
 	return len(text), nil
 }

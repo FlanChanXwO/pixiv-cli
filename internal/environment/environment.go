@@ -11,10 +11,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -22,9 +21,10 @@ import (
 // Env 汇集所有 command owner 共用的输入输出流和 flag 绑定；root 构造一份，
 // 各命令包通过构造函数参数取得。
 type Env struct {
-	In  io.Reader
-	Out io.Writer
-	Err io.Writer
+	Language i18n.Locale
+	In       io.Reader
+	Out      io.Writer
+	Err      io.Writer
 	// WrapUsage 给参数或输入契约错误打上 CLI usage 退出码的标记。
 	WrapUsage func(error) error
 	// ResolveJSON 返回本次执行生效的 JSON 设置；override 为 nil 时读取运行时配置。
@@ -33,6 +33,9 @@ type Env struct {
 	// 重复调用不产生额外副作用。
 	EnablePipelineSignal func()
 }
+
+// Text 返回本次执行语言的界面消息。
+func (e Env) Text(key string) string { return e.Language.Text(key) }
 
 // ProxyOptions 保存一条命令的 --proxy/--no-proxy 取值。
 type ProxyOptions struct {
@@ -65,7 +68,7 @@ func (e Env) MaxArgs(count int, usage string) cobra.PositionalArgs {
 func requireArgs(usage string, valid func(int) bool) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if !valid(len(args)) {
-			return fmt.Errorf("usage: %s", usage)
+			return i18n.Errorf("error.usage", usage)
 		}
 		return nil
 	}
@@ -99,7 +102,7 @@ func ProxyOverride(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
 	noProxyChanged := cmd.Flags().Changed("no-proxy")
 	if proxyChanged && noProxyChanged {
-		return nil, errors.New("use either --proxy or --no-proxy, not both")
+		return nil, i18n.Errorf("error.use_either_proxy_or_no_proxy_not_both")
 	}
 	if noProxyChanged && opts.NoProxy {
 		empty := ""
@@ -113,15 +116,15 @@ func ProxyOverride(cmd *cobra.Command, opts ProxyOptions) (*string, error) {
 
 // BindCommonFlags 注册 --json（短选项 -j）和代理覆盖 flag。
 func (e Env) BindCommonFlags(cmd *cobra.Command, opts *Options) {
-	cmd.Flags().BoolVarP(&opts.JSON, "json", "j", false, "print JSON")
+	cmd.Flags().BoolVarP(&opts.JSON, "json", "j", false, "flag.print_json")
 	e.BindProxyFlags(cmd, &opts.ProxyOptions)
 }
 
 // BindProxyFlags 只注册代理覆盖 flag，供没有 --json 的命令使用。
 func (e Env) BindProxyFlags(cmd *cobra.Command, opts *ProxyOptions) {
 	flags := cmd.Flags()
-	flags.StringVar(&opts.Proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
-	flags.BoolVar(&opts.NoProxy, "no-proxy", false, "clear the configured proxy for this command")
+	flags.StringVar(&opts.Proxy, "proxy", "", "flag.proxy_url_http_https_socks5_or_socks5h_for")
+	flags.BoolVar(&opts.NoProxy, "no-proxy", false, "flag.clear_the_configured_proxy_for_this_command")
 }
 
 // BindTextValue 把 stdin 声明为单个文本值，并返回本次命令的输入状态。

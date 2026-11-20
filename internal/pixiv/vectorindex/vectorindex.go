@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	_ "github.com/ncruces/go-sqlite3/driver"
@@ -83,7 +84,7 @@ func (s *Store) initialize(ctx context.Context) error {
 			return err
 		}
 		if tables != 0 {
-			return errors.New("vector index belongs to another application")
+			return i18n.Errorf("error.vector_index_belongs_to_another_application")
 		}
 		_, err := s.db.ExecContext(ctx, fmt.Sprintf(`BEGIN IMMEDIATE;
    CREATE TABLE artwork(id TEXT PRIMARY KEY, record BLOB NOT NULL, recorded_at TEXT NOT NULL);
@@ -96,7 +97,7 @@ func (s *Store) initialize(ctx context.Context) error {
 			return err
 		}
 	} else if id != applicationID || version != schemaVersion {
-		return fmt.Errorf("unsupported vector index (application=%d, version=%d)", id, version)
+		return i18n.Errorf("error.unsupported_vector_index_application_d_version_d", id, version)
 	}
 	_, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
 	return err

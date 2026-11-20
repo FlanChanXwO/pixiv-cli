@@ -100,6 +100,10 @@ CLI 组合根。`internal/cli` 只有一个 `root.go` 和命令目录；与 MCP 
 
 只有精确的 `pixiv://account/login` 与 `pixiv://account/remote-login` 进入本轮；活动 loopback 优先；远程回调只交给活动的一次性 hand-off；其他 URL 交给清单中持久化的 handler。桌面状态只保存当前 hand-off 的 relay origin、会话 ID 与 capability；server 不保存设备记录；SDK 不暴露这些状态。远程回调只接受同一 relay base 上的一次性结果 URL；`internal/cli` 打开不敏感的最终页面并等待交换。
 
+### 界面本地化
+
+`internal/i18n` 持有内嵌的英文、简体中文消息词典及语言解析。CLI owner 通过 `environment.Env` 携带本次执行的语言，共享记录输出从执行上下文读取同一语言。应用错误延迟到 CLI 输出时翻译，机器调用方继续使用英文 `Error()` 及原始错误链。登录和 OAuth owner 按 HTTP 请求选取语言，frontend 包继续仅持有资源。画廊 owner 将所需词典注入自包含页面，DOM 消息绑定响应宿主语言变化并保留当前视图。语言状态按执行或请求保存，无需全局可变语言或持久化语言配置。
+
 ### 横切关注点
 
 每个关注点只有一个归属层，其他层不重复实现。

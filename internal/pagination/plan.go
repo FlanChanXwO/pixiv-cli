@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // 校验失败的原因；调用方按自己的输出契约翻译其中需要改写的文本。
@@ -83,7 +85,7 @@ func ParseInput(page, limit *int) (PagePlan, error) {
 	}
 	if page != nil {
 		if limit == nil || *limit <= 0 {
-			return PagePlan{}, errors.New("page requires limit to be a positive integer")
+			return PagePlan{}, i18n.Errorf("error.page_requires_limit_to_be_a_positive_integer")
 		}
 		if *page-1 > math.MaxInt / *limit {
 			return PagePlan{}, ErrOffsetOverflow

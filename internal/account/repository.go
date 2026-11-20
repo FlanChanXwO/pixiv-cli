@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 var (
@@ -74,7 +75,7 @@ func (s *Store) SavePixivCredentials(ctx context.Context, accounts []Pixiv) erro
 		now := time.Now().UTC()
 		for _, a := range accounts {
 			if a.UserID <= 0 || a.Credential.Empty() || seen[a.UserID] {
-				return errors.New("account: invalid or duplicate Pixiv credential")
+				return i18n.Errorf("error.account_invalid_or_duplicate_pixiv_credential")
 			}
 			seen[a.UserID] = true
 			index := slices.IndexFunc(doc.Pixiv, func(saved Pixiv) bool { return saved.UserID == a.UserID })
@@ -116,7 +117,7 @@ func (s *Store) UpdatePixivMetadata(ctx context.Context, userID int64, username 
 // RotatePixivCredentials 比较读取快照的 revision 与创建时间，防止删除重建后接受旧轮换。
 func (s *Store) RotatePixivCredentials(ctx context.Context, expected Pixiv, refreshToken []byte) error {
 	if expected.UserID <= 0 || expected.CredentialRevision <= 0 || len(refreshToken) == 0 {
-		return errors.New("account: invalid rotation input")
+		return i18n.Errorf("error.account_invalid_rotation_input")
 	}
 	return s.update(ctx, func(doc *document) error {
 		for i := range doc.Pixiv {
@@ -155,7 +156,7 @@ func (s *Store) RemovePixiv(ctx context.Context, userID int64) error {
 // SaveFanboxCredential 保存已验证的 session；更新时保持显示顺序并递增 revision。
 func (s *Store) SaveFanboxCredential(ctx context.Context, a Fanbox) error {
 	if a.UserID <= 0 || a.Credential.Empty() || a.ValidatedAt.IsZero() {
-		return errors.New("account: invalid FANBOX credential")
+		return i18n.Errorf("error.account_invalid_fanbox_credential")
 	}
 	return s.update(ctx, func(doc *document) error {
 		now := time.Now().UTC()

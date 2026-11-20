@@ -3,13 +3,13 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/account"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/credential"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -43,7 +43,7 @@ type AccountSummary struct {
 func (s *Accounts) ImportAccount(ctx context.Context, refreshToken string, setDefault bool, options pixiv.Options) (AccountSummary, error) {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
-		return AccountSummary{}, errors.New("pixiv refresh token is required")
+		return AccountSummary{}, i18n.Errorf("error.pixiv_refresh_token_is_required")
 	}
 	saved, err := s.store.ImportPixiv(ctx, refreshToken, options)
 	if err != nil {
@@ -51,11 +51,11 @@ func (s *Accounts) ImportAccount(ctx context.Context, refreshToken string, setDe
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {
-		return AccountSummary{}, fmt.Errorf("read pixiv default account: %w", err)
+		return AccountSummary{}, i18n.Errorf("error.read_pixiv_default_account", err)
 	}
 	if setDefault || !hasDefault {
 		if err := s.defaults.SetPixivDefaultUserID(saved.UserID); err != nil {
-			return AccountSummary{}, fmt.Errorf("set pixiv default account: %w", err)
+			return AccountSummary{}, i18n.Errorf("error.set_pixiv_default_account", err)
 		}
 	}
 	return s.summary(ctx, saved.UserID)
@@ -95,11 +95,11 @@ func (s *Accounts) SetAllPoolSchedulable(ctx context.Context, schedulable bool) 
 func (s *Accounts) RemoveAccount(ctx context.Context, userID int64) error {
 	defaultID, explicit, err := s.defaults.ReadPixivDefaultUserID()
 	if err != nil {
-		return fmt.Errorf("read pixiv default account: %w", err)
+		return i18n.Errorf("error.read_pixiv_default_account", err)
 	}
 	if explicit && defaultID == userID {
 		if err := s.defaults.ClearPixivDefaultUserID(); err != nil {
-			return fmt.Errorf("clear pixiv default account: %w", err)
+			return i18n.Errorf("error.clear_pixiv_default_account", err)
 		}
 	}
 	if err := s.store.RemovePixiv(ctx, userID); err != nil {
@@ -182,11 +182,11 @@ func (s *Accounts) completeLogin(ctx context.Context, saved account.Pixiv, setDe
 	}
 	hasDefault, err := s.hasDefault()
 	if err != nil {
-		return accountSummary(saved, false, false), fmt.Errorf("read pixiv default account: %w", err)
+		return accountSummary(saved, false, false), i18n.Errorf("error.read_pixiv_default_account", err)
 	}
 	if setDefault || !hasDefault {
 		if err := s.defaults.SetPixivDefaultUserID(saved.UserID); err != nil {
-			return accountSummary(saved, false, false), fmt.Errorf("set pixiv default account: %w", err)
+			return accountSummary(saved, false, false), i18n.Errorf("error.set_pixiv_default_account", err)
 		}
 	}
 	summary, err := s.summary(ctx, saved.UserID)
@@ -237,13 +237,13 @@ type RestoreAccountOutcome struct {
 // 任一凭据写入失败时事务整体回滚，default 配置保持不变。
 func (s *Accounts) RestoreAccounts(ctx context.Context, inputs []RestoreAccountInput) (RestoreAccountsResult, error) {
 	if len(inputs) == 0 {
-		return RestoreAccountsResult{}, errors.New("pixiv restore bundle has no accounts")
+		return RestoreAccountsResult{}, i18n.Errorf("error.pixiv_restore_bundle_has_no_accounts")
 	}
 	stored := make([]account.Pixiv, 0, len(inputs))
 	for _, input := range inputs {
 		refreshToken := strings.TrimSpace(input.RefreshToken)
 		if input.Account.UserID <= 0 || refreshToken == "" {
-			return RestoreAccountsResult{}, errors.New("pixiv refresh token is required")
+			return RestoreAccountsResult{}, i18n.Errorf("error.pixiv_refresh_token_is_required")
 		}
 		account := account.Pixiv{UserID: input.Account.UserID, Username: input.Account.Username, Credential: credential.New([]byte(refreshToken))}
 		account.PremiumStatus = input.Account.Premium
@@ -251,18 +251,18 @@ func (s *Accounts) RestoreAccounts(ctx context.Context, inputs []RestoreAccountI
 	}
 	preExistingDefault, hasDefault, err := s.defaults.ReadPixivDefaultUserID()
 	if err != nil {
-		return RestoreAccountsResult{}, fmt.Errorf("read pixiv default account: %w", err)
+		return RestoreAccountsResult{}, i18n.Errorf("error.read_pixiv_default_account", err)
 	}
 	existingUIDs := make(map[int64]struct{})
 	if before, err := s.store.ListPixiv(ctx); err != nil {
-		return RestoreAccountsResult{}, fmt.Errorf("read pixiv accounts: %w", err)
+		return RestoreAccountsResult{}, i18n.Errorf("error.read_pixiv_accounts", err)
 	} else {
 		for _, account := range before {
 			existingUIDs[account.UserID] = struct{}{}
 		}
 	}
 	if err := s.store.SavePixivCredentials(ctx, stored); err != nil {
-		return RestoreAccountsResult{}, fmt.Errorf("restore pixiv accounts: %w", err)
+		return RestoreAccountsResult{}, i18n.Errorf("error.restore_pixiv_accounts", err)
 	}
 	resultingDefault := preExistingDefault
 	if !hasDefault {
@@ -276,7 +276,7 @@ func (s *Accounts) RestoreAccounts(ctx context.Context, inputs []RestoreAccountI
 			resultingDefault = inputs[0].Account.UserID
 		}
 		if err := s.defaults.SetPixivDefaultUserID(resultingDefault); err != nil {
-			return RestoreAccountsResult{}, fmt.Errorf("set pixiv default account: %w", err)
+			return RestoreAccountsResult{}, i18n.Errorf("error.set_pixiv_default_account", err)
 		}
 	}
 	outcomes := make([]RestoreAccountOutcome, 0, len(inputs))
@@ -340,7 +340,7 @@ func (s *Accounts) SelectedUserID(ctx context.Context) (int64, error) {
 	} else if ok {
 		if _, err := s.store.GetPixiv(ctx, userID); err != nil {
 			if errors.Is(err, account.ErrPixivNotFound) {
-				return 0, fmt.Errorf("configured default pixiv account %d is missing", userID)
+				return 0, i18n.Errorf("error.configured_default_pixiv_account_is_missing", userID)
 			}
 			return 0, err
 		}

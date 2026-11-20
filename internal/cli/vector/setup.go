@@ -9,6 +9,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/vectormodel"
 	"github.com/spf13/cobra"
@@ -18,7 +19,7 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 	var model, base, device string
 	var yes bool
 	var proxy environment.ProxyOptions
-	cmd := &cobra.Command{Use: "setup", Short: "Install, probe and enable an embedding model", Args: env.ExactArgs(0, "pixiv vector setup [--model NAME] [--device cpu|gpu] [--yes]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "setup", Short: "help.install_probe_and_enable_an_embedding_model", Args: env.ExactArgs(0, "pixiv vector setup [--model NAME] [--device cpu|gpu] [--yes]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
 		c, err := store.Current()
 		if err != nil {
 			return err
@@ -26,14 +27,14 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 		local := vectormodel.IsLocal(model)
 		if local {
 			if device != "cpu" && device != "gpu" {
-				return env.WrapUsage(errors.New("--device must be cpu or gpu"))
+				return env.WrapUsage(i18n.Errorf("error.device_must_be_cpu_or_gpu"))
 			}
 		} else if cmd.Flags().Changed("device") {
-			return env.WrapUsage(errors.New("--device applies to local models"))
+			return env.WrapUsage(i18n.Errorf("error.device_applies_to_local_models"))
 		}
 		if local {
 			if cmd.Flags().Changed("base-url") {
-				return env.WrapUsage(errors.New("--base-url applies to cloud models"))
+				return env.WrapUsage(i18n.Errorf("error.base_url_applies_to_cloud_models"))
 			}
 			base = ""
 		} else {
@@ -58,7 +59,7 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			return err
 		}
 		if !acquired {
-			return errors.New("vector sync is busy")
+			return i18n.Errorf("error.vector_sync_is_busy")
 		}
 		defer func() { err = errors.Join(err, release()) }()
 		status, err := vectorindex.ReadStatus(cmd.Context(), root, identity)
@@ -66,14 +67,14 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			return err
 		}
 		if local {
-			_, err = fmt.Fprintf(env.Err, "%s: tokenizer.model, onnx/vision_model.onnx and onnx/text_model.onnx (about 1.5 GB from Hugging Face), plus ONNX Runtime from NuGet (GPU also installs the WebGPU plugin).\nInstall directory: %s\nQueries are processed locally.\n", model, vectorindex.Directory(root))
+			_, err = fmt.Fprintf(env.Err, env.Text("output.tokenizer_model_onnx_vision_model_onnx_and_onnx"), model, vectorindex.Directory(root))
 		} else {
-			_, err = fmt.Fprintf(env.Err, "Artwork thumbnails (including private bookmarks and R18) and queries will be uploaded to %s and may incur usage charges.\n", base)
+			_, err = fmt.Fprintf(env.Err, env.Text("output.artwork_thumbnails_including_private_bookmarks_and_r18_and"), base)
 		}
 		if err != nil {
 			return err
 		}
-		if _, err = fmt.Fprintf(env.Err, "%d pages currently await this model. Enabling vector search records artwork titles, authors, tags and image URLs locally, including private bookmarks and R18.\n", status.Index.Pending); err != nil {
+		if _, err = fmt.Fprintf(env.Err, env.Text("output.pages_currently_await_this_model_enabling_vector_search"), status.Index.Pending); err != nil {
 			return err
 		}
 		if err = confirm(env, yes); err != nil {
@@ -89,7 +90,7 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 				if environment.IsTTY(env.In) {
 					prompt := env
 					prompt.Out = env.Err
-					key, err = prompt.PromptSecret("API key")
+					key, err = prompt.PromptSecret(env.Text("prompt.api_key"))
 				} else {
 					key, err = environment.ReadValue(env.In)
 					key = strings.TrimSpace(key)
@@ -111,7 +112,10 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			activeDevice = device
 			selected = config.VectorDevice(device)
 			options.Device = device
-			if err = vectormodel.Install(cmd.Context(), options, client, func(message string) error { _, err := fmt.Fprintln(env.Err, message); return err }); err != nil {
+			if err = vectormodel.Install(cmd.Context(), options, client, func(message string) error {
+				_, err := fmt.Fprintf(env.Err, env.Text("model.downloading")+"\n", strings.TrimPrefix(message, "Downloading "))
+				return err
+			}); err != nil {
 				return err
 			}
 		}
@@ -128,20 +132,20 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			if probeErr != nil {
 				return probeErr
 			}
-			if _, err = fmt.Fprintf(env.Err, "CPU/GPU probe cosine: %.6f\n", score); err != nil {
+			if _, err = fmt.Fprintf(env.Err, env.Text("output.cpu_gpu_probe_cosine"), score); err != nil {
 				return err
 			}
 		}
 		if err = store.WriteVector(&config.Vector{Model: model, Device: selected, BaseURL: base, APIKey: key}); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(env.Out, "Vector search is ready (model %s, %s).\n", model, activeDevice)
+		_, err = fmt.Fprintf(env.Out, env.Text("output.vector_search_is_ready_model"), model, activeDevice)
 		return err
 	}}
-	cmd.Flags().StringVar(&model, "model", vectormodel.DefaultModel, "built-in local model or cloud multimodal model ID")
-	cmd.Flags().StringVar(&device, "device", "cpu", "local inference device: cpu or gpu")
-	cmd.Flags().StringVar(&base, "base-url", "", "Gemini-compatible service URL")
-	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation")
+	cmd.Flags().StringVar(&model, "model", vectormodel.DefaultModel, "flag.built_in_local_model_or_cloud_multimodal_model")
+	cmd.Flags().StringVar(&device, "device", "cpu", "flag.local_inference_device_cpu_or_gpu")
+	cmd.Flags().StringVar(&base, "base-url", "", "flag.gemini_compatible_service_url")
+	cmd.Flags().BoolVar(&yes, "yes", false, "flag.skip_confirmation")
 	env.BindProxyFlags(cmd, &proxy)
 	env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Normal())
@@ -172,7 +176,7 @@ func openModel(ctx context.Context, c config.Vector, client *http.Client) (*vect
 		return nil, err
 	}
 	if c.Model == "" {
-		return nil, errors.New("vector search is not set up; run \"pixiv vector setup\"")
+		return nil, i18n.Errorf("error.vector_search_is_not_set_up_run_pixiv")
 	}
 	root, err := config.AppDataDir()
 	if err != nil {

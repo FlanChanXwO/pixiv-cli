@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 func fields(c *Config) map[string]any {
@@ -57,7 +59,7 @@ func Keys() []string {
 func field(c *Config, key string) (any, error) {
 	value, ok := fields(c)[key]
 	if !ok {
-		return nil, fmt.Errorf("unknown config key %q. valid keys: %s", key, strings.Join(Keys(), ", "))
+		return nil, i18n.Errorf("error.unknown_config_key_valid_keys", key, strings.Join(Keys(), ", "))
 	}
 	return value, nil
 }
@@ -97,39 +99,39 @@ func validateValue(key, raw string) (string, error) {
 	switch key {
 	case VectorDeviceKey:
 		if raw != "" && VectorDevice(raw) != VectorCPU && VectorDevice(raw) != VectorGPU {
-			return "", fmt.Errorf("%s must be one of: cpu, gpu", key)
+			return "", i18n.Errorf("error.must_be_one_of_cpu_gpu", key)
 		}
 	case "fanbox.flaresolverr.url", "reverse_search.flaresolverr.url":
 		if strings.TrimSpace(raw) == "" {
-			return "", fmt.Errorf("%s must be set", key)
+			return "", i18n.Errorf("error.must_be_set", key)
 		}
 	case "logging.level":
 		raw = strings.TrimSpace(raw)
 		switch LogLevel(raw) {
 		case LogLevelInfo, LogLevelDebug, LogLevelWarn, LogLevelError:
 		default:
-			return "", fmt.Errorf("%s must be one of: info, debug, warn, error", key)
+			return "", i18n.Errorf("error.must_be_one_of_info_debug_warn_error", key)
 		}
 	case "logging.format":
 		raw = strings.TrimSpace(raw)
 		switch LogFormat(raw) {
 		case LogFormatText, LogFormatJSON:
 		default:
-			return "", fmt.Errorf("%s must be one of: text, json", key)
+			return "", i18n.Errorf("error.must_be_one_of_text_json", key)
 		}
 	case "reverse_search.provider":
 		raw = strings.TrimSpace(raw)
 		switch raw {
 		case "saucenao", "ascii2d-color", "ascii2d-bovw", "all":
 		default:
-			return "", fmt.Errorf("%s must be one of: saucenao, ascii2d-color, ascii2d-bovw, all", key)
+			return "", i18n.Errorf("error.must_be_one_of_saucenao_ascii2d_color_ascii2d", key)
 		}
 	case "account_pool.strategy":
 		raw = strings.TrimSpace(raw)
 		switch AccountPoolStrategy(raw) {
 		case AccountPoolStrategyRoundRobin, AccountPoolStrategyRandom:
 		default:
-			return "", fmt.Errorf("%s must be one of: round_robin, random", key)
+			return "", i18n.Errorf("error.must_be_one_of_round_robin_random", key)
 		}
 	case "network.request_interval":
 		interval, err := time.ParseDuration(strings.TrimSpace(raw))
@@ -137,21 +139,21 @@ func validateValue(key, raw string) (string, error) {
 			return "", fmt.Errorf("%s: %w", key, err)
 		}
 		if interval < 0 {
-			return "", fmt.Errorf("%s must not be negative", key)
+			return "", i18n.Errorf("error.must_not_be_negative", key)
 		}
 		raw = interval.String()
 	case "mcp.gallery_cache_capacity_mib", "mcp.gallery_animation_temp_capacity_mib":
 		n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 		if err != nil {
-			return "", fmt.Errorf("%s expects integer: %w", key, err)
+			return "", i18n.Errorf("error.expects_integer", key, err)
 		}
 		if n < 0 || n > (1<<63-1)/(1<<20) || (key == "mcp.gallery_animation_temp_capacity_mib" && n == 0) {
-			return "", fmt.Errorf("%s is out of range", key)
+			return "", i18n.Errorf("error.is_out_of_range", key)
 		}
 	case "pixiv.auth.default_user_id", "fanbox.auth.default_user_id":
 		n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 		if err != nil || n <= 0 {
-			return "", fmt.Errorf("%s must be a positive integer", key)
+			return "", i18n.Errorf("error.must_be_a_positive_integer", key)
 		}
 	}
 	return raw, nil
@@ -195,7 +197,7 @@ func validateSolver(key string, solver FlareSolverrConfig) error {
 		return nil
 	}
 	if solver.URL == nil || strings.TrimSpace(*solver.URL) == "" {
-		return fmt.Errorf("%s.url must be set when %s is configured", key, key)
+		return i18n.Errorf("error.url_must_be_set_when_is_configured", key, key)
 	}
 	return nil
 }

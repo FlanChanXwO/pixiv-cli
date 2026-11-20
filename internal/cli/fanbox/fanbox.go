@@ -26,15 +26,15 @@ const (
 func NewCommand(env environment.Env, children []*cobra.Command) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fanbox",
-		Short: "Browse and download Pixiv FANBOX content",
+		Short: "help.browse_and_download_pixiv_fanbox_content",
 		Args:  env.ExactArgs(0, "pixiv fanbox <command>"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 	}
 	flags := cmd.PersistentFlags()
-	flags.String(proxyFlag, "", "native FANBOX proxy URL (HTTP or HTTPS CONNECT)")
-	flags.Bool(noProxyFlag, false, "use a direct native FANBOX connection for this command")
+	flags.String(proxyFlag, "", "flag.native_fanbox_proxy_url_http_or_https_connect")
+	flags.Bool(noProxyFlag, false, "flag.use_a_direct_native_fanbox_connection_for_this")
 	cmd.AddCommand(children...)
 	env.BindNoInput(cmd)
 	environment.Bind(cmd, environment.Execution{})

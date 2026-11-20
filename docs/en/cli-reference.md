@@ -22,7 +22,13 @@ flowchart LR
 | Proxy URIs | `http`, `https`, `socks5`, `socks5h` |
 | Reverse search | `pixiv search SOURCE` with an HTTP(S) URL or existing regular file; independent of the Pixiv account; may upload the source to a third party — review the [SauceNAO privacy and terms](https://saucenao.com/legal.html) (uploads may be retained briefly; URL queries may be cached longer) |
 
-Text lists have no headings and show one item per line. Empty results leave stdout empty, write `No results.` to stderr, and exit successfully. Identities use `Name (UID)` (UID alone when the name is unknown); true flags appear as labels. Detail commands show multi-line cards. Scripts should use `--json` or `--ndjson` instead of parsing text.
+Text lists have no headings and show one item per line. Empty results leave stdout empty, write a localized `No results.` message to stderr, and exit successfully. Identities use `Name (UID)` (UID alone when the name is unknown); true flags appear as labels. Detail commands show multi-line cards. Scripts should use `--json` or `--ndjson` instead of parsing text.
+
+## Interface language
+
+The CLI automatically selects English or Simplified Chinese from the first non-empty `LC_ALL`, `LC_MESSAGES`, or `LANG`, then the system UI language on macOS/Windows. `C` and `POSIX` select English; Chinese regional variants select Simplified Chinese. Help, prompts, human-readable results and application diagnostics follow that language. To choose a language for one invocation, use `env LC_ALL=zh_CN.UTF-8 pixiv --help` or `env LC_ALL=C pixiv --help`.
+
+Login and OAuth pages independently select a language from each request's weighted `Accept-Language` header. This needs no locale setting or extra data files. Commands, flag names, JSON/NDJSON fields, MCP schemas and error codes keep their existing spelling. Artwork titles, tags, captions, FANBOX post text, attachment names and password information retain their original text; underlying error details remain available.
 
 ## CLI usage
 
@@ -569,7 +575,6 @@ Setup requires `--yes` outside a terminal. For cloud models, the API key is read
 Cloud indexing uploads artwork thumbnails, including private bookmarks and R18, plus query content, and may incur usage charges. Setup displays the target service and pending-page count before confirmation. Models use the global proxy or the command override.
 
 Sync uses the selected account directly, keeps per-account/per-visibility bookmark membership and resumable cursors, and stops checking the head after a whole known batch. A batch of canceled and re-added old bookmarks can hide later new ones. Pages commit separately; Ctrl+C preserves completed work. Derived 1200px images fall back to the original on unavailable derivation or HTTP 404. Original 404 marks a page unavailable. A rejected image is marked failed only after a controlled probe succeeds; authentication, 403, 429, server and transport failures stop the run. There is no automatic retry. Text/JSON summaries include the stop reason and partial counts; a stopped run exits 1.
-
 
 Search accepts exactly one text query or `--image` source. Omitted text reads the complete stdin value. Images use the reverse-search source loader for regular files and HTTP(S) URLs. The current cloud model receives query content. Results select each artwork's best page, ordered by cosine score descending, then numeric artwork ID descending. Scores belong to that model space. Default limit is 30; `--limit 0` returns all; `--page` requires a positive explicit limit.
 

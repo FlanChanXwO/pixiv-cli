@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/frontend"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -21,7 +22,7 @@ import (
 const uri = "ui://pixiv-cli/gallery"
 const mime = "text/html;profile=mcp-app"
 
-var html = frontend.MustLoad().GalleryHTML
+var html = strings.Replace(frontend.MustLoad().GalleryHTML, "<!-- frontend:messages -->", string(i18n.CatalogJSON("gallery.")), 1)
 
 func versionURI(media *mediaproxy.Service) string {
 	page, _ := pageAssets(media)

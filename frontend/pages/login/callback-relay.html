@@ -6,8 +6,8 @@
       <circle class="pv-spinner-track" cx="25" cy="25" r="22"/>
       <circle class="pv-spinner-arc" cx="25" cy="25" r="22"/>
     </svg>
-    <h1>Completing login<span class="pv-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></h1>
-    <p>Please keep this page open.</p>
+    <h1>{{.Language.Text "login.completing"}}<span class="pv-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></h1>
+    <p>{{.Language.Text "login.keep_open"}}</p>
   </div>
   <div class="pv-bridge-fail">
     <svg class="pv-icon" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
@@ -15,8 +15,8 @@
       <path class="pv-icon-mark" d="M18.5 18.5 L33.5 33.5"/>
       <path class="pv-icon-mark pv-icon-mark-late" d="M33.5 18.5 L18.5 33.5"/>
     </svg>
-    <h1>Login failed</h1>
-    <p>Login could not be completed. Return to the terminal to view details or try again.</p>
+    <h1>{{.Language.Text "login.failure_heading"}}</h1>
+    <p>{{.Language.Text "login.failure_message"}}</p>
   </div>
 </main>
   <script>

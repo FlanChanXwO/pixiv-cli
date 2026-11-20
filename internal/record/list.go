@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 )
@@ -163,7 +164,7 @@ func runList[E any, T any, C pagination.Cursor](ctx context.Context, out, errOut
 		return err
 	}
 	if format == FormatText && w.returned == 0 {
-		_, err := fmt.Fprintln(errOut, "No results.")
+		_, err := fmt.Fprintln(errOut, i18n.FromContext(ctx).Text("output.no_results"))
 		return err
 	}
 	return w.commit(plan, result)
@@ -198,7 +199,7 @@ func RunPages[T any](ctx context.Context, out, errOut io.Writer, plan pagination
 		return err
 	}
 	if format == FormatText && w.returned == 0 {
-		_, err := fmt.Fprintln(errOut, "No results.")
+		_, err := fmt.Fprintln(errOut, i18n.FromContext(ctx).Text("output.no_results"))
 		return err
 	}
 	return w.commit(plan, result)

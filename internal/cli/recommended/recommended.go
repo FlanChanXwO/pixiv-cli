@@ -6,10 +6,10 @@ package recommended
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
@@ -42,7 +42,7 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	opts := options{contentType: string(pixiv.ArtworkCategoryAll)}
 	cmd := &cobra.Command{
 		Use:   "recommended [KIND]",
-		Short: "Show personalized recommendations",
+		Short: "help.show_personalized_recommendations",
 		Args:  env.MaxArgs(1, "pixiv recommended [KIND] [options]"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind, err := resolveKind(cmd, args, &opts, a.env.WrapUsage)
@@ -55,8 +55,8 @@ func New(env environment.Env, exec environment.PixivExecutor) *cobra.Command {
 	env.BindCommonFlags(cmd, &opts.Options)
 	environment.BindNDJSONFlag(cmd, &opts.ndjson)
 	environment.BindListFlags(cmd, &opts.limit, &opts.page)
-	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "entity type: artwork, novel, user, all")
-	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "local artwork subtype filter applied after recommendation pagination: all, illust, manga")
+	cmd.Flags().StringVarP(&opts.typ, "type", "t", opts.typ, "flag.entity_type_artwork_novel_user_all")
+	cmd.Flags().StringVar(&opts.contentType, "content-type", opts.contentType, "flag.local_artwork_subtype_filter_applied_after_recommendation_pagination")
 	env.BindTextValue(cmd, 0, 1, 0)
 	environment.Bind(cmd, environment.Normal())
 	return cmd
@@ -68,22 +68,22 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 	kind := opts.typ
 	if len(args) == 1 {
 		if cmd.Flags().Changed("type") {
-			return "", usage(errors.New("KIND cannot be combined with --type"))
+			return "", usage(i18n.Errorf("error.kind_cannot_be_combined_with_type"))
 		}
 		kind = args[0]
 	}
 	if kind == "" {
-		return "", errors.New("recommended requires KIND or --type")
+		return "", i18n.Errorf("error.recommended_requires_kind_or_type")
 	}
 	if cmd.Flags().Changed("type") && kind != string(target.NamespaceArtwork) && kind != string(target.NamespaceNovel) && kind != string(target.NamespaceUser) && kind != recommendationKindAll {
-		return "", usage(errors.New("type must be one of artwork, novel, user, all"))
+		return "", usage(i18n.Errorf("error.type_must_be_one_of_artwork_novel_user_344"))
 	}
 	if cmd.Flags().Changed("content-type") {
 		if kind != string(target.NamespaceArtwork) {
-			return "", usage(errors.New("--content-type is only supported when --type artwork"))
+			return "", usage(i18n.Errorf("error.content_type_is_only_supported_when_type_artwork"))
 		}
 		if opts.contentType != string(pixiv.ArtworkCategoryAll) && opts.contentType != string(pixiv.ArtworkCategoryIllust) && opts.contentType != string(pixiv.ArtworkCategoryManga) {
-			return "", usage(errors.New("content-type must be one of all, illust, manga"))
+			return "", usage(i18n.Errorf("error.content_type_must_be_one_of_all_illust"))
 		}
 	}
 	if kind == string(target.NamespaceArtwork) {
@@ -97,7 +97,7 @@ func resolveKind(cmd *cobra.Command, args []string, opts *options, usage func(er
 
 func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) error {
 	if !validKind(kind) {
-		return errors.New("recommendation kind must be one of: all, illust, manga, novel, user")
+		return i18n.Errorf("error.recommendation_kind_must_be_one_of_all_illust")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -109,7 +109,7 @@ func (a commandRunner) execute(cmd *cobra.Command, kind string, opts options) er
 	}
 	jsonOverride := a.env.JSONOverride(cmd, opts.Options)
 	if opts.ndjson && cmd.Flags().Changed("json") {
-		return a.env.WrapUsage(errors.New("--ndjson cannot be used with --json"))
+		return a.env.WrapUsage(i18n.Errorf("error.ndjson_cannot_be_used_with_json"))
 	}
 	jsonOut := false
 	if !opts.ndjson {
@@ -150,7 +150,9 @@ func (a commandRunner) runOne(ctx context.Context, request environment.PixivRequ
 			PostFilter: func(items []record.Artwork) []record.Artwork {
 				return filterRecommendedArtworks(items, artworkFilter)
 			},
-			Print:       func(items []record.Artwork, _ int) error { return display.PrintArtworks(a.env.Out, items) },
+			Print: func(items []record.Artwork, _ int) error {
+				return display.PrintArtworks(a.env.Out, a.env.Language, items)
+			},
 			RecordValue: func(item record.Artwork) (any, error) { return record.RecordFromArtwork(item) },
 		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Artwork, sdk.Cursor, error) {
 			return fetchRecommendedArtworks(client)(ctx, cursor)
@@ -158,7 +160,7 @@ func (a commandRunner) runOne(ctx context.Context, request environment.PixivRequ
 	}
 	if kind == string(target.NamespaceNovel) {
 		return record.RunSDKList(ctx, a.env.Out, a.env.Err, a.exec, request, plan, format, record.List[record.Novel]{
-			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, items) },
+			Print:       func(items []record.Novel, _ int) error { return display.PrintNovels(a.env.Out, a.env.Language, items) },
 			RecordValue: func(item record.Novel) (any, error) { return record.RecordFromNovel(item) },
 		}, func(ctx context.Context, _ int64, client *pixiv.Client, cursor sdk.Cursor) ([]record.Novel, sdk.Cursor, error) {
 			return fetchRecommendedNovels(client)(ctx, cursor)

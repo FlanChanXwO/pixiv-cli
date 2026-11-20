@@ -10,17 +10,18 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
 // New 构造 config 命令组；向量服务 API key 的展示由配置存储脱敏。
 func New(env environment.Env, store config.Store) *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "config", Short: "Manage global Pixiv CLI settings",
+		Use: "config", Short: "help.manage_global_pixiv_cli_settings",
 		RunE: func(cmd *cobra.Command, args []string) error { return cmd.Help() },
 	}
 	path := &cobra.Command{
-		Use: "path", Short: "Print the config.toml path",
+		Use: "path", Short: "help.print_the_config_toml_path",
 		Args: env.ExactArgs(0, "pixiv config path"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := store.Path()
@@ -42,8 +43,8 @@ func New(env environment.Env, store config.Store) *cobra.Command {
 			usage += " VALUE"
 		}
 		leaf := &cobra.Command{
-			Use: usage, Short: strings.ToUpper(operation[:1]) + operation[1:] + " one config value",
-			Long: "Use a TOML path. Available keys: " + strings.Join(config.Keys(), ", "),
+			Use: usage, Short: "help.config_" + operation,
+			Long: fmt.Sprintf(env.Text("help.config_keys"), strings.Join(config.Keys(), ", ")),
 			Args: env.ExactArgs(count, "pixiv config "+usage),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				key := args[0]
@@ -54,8 +55,8 @@ func New(env environment.Env, store config.Store) *cobra.Command {
 						return err
 					}
 					if !present {
-						_, writeErr := fmt.Fprintln(env.Out, "<unset>")
-						return errors.Join(errors.New("config value is unset"), writeErr)
+						_, writeErr := fmt.Fprintln(env.Out, env.Text("output.unset"))
+						return errors.Join(i18n.Errorf("error.config_value_is_unset"), writeErr)
 					}
 					_, err = fmt.Fprintln(env.Out, value)
 					return err
@@ -69,13 +70,13 @@ func New(env environment.Env, store config.Store) *cobra.Command {
 					}
 				}
 				if config.EnvironmentOverride(key) {
-					if _, err := fmt.Fprintf(env.Err, "note: %s is currently overridden by environment\n", key); err != nil {
+					if _, err := fmt.Fprintf(env.Err, env.Text("output.note_is_currently_overridden_by_environment"), key); err != nil {
 						return err
 					}
 				}
-				action := "updated"
+				action := env.Text("config.updated")
 				if operation == "unset" {
-					action = "removed"
+					action = env.Text("config.removed")
 				}
 				_, err := fmt.Fprintf(env.Out, "%s %s\n", key, action)
 				return err

@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/saving"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/target"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
@@ -52,15 +53,15 @@ func (a controller) usageError(err error) error { return a.env.WrapUsage(err) }
 
 func (a controller) bindActionFlags(cmd *cobra.Command, opts *commandOptions) {
 	flags := cmd.Flags()
-	flags.StringVar(&opts.proxy, "proxy", "", "proxy URL (http, https, socks5, or socks5h) for this command")
-	flags.BoolVar(&opts.noProxy, "no-proxy", false, "clear the configured proxy for this command")
+	flags.StringVar(&opts.proxy, "proxy", "", "flag.proxy_url_http_https_socks5_or_socks5h_for")
+	flags.BoolVar(&opts.noProxy, "no-proxy", false, "flag.clear_the_configured_proxy_for_this_command")
 }
 
 func (a controller) clientRequest(cmd *cobra.Command, opts commandOptions) (environment.PixivRequest, error) {
 	proxyChanged := cmd.Flags().Changed("proxy")
 	noProxyChanged := cmd.Flags().Changed("no-proxy")
 	if proxyChanged && noProxyChanged {
-		return environment.PixivRequest{}, errors.New("use either --proxy or --no-proxy, not both")
+		return environment.PixivRequest{}, i18n.Errorf("error.use_either_proxy_or_no_proxy_not_both")
 	}
 	req := environment.PixivRequest{}
 	if noProxyChanged && opts.noProxy {
@@ -76,7 +77,7 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	opts := downloadOptions{quality: string(download.QualityOriginal), ugoiraMode: string(download.UgoiraFormatGIF)}
 	cmd := &cobra.Command{
 		Use:   "download [SRC...]",
-		Short: "Download illustrations",
+		Short: "help.download_illustrations",
 		Args:  environment.ActionOrTargetsArgs(a.env.In, "pixiv download [options] SRC...", a.usageError),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runDownload(cmd, args, opts)
@@ -93,10 +94,10 @@ func (a controller) newDownloadCommand() *cobra.Command {
 	a.bindActionFlags(cmd, &opts.commandOptions)
 	a.bindDownloadRuntimeFlags(cmd, &opts)
 	flags := cmd.Flags()
-	flags.StringVar(&opts.pages, "pages", "", "1-based page selection, e.g. 1,3-5; default all pages")
-	flags.StringVar(&opts.quality, "quality", opts.quality, "static image quality: original, regular, small, thumb, mini")
-	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "ugoira output mode: gif, apng")
-	flags.StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "record failure strategy: skip or fail-fast")
+	flags.StringVar(&opts.pages, "pages", "", "flag.1_based_page_selection_e_g_1_3")
+	flags.StringVar(&opts.quality, "quality", opts.quality, "flag.static_image_quality_original_regular_small_thumb_mini")
+	flags.StringVar(&opts.ugoiraMode, "ugoira-mode", opts.ugoiraMode, "flag.ugoira_output_mode_gif_apng")
+	flags.StringVar(&opts.onError, "on-error", record.RecordFailureSkip, "flag.record_failure_strategy_skip_or_fail_fast")
 	environment.Bind(cmd, environment.Normal())
 	return cmd
 }
@@ -104,9 +105,9 @@ func (a controller) newDownloadCommand() *cobra.Command {
 // bindDownloadRuntimeFlags 只注册真正影响下载落盘的参数，避免非下载命令静默接受无效 flag。
 func (a controller) bindDownloadRuntimeFlags(cmd *cobra.Command, opts *downloadOptions) {
 	flags := cmd.Flags()
-	flags.StringVar(&opts.downloadPath, "download-path", "", "download directory")
-	flags.StringVarP(&opts.outputPath, "output", "o", "", "download directory (alias for --download-path)")
-	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "filename template placeholders: {id}, {title}, {author}, {author_id}, {date}, {tags}, {num}")
+	flags.StringVar(&opts.downloadPath, "download-path", "", "flag.download_directory")
+	flags.StringVarP(&opts.outputPath, "output", "o", "", "flag.download_directory_alias_for_download_path")
+	flags.StringVar(&opts.filenameTemplate, "filename-template", "", "flag.filename_template_placeholders_id_title_author_author_id")
 }
 
 func (a controller) runDownload(cmd *cobra.Command, args []string, opts downloadOptions) error {
@@ -140,7 +141,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 		return err
 	}
 	if cmd.Flags().Changed("download-path") && cmd.Flags().Changed("output") && opts.downloadPath != opts.outputPath {
-		return a.usageError(errors.New("--output and --download-path must name the same directory when both are provided"))
+		return a.usageError(i18n.Errorf("error.output_and_download_path_must_name_the_same"))
 	}
 	if cmd.Flags().Changed("output") {
 		runtime.DownloadPath = opts.outputPath
@@ -161,7 +162,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	downloadOne := func(ctx context.Context, id int64) error {
 		return a.execute(ctx, clientReq, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 			report, err := saving.Save(ctx, client, []string{strconv.FormatInt(id, 10)}, request)
-			return downloadAttemptWithWarnings(a.env.Err, report, err)
+			return downloadAttemptWithWarnings(a.env.Err, a.env.Language, report, err)
 		})
 	}
 	if len(args) == 0 {
@@ -171,7 +172,7 @@ func (a controller) runDownload(cmd *cobra.Command, args []string, opts download
 	// 尚无已发布文件时，账号池才可因有效 Retry-After 安全重放这次调用。
 	return a.execute(cmd.Context(), clientReq, func(ctx context.Context, _ int64, client *pixiv.Client) (bool, error) {
 		report, err := saving.Save(ctx, client, args, request)
-		return downloadAttemptWithWarnings(a.env.Err, report, err)
+		return downloadAttemptWithWarnings(a.env.Err, a.env.Language, report, err)
 	})
 }
 
@@ -187,9 +188,9 @@ func downloadAttemptResult(report saving.DownloadReport, operationErr error) (bo
 
 // downloadAttemptWithWarnings 先保留 operation/business error，再附加 stderr
 // 写入错误，避免 warning 输出故障掩盖真实下载失败。
-func downloadAttemptWithWarnings(w io.Writer, report saving.DownloadReport, operationErr error) (bool, error) {
+func downloadAttemptWithWarnings(w io.Writer, language i18n.Locale, report saving.DownloadReport, operationErr error) (bool, error) {
 	committed, resultErr := downloadAttemptResult(report, operationErr)
-	if warningErr := ReportWarnings(w, report); warningErr != nil {
+	if warningErr := ReportWarnings(w, language, report); warningErr != nil {
 		resultErr = errors.Join(resultErr, warningErr)
 	}
 	return committed, resultErr
@@ -197,16 +198,16 @@ func downloadAttemptWithWarnings(w io.Writer, report saving.DownloadReport, oper
 
 // ReportWarnings 把下载过程中的非阻断提示写到 stderr，避免污染 stdout 的
 // JSON/NDJSON 结果；warning 只包含下载层已分类的安全文本。
-func ReportWarnings(w io.Writer, report saving.DownloadReport) error {
+func ReportWarnings(w io.Writer, language i18n.Locale, report saving.DownloadReport) error {
 	for _, warning := range report.Warnings {
 		label := "download"
 		if warning.IllustID > 0 {
-			label = fmt.Sprintf("artwork %d", warning.IllustID)
+			label = fmt.Sprintf(language.Text("format.artwork"), warning.IllustID)
 		}
 		if warning.ContentType != "" {
 			label += " (" + warning.ContentType + ")"
 		}
-		if _, err := fmt.Fprintf(w, "warning: %s: %s\n", label, warning.Message); err != nil {
+		if _, err := fmt.Fprintf(w, language.Text("output.warning"), label, warning.Message); err != nil {
 			return err
 		}
 	}
@@ -235,10 +236,10 @@ func ReportError(report saving.DownloadReport) error {
 	}
 	first := report.Failures[0]
 	if first.Cause != nil {
-		return fmt.Errorf("download completed with %d failures: %w", len(report.Failures), first.Cause)
+		return i18n.Errorf("error.download_completed_with_failures", len(report.Failures), first.Cause)
 	}
 	if first.Message == "" {
-		return fmt.Errorf("download completed with %d failures", len(report.Failures))
+		return i18n.Errorf("error.download_completed_with_failures_240", len(report.Failures))
 	}
-	return fmt.Errorf("download completed with %d failures: %s", len(report.Failures), first.Message)
+	return i18n.Errorf("error.download_completed_with_failures_241", len(report.Failures), first.Message)
 }

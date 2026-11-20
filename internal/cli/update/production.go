@@ -2,11 +2,11 @@ package update
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 )
 
@@ -46,11 +46,11 @@ func NewAutomaticChecker(proxy string) (*selfupdate.AutomaticUpdateChecker, erro
 func newReleaseClient(proxy string) (*http.Client, selfupdate.ReleaseChecker, error) {
 	httpClient, err := config.HTTPClient(proxy)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse update proxy URL: %w", err)
+		return nil, nil, i18n.Errorf("error.parse_update_proxy_url", err)
 	}
 	releaseClient, err := selfupdate.NewGitHubReleaseClient(selfupdate.ReleaseClientOptions{HTTPClient: httpClient, EnablePublicReleaseSources: proxy == ""})
 	if err != nil {
-		return nil, nil, fmt.Errorf("create GitHub release client: %w", err)
+		return nil, nil, i18n.Errorf("error.create_github_release_client", err)
 	}
 	return httpClient, releaseClient, nil
 }

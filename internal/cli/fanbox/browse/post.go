@@ -6,7 +6,6 @@ package browse
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
@@ -50,14 +50,14 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 	kind := string(fanbox.CreatorSupporting)
 	cmd := &cobra.Command{
 		Use:   "creators",
-		Short: "List supporting or following FANBOX creators",
+		Short: "help.list_supporting_or_following_fanbox_creators",
 		Args:  a.env.ExactArgs(0, "pixiv fanbox creators --relation supporting|following"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runCreators(cmd, opts, kind)
 		},
 	}
 	environment.BindFanboxListFlags(cmd, &opts.jsonOut, &opts.ndjson, &opts.limit, &opts.page)
-	cmd.Flags().StringVar(&kind, "relation", kind, "creator relation: supporting or following")
+	cmd.Flags().StringVar(&kind, "relation", kind, "flag.creator_relation_supporting_or_following")
 	a.env.BindNoInput(cmd)
 	return cmd
 }
@@ -65,7 +65,7 @@ func (a commandRunner) newCreatorsCommand() *cobra.Command {
 func (a commandRunner) runCreators(cmd *cobra.Command, opts options, rawKind string) error {
 	kind := fanbox.CreatorRelation(rawKind)
 	if kind != fanbox.CreatorSupporting && kind != fanbox.CreatorFollowing {
-		return errors.New("relation must be one of: supporting, following")
+		return i18n.Errorf("error.relation_must_be_one_of_supporting_following")
 	}
 	plan, err := environment.ParsePlan(cmd, opts.limit, opts.page)
 	if err != nil {
@@ -90,7 +90,7 @@ func (a commandRunner) newPostsCommand() *cobra.Command {
 	var opts options
 	cmd := &cobra.Command{
 		Use:   "posts SOURCE",
-		Short: "List posts from a creator, tag, post, or FANBOX URL",
+		Short: "help.list_posts_from_a_creator_tag_post_or",
 		Args:  a.env.ExactArgs(1, "pixiv fanbox posts SOURCE"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPosts(cmd, args, opts)
@@ -116,7 +116,7 @@ func (a commandRunner) runPosts(cmd *cobra.Command, args []string, opts options)
 			return err
 		}
 		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Post) error {
-			return printPosts(a.env.Out, items)
+			return printPosts(a.env.Out, a.env.Language, items)
 		}, func(item *fanbox.Post) any { return record.FanboxPost(item) }, fetch)
 	})
 }
@@ -195,7 +195,7 @@ func (a commandRunner) newTagsCommand() *cobra.Command {
 	var opts options
 	cmd := &cobra.Command{
 		Use:   "tags CREATOR",
-		Short: "List tags used by a FANBOX creator",
+		Short: "help.list_tags_used_by_a_fanbox_creator",
 		Args:  a.env.ExactArgs(1, "pixiv fanbox tags CREATOR"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTags(cmd, args, opts)
@@ -233,7 +233,7 @@ func (a commandRunner) runTags(cmd *cobra.Command, args []string, opts options) 
 			return nil
 		}
 		if len(out) == 0 {
-			_, err := fmt.Fprintln(a.env.Err, "No results.")
+			_, err := fmt.Fprintln(a.env.Err, a.env.Text("output.no_results"))
 			return err
 		}
 		for _, tag := range out {
@@ -249,7 +249,7 @@ func (a commandRunner) newHomeCommand() *cobra.Command {
 	var opts options
 	cmd := &cobra.Command{
 		Use:   "home",
-		Short: "Browse the FANBOX home feed",
+		Short: "help.browse_the_fanbox_home_feed",
 		Args:  a.env.ExactArgs(0, "pixiv fanbox home"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
@@ -269,7 +269,7 @@ func (a commandRunner) newSupportingCommand() *cobra.Command {
 	var opts options
 	cmd := &cobra.Command{
 		Use:   "supporting",
-		Short: "Browse posts from supporting creators",
+		Short: "help.browse_posts_from_supporting_creators",
 		Args:  a.env.ExactArgs(0, "pixiv fanbox supporting"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.runFeed(cmd, opts, func(client *fanbox.Client) func(context.Context, sdk.Cursor) (sdk.Page[*fanbox.Post], error) {
@@ -296,7 +296,7 @@ func (a commandRunner) runFeed(cmd *cobra.Command, opts options, bind func(*fanb
 	}
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
 		return record.RunPages(cmd.Context(), a.env.Out, a.env.Err, plan, jsonOut, opts.ndjson, func(items []*fanbox.Post) error {
-			return printPosts(a.env.Out, items)
+			return printPosts(a.env.Out, a.env.Language, items)
 		}, func(item *fanbox.Post) any { return record.FanboxPost(item) }, bind(client))
 	})
 }
@@ -305,7 +305,7 @@ func (a commandRunner) newPostCommand() *cobra.Command {
 	var opts options
 	cmd := &cobra.Command{
 		Use:   "post POST_ID",
-		Short: "Show one FANBOX post",
+		Short: "help.show_one_fanbox_post",
 		Args:  a.env.ExactArgs(1, "pixiv fanbox post POST_ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runPost(cmd, args, opts)
@@ -333,7 +333,7 @@ func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts options) 
 		if opts.ndjson {
 			return json.NewEncoder(a.env.Out).Encode(out)
 		}
-		if err := printPosts(a.env.Out, []*fanbox.Post{post}); err != nil {
+		if err := printPosts(a.env.Out, a.env.Language, []*fanbox.Post{post}); err != nil {
 			return err
 		}
 		text := record.FanboxPostText(post)
@@ -358,11 +358,11 @@ func printCreators(out io.Writer, creators []*fanbox.Creator) error {
 	return nil
 }
 
-func printPosts(out io.Writer, posts []*fanbox.Post) error {
+func printPosts(out io.Writer, language i18n.Locale, posts []*fanbox.Post) error {
 	for _, post := range posts {
 		locked := ""
 		if post.IsRestricted {
-			locked = " [locked]"
+			locked = language.Text("fanbox.locked")
 		}
 		parts := []string{display.SafeLine(post.ID)}
 		if !post.PublishedAt.IsZero() {

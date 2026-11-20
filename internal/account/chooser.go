@@ -2,8 +2,9 @@ package account
 
 import (
 	"crypto/rand"
-	"fmt"
 	"math/big"
+
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 )
 
 // choose 只根据快照轮流或随机选择；Store 会在提交前再次验证
@@ -26,6 +27,6 @@ func choose(snapshot PoolSnapshot, strategy Strategy) (int64, error) {
 		}
 		return snapshot.Candidates[index.Int64()].UserID, nil
 	default:
-		return 0, fmt.Errorf("unsupported account pool strategy %q", strategy)
+		return 0, i18n.Errorf("error.unsupported_account_pool_strategy", strategy)
 	}
 }

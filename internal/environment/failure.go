@@ -10,6 +10,7 @@ import (
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/display"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/spf13/cobra"
@@ -55,7 +56,7 @@ func WritesNDJSON(cmd *cobra.Command) bool {
 }
 
 // ErrorText 在 CLI 边界解释常见 SDK 错误，保留原始错误值供结构化调用方使用。
-func ErrorText(err error) (text string) {
+func ErrorText(err error, language i18n.Locale) (text string) {
 	defer func() {
 		if strings.IndexFunc(text, unicode.IsControl) >= 0 {
 			text = display.SafeLine(text)
@@ -69,47 +70,49 @@ func ErrorText(err error) (text string) {
 		if joined, ok := current.(interface{ Unwrap() []error }); ok {
 			var replacements []string
 			for _, cause := range joined.Unwrap() {
-				replacements = append(replacements, cause.Error(), ErrorText(cause))
+				replacements = append(replacements, language.ErrorText(cause), ErrorText(cause, language))
 			}
-			message := strings.NewReplacer(replacements...).Replace(current.Error())
-			message = strings.ReplaceAll(message, "\n", "; ")
-			return strings.Replace(err.Error(), current.Error(), message, 1)
+			message := strings.NewReplacer(replacements...).Replace(language.ErrorText(err))
+			return strings.ReplaceAll(message, "\n", "; ")
 		}
 	}
+	if message, ok := flagErrorText(err, language); ok {
+		return message
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return "request timed out; check your connection and try again"
+		return language.Text("error.timeout")
 	}
 	if errors.Is(err, context.Canceled) {
-		return "operation canceled; run the command again when ready"
+		return language.Text("error.canceled")
 	}
 	if fanbox, ok := err.(*report.Error); ok {
 		if fanbox.IsAuthentication() {
-			return `not logged in; run "pixiv fanbox auth import"`
+			return language.Text("error.fanbox_login")
 		}
-		return err.Error()
+		return language.ErrorText(err)
 	}
 	var reverse *reversesearch.Error
 	if errors.As(err, &reverse) {
-		return err.Error()
+		return language.ErrorText(err)
 	}
 	var current *sdk.Error
 	if !errors.As(err, &current) {
-		return err.Error()
+		return language.ErrorText(err)
 	}
 	reason, detail, httpStatus := current.Reason, current.Message, current.HTTPStatus
 	switch reason {
 	case sdk.Unauthorized, sdk.CredentialsExpired:
-		return `not logged in; run "pixiv auth login"`
+		return language.Text("error.not_logged_in_run_pixiv_auth_login")
 	case sdk.InvalidArgument:
 		if httpStatus == 0 {
 			if detail == "" {
-				return "invalid argument; check the command's --help"
+				return language.Text("error.invalid_argument")
 			}
-			return "invalid argument: " + detail + "; check the command's --help"
+			return fmt.Sprintf(language.Text("error.argument_detail"), detail)
 		}
 	}
 	if httpStatus != 0 {
-		return fmt.Sprintf("upstream returned HTTP %d (%s); check service availability and account access before trying again", httpStatus, http.StatusText(httpStatus))
+		return fmt.Sprintf(language.Text("format.upstream_returned_http_check_service_availability_and_account"), httpStatus, http.StatusText(httpStatus))
 	}
-	return err.Error()
+	return language.ErrorText(err)
 }

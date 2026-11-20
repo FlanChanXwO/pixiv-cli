@@ -2,10 +2,10 @@ package environment
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -26,7 +26,7 @@ func standardInputIsTerminal(in io.Reader) bool {
 func ActionInputArgs(in io.Reader, usage string, usageError func(error) error) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) > 1 || (len(args) == 0 && standardInputIsTerminal(in)) {
-			return usageError(fmt.Errorf("usage: %s", usage))
+			return usageError(i18n.Errorf("error.usage", usage))
 		}
 		return nil
 	}
@@ -36,7 +36,7 @@ func ActionInputArgs(in io.Reader, usage string, usageError func(error) error) c
 func ActionOrTargetsArgs(in io.Reader, usage string, usageError func(error) error) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) == 0 && standardInputIsTerminal(in) {
-			return usageError(fmt.Errorf("usage: %s", usage))
+			return usageError(i18n.Errorf("error.usage", usage))
 		}
 		return nil
 	}
@@ -51,7 +51,7 @@ func ConsumeActionRecords(ctx context.Context, in io.Reader, errOut io.Writer, o
 	}
 	return record.ConsumeNDJSONRecords(ctx, in, errOut, operation, failFast, func(ctx context.Context, value record.Record) error {
 		if _, ok := allowedTypes[value.Type()]; !ok {
-			return record.NewRecordActionError("unsupported_type", fmt.Errorf("record type %q is not supported by %s", value.Type(), operation))
+			return record.NewRecordActionError("unsupported_type", i18n.Errorf("error.record_type_is_not_supported_by", value.Type(), operation))
 		}
 		id, err := record.RequiredRecordID(value)
 		if err != nil {
