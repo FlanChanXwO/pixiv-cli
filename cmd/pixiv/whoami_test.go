@@ -117,6 +117,7 @@ func TestWhoamiNoNetwork(t *testing.T) {
 
 func isolatedHome(t *testing.T) string {
 	t.Helper()
+	t.Setenv("LC_ALL", "C")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

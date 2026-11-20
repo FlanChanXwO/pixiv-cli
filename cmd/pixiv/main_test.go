@@ -154,7 +154,7 @@ type isolatedProcessEnv struct {
 	home   string
 }
 
-// isolatedEnv 同时关闭临时用户目录中的自动更新，避免网络提示污染命令 stderr。
+// isolatedEnv 固定英文并关闭临时目录中的自动更新，避免宿主语言和网络提示影响断言。
 func isolatedEnv(t *testing.T) isolatedProcessEnv {
 	var env isolatedProcessEnv
 	t.Helper()
@@ -167,6 +167,7 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 		env.values = append(env.values, entry)
 	}
 	env.values = append(env.values,
+		"LC_ALL=C",
 		"HOME="+env.home,
 		"APPDATA="+env.home,
 		"LOCALAPPDATA="+env.home,
@@ -184,6 +185,7 @@ func isolatedEnv(t *testing.T) isolatedProcessEnv {
 
 func isIsolatedEnvKey(name string) bool {
 	for _, key := range []string{
+		"LC_ALL", "LC_MESSAGES", "LANG",
 		"HOME", "XDG_CONFIG_HOME", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
 		"DOWNLOAD_PATH", "FILENAME_TEMPLATE", "https_proxy", "HTTPS_PROXY",
 	} {

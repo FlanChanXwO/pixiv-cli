@@ -18,9 +18,7 @@ import (
 )
 
 func TestUsageErrorExitCode(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	isolatedHome(t)
 	var output, diagnostics bytes.Buffer
 	code := cli.Run(t.Context(), []string{"pixiv", "search", "--unknown-flag"}, strings.NewReader(""), &output, &diagnostics)
 	require.Equal(t, 2, code)
@@ -29,11 +27,11 @@ func TestUsageErrorExitCode(t *testing.T) {
 }
 
 func TestCommandFailureLogging(t *testing.T) {
-	t.Setenv("LC_ALL", "zh_CN.UTF-8")
 	for _, format := range []string{"text", "json"} {
 		for _, level := range []string{"info", "debug"} {
 			t.Run(format+"/"+level, func(t *testing.T) {
 				isolatedHome(t)
+				t.Setenv("LC_ALL", "zh_CN.UTF-8")
 				t.Setenv("PIXIV_LOG_FORMAT", format)
 				t.Setenv("PIXIV_LOG_LEVEL", level)
 				var output, diagnostics bytes.Buffer
@@ -68,9 +66,7 @@ func TestCommandFailureLogging(t *testing.T) {
 }
 
 func TestAuthUIDFailureDoesNotEchoCredentials(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	isolatedHome(t)
 	t.Setenv("PIXIV_LOG_FORMAT", "json")
 	var output, diagnostics bytes.Buffer
 	code := cli.Run(t.Context(), []string{"pixiv", "auth", "check"}, strings.NewReader("refresh-token-canary"), &output, &diagnostics)
