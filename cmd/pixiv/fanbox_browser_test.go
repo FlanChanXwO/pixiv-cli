@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -106,7 +107,9 @@ func assertFanboxDownload(t *testing.T, proxy string) {
 	require.Equal(t, "fixture-archive", string(attachment))
 	info, err := os.Stat(filepath.Join(base, "post.json"))
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	}
 	assertFanboxDownloadConflict(t, proxy)
 	for _, format := range []string{"--json", "--ndjson"} {
 		stdout, stderr, code := runCLI(t, "fanbox", "post", "101", format, "--proxy", proxy)
