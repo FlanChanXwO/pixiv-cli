@@ -2,7 +2,7 @@
 //
 // [Recorder] 只追加私有记录，不打开索引或联网；[Open] 打开独立的 SQLite 索引，
 // [Store.Merge] 恢复并合并记录，[Store.Sync] 续读收藏并逐页计算向量。
-// 配置与账号选择由调用方负责。
+// [Search] 复用补算并按作品最高分排序；配置与账号选择由调用方负责。
 package vectorindex
 
 import (

@@ -85,23 +85,26 @@ func (s *Store) saveBookmarkBatch(ctx context.Context, id int64, scope pixiv.Res
 }
 
 // shortcut: 重新收藏的整批旧作品可能遮住后面的新收藏，需精确变更源时改用上游事件游标。
-func (s *Store) syncBookmarks(ctx context.Context, client *pixiv.Client, id int64, scope pixiv.Restrict, report *SyncReport) error {
+func (s *Store) syncBookmarks(ctx context.Context, client *pixiv.Client, id int64, scope pixiv.Restrict, deadline time.Time, report *SyncReport) error {
 	state, err := s.readBookmarkState(ctx, id, scope)
 	if err != nil {
 		return err
 	}
 	if !state.Complete {
-		if err = s.bookmarkPages(ctx, client, id, scope, state, false, report); err != nil {
+		if err = s.bookmarkPages(ctx, client, id, scope, state, false, deadline, report); err != nil {
 			return err
 		}
 	}
-	return s.bookmarkPages(ctx, client, id, scope, bookmarkState{Complete: true}, true, report)
+	return s.bookmarkPages(ctx, client, id, scope, bookmarkState{Complete: true}, true, deadline, report)
 }
 
-func (s *Store) bookmarkPages(ctx context.Context, client *pixiv.Client, id int64, scope pixiv.Restrict, state bookmarkState, head bool, report *SyncReport) error {
+func (s *Store) bookmarkPages(ctx context.Context, client *pixiv.Client, id int64, scope pixiv.Restrict, state bookmarkState, head bool, deadline time.Time, report *SyncReport) error {
 	seen := map[string]bool{}
 	restarted := false
 	for {
+		if !deadline.IsZero() && !time.Now().Before(deadline) {
+			return errTimeLimit
+		}
 		if seen[state.Cursor.String()] {
 			return errors.New("bookmark cursor repeated")
 		}
@@ -150,4 +153,17 @@ func (s *Store) bookmarkPages(ctx context.Context, client *pixiv.Client, id int6
 			return nil
 		}
 	}
+}
+
+func (s *Store) bookmarksRead(ctx context.Context, id int64) (bool, error) {
+	for _, scope := range []pixiv.Restrict{pixiv.RestrictPublic, pixiv.RestrictPrivate} {
+		state, err := s.readBookmarkState(ctx, id, scope)
+		if err != nil {
+			return false, err
+		}
+		if !state.Complete {
+			return false, nil
+		}
+	}
+	return true, nil
 }

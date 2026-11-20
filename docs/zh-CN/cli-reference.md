@@ -552,6 +552,7 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 | --- | --- |
 | `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认上传范围，试算文字与图片，再保存云端配置 |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | 续读当前账号的公开/私密收藏，合并记录并计算待算页面 |
+| `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 按文字或显式指定的图片搜索本机索引 |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除其他模型的向量、全部记录和向量，或整个向量目录及配置 |
 
@@ -566,3 +567,15 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 云端索引会上传作品缩略图（含私密收藏与 R18）及查询内容，并可能按量计费。setup 在确认前展示目标服务和待算页数。模型请求使用全局代理或本次命令覆盖值。
 
 sync 固定使用当前账号，分别保存各账号、各可见性的收藏成员关系与续读位置。检查开头时读到整批已知收藏即停止；连续取消并重新收藏整批旧作品可能遮住后面的新收藏。页面逐个提交，Ctrl+C 保留已完成结果。优先下载派生的 1200 像素图片，派生失败或 404 时读原图。原图 404 标记页面不可用；图片被服务拒绝后，受控试算通过才标记为单页失败。认证、403、429、服务或网络错误会停止本次运行，不自动重试。文本/JSON 摘要保留中止原因和部分进度，中止时退出码为 1。
+
+
+搜索接受一条文字查询或一个 `--image` 来源。省略文字时读取完整 stdin。图片复用反向搜图的来源加载器，支持普通文件和 HTTP(S) URL；当前云端模型会收到查询内容。每个作品取最高分页面，按余弦分数降序、数值作品 ID 降序排序。分数属于当前模型空间。默认返回 30 条，`--limit 0` 返回全部，`--page` 要求显式正数 limit。
+
+搜索先合并记录，再用最多 30 秒检查收藏开头与计算待算页；到时完成当前页或当前收藏批次后停止。当前账号的公开、私密收藏均已通过 `vector sync` 完整读过后，搜索才检查收藏开头。同步锁忙时直接使用已保存索引；`--no-sync` 跳过补算。已有向量可在未登录时搜索。索引覆盖本机多个账号，可能包含 R18 以及当前账号无法访问的作品。
+
+文本输出带排名的作品行。输出到管道默认使用规范 NDJSON Record，附加 `match: {score, page_index}`（页面从零开始），可以接 `pixiv detail` 或 `pixiv download`。`--json` 返回 `records`、标准 `pagination` 与 `index`；后者包含 `model`、已算 `pages`、`pending`、`bookmarks_read` 和 `catch_up`（`complete`、`time_limit`、`busy`、`skipped`、`stopped`），中止时附固定原因代码 `error`。存在待算页时 stderr 提示。补算失败后搜索成功仍退出 0；当前模型没有向量时返回补算原错误。查询、取消与索引错误以非零码退出。快照可能过时，可将记录接到 `pixiv detail` 更新。
+
+```bash
+pixiv vector search "雨中的城市" --no-sync --json
+pixiv vector search --image ./reference.png --limit 5 --ndjson | pixiv detail
+```

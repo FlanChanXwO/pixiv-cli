@@ -76,6 +76,10 @@ Pool enabled/strategy settings are configuration; schedulable accounts are manag
 
 FANBOX is separate: use `pixiv fanbox --help` and its read-only creator/post/tag/feed/resource capabilities. Importing `FANBOXSESSID` with `pixiv fanbox auth import` or selecting an account with `pixiv fanbox auth use --auto`/an explicit UID is a separately authorized credential/state action, not automatic preflight. FANBOX MCP does not reuse the Pixiv pool. Its optional challenge-only solver does not carry ordinary API/resource traffic or receive the session; never send the session to a non-first-party host.
 
+## Vector search
+
+`pixiv vector setup --model NAME` enables private artwork recording and cloud embeddings after confirmation. It may upload private/R18 thumbnails and query content and incur charges; authorize that scope first. Use `vector sync` for resumable public/private bookmark indexing. `vector search QUERY` searches text; choose `--image PATH_OR_URL` explicitly for images. Default limit is 30, zero returns all, and page requires a positive limit. Search catches up for up to 30 seconds; `--no-sync` uses saved vectors. Piped canonical records include the best-page `match` and work with `detail`/`download`. See [discovery](references/discover.md#search-a-local-vector-index) for status and cleanup.
+
 ## Search and identity traps
 
 - Artwork `--rating sfw|r18|r18g|mature|all` filters normalized `x_restrict` locally and binds the filter to its cursor. It is not an upstream request field and is not supported for novel search. Artwork subtype, AI, resolution, aspect, and exact drawing-tool filters have their own validated scope.

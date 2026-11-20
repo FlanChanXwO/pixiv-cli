@@ -34,6 +34,8 @@ type SyncOptions struct {
 	OpenClient ClientOpener
 	ProbeImage []byte
 	Progress   func(done, total int) error
+	headOnly   bool
+	deadline   time.Time
 }
 
 // SyncReport 保留已持久化的进度；Stopped 非空时调用方仍须返回原错误。
@@ -49,6 +51,7 @@ type SyncReport struct {
 	Failed      int     `json:"failed"`
 	Stopped     *string `json:"stopped"`
 	Index       Counts  `json:"index"`
+	timeLimit   bool
 }
 
 // Sync 合并记录、续读收藏并逐页提交结果；调用方须持有同步锁。
@@ -68,19 +71,36 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 	if err != nil {
 		return report, err
 	}
+	if options.headOnly {
+		options.deadline = time.Now().Add(catchUpBudget)
+	}
 	// 2. 固定账号并持有操作通道，公开与私密分别续读。
 	accountID, client, closeClient, err := options.OpenClient(ctx)
 	if err != nil {
 		return report, err
 	}
 	defer func() { err = errors.Join(err, closeClient()) }()
+	read, err := s.bookmarksRead(ctx, accountID)
+	if err != nil {
+		return report, err
+	}
 	for _, scope := range []pixiv.Restrict{pixiv.RestrictPublic, pixiv.RestrictPrivate} {
-		if err = s.syncBookmarks(ctx, client, accountID, scope, &report); err != nil {
+		if options.headOnly && !read {
+			break
+		}
+		if err = s.syncBookmarks(ctx, client, accountID, scope, options.deadline, &report); err != nil {
+			if errors.Is(err, errTimeLimit) {
+				report.timeLimit = true
+				return report, nil
+			}
 			return report, err
 		}
 	}
 	// 3. 逐页提交；一次失败保留此前的处理结果。
 	err = s.embedPages(ctx, client, options, &report)
+	if errors.Is(err, errTimeLimit) {
+		report.timeLimit, err = true, nil
+	}
 	return report, err
 }
 
@@ -155,6 +175,9 @@ func (s *Store) embedPages(ctx context.Context, client *pixiv.Client, options Sy
 	}
 	probed := false
 	for _, p := range pages {
+		if !options.deadline.IsZero() && !time.Now().Before(options.deadline) {
+			return errTimeLimit
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}

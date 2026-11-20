@@ -33,6 +33,7 @@ flowchart LR
 | Area | Highlights |
 | --- | --- |
 | Discover | Search artworks/novels/users; filter by rating, subtype, AI mode, aspect ratio, resolution, drawing tool, bookmark count; all 16 ranking modes; recommendations, timelines, series, comments |
+| Vector search | Text or image → local artwork index; [setup, sync and search](docs/en/cli-reference.md#vector-index) |
 | Reverse search | Local image or URL → SauceNAO / ascii2d → canonical Pixiv records |
 | Download | Artwork IDs/URLs, creator and public-bookmark URLs, allowed CDN URLs; page ranges, quality, GIF/APNG Ugoira; full success/warning/failure report |
 | Account actions | Bookmarks, follows, comments and stamps |

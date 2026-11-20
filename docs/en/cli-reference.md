@@ -552,6 +552,7 @@ Run `pixiv vector setup --model gemini-embedding-2-preview` to enable cloud vect
 | --- | --- |
 | `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm uploads, probe text/image compatibility, then save cloud configuration |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | Resume public/private bookmarks for the selected account, merge recordings and embed pending pages |
+| `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | Search the local index by text or an explicitly selected image |
 | `pixiv vector status [--json]` | Offline counts, inbox size, models, bookmark state and disk bytes |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | Remove other models' vectors, all records/vectors, or the entire vector directory and configuration |
 
@@ -566,3 +567,15 @@ Setup requires `--yes` outside a terminal. The API key is read with hidden termi
 Cloud indexing uploads artwork thumbnails, including private bookmarks and R18, plus query content, and may incur usage charges. Setup displays the target service and pending-page count before confirmation. Models use the global proxy or the command override.
 
 Sync uses the selected account directly, keeps per-account/per-visibility bookmark membership and resumable cursors, and stops checking the head after a whole known batch. A batch of canceled and re-added old bookmarks can hide later new ones. Pages commit separately; Ctrl+C preserves completed work. Derived 1200px images fall back to the original on unavailable derivation or HTTP 404. Original 404 marks a page unavailable. A rejected image is marked failed only after a controlled probe succeeds; authentication, 403, 429, server and transport failures stop the run. There is no automatic retry. Text/JSON summaries include the stop reason and partial counts; a stopped run exits 1.
+
+
+Search accepts exactly one text query or `--image` source. Omitted text reads the complete stdin value. Images use the reverse-search source loader for regular files and HTTP(S) URLs. The current cloud model receives query content. Results select each artwork's best page, ordered by cosine score descending, then numeric artwork ID descending. Scores belong to that model space. Default limit is 30; `--limit 0` returns all; `--page` requires a positive explicit limit.
+
+Search merges recordings, then spends up to 30 seconds checking bookmark heads and embedding pending pages; the active page/batch finishes before stopping. Bookmark heads are checked only after both visibility scopes have completed an initial `vector sync` for the selected account. A busy sync lock uses the saved index immediately. `--no-sync` skips catch-up. Existing vectors can be searched without a logged-in account. The index spans local accounts and can contain R18 or works unavailable to the selected account.
+
+Text uses ranked artwork rows. Piped output defaults to canonical NDJSON records with `match: {score, page_index}` (zero-based page), suitable for `pixiv detail` or `pixiv download`. `--json` returns `records`, standard `pagination`, and `index` with `model`, successful `pages`, `pending`, `bookmarks_read` and `catch_up` (`complete`, `time_limit`, `busy`, `skipped`, `stopped`); a stopped catch-up adds a fixed `error` code. Pending pages produce a stderr warning. A successful search exits 0 after a catch-up failure; with zero saved vectors that failure is returned. Query, cancellation and index failures exit nonzero. Snapshot metadata can be stale; pipe records to `pixiv detail` for current data.
+
+```bash
+pixiv vector search "a rainy city" --no-sync --json
+pixiv vector search --image ./reference.png --limit 5 --ndjson | pixiv detail
+```
