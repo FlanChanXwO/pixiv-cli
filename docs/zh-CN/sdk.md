@@ -114,7 +114,9 @@ func Login(ctx context.Context, receive func(string) (string, error)) (pixiv.Cre
 
 会发网络请求的操作均以 `ctx` 为首参数，取消与截止时间通过它传递。构造函数、引用构造、URL 解析和本地 HTML 解析均为离线操作。
 
-Pixiv `Options` 接受 `HTTPClient`、`AcceptLanguage`、`RequestInterval` 与额外的 `ResourceHosts`。HTTP client 为 nil 时创建专用 client，整请求超时由调用方 context 控制；`CloseIdleConnections()` 释放其空闲连接。注入的 client 由调用方拥有，包括代理、transport 与关闭策略。
+Pixiv `Options` 接受 `HTTPClient`、`AcceptLanguage`、`RequestInterval`、额外的 `ResourceHosts` 与 `OnArtwork`。HTTP client 为 nil 时创建专用 client，整请求超时由调用方 context 控制；`CloseIdleConnections()` 释放其空闲连接。注入的 client 由调用方拥有，包括代理、transport 与关闭策略。
+
+设置 `OnArtwork` 后，每个成功映射的作品都会在操作返回前连同该操作的 context 交给回调，包括随后被本地筛掉的作品、推荐用户与热门标签的样例作品，以及一批结果失败前已经映射的作品。回调应快速返回，并支持并发调用。`BeginLogin` 忽略该字段。
 
 FANBOX 与 ascii2d 接受显式代理、User-Agent 和可选 FlareSolverr 设置。默认原生 transport 使用浏览器 TLS profile；注入的 `HTTPClient` 需显式提供 `Transport`，Cookie 与重定向策略由产品管理。FANBOX `Close(ctx)` 取消并等待 solver 工作，关闭前先完成原生请求。FlareSolverr 控制请求直连，其浏览器代理单独由 `FlareSolverrProxyURL` 设置，仅挑战恢复使用 solver。
 

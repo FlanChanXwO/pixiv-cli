@@ -51,7 +51,7 @@ func (c *Client) RecommendedUsers(ctx context.Context, options RecommendedUsersO
 	}
 	items := make([]UserRecommendation, len(raw.Previews.Items))
 	for i, w := range raw.Previews.Items {
-		items[i], err = c.mapRecommendation(w)
+		items[i], err = c.mapRecommendation(ctx, w)
 		if err != nil {
 			return sdk.Page[UserRecommendation]{}, err
 		}
@@ -71,7 +71,7 @@ type recommendationWire struct {
 	Novels   []novelWire   `json:"novels"`
 }
 
-func (c *Client) mapRecommendation(w recommendationWire) (UserRecommendation, error) {
+func (c *Client) mapRecommendation(ctx context.Context, w recommendationWire) (UserRecommendation, error) {
 	if w.User.ID <= 0 {
 		return UserRecommendation{}, newError("RecommendedUsers", sdk.MalformedUpstreamResponse, "invalid user", nil)
 	}
@@ -84,7 +84,7 @@ func (c *Client) mapRecommendation(w recommendationWire) (UserRecommendation, er
 		if item.User.ID <= 0 {
 			return UserRecommendation{}, newError("RecommendedUsers", sdk.MalformedUpstreamResponse, "missing artwork sample author", nil)
 		}
-		result.Artworks[i], err = c.mapArtwork(item)
+		result.Artworks[i], err = c.mapArtwork(ctx, item)
 		if err != nil {
 			return UserRecommendation{}, err
 		}

@@ -34,7 +34,7 @@
 
 ## SDK 调用约定
 
-SDK 提供纯 API 调用和按页下载。调用方通过各包的 `Options` 传入连接设置，负责配置与账号选择，并通过 `CredentialStore` 提供 Pixiv 凭据存储。SDK 提供内存实现，自动刷新 token，并在按版本号比较保存成功后使用新凭据。
+SDK 提供纯 API 调用和按页下载。调用方通过各包的 `Options` 传入连接设置，负责配置与账号选择，并通过 `CredentialStore` 提供 Pixiv 凭据存储。Pixiv 还接受可选的 `OnArtwork` 观察回调，记录与配置由调用方负责。SDK 提供内存实现，自动刷新 token，并在按版本号比较保存成功后使用新凭据。
 
 | 约定 | 规则 |
 | --- | --- |

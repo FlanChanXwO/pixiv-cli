@@ -114,7 +114,9 @@ func Login(ctx context.Context, receive func(string) (string, error)) (pixiv.Cre
 
 All network-capable operations take `ctx` first; use that context for cancellation and deadlines. Constructors, reference creation, URL parsing and local HTML parsing perform no network I/O.
 
-Pixiv `Options` accepts `HTTPClient`, `AcceptLanguage`, `RequestInterval` and additional `ResourceHosts`. A nil HTTP client creates a dedicated client with no fixed whole-request timeout; `CloseIdleConnections()` releases its idle sockets. An injected client remains caller-owned, including its proxy, transport and close policy.
+Pixiv `Options` accepts `HTTPClient`, `AcceptLanguage`, `RequestInterval`, additional `ResourceHosts` and `OnArtwork`. A nil HTTP client creates a dedicated client with no fixed whole-request timeout; `CloseIdleConnections()` releases its idle sockets. An injected client remains caller-owned, including its proxy, transport and close policy.
+
+`OnArtwork`, when set, receives each successfully mapped artwork with the operation context before the operation returns. This includes works later filtered locally, recommendation and trending-tag samples, and works mapped before a later batch error. Keep it fast and safe for concurrent calls. `BeginLogin` ignores it.
 
 FANBOX and ascii2d accept explicit proxy, User-Agent and optional FlareSolverr settings. Their default native transport uses a browser TLS profile; an injected `HTTPClient` needs an explicit `Transport`, and the product manages its own cookie/redirect policy. FANBOX `Close(ctx)` cancels and joins solver work; finish native requests first. FlareSolverr control is direct, with its browser proxy set separately by `FlareSolverrProxyURL`; only challenge recovery uses it.
 

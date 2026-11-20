@@ -2,8 +2,12 @@ package pixiv_test
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -102,4 +106,28 @@ func TestFeedInvalidArguments(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) { require.Equal(t, sdk.InvalidArgument, sdk.ReasonOf(test.call())) })
 	}
+}
+
+func TestOnArtworkBeforeFilteringAndBatchError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"illusts":[`+searchArtworkFirst+`,{"id":24,"create_date":"invalid"}]}`)
+	}))
+	defer server.Close()
+	value := pixiv.NewCredentials("fixture-refresh")
+	value.SetTokens("fixture-access", "fixture-refresh")
+	value.UserID, value.ExpiresAt = 11, time.Now().Add(time.Hour)
+	store, err := pixiv.NewMemoryCredentials(value)
+	require.NoError(t, err)
+	ctx := t.Context()
+	var seen []*pixiv.Artwork
+	client, err := pixiv.New(store, pixiv.Options{HTTPClient: fixtureHTTP(server), OnArtwork: func(got context.Context, a *pixiv.Artwork) {
+		require.Equal(t, ctx, got)
+		seen = append(seen, a)
+	}})
+	require.NoError(t, err)
+	_, err = client.SearchArtworks(ctx, "word", pixiv.ArtworkSearchOptions{AIMode: pixiv.SearchAIModeOnly})
+	require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+	require.Len(t, seen, 1)
+	require.EqualValues(t, 23, seen[0].ID)
+	require.NotEmpty(t, seen[0].Pages)
 }

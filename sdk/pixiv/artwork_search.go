@@ -42,7 +42,7 @@ func (c *Client) searchArtworks(ctx context.Context, base url.Values, token sdk.
 	// 2. Normalize the complete batch, then apply AI-only selection and its checkpoint.
 	items := make([]*Artwork, 0, len(raw.Illusts.Items))
 	for _, wire := range raw.Illusts.Items {
-		artwork, err := c.mapArtwork(wire)
+		artwork, err := c.mapArtwork(ctx, wire)
 		if err != nil {
 			return sdk.Page[*Artwork]{}, err
 		}
