@@ -546,15 +546,15 @@ On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-fligh
 
 ## Vector index
 
-Run `pixiv vector setup --model gemini-embedding-2-preview` to enable cloud vector indexing. Use `--base-url URL` for a Gemini-compatible service. Setup verifies a fixed text and PNG before atomically saving configuration. Once enabled, visible artwork metadata, including private bookmarks and R18, is recorded under `~/.pixiv-cli/vector/`. Manga contributes its first page; other works contribute all pages. Snapshots omit account-dependent bookmark, mute, visibility and follow flags.
+Run `pixiv vector setup` for local CPU vector indexing (default `siglip2-base-512`; optional `--model siglip2-base-256`). Use `--model gemini-embedding-2-preview` for cloud inference. Use `--base-url URL` for a Gemini-compatible service. Setup verifies a fixed text and PNG before atomically saving configuration. Once enabled, visible artwork metadata, including private bookmarks and R18, is recorded under `~/.pixiv-cli/vector/`. Manga contributes its first page; other works contribute all pages. Snapshots omit account-dependent bookmark, mute, visibility and follow flags.
 
 | Command | Behavior |
 | --- | --- |
-| `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm uploads, probe text/image compatibility, then save cloud configuration |
+| `pixiv vector setup [--model NAME] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm recording/downloads or uploads, probe text/image compatibility, then save configuration |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | Resume public/private bookmarks for the selected account, merge recordings and embed pending pages |
 | `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | Search the local index by text or an explicitly selected image |
 | `pixiv vector status [--json]` | Offline counts, inbox size, models, bookmark state and disk bytes |
-| `pixiv vector clear (--unused\|--index\|--all) [--yes]` | Remove other models' vectors, all records/vectors, or the entire vector directory and configuration |
+| `pixiv vector clear (--unused\|--index\|--all) [--yes]` | Remove unused models/runtimes/vectors, all records/vectors, or the entire vector directory and configuration |
 
 Clear requires confirmation or `--yes` outside a terminal. Browsing history is lost after index removal; bookmarks can be synchronized again. Clearing and synchronization share a nonblocking process lock; the inbox has a separate cancelable writer lock. Both lock files live outside the removable directory.
 
@@ -562,7 +562,7 @@ Clear requires confirmation or `--yes` outside a terminal. Browsing history is l
 
 Records accumulate in private `inbox.ndjson`; merging resumes an interrupted `inbox.merging`. Malformed original lines are retained in private `inbox.rejected.ndjson`, with line numbers and counts reported separately. Recovery after an interrupted merge may retain the same rejected line again. The SQLite index uses `0700` directories and `0600` files on Unix. Index snapshots are shared across local accounts.
 
-Setup requires `--yes` outside a terminal. The API key is read with hidden terminal input or as the complete stdin value. A saved key is reused only for the same canonical service address. HTTPS is required except for loopback; a terminal `/v1` is normalized to the service root. Requests use Gemini `embedContent`; service URL, API format and model ID define separate vector spaces. Redirects are rejected to keep the API key at that service.
+Setup requires `--yes` outside a terminal. For cloud models, the API key is read with hidden terminal input or as the complete stdin value. A saved key is reused only for the same canonical service address. HTTPS is required except for loopback; a terminal `/v1` is normalized to the service root. Requests use Gemini `embedContent`; service URL, API format and model ID define separate vector spaces. Redirects are rejected to keep the API key at that service.
 
 Cloud indexing uploads artwork thumbnails, including private bookmarks and R18, plus query content, and may incur usage charges. Setup displays the target service and pending-page count before confirmation. Models use the global proxy or the command override.
 
@@ -579,3 +579,7 @@ Text uses ranked artwork rows. Piped output defaults to canonical NDJSON records
 pixiv vector search "a rainy city" --no-sync --json
 pixiv vector search --image ./reference.png --limit 5 --ndjson | pixiv detail
 ```
+
+Local models use fixed Hugging Face revisions, FP32 image/text ONNX files and a SentencePiece tokenizer (about 1.5 GB per model); ONNX Runtime 1.32.0 comes from official NuGet packages. Installation resumes byte-range downloads, checks pinned SHA-256 digests and publishes versioned directories only after every file succeeds. Completed directories are reused without repeated hashing. Setup probes text and a controlled PNG before saving; a failed setup preserves configuration and resumable downloads. Local setup accepts no `--base-url`. Models support JPEG/PNG/GIF images and lowercase text with EOS/right-padding to 64 tokens; longer queries error without truncation. Sessions load lazily and release after each operation; native libraries remain loaded until process exit.
+
+Local assets exist for macOS ARM64, Linux AMD64/ARM64 (glibc 2.28+ for ONNX Runtime), and Windows AMD64/ARM64. Intel macOS supports cloud inference. The process may peak near 2.5 GiB when loading the FP32 text model. `clear --unused` retains the current model/runtime and removes other installed versions, including incomplete downloads. Linux CLI binaries now depend on glibc even outside vector commands. Native model execution has been verified on macOS ARM64 and Linux ARM64 in Docker; other platforms have build evidence.

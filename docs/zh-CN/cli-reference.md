@@ -546,15 +546,15 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 
 ## 向量索引
 
-执行 `pixiv vector setup --model gemini-embedding-2-preview` 启用云端向量索引，用 `--base-url URL` 指定兼容 Gemini 的服务。setup 先用固定文字和 PNG 试算，成功后才原子保存配置。启用后，可见作品元数据（包含私密收藏与 R18）记录到 `~/.pixiv-cli/vector/`。漫画记录第一页，其他作品记录全部页。快照省略随账号变化的收藏、屏蔽、可见性与关注标记。
+执行 `pixiv vector setup` 启用本地 CPU 向量索引（默认 `siglip2-base-512`，可选 `--model siglip2-base-256`）；`--model gemini-embedding-2-preview` 选择云端推理，用 `--base-url URL` 指定兼容 Gemini 的服务。setup 先用固定文字和 PNG 试算，成功后才原子保存配置。启用后，可见作品元数据（包含私密收藏与 R18）记录到 `~/.pixiv-cli/vector/`。漫画记录第一页，其他作品记录全部页。快照省略随账号变化的收藏、屏蔽、可见性与关注标记。
 
 | 命令 | 行为 |
 | --- | --- |
-| `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认上传范围，试算文字与图片，再保存云端配置 |
+| `pixiv vector setup [--model NAME] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认记录、下载或上传范围，试算文字与图片后保存配置 |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | 续读当前账号的公开/私密收藏，合并记录并计算待算页面 |
 | `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 按文字或显式指定的图片搜索本机索引 |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
-| `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除其他模型的向量、全部记录和向量，或整个向量目录及配置 |
+| `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除不用的模型、运行库与向量，全部记录和向量，或整个向量目录及配置 |
 
 清理需交互确认，非终端必须带 `--yes`。删除索引后浏览记录无法恢复，收藏可以再次同步。清理和同步共用非阻塞跨进程锁，记录追加另用可取消的写锁；两把锁均位于可删除目录之外。
 
@@ -562,7 +562,7 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 
 私有 `inbox.ndjson` 暂存记录；中断的 `inbox.merging` 会在下次合并时恢复。坏行原始字节保留到私有 `inbox.rejected.ndjson`，另外报告行号与数量。中断后恢复可能再次保留同一坏行。Unix 目录/文件权限为 `0700`/`0600`。SQLite 索引快照由本机各账号共享。
 
-非终端 setup 必须带 `--yes`。API key 通过终端隐藏输入或完整 stdin 读取，仅在规范化服务地址相同时复用旧 key。除回环地址外要求 HTTPS；末尾 `/v1` 规范化为服务根地址。请求使用 Gemini `embedContent`，服务地址、接口格式和模型 ID 共同区分向量空间。拒绝重定向，保证 key 只发送给指定服务。
+非终端 setup 必须带 `--yes`。云端模型的 API key 通过终端隐藏输入或完整 stdin 读取，仅在规范化服务地址相同时复用旧 key。除回环地址外要求 HTTPS；末尾 `/v1` 规范化为服务根地址。请求使用 Gemini `embedContent`，服务地址、接口格式和模型 ID 共同区分向量空间。拒绝重定向，保证 key 只发送给指定服务。
 
 云端索引会上传作品缩略图（含私密收藏与 R18）及查询内容，并可能按量计费。setup 在确认前展示目标服务和待算页数。模型请求使用全局代理或本次命令覆盖值。
 
@@ -579,3 +579,7 @@ sync 固定使用当前账号，分别保存各账号、各可见性的收藏成
 pixiv vector search "雨中的城市" --no-sync --json
 pixiv vector search --image ./reference.png --limit 5 --ndjson | pixiv detail
 ```
+
+本地模型使用固定 Hugging Face revision 的 FP32 图片/文字 ONNX 与 SentencePiece 分词器，每个模型约 1.5 GB；ONNX Runtime 1.32.0 来自官方 NuGet。安装支持按字节区间续传，核对固定 SHA-256，所有文件成功后才发布带版本目录；已完成目录直接复用。setup 用文字与受控 PNG 试算后保存，失败保留旧配置和可续传文件。本地 setup 不接受 `--base-url`。图片支持 JPEG/PNG/GIF；文字先转小写，添加 EOS 并右侧补齐至 64 个词元，超长报错并保留原输入。会话按需加载、操作结束释放，原生库保留至进程退出。
+
+原生资产覆盖 macOS ARM64、Linux AMD64/ARM64（ONNX Runtime 要求 glibc 2.28+）和 Windows AMD64/ARM64；Intel macOS 使用云端模型。加载 FP32 文字模型时进程峰值约 2.5 GiB。`clear --unused` 保留当前模型/运行库，删除其他版本及未完成下载。Linux CLI 二进制的所有命令现均依赖 glibc。本地模型已在 macOS ARM64 与 Docker Linux ARM64 实际运行，其他平台具有构建证据。

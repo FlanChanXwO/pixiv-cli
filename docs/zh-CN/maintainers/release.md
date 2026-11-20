@@ -31,7 +31,7 @@ flowchart TD
 ## 容器发布验证
 
 - `build_container` 在共享 `build` 门禁之后与 `build_production` 并行运行（不等待资产重建）。目标：`ubuntu-22.04` → `linux/amd64`，`ubuntu-22.04-arm` → `linux/arm64`。
-- 每个目标 checkout tag，构建带版本的静态 CGO0 Linux 二进制，运行容器打包测试，构建固定的 glibc 运行时镜像，验证非 root、精确版本、`/home/pixiv/.pixiv-cli/` 下的 `pixiv config path`、`/work` 与 OCI provenance（`org.opencontainers.image.source`、revision、version、licenses），然后导出 `verified-container-linux-amd64` / `-arm64`。构建任务只有 `contents: read`。
+- 每个目标 checkout tag，构建带版本、动态依赖 glibc 的 CGO0 Linux 二进制，运行容器打包测试，构建固定的 glibc 运行时镜像，验证非 root、精确版本、`/home/pixiv/.pixiv-cli/` 下的 `pixiv config path`、`/work` 与 OCI provenance（`org.opencontainers.image.source`、revision、version、licenses），然后导出 `verified-container-linux-amd64` / `-arm64`。构建任务只有 `contents: read`。
 - `.github/workflows/publish-dockerhub.yml` 是 GHCR 与 Docker Hub 的独立发布后发布者（Release 与 registry 无法原子提交）。它接收不可变 handoff 与两个已验证产物，检查 tag 与源码身份，把同样已加载的镜像字节推送到 `ghcr.io/flanchanxwo/pixiv-cli` 与 `docker.io/flanchanxwo/pixiv-cli`——从不重新构建。只有 Docker Hub 认证使用受保护的 `DOCKER_HUB_TOKEN`（经 stdin 传入）；只有该发布者申请 `packages: write`。失败时从默认分支以原 `release_run_id` 重新派发。精确版本 tag 总会发布；较旧 stable 的恢复成功但不移动 `latest`；只有最新 stable 才推进 `latest`。没有掩盖推送失败的重试循环。
 
 ```bash

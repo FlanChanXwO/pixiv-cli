@@ -58,7 +58,7 @@ flowchart LR
 | 脚本（Windows `cmd.exe`，不依赖 PowerShell） | `curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd && call "%TEMP%\pixiv-install.cmd" --add-to-path` |
 | Docker（linux amd64/arm64） | `docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3`（也可用 `docker.io/flanchanxwo/pixiv-cli`） |
 | Go | `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z`（精确 tag） |
-| 压缩包 / 源码 | [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) · `sh scripts/build.sh`（`CGO_ENABLED=0`，无需 Rust/C 工具链） |
+| 压缩包 / 源码 | [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) · `sh scripts/build.sh`（`CGO_ENABLED=0`；Linux 依赖 glibc；无需 Rust/C 构建工具链） |
 
 - 脚本自动识别 AMD64/ARM64，校验 Release SHA-256，预检二进制后按用户级安装。`--no-path` 不改 PATH；`--install-dir DIR` 指定目录。运行前可先审阅脚本。
 - 直接下载附带校验和与 Ed25519 签名清单。详见 [安装](docs/zh-CN/install.md)、[Docker](docs/zh-CN/install.md#docker)、[Go 源码安装](docs/zh-CN/install.md#go-源码安装)。

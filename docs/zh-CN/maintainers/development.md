@@ -58,7 +58,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | 单帧上限 | 项目常量 `maxFrameSourceBytes` 与 `maxFrameDecodedBytes` 均为 512 MiB，分别约束 ZIP 成员源字节与解码前分配估算 |
 | 超出上限 | 声明大小超出 → 读取前失败；实际展开超出 → 分块读取时失败；非法/溢出尺寸或估算 → 错误。不截断，不 fallback |
 | 取消 | 每次读取和图像解码前后、量化的每行、标准库编码器的写入及完成时检查；PNG/JPEG 解码返回后观察取消，标准库 GIF/PNG 编码的取消延迟取决于其写入粒度 |
-| 工具链 | 不需要 Rust、native library 或 C linker；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
+| 工具链 | 构建不需要 Rust 或 C linker；本地向量 setup 另行安装原生库；只有 race 测试需要 `CGO_ENABLED=1` + C 工具链 |
 
 解码估算将宽、高分别向上对齐到 32 像素，按每像素 24 字节计入 JPEG 系数、像素平面与转换空间。这一保守估算可能比之前按色型估算更早拒绝超大的灰度或其他低通道图片。
 
@@ -72,7 +72,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 
 **平台构建** —— `scripts/build/platform.sh` 以 CGO0 构建精确目标，并可选生成 canonical 压缩包：`--target GOOS/GOARCH`、`--output-dir DIR`、可选 `--version VERSION`（不带 `v`）与 `--package`（需要版本）。保留 Windows 后缀。runner 元数据在 `scripts/build/platforms.json`；测试、源码身份、权限、审批与发布留在 workflow 中。
 
-**Linux 兼容性** —— release 与打包 smoke 的二进制以 `CGO_ENABLED=0` 构建，产物是静态 ELF。release 测试/生产、打包 smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`；构建配方变化时用 `file build/pixiv` 核实。
+**Linux 兼容性** —— release 与打包 smoke 的二进制以 `CGO_ENABLED=0` 构建，通过 purego 生成动态依赖 glibc 的 ELF（`libc.so.6`、`libdl.so.2`、`libpthread.so.0`），所有命令均受此影响；仅含 musl 的系统不受支持。本地模型另需 ONNX Runtime 的 glibc 2.28+ 及 C++ 运行库依赖，原生库由 setup 下载。release 测试/生产、打包 smoke 与 Homebrew 安装矩阵的 Linux runner 固定为 `ubuntu-22.04` / `ubuntu-22.04-arm`；构建配方变化时用 `file build/pixiv` 核实。
 
 ## 运行
 
@@ -213,6 +213,7 @@ env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
+| `VECTOR-LOCAL-CPU` | `internal/vectormodel` | 两个 SigLIP2 模型各 8 张图片、15 条中日英文字在 macOS ARM64 与 Docker Linux ARM64 对照通过，macOS 验证 setup/续传，Linux 验证 setup/运行库下载；其他发布目标具有构建证据 | 补充 Linux AMD64 与 Windows AMD64/ARM64 的实际原生推理证据；Intel macOS 使用云端模型 |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/cli/bookmark` + `internal/mcpserver/pixiv/tools` | SDK 提供 `AddNovelBookmark`/`RemoveNovelBookmark`；CLI `bookmark add/remove --type novel` 与 MCP `pixiv_bookmark_add`/`pixiv_bookmark_remove` 调用这些方法。严格/实时、同账号回读、清理与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `COMMENT-WRITE` | `sdk/pixiv` + `internal/cli/comment` + `internal/mcpserver/pixiv/tools` | SDK 提供作品与小说各自的 post/reply/delete/stamp 方法。CLI 已注册 `comment create/reply/delete/stamp`，MCP 已注册 `pixiv_comment_create`/`pixiv_comment_reply`/`pixiv_comment_delete`/`pixiv_comment_stamp`。响应 ID、回读、清理与严格实时证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与 兼容门禁；在此之前保持证据门禁，不是 `public_ready` |

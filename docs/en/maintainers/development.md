@@ -58,7 +58,7 @@ CGO_ENABLED=0 go test ./internal/media/ugoira/... -count=1
 | Per-frame bounds | Project constants `maxFrameSourceBytes` and `maxFrameDecodedBytes` each allow 512 MiB: ZIP member source bytes and the pre-decode allocation estimate, respectively |
 | Over the bound | declared size → fail before reading; actual expansion → fail during chunked reading; invalid/overflowing dimensions or estimates → error. No truncation or fallback |
 | Cancellation | checked before/after each read chunk and image decode, per row during quantization, and on standard-encoder writes and completion; PNG/JPEG decode loops return before cancellation is observed, and standard GIF/PNG encoding latency follows their write granularity |
-| Toolchain | no Rust, native library or C linker; only race tests need `CGO_ENABLED=1` + C toolchain |
+| Toolchain | no Rust or C build linker; local vector setup separately installs native libraries; only race tests need `CGO_ENABLED=1` + C toolchain |
 
 The decode estimate rounds each dimension up to 32 pixels and charges 24 bytes per pixel for JPEG coefficients/planes and conversion space. This conservative estimate can reject large grayscale or other low-channel images earlier than the previous color-type estimate.
 
@@ -72,7 +72,7 @@ Output keeps the source frame dimensions. Multi-frame GIF and APNG loop indefini
 
 **Platform builds** — `scripts/build/platform.sh` builds an exact target with CGO0 and optionally a canonical archive: `--target GOOS/GOARCH`, `--output-dir DIR`, optional `--version VERSION` (no `v`) and `--package` (needs a version). It keeps Windows suffixes. Runner metadata stays in `scripts/build/platforms.json`; tests, source identity, permissions, approvals and publication stay in workflows.
 
-**Linux compatibility** — release and packaged-smoke binaries are built with `CGO_ENABLED=0`, which produces a static ELF. The Linux runners for release test/production, packaged smoke and the Homebrew install matrix stay pinned to `ubuntu-22.04` / `ubuntu-22.04-arm`; verify with `file build/pixiv` when the build recipe changes.
+**Linux compatibility** — release and packaged-smoke binaries are built with `CGO_ENABLED=0`, with purego producing a dynamic ELF linked to glibc (`libc.so.6`, `libdl.so.2`, `libpthread.so.0`), including commands that do not use vectors. musl-only systems are unsupported. Local models additionally require ONNX Runtime’s glibc 2.28+ and C++ runtime dependencies; setup downloads the native library separately. The Linux runners for release test/production, packaged smoke and the Homebrew install matrix stay pinned to `ubuntu-22.04` / `ubuntu-22.04-arm`; verify with `file build/pixiv` when the build recipe changes.
 
 ## Run
 
@@ -213,6 +213,7 @@ The Unsupported table records v1 entries that must stay absent. Evidence-gated e
 
 | ID | Unique owner | Current evidence | Close-out condition |
 | --- | --- | --- | --- |
+| `VECTOR-LOCAL-CPU` | `internal/vectormodel` | Both SigLIP2 models: 8 images and 15 EN/ZH/JA texts per model match calibrated references on macOS ARM64 and Docker Linux ARM64; macOS setup/download resume and Linux setup/runtime download verified. Remaining shipped targets have build evidence | Obtain real native inference evidence on Linux AMD64 and Windows AMD64/ARM64; Intel macOS uses cloud models |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking` (MCP later) | SDK and CLI expose the additive `NovelRanking` seam over the internal `/v1/novel/ranking` adapter; CLI selects it explicitly with `--type novel`; MCP has no `novel_ranking` tool, and live/public release evidence is still incomplete | Complete the live second-page, shared cursor, MCP and release compatibility gates; until then this remains evidence-gated and is not `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/cli/bookmark` + `internal/mcpserver/pixiv/tools` | SDK exposes `AddNovelBookmark`/`RemoveNovelBookmark`; CLI `bookmark add/remove --type novel` and MCP `pixiv_bookmark_add`/`pixiv_bookmark_remove` use those methods. Strict/live, same-account read-back, cleanup and release evidence remain incomplete | Complete strict/live mutation evidence, same-account read-back, cleanup and compatibility/release gates; until then this remains evidence-gated and is not `public_ready` |
 | `COMMENT-WRITE` | `sdk/pixiv` + `internal/cli/comment` + `internal/mcpserver/pixiv/tools` | SDK has namespace-specific post/reply/delete/stamp methods for artworks and novels. CLI `comment create/reply/delete/stamp` and MCP `pixiv_comment_create`/`pixiv_comment_reply`/`pixiv_comment_delete`/`pixiv_comment_stamp` are registered. Response-ID, read-back, cleanup and strict live evidence remain incomplete | After strict/live write evidence plus same-account read-back, cleanup, and compatibility gates; until then this remains evidence-gated and is not `public_ready` |

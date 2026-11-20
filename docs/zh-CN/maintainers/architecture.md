@@ -225,6 +225,8 @@ flowchart LR
 
 负责规范化的云端服务/模型身份、Gemini `embedContent`、向量校验/归一化与受控多模态试算，不依赖 Pixiv、CLI 或配置包。`vectorindex.Embedder` 由模型使用方定义，CLI 按全局/本次命令代理配置构造模型。云端错误只展示状态分类并保留取消，不携带响应正文或凭据；禁用重定向以保护自定义 API key 请求头。
 
+本地推理负责固定资产清单、Hugging Face/NuGet 的续传与完整性校验安装、校准后的图片预处理和 SentencePiece 分词。最小 purego 绑定动态加载 ONNX Runtime，固定输入内存并在取消时终止活动推理。图片/文字会话按需创建，随模型释放；文字推理在进程内串行。purego 在进程启动时初始化运行时桥接，因此 Linux 二进制依赖 glibc。
+
 ### `internal/config`
 
 | 存储 | 保存 |

@@ -286,7 +286,7 @@ fallback.
 
 ## Search a local vector index
 
-With setup authorized, run `pixiv vector setup --model gemini-embedding-2-preview` (optional `--base-url URL`) and provide the key privately through hidden input or stdin. The saved key is redacted by configuration output. Setup probes controlled text and PNG before saving.
+With setup authorized, run `pixiv vector setup` for local CPU inference (default `siglip2-base-512`, optional `siglip2-base-256`). Both download fixed FP32 text/image models and a tokenizer; text queries allow 64 tokens including EOS. macOS arm64, Linux AMD64/ARM64 and Windows AMD64/ARM64 have native assets; Intel macOS uses cloud models. Run `pixiv vector setup --model gemini-embedding-2-preview` for cloud inference (optional `--base-url URL`) and provide the key privately through hidden input or stdin. The saved key is redacted by configuration output. Setup probes controlled text and PNG before saving.
 
 `pixiv vector sync --json` resumes bookmark indexing for the selected local account; completed pages survive interruption. `pixiv vector search "a rainy city" --json` or `pixiv vector search --image ./reference.png --ndjson` searches the current model space. Images are explicit; text is never inferred as a filename. Results retain snapshots, best-page scores and standard pagination. A busy/limited/stopped catch-up can leave pending pages; inspect `index` and stderr warnings. `--no-sync` searches saved vectors without catch-up or requiring login. All local accounts share the index, including private/R18 metadata.
 

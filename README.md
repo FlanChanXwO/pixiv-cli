@@ -58,7 +58,7 @@ flowchart LR
 | Script (Windows `cmd.exe`, no PowerShell) | `curl.exe -fsSLo "%TEMP%\pixiv-install.cmd" https://raw.githubusercontent.com/FlanChanXwO/pixiv-cli/main/scripts/install.cmd && call "%TEMP%\pixiv-install.cmd" --add-to-path` |
 | Docker (linux amd64/arm64) | `docker pull ghcr.io/flanchanxwo/pixiv-cli:v1.2.3` (also `docker.io/flanchanxwo/pixiv-cli`) |
 | Go | `go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z` (exact tag) |
-| Archive / source | [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) · `sh scripts/build.sh` (`CGO_ENABLED=0`, no Rust/C toolchain) |
+| Archive / source | [GitHub Releases](https://github.com/FlanChanXwO/pixiv-cli/releases) · `sh scripts/build.sh` (`CGO_ENABLED=0`; Linux requires glibc; no Rust/C build toolchain) |
 
 - Scripts detect AMD64/ARM64, verify the Release SHA-256, preflight the binary and install per-user. `--no-path` leaves PATH alone; `--install-dir DIR` changes the destination. Inspect the script before running it.
 - Direct downloads ship checksums and an Ed25519-signed manifest. Details: [installation](docs/en/install.md), [Docker](docs/en/install.md#docker), [Go source](docs/en/install.md#go-source-installation).
