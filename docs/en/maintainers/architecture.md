@@ -217,9 +217,9 @@ Owns passive artwork projection, private inbox append/recovery, and a separate r
 
 The index has artwork, page, embedding, bookmark-membership and state tables. Page URL changes invalidate all old vectors/failures for that page; model changes keep existing embeddings separate. Writers use the external synchronization lock; readers use SQLite's default busy handler, rollback journal, and caller cancellation. `application_id` and `user_version` reject foreign or unknown databases. This is independent of the legacy account-database import.
 
-`internal/cli/vector` owns setup/sync/status/clear presentation and confirmation. `config.Store.WriteVector` commits the complete vector group in one private atomic file replacement. `vector.api_key` is redacted by config display and diagnostic formatting.
+`internal/cli/vector` owns setup/sync/search/status/clear presentation and confirmation. `config.Store.WriteVector` commits the complete vector group in one private atomic file replacement. `vector.api_key` is redacted by config display and diagnostic formatting.
 
-Bookmark synchronization receives a fixed-account opener from the composition root, without `OnArtwork` or account-pool replay. Artwork snapshots commit before the batch membership/cursor transaction; errors retain the previous continuation. Completed pages commit independently.
+Bookmark synchronization receives a fixed-account opener from the composition root, without `OnArtwork` or account-pool replay. Artwork snapshots commit before the batch membership/cursor transaction; errors retain the previous continuation. Completed pages commit independently. Search reuses this flow with a 30-second cooperative budget after merge, skips incomplete bookmark scopes, and releases the sync lock before querying. Current-model vectors are compared by dot product, reduced to each artwork’s best page and paginated through the shared list contract. Source loading stays in the composition root; the search response is independent of CLI and MCP.
 
 ### `internal/vectormodel`
 

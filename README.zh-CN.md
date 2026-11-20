@@ -33,6 +33,7 @@ flowchart LR
 | 领域 | 要点 |
 | --- | --- |
 | 发现 | 搜索作品/小说/用户；按分级、子类型、AI 模式、横纵比、分辨率、绘图工具、收藏数筛选；全部 16 种排行榜；推荐、时间线、系列、评论 |
+| 向量搜索 | 文字或图片 → 本机作品索引；[配置、同步与搜索](docs/zh-CN/cli-reference.md#向量索引) |
 | 反向搜图 | 本地图片或 URL → SauceNAO / ascii2d → canonical Pixiv record |
 | 下载 | 作品 ID/URL、作者与公开收藏页 URL、允许的 CDN 直链；页码区间、质量、Ugoira GIF/APNG；完整的成功/warning/失败报告 |
 | 账号操作 | 收藏、关注、评论与贴图 |

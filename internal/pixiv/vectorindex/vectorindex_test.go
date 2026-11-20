@@ -3,8 +3,10 @@ package vectorindex_test
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -139,4 +141,39 @@ func TestMergeRetainsSourceAfterCancellation(t *testing.T) {
 	report, err := store.Merge(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, report.Merged)
+}
+
+func TestSearchRanksBestPageAndNumericIdentity(t *testing.T) {
+	root := t.TempDir()
+	store, err := vectorindex.Open(t.Context(), root)
+	require.NoError(t, err)
+	defer store.Close()
+	db, err := sql.Open("sqlite3", filepath.Join(vectorindex.Directory(root), "index.db"))
+	require.NoError(t, err)
+	defer db.Close()
+	for _, id := range []string{"9", "10"} {
+		_, err = db.Exec(`INSERT INTO artwork VALUES(?,?,?)`, id, `{"id":"`+id+`","type":"artwork","url":"https://www.pixiv.net/artworks/`+id+`"}`, time.Now().UTC().Format(time.RFC3339Nano))
+		require.NoError(t, err)
+		for page, score := range []float32{0, 1} {
+			_, err = db.Exec(`INSERT INTO page VALUES(?,?,?,'')`, id, page, "https://i.pximg.net/fixture.png")
+			require.NoError(t, err)
+			body := make([]byte, 8)
+			binary.LittleEndian.PutUint32(body, math.Float32bits(score))
+			_, err = db.Exec(`INSERT INTO embedding VALUES(?,?,'fixture',?,'')`, id, page, body)
+			require.NoError(t, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, `{"embedding":{"values":[1,0]}}`) }))
+	defer server.Close()
+	model, err := vectormodel.Open(vectormodel.Options{Name: "fixture", BaseURL: server.URL, APIKey: "fixture-key"}, server.Client())
+	require.NoError(t, err)
+	defer model.Close()
+	limit := 1
+	result, err := vectorindex.Search(t.Context(), root, vectorindex.SearchInput{Query: "fixture", NoSync: true, Limit: &limit}, vectorindex.SearchOptions{SyncOptions: vectorindex.SyncOptions{Model: "fixture", Embedder: model}})
+	require.NoError(t, err)
+	require.True(t, result.Pagination.HasMore)
+	body, err := json.Marshal(result.Records)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `"id":"10"`)
+	require.Contains(t, string(body), `"page_index":1`)
 }

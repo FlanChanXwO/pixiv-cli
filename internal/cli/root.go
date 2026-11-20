@@ -52,7 +52,9 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/secretfile"
 	"github.com/FlanChanXwO/pixiv-cli/internal/urlscheme"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vectormodel"
 	"github.com/FlanChanXwO/pixiv-cli/internal/version"
+	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/spf13/cobra"
@@ -150,7 +152,7 @@ func (a *app) pixivCommands(env environment.Env) []*cobra.Command {
 		timeline.New(env, a.executePixiv),
 		mypixiv.New(env, a.executePixiv),
 		user.New(env, a.executePixiv, func() *cobra.Command { return follow.New(env, a.executePixiv) }),
-		vector.New(env, config.Store{Files: secretfile.ConfigFiles{}}, a.openVectorPixiv),
+		vector.New(env, config.Store{Files: secretfile.ConfigFiles{}}, a.openVectorPixiv, a.searchVector),
 		bookmark.New(env, a.executePixiv),
 		follow.New(env, a.executePixiv),
 	}
@@ -328,6 +330,74 @@ func (a *app) openVectorPixiv(ctx context.Context, request environment.PixivRequ
 		return 0, nil, nil, err
 	}
 	return userID, lease.Value(), lease.Close, nil
+}
+
+func (a *app) searchVector(ctx context.Context, input vectorindex.SearchInput, source string, request environment.PixivRequest) (result vectorindex.SearchResponse, err error) {
+	choices := 0
+	for _, present := range []bool{strings.TrimSpace(input.Query) != "", source != "", len(input.Image) > 0} {
+		if present {
+			choices++
+		}
+	}
+	if choices != 1 {
+		return result, errors.New("provide exactly one text query or image")
+	}
+	c, err := (config.Store{Files: secretfile.ConfigFiles{}}).Current()
+	if err != nil {
+		return result, err
+	}
+	if c.Vector.Model == "" {
+		return result, errors.New("vector search is not set up; run \"pixiv vector setup\"")
+	}
+	proxy := c.Network.HTTPSProxy
+	if request.HTTPSProxyOverride != nil {
+		proxy = *request.HTTPSProxyOverride
+	}
+	client, err := config.HTTPClient(proxy)
+	if err != nil {
+		return result, err
+	}
+	defer client.CloseIdleConnections()
+	if source != "" {
+		snapshot, loadErr := reversesearch.NewSourceLoader(client).Load(ctx, source)
+		if loadErr != nil {
+			return result, loadErr
+		}
+		defer func() { err = errors.Join(err, snapshot.Close()) }()
+		reader, readErr := snapshot.Open(ctx)
+		if readErr != nil {
+			return result, readErr
+		}
+		input.Image, err = io.ReadAll(reader)
+		if err = errors.Join(err, reader.Close()); err != nil {
+			return result, err
+		}
+	}
+	identity, err := vectormodel.Identifier(c.Vector.Model, c.Vector.BaseURL)
+	if err != nil {
+		return result, err
+	}
+	model, err := vectormodel.Open(vectormodel.Options{Name: c.Vector.Model, BaseURL: c.Vector.BaseURL, APIKey: c.Vector.APIKey}, client)
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, model.Close()) }()
+	root, err := config.AppDataDir()
+	if err != nil {
+		return result, err
+	}
+	accountID, err := a.selectedPixiv(ctx, request.UserID)
+	if err != nil && sdk.ReasonOf(err) != sdk.Unauthorized {
+		return result, err
+	}
+	request.UserID = accountID
+	fixture, err := vectormodel.ProbeImage()
+	if err != nil {
+		return result, err
+	}
+	return vectorindex.Search(ctx, root, input, vectorindex.SearchOptions{AccountID: accountID, SyncOptions: vectorindex.SyncOptions{Model: identity, Embedder: model, ProbeImage: fixture, OpenClient: func(ctx context.Context) (int64, *pixiv.Client, func() error, error) {
+		return a.openVectorPixiv(ctx, request)
+	}}})
 }
 
 func (a *app) readSession(ctx context.Context, request environment.PixivRequest) (mediaproxy.Session, error) {
