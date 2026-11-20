@@ -550,13 +550,15 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 
 | 命令 | 行为 |
 | --- | --- |
-| `pixiv vector setup [--model NAME] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认记录、下载或上传范围，试算文字与图片后保存配置 |
+| `pixiv vector setup [--model NAME] [--device cpu\|gpu] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认记录、下载或上传范围，试算文字与图片后保存配置 |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | 续读当前账号的公开/私密收藏，合并记录并计算待算页面 |
 | `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 按文字或显式指定的图片搜索本机索引 |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除不用的模型、运行库与向量，全部记录和向量，或整个向量目录及配置 |
 
 清理需交互确认，非终端必须带 `--yes`。删除索引后浏览记录无法恢复，收藏可以再次同步。清理和同步共用非阻塞跨进程锁，记录追加另用可取消的写锁；两把锁均位于可删除目录之外。
+
+本地模型使用 `setup --device cpu|gpu`（默认 CPU）；云端模型拒绝显式 `--device`。GPU setup 安装 WebGPU 0.6.0，在 CPU／GPU 上试算固定图片，余弦相似度 ≥ 0.999 后才保存 `vector.device`。图片使用所选 GPU，文字保持 CPU。运行时 GPU 故障报错并提示 `pixiv vector setup --model <当前模型> --device cpu`；切换设备保留相同向量身份。选择 CPU／云端后，`clear --unused` 会删除 GPU 插件。Windows 同时安装插件、动态 DXC 着色器编译器和 `D3D12/D3D12Core.dll` Agility SDK 运行库，省略调试 SDK layers。GPU 已在 macOS ARM64 实际运行，Linux／Windows GPU 尚未实测。
 
 `[vector]` 有四个 TOML 键：`model`（空值关闭记录）、`device`（空值/`cpu`/`gpu`）、`api_key`、`base_url`。默认均为空，没有环境变量绑定。已保存的 key 通过 `config get vector.api_key` 展示为 `<redacted>`。`config unset vector.model` 暂停记录并保留文件。
 

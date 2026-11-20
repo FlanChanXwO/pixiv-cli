@@ -201,6 +201,9 @@ func allowedURL(raw string, media bool) (*url.URL, error) {
 
 func readResponse(ctx context.Context, operation string, response *http.Response) ([]byte, error) {
 	body, readErr := io.ReadAll(response.Body)
+	if readErr == nil {
+		readErr = ctx.Err()
+	}
 	var err error
 	if readErr != nil {
 		err = externalFailure(ctx, operation, "read FANBOX response failed", readErr)

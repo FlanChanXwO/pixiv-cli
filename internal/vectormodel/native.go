@@ -41,6 +41,12 @@ const (
 	apiReleaseRun     = 97
 	apiReleaseShape   = 99
 	apiReleaseOptions = 100
+	apiRegisterEP     = 301
+	apiGetDevices     = 303
+	apiAppendDevices  = 304
+	apiHardwareType   = 307
+	apiEPName         = 312
+	apiEPDevice       = 316
 )
 
 type nativeRuntime struct {
@@ -55,6 +61,12 @@ type nativeRuntime struct {
 	run                                                                                                              func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, *uintptr) uintptr
 	data                                                                                                             func(uintptr, *unsafe.Pointer) uintptr
 	shape, count                                                                                                     func(uintptr, *uintptr) uintptr
+	registerEP                                                                                                       func(uintptr, string, uintptr) uintptr
+	getDevices                                                                                                       func(uintptr, *unsafe.Pointer, *uintptr) uintptr
+	appendDevices                                                                                                    func(uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr) uintptr
+	hardwareType                                                                                                     func(uintptr) int32
+	epName                                                                                                           func(uintptr) string
+	epDevice                                                                                                         func(uintptr) uintptr
 	terminate                                                                                                        func(uintptr) uintptr
 }
 
@@ -83,6 +95,12 @@ func openNative(path string) (*nativeRuntime, error) {
 		purego.RegisterFunc(target, *(*uintptr)(unsafe.Add(api, index*unsafe.Sizeof(uintptr(0)))))
 	}
 	bind(&n.errorMessage, apiErrorMessage)
+	bind(&n.registerEP, apiRegisterEP)
+	bind(&n.getDevices, apiGetDevices)
+	bind(&n.appendDevices, apiAppendDevices)
+	bind(&n.hardwareType, apiHardwareType)
+	bind(&n.epName, apiEPName)
+	bind(&n.epDevice, apiEPDevice)
 	bind(&n.createEnv, apiCreateEnv)
 	bind(&n.createSession, apiCreateSession)
 	bind(&n.run, apiRun)
@@ -117,7 +135,7 @@ func (n *nativeRuntime) check(status uintptr) error {
 	return fmt.Errorf("ONNX Runtime: %s", message)
 }
 
-func (n *nativeRuntime) session(ctx context.Context, path string) (uintptr, error) {
+func (n *nativeRuntime) session(ctx context.Context, path, plugin string) (uintptr, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -126,6 +144,11 @@ func (n *nativeRuntime) session(ctx context.Context, path string) (uintptr, erro
 		return 0, err
 	}
 	defer n.releaseOptions(options)
+	if plugin != "" {
+		if err := n.gpuOptions(options, plugin); err != nil {
+			return 0, err
+		}
+	}
 	encoded, unpin, err := nativePath(path)
 	if err != nil {
 		return 0, err
@@ -209,4 +232,47 @@ func (n *nativeRuntime) infer(ctx context.Context, session uintptr, inputName st
 		return nil, errors.New("unexpected local model output dimensions")
 	}
 	return normalize(append([]float32(nil), unsafe.Slice((*float32)(pointer), int(count))...))
+}
+
+func (n *nativeRuntime) gpuOptions(options uintptr, path string) error {
+	// CreateEnv 复用进程环境；并行存活的模型共享已注册的 provider。
+	selected, err := n.gpuDevice()
+	if err != nil {
+		return err
+	}
+	if selected == 0 {
+		encoded, unpin, err := nativePath(path)
+		if err != nil {
+			return err
+		}
+		defer unpin()
+		if err = n.check(n.registerEP(n.env, "WebGPU", uintptr(encoded))); err != nil {
+			return err
+		}
+		selected, err = n.gpuDevice()
+		if err != nil {
+			return err
+		}
+	}
+	if selected == 0 {
+		return errors.New("WebGPU GPU device not found")
+	}
+	var pin runtime.Pinner
+	pin.Pin(&selected)
+	defer pin.Unpin()
+	return n.check(n.appendDevices(options, n.env, uintptr(unsafe.Pointer(&selected)), 1, 0, 0, 0))
+}
+
+func (n *nativeRuntime) gpuDevice() (uintptr, error) {
+	var devices unsafe.Pointer
+	var count uintptr
+	if err := n.check(n.getDevices(n.env, &devices, &count)); err != nil {
+		return 0, err
+	}
+	for _, device := range unsafe.Slice((*uintptr)(devices), int(count)) {
+		if n.epName(device) == "WebGpuExecutionProvider" && n.hardwareType(n.epDevice(device)) == 1 {
+			return device, nil
+		}
+	}
+	return 0, nil
 }

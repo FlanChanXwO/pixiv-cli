@@ -213,6 +213,7 @@ env DOWNLOAD_PATH=PRIVATE_TEMP_DIR pixiv fanbox download POST_URL
 
 | ID | 唯一 owner | 当前证据 | 关闭条件 |
 | --- | --- | --- | --- |
+| `VECTOR-LOCAL-GPU` | `internal/vectormodel` | WebGPU 0.6.0 + ONNX Runtime 1.32.0：macOS ARM64 两个模型各 8 组 CPU／GPU 图片向量，最低余弦相似度 > 0.99999999999；setup 和推理期间取消通过。运行库／插件向 stderr 输出 Objective-C 重复类警告 | 补齐 Linux／Windows GPU 原生执行证据；出现稳定性故障时处理上游重复类警告 |
 | `VECTOR-LOCAL-CPU` | `internal/vectormodel` | 两个 SigLIP2 模型各 8 张图片、15 条中日英文字在 macOS ARM64 与 Docker Linux ARM64 对照通过，macOS 验证 setup/续传，Linux 验证 setup/运行库下载；其他发布目标具有构建证据 | 补充 Linux AMD64 与 Windows AMD64/ARM64 的实际原生推理证据；Intel macOS 使用云端模型 |
 | `NOVEL-RANKING` | `sdk/pixiv` + `internal/cli/ranking`（MCP 之后） | SDK 与 CLI 在内部 `/v1/novel/ranking` 适配器上暴露增量的 `NovelRanking` seam；CLI 通过 `--type novel` 显式选择；MCP 没有 `novel_ranking` 工具，实时/公开发布证据仍不完整 | 完成实时第二页、共享 cursor、MCP 与发布兼容门禁；在此之前保持证据门禁，不是 `public_ready` |
 | `NOVEL-BOOKMARK-MUTATION` | `sdk/pixiv` + `internal/cli/bookmark` + `internal/mcpserver/pixiv/tools` | SDK 提供 `AddNovelBookmark`/`RemoveNovelBookmark`；CLI `bookmark add/remove --type novel` 与 MCP `pixiv_bookmark_add`/`pixiv_bookmark_remove` 调用这些方法。严格/实时、同账号回读、清理与发布证据仍不完整 | 完成严格/实时写入证据、同账号回读、清理与兼容/发布门禁；在此之前保持证据门禁，不是 `public_ready` |
