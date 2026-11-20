@@ -12,6 +12,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vectormodel"
 	"github.com/spf13/cobra"
 )
 
@@ -101,28 +102,29 @@ func clearCommand(env environment.Env, store config.Store) *cobra.Command {
 			return err
 		}
 		if unused {
-			if _, err = os.Stat(filepath.Join(path, "index.db")); errors.Is(err, os.ErrNotExist) {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
 			var c config.Config
 			c, err = store.Current()
 			if err != nil {
 				return err
 			}
-			var db *vectorindex.Store
-			db, err = vectorindex.Open(cmd.Context(), root)
-			if err != nil {
+			if _, err = os.Stat(filepath.Join(path, "index.db")); err == nil {
+				var db *vectorindex.Store
+				db, err = vectorindex.Open(cmd.Context(), root)
+				if err != nil {
+					return err
+				}
+				defer func() { err = errors.Join(err, db.Close()) }()
+				identity, identityErr := configuredModel(c.Vector)
+				if identityErr != nil {
+					return identityErr
+				}
+				if err = db.ClearUnused(cmd.Context(), identity); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
-			defer func() { err = errors.Join(err, db.Close()) }()
-			identity, identityErr := configuredModel(c.Vector)
-			if identityErr != nil {
-				return identityErr
-			}
-			return db.ClearUnused(cmd.Context(), identity)
+			return vectormodel.ClearUnused(path, c.Vector.Model)
 		}
 		if all {
 			if err = store.WriteVector(nil); err != nil {
@@ -138,7 +140,7 @@ func clearCommand(env environment.Env, store config.Store) *cobra.Command {
 		_, err = fmt.Fprintln(env.Out, "Vector data cleared.")
 		return err
 	}}
-	cmd.Flags().BoolVar(&unused, "unused", false, "remove other models' vectors")
+	cmd.Flags().BoolVar(&unused, "unused", false, "remove other models and their vectors/runtimes")
 	cmd.Flags().BoolVar(&index, "index", false, "remove all records and vectors")
 	cmd.Flags().BoolVar(&all, "all", false, "remove vector data and disable recording")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation")

@@ -50,7 +50,7 @@ flowchart LR
 - 不请求管理员/root 权限，不安装前置工具，不读取 Pixiv 凭据，不绕过系统信誉提示。
 - **首次引导的信任边界：** `pixiv` 尚不存在时没有内嵌 Ed25519 校验器——SHA-256 只能发现损坏或不匹配，真实性依赖 HTTPS 与官方仓库。执行前请先审阅脚本。安装后 `pixiv update` 使用内嵌的 Ed25519 信任根。
 - **镜像源：** 带版本的安装脚本内嵌静态源列表（从不远程获取，只随签名 Release 变化）。候选源只用于平台压缩包，且其 checksum 响应必须与直连文件逐字节一致才可用；压缩包仍须匹配直连的 SHA-256。
-- **Linux：** release 与 packaged-smoke 二进制为静态链接（`CGO_ENABLED=0`），在 Ubuntu 22.04 构建；预检会在替换前暴露 loader 失败。
+- **Linux：** release 与 packaged-smoke 二进制使用 `CGO_ENABLED=0`，动态依赖 glibc（`libc.so.6`、`libdl.so.2`、`libpthread.so.0`），在 Ubuntu 22.04 构建；仅含 musl 的 Alpine 等系统不受支持；预检会在替换前暴露 loader 失败。
 - **`pixiv://` handler：** 校验安装后初始化（Homebrew 在 `post_install` 中完成）。出现 warning 表示二进制已装好但桌面集成未完成。macOS/Windows 上下一次普通命令会重试，因此手动解压的压缩包会自行修复。桌面 Linux 需要 `xdg-mime` 与 `gio`；无头 Linux 不注册 handler，但支持 relay server。
 
 ## 从源码构建
@@ -59,7 +59,7 @@ flowchart LR
 sh scripts/build.sh
 ```
 
-使用 `go.mod` 中的 Go 版本，设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`）；不需要 Rust 工具链、native library 或 C linker。Windows 使用 Git Bash、MSYS2 或 WSL。编码与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
+使用 `go.mod` 中的 Go 版本，设置 `CGO_ENABLED=0`，输出 `build/pixiv`（Windows 为 `build/pixiv.exe`）；构建无需 Rust 工具链或 C linker。Linux 运行依赖 glibc；本地向量 setup 另行下载 ONNX Runtime 原生库。Windows 使用 Git Bash、MSYS2 或 WSL。编码与平台证据见[开发流程](maintainers/development.md#ugoira-go-encoder)。
 
 ## Go 源码安装
 

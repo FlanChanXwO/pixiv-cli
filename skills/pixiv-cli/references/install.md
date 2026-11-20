@@ -49,4 +49,4 @@ When the user explicitly chooses a source install, use an exact published tag:
 go install github.com/FlanChanXwO/pixiv-cli/cmd/pixiv@vX.Y.Z
 ```
 
-Require the tag's declared Go toolchain, cgo, a target C linker and committed native library. Frontend sources are embedded directly; no generation or npm step is needed. State the `GOBIN`/`GOPATH/bin` destination before installing. Go-installed binaries self-update to the selected exact Release tag; failure preserves the prior executable. Do not change installation channels to work around a build failure.
+Require the tag’s declared Go toolchain and `CGO_ENABLED=0`; Linux binaries require glibc even outside vector commands. Local vector setup downloads ONNX Runtime separately. Build-time Rust/C toolchains and a committed native library are unnecessary. Frontend sources are embedded directly; no generation or npm step is needed. State the `GOBIN`/`GOPATH/bin` destination before installing. Go-installed binaries self-update to the selected exact Release tag; failure preserves the prior executable. Do not change installation channels to work around a build failure.

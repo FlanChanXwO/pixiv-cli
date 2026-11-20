@@ -1,6 +1,7 @@
 // Package vectormodel 把文字和图片转换成归一化向量。
 //
-// [Open] 绑定云端服务；[Model.Probe] 用受控内容核对多模态能力。
+// [Install] 安装固定本地资产，[Open] 绑定本地模型或云端服务；
+// [Model.Probe] 用受控内容核对多模态能力。
 // 模型身份包含服务地址、接口格式和模型 ID，配置持久化由调用方负责。
 package vectormodel
 
@@ -25,10 +26,11 @@ import (
 
 const defaultBase = "https://generativelanguage.googleapis.com"
 
-// Options 指定 Gemini embedContent 服务和模型；APIKey 仅用于请求头。
+// Options 指定模型、本地资产目录和云端服务；APIKey 仅用于请求头。
 type Options struct {
-	Name, BaseURL string
-	APIKey        string `json:"-"`
+	Name, BaseURL     string
+	Directory, Device string
+	APIKey            string `json:"-"`
 }
 
 // Format 隐藏鉴权参数。
@@ -38,6 +40,7 @@ func (Options) Format(s fmt.State, _ rune) { fmt.Fprint(s, "vectormodel.Options{
 type Model struct {
 	options Options
 	http    http.Client
+	local   *localModel
 }
 
 // Format 避免诊断展开模型中的鉴权信息。
@@ -79,8 +82,8 @@ func Identifier(name, base string) (string, error) {
 	if !modelName.MatchString(name) {
 		return "", errors.New("invalid vector model ID")
 	}
-	if name == "siglip2-base-512" || name == "siglip2-base-256" {
-		return "", errors.New("local vector models are not available yet")
+	if spec, ok := localModels[name]; ok {
+		return name + "@" + spec.revision, nil
 	}
 	canonical, err := CanonicalBase(base)
 	if err != nil {
@@ -93,6 +96,13 @@ func Identifier(name, base string) (string, error) {
 func Open(options Options, client *http.Client) (*Model, error) {
 	if _, err := Identifier(options.Name, options.BaseURL); err != nil {
 		return nil, err
+	}
+	if IsLocal(options.Name) {
+		local, err := openLocal(options)
+		if err != nil {
+			return nil, err
+		}
+		return &Model{options: options, local: local}, nil
 	}
 	base, err := CanonicalBase(options.BaseURL)
 	if err != nil {
@@ -108,7 +118,12 @@ func Open(options Options, client *http.Client) (*Model, error) {
 }
 
 // Close 释放模型资源；HTTP transport 由调用方关闭。
-func (*Model) Close() error { return nil }
+func (m *Model) Close() error {
+	if m.local != nil {
+		return m.local.close()
+	}
+	return nil
+}
 
 // HTTPError 只公开状态码，服务响应正文和请求信息不进入错误。
 type HTTPError struct{ Status int }
@@ -121,11 +136,17 @@ func (e *HTTPError) StatusCode() int { return e.Status }
 
 // Text 把完整文字作为一次请求发送。
 func (m *Model) Text(ctx context.Context, text string) ([]float32, error) {
+	if m.local != nil {
+		return m.local.textVector(ctx, text)
+	}
 	return m.embed(ctx, map[string]any{"text": text})
 }
 
 // Image 原样上传图片；尺寸限制由服务返回的状态码表达。
 func (m *Model) Image(ctx context.Context, data []byte) ([]float32, error) {
+	if m.local != nil {
+		return m.local.image(ctx, data)
+	}
 	return m.embed(ctx, map[string]any{"inline_data": map[string]string{"mime_type": http.DetectContentType(data), "data": base64.StdEncoding.EncodeToString(data)}})
 }
 

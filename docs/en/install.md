@@ -50,7 +50,7 @@ flowchart LR
 - Never requests admin/root, installs prerequisites, reads Pixiv credentials or bypasses reputation warnings.
 - **Bootstrap trust:** before `pixiv` exists there is no embedded Ed25519 verifier — SHA-256 detects corruption/mismatch; authenticity relies on HTTPS and the official repository. Inspect the script first. Afterwards `pixiv update` uses the embedded Ed25519 trust root.
 - **Mirrors:** versioned installers embed a static source list (never fetched remotely; changes only with a signed Release). Candidates are probed only for the platform archive and are usable only if their checksum response is byte-identical to the direct file; the archive still needs the direct SHA-256 match.
-- **Linux:** release and packaged-smoke binaries are static (`CGO_ENABLED=0`) and built on Ubuntu 22.04. Preflight surfaces loader failures before replacement.
+- **Linux:** release and packaged-smoke binaries use `CGO_ENABLED=0` with dynamic glibc linkage (`libc.so.6`, `libdl.so.2`, `libpthread.so.0`) and are built on Ubuntu 22.04. musl-only systems such as Alpine are unsupported. Preflight surfaces loader failures before replacement.
 - **`pixiv://` handler:** initialized after a verified install (Homebrew does it in `post_install`). A warning means the binary installed but desktop integration did not. On macOS/Windows the next normal command retries, so a manually extracted archive self-repairs. Desktop Linux needs `xdg-mime` and `gio`; headless Linux supports the relay server without a handler.
 
 ## Build from source
@@ -59,7 +59,7 @@ flowchart LR
 sh scripts/build.sh
 ```
 
-Uses the Go version in `go.mod`, sets `CGO_ENABLED=0`, writes `build/pixiv` (`build/pixiv.exe` on Windows); no Rust toolchain, native library or C linker. On Windows use Git Bash, MSYS2 or WSL. Encoding and platform evidence: [development guide](maintainers/development.md#ugoira-go-encoder).
+Uses the Go version in `go.mod`, sets `CGO_ENABLED=0`, writes `build/pixiv` (`build/pixiv.exe` on Windows); no Rust toolchain or C build linker. Linux execution requires glibc; local vector setup separately downloads ONNX Runtime libraries. On Windows use Git Bash, MSYS2 or WSL. Encoding and platform evidence: [development guide](maintainers/development.md#ugoira-go-encoder).
 
 ## Go source installation
 

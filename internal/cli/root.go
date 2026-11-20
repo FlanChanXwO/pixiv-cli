@@ -377,15 +377,15 @@ func (a *app) searchVector(ctx context.Context, input vectorindex.SearchInput, s
 	if err != nil {
 		return result, err
 	}
-	model, err := vectormodel.Open(vectormodel.Options{Name: c.Vector.Model, BaseURL: c.Vector.BaseURL, APIKey: c.Vector.APIKey}, client)
-	if err != nil {
-		return result, err
-	}
-	defer func() { err = errors.Join(err, model.Close()) }()
 	root, err := config.AppDataDir()
 	if err != nil {
 		return result, err
 	}
+	model, err := vectormodel.Open(vectormodel.Options{Name: c.Vector.Model, BaseURL: c.Vector.BaseURL, APIKey: c.Vector.APIKey, Device: string(c.Vector.Device), Directory: vectorindex.Directory(root)}, client)
+	if err != nil {
+		return result, err
+	}
+	defer func() { err = errors.Join(err, model.Close()) }()
 	accountID, err := a.selectedPixiv(ctx, request.UserID)
 	if err != nil && sdk.ReasonOf(err) != sdk.Unauthorized {
 		return result, err
