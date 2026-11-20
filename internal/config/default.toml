@@ -69,3 +69,10 @@ gallery_animation_temp_capacity_mib = 1024
 # default_user_id = 123
 # [fanbox.auth]
 # default_user_id = 123
+
+# Vector search: pixiv vector setup
+[vector]
+model = ""
+device = ""
+api_key = ""
+base_url = ""

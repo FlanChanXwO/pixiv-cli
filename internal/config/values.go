@@ -11,6 +11,7 @@ import (
 
 func fields(c *Config) map[string]any {
 	return map[string]any{
+		VectorModelKey: &c.Vector.Model, VectorDeviceKey: &c.Vector.Device, VectorAPIKey: &c.Vector.APIKey, VectorBaseURL: &c.Vector.BaseURL,
 		"account_pool.enabled":                    &c.AccountPool.Enabled,
 		"account_pool.strategy":                   &c.AccountPool.Strategy,
 		"download.directory_template":             &c.Download.DirectoryTemplate,
@@ -69,6 +70,8 @@ func text(value any) (string, bool) {
 		return strconv.FormatBool(*p), true
 	case *int64:
 		return strconv.FormatInt(*p, 10), true
+	case *VectorDevice:
+		return string(*p), true
 	case *LogLevel:
 		return string(*p), true
 	case *LogFormat:
@@ -92,6 +95,10 @@ func text(value any) (string, bool) {
 
 func validateValue(key, raw string) (string, error) {
 	switch key {
+	case VectorDeviceKey:
+		if raw != "" && VectorDevice(raw) != VectorCPU && VectorDevice(raw) != VectorGPU {
+			return "", fmt.Errorf("%s must be one of: cpu, gpu", key)
+		}
 	case "fanbox.flaresolverr.url", "reverse_search.flaresolverr.url":
 		if strings.TrimSpace(raw) == "" {
 			return "", fmt.Errorf("%s must be set", key)

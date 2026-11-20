@@ -12,7 +12,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// Get 返回目标键的有效值及存在性；配置中的 API key 原样返回。
+// Get 返回目标键的有效值及存在性；向量服务 API key 仅返回脱敏值。
 func (s Store) Get(key string) (string, bool, error) {
 	c := Default()
 	p, err := field(&c, key)
@@ -25,6 +25,9 @@ func (s Store) Get(key string) (string, bool, error) {
 	value, present := text(p)
 	if !present {
 		return "", false, nil
+	}
+	if key == VectorAPIKey && value != "" {
+		return "<redacted>", true, nil
 	}
 	value, err = validateValue(key, value)
 	return value, true, err
@@ -174,4 +177,62 @@ func lookupTable(file map[string]any, path ...string) (map[string]any, error) {
 		}
 	}
 	return file, nil
+}
+
+// WriteVector 原子写入整组向量配置；nil 删除全部声明的向量键，其他配置和注释保留。
+func (s Store) WriteVector(value *Vector) error {
+	body, err := s.readFile()
+	if err != nil {
+		return err
+	}
+	doc, err := tomledit.Parse(bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("config.toml: invalid TOML")
+	}
+	var source *tomledit.Document
+	if value != nil {
+		if _, err := validateValue(VectorDeviceKey, string(value.Device)); err != nil {
+			return err
+		}
+		encoded, err := toml.Marshal(map[string]any{"vector": value})
+		if err != nil {
+			return err
+		}
+		source, err = tomledit.Parse(bytes.NewReader(encoded))
+		if err != nil {
+			return err
+		}
+	}
+	for _, key := range []string{VectorModelKey, VectorDeviceKey, VectorAPIKey, VectorBaseURL} {
+		parts := strings.Split(key, ".")
+		entry := doc.First(parts...)
+		if value == nil {
+			if entry != nil {
+				entry.Remove()
+			}
+			continue
+		}
+		input := source.First(parts...)
+		if entry != nil {
+			if entry.IsSection() {
+				return fmt.Errorf("config key %q is a table", key)
+			}
+			entry.Value.X = input.Value.X
+		} else if err := insert(doc, parts, input.Value); err != nil {
+			return err
+		}
+	}
+	var out bytes.Buffer
+	if err := tomledit.Format(&out, doc); err != nil {
+		return err
+	}
+	var decoded Config
+	if err := toml.Unmarshal(out.Bytes(), &decoded); err != nil {
+		return fmt.Errorf("config.toml: invalid TOML")
+	}
+	path, err := s.Path()
+	if err != nil {
+		return err
+	}
+	return s.Files.WritePrivateFile(path, out.Bytes())
 }
