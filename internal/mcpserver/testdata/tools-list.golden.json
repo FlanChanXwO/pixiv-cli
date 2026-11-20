@@ -252,6 +252,9 @@
               "restricted_for": {
                 "type": "integer"
               },
+              "text": {
+                "type": "string"
+              },
               "title": {
                 "type": "string"
               }
@@ -657,6 +660,9 @@
               "restricted_for": {
                 "type": "integer"
               },
+              "text": {
+                "type": "string"
+              },
               "title": {
                 "type": "string"
               }
@@ -866,6 +872,9 @@
         },
         "restricted_for": {
           "type": "integer"
+        },
+        "text": {
+          "type": "string"
         },
         "title": {
           "type": "string"

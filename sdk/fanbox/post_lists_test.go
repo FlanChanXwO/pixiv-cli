@@ -31,11 +31,15 @@ func servePostList(t *testing.T, path string, w http.ResponseWriter, r *http.Req
 		fmt.Fprint(w, `<meta name="metadata" content='{"context":{"user":{"userId":21,"name":"fixture"}}}'>`)
 		return
 	}
+	if r.URL.Path == "/post.paginateCreator" {
+		fmt.Fprint(w, `{"body":{"pageUrls":["https://api.fanbox.cc/post.listCreator?creatorId=artist&limit=10","https://api.fanbox.cc/post.listCreator?offset=1","https://api.fanbox.cc/post.listCreator?offset=2"]}}`)
+		return
+	}
 	if r.URL.Path != path {
 		t.Error("incorrect post list route")
 	}
 	query := r.URL.Query()
-	if query.Get("offset") == "1" {
+	if query.Get("offset") != "" {
 		fmt.Fprint(w, `{"body":{"posts":[]}}`)
 		return
 	}
@@ -55,7 +59,7 @@ func servePostList(t *testing.T, path string, w http.ResponseWriter, r *http.Req
 	if path == "/post.listHome" || path == "/post.listSupporting" {
 		key = "items"
 	}
-	fmt.Fprintf(w, `{"body":{"%s":[{"id":"42","creatorId":"artist","title":"fixture","publishedDatetime":"2026-11-10T00:00:00Z","body":{"text":"list body"}}],"pageUrls":["https://api.fanbox.cc%s?offset=1"],"nextUrl":"https://foreign.invalid/"}}`, key, path)
+	fmt.Fprintf(w, `{"body":{"%s":[{"id":"42","creatorId":"artist","title":"fixture","publishedDatetime":"2026-11-10T00:00:00Z","body":{"text":"list body"}}],"pageUrls":["https://api.fanbox.cc%s?offset=1"],"nextUrl":"https://api.fanbox.cc%s?offset=1"}}`, key, path, path)
 }
 
 func TestPostLists(t *testing.T) {
@@ -80,6 +84,11 @@ func TestPostLists(t *testing.T) {
 			require.Empty(t, resumed.Items)
 			next, err := page.Next(t.Context())
 			require.NoError(t, err)
+			if path == "/post.listCreator" {
+				require.False(t, next.Cursor.IsZero())
+				next, err = next.Next(t.Context())
+				require.NoError(t, err)
+			}
 			require.True(t, next.Cursor.IsZero())
 			require.Empty(t, next.Items)
 		})
@@ -108,6 +117,10 @@ func TestPostListFailures(t *testing.T) {
 						fmt.Fprint(w, `<meta name="metadata" content='{"context":{"user":{"userId":21,"name":"fixture"}}}'>`)
 						return
 					}
+					if r.URL.Path == "/post.paginateCreator" {
+						fmt.Fprint(w, `{"body":{"pageUrls":["https://api.fanbox.cc/post.listCreator?limit=10"]}}`)
+						return
+					}
 					w.WriteHeader(tc.status)
 					fmt.Fprint(w, tc.body)
 				}))
@@ -120,5 +133,33 @@ func TestPostListFailures(t *testing.T) {
 				require.Equal(t, tc.reason, sdk.ReasonOf(err))
 			})
 		}
+	}
+}
+
+func TestCreatorPostPagesRejectInvalidPositions(t *testing.T) {
+	for _, pages := range []string{`null`, `[]`, `["https://foreign.invalid/post.listCreator?offset=1"]`, `["https://api.fanbox.cc/post.listCreator?creatorId=other&offset=1"]`, `["https://api.fanbox.cc/post.listCreator?offset=1","https://api.fanbox.cc/post.listCreator?offset=1"]`} {
+		t.Run(pages, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/" {
+					fmt.Fprint(w, `<meta name="metadata" content='{"context":{"user":{"userId":21,"name":"fixture"}}}'>`)
+					return
+				}
+				require.Equal(t, "/post.paginateCreator", r.URL.Path)
+				fmt.Fprintf(w, `{"body":{"pageUrls":%s}}`, pages)
+			}))
+			defer server.Close()
+			httpClient := server.Client()
+			routeToServer(httpClient, server)
+			client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: httpClient})
+			require.NoError(t, err)
+			page, err := client.Creator("artist").Posts(t.Context(), fanbox.PostsRequest{})
+			if pages == `[]` {
+				require.NoError(t, err)
+				require.Empty(t, page.Items)
+				require.True(t, page.Cursor.IsZero())
+			} else {
+				require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
+			}
+		})
 	}
 }

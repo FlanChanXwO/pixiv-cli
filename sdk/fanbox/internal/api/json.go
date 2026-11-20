@@ -29,6 +29,8 @@ const (
 	PathTagGetFeatured = "tag.getFeatured"
 	// PathPostInfo fetches one post's details.
 	PathPostInfo = "post.info"
+	// PathPostPaginateCreator lists all creator post-page URLs.
+	PathPostPaginateCreator = "post.paginateCreator"
 	// PathPostListCreator lists a creator's posts.
 	PathPostListCreator = "post.listCreator"
 	// PathPostListTagged lists a creator's posts under a tag.

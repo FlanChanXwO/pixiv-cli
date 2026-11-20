@@ -326,43 +326,26 @@ func (a commandRunner) runPost(cmd *cobra.Command, args []string, opts options) 
 		if err != nil {
 			return report.Wrap(err, "Post")
 		}
-		out := postOutFrom(post)
+		out := record.FanboxPost(post)
 		if jsonOut {
 			return a.env.PrintJSON(out)
 		}
 		if opts.ndjson {
 			return json.NewEncoder(a.env.Out).Encode(out)
 		}
-		return printPosts(a.env.Out, []*fanbox.Post{post})
+		if err := printPosts(a.env.Out, []*fanbox.Post{post}); err != nil {
+			return err
+		}
+		text := record.FanboxPostText(post)
+		if text != "" {
+			for _, line := range strings.Split(text, "\n") {
+				if _, err := fmt.Fprintln(a.env.Out, display.SafeLine(line)); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
 	})
-}
-
-type postOut struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	PublishedAt  string `json:"published_at"`
-	CreatorID    string `json:"creator_id"`
-	FeeRequired  int    `json:"fee_required,omitempty"`
-	IsRestricted bool   `json:"is_restricted"`
-	IsPinned     bool   `json:"is_pinned,omitempty"`
-	CommentCount int    `json:"comment_count,omitempty"`
-}
-
-func postOutFrom(post *fanbox.Post) postOut {
-	published := ""
-	if !post.PublishedAt.IsZero() {
-		published = post.PublishedAt.UTC().Format(time.RFC3339)
-	}
-	return postOut{
-		ID:           post.ID,
-		Title:        post.Title,
-		PublishedAt:  published,
-		CreatorID:    post.CreatorID,
-		FeeRequired:  post.FeeRequired,
-		IsRestricted: post.IsRestricted,
-		IsPinned:     post.IsPinned,
-		CommentCount: post.CommentCount,
-	}
 }
 
 func printCreators(out io.Writer, creators []*fanbox.Creator) error {

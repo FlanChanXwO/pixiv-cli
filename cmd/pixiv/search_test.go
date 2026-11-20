@@ -36,7 +36,7 @@ func TestSearchOutputContract(t *testing.T) {
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true, IsCA: true,
-		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc", "www.fanbox.cc", "i.pximg.net"},
+		DNSNames: []string{"app-api.pixiv.net", "oauth.secure.pixiv.net", "api.fanbox.cc", "www.fanbox.cc", "i.pximg.net", "downloads.fanbox.cc"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
@@ -58,6 +58,7 @@ func TestSearchOutputContract(t *testing.T) {
 	assertEscapesUpstreamText(t, proxy.URL)
 	assertFanboxPropagatesWriteError(t, proxy.URL)
 	assertAdditionalEscaping(t, proxy.URL)
+	assertFanboxDownload(t, proxy.URL)
 }
 
 func assertSearchOutput(t *testing.T, proxyURL string) {
@@ -108,6 +109,16 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"access_token":"access","refresh_token":"rotated","expires_in":3600,"user":{"id":"12345678","name":"artist"}}`)
 	case "/creator.listFollowing":
 		fmt.Fprint(w, `{"body":{"creators":[{"creatorId":"line\n\u001b[31m"}]}}`)
+	case "/post.paginateCreator":
+		fmt.Fprint(w, `{"body":{"pageUrls":["https://api.fanbox.cc/post.listCreator?creatorId=artist&limit=10"]}}`)
+	case "/post.info":
+		if r.URL.Query().Get("postId") == "102" {
+			fmt.Fprint(w, `{"body":{"post":{"id":"102","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z","body":{"files":[{"id":"first","name":"same","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"second","name":"same.zip","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"metadata","name":"post","extension":"json","url":"https://downloads.fanbox.cc/files/bundle.zip"}]}}}}`)
+			return
+		}
+		fmt.Fprint(w, `{"body":{"post":{"id":"101","creatorId":"artist","title":"fixture","publishedDatetime":"2024-05-01T00:00:00Z","body":{"text":"password: fixture-secret","blocks":[{"type":"p","text":"paragraph password"}],"images":[{"id":"photo","extension":"png","originalUrl":"https://downloads.fanbox.cc/images/202.jpg"}],"files":[{"id":"archive","name":"bundle","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"metadata","name":"post","extension":"json","url":"https://downloads.fanbox.cc/files/bundle.zip"}]}}}}`)
+	case "/files/bundle.zip":
+		fmt.Fprint(w, "fixture-archive")
 	case "/post.listCreator":
 		fmt.Fprint(w, `{"body":{"posts":[{"id":"101","title":"line\n\u001b[31m","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z"}]}}`)
 	case "/images/202.jpg":

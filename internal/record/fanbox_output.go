@@ -1,6 +1,7 @@
 package record
 
 import (
+	"strings"
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
@@ -130,16 +131,16 @@ func FanboxPost(post *fanbox.Post) any {
 				continue
 			}
 			outBlock.Kind = postBlockImage
-			outBlock.Image = &fanboxPostImageBlock{Resource: FanboxImageResource(FanboxPostImage, post.CreatorID, post.ID, block.Image.ID, block.Image.URL)}
+			outBlock.Image = &fanboxPostImageBlock{Resource: FanboxImageResource(FanboxPostImage, post.CreatorID, post.ID, block.Image.ID, block.Image.URL), Caption: block.Caption}
 		case fanbox.BlockFile:
 			if block.File == nil {
 				continue
 			}
 			outBlock.Kind = postBlockFile
-			outBlock.File = &fanboxPostFileBlock{Resource: FanboxImageResource(FanboxPostFile, post.CreatorID, post.ID, block.File.ID, block.File.URL), Name: block.File.Name}
-		case fanbox.BlockArticle:
+			outBlock.File = &fanboxPostFileBlock{Resource: FanboxImageResource(FanboxPostFile, post.CreatorID, post.ID, block.File.ID, block.File.URL), Name: block.File.Name, Caption: block.Caption}
+		case fanbox.BlockParagraph, fanbox.BlockHeader, fanbox.BlockArticle:
 			outBlock.Kind = postBlockArticle
-			outBlock.Article = &fanboxPostArticleBlock{}
+			outBlock.Article = &fanboxPostArticleBlock{Text: block.Text}
 		case fanbox.BlockVideo:
 			outBlock.Kind = postBlockVideo
 			outBlock.Video = &fanboxPostVideoEmbed{EmbeddedData: map[string]string{}}
@@ -151,4 +152,24 @@ func FanboxPost(post *fanbox.Post) any {
 	}
 	out.Body = body
 	return out
+}
+
+// FanboxPostText 按正文顺序保留纯文本、段落和说明文字。
+func FanboxPostText(post *fanbox.Post) string {
+	if post.Body == nil {
+		return ""
+	}
+	texts := []string{}
+	if post.Body.Text != "" {
+		texts = append(texts, post.Body.Text)
+	}
+	for _, block := range post.Body.Blocks {
+		if block.Text != "" {
+			texts = append(texts, block.Text)
+		}
+		if block.Caption != "" {
+			texts = append(texts, block.Caption)
+		}
+	}
+	return strings.Join(texts, "\n")
 }

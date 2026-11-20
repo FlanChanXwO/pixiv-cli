@@ -54,6 +54,7 @@ type PostAssetOut struct {
 type PostOut struct {
 	ID            string         `json:"id"`
 	Title         string         `json:"title"`
+	Text          string         `json:"text,omitempty"`
 	PublishedAt   string         `json:"published_at"`
 	CreatorID     string         `json:"creator_id"`
 	FeeRequired   int            `json:"fee_required,omitempty"`
@@ -73,6 +74,7 @@ func PostOutFrom(post *fanbox.Post) PostOut {
 	out := PostOut{
 		ID:            post.ID,
 		Title:         post.Title,
+		Text:          record.FanboxPostText(post),
 		PublishedAt:   published,
 		CreatorID:     post.CreatorID,
 		FeeRequired:   post.FeeRequired,

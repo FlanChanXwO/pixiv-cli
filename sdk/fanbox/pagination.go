@@ -40,17 +40,9 @@ func nextCursor(raw, operation, path string, current url.Values, binding cursor.
 	if raw == "" {
 		return sdk.Cursor{}, nil
 	}
-	target, err := url.Parse(raw)
-	if err != nil || target.Scheme != "https" || target.Host != api.APIHost || target.User != nil || target.Fragment != "" || target.Path != "/"+path || target.EscapedPath() != "/"+path {
-		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation URL")
-	}
-	values, err := url.ParseQuery(target.RawQuery)
+	position, err := continuationURLPosition(raw, operation, path, binding.Query)
 	if err != nil {
-		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation query")
-	}
-	position, valid := continuationPosition(values, binding.Query)
-	if !valid {
-		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation position")
+		return sdk.Cursor{}, err
 	}
 	if previous, ok := continuationPosition(current, binding.Query); ok && previous.Encode() == position.Encode() {
 		return sdk.Cursor{}, newError(operation, sdk.MalformedUpstreamResponse, "FANBOX continuation position did not advance")
@@ -78,4 +70,20 @@ func continuationPosition(values, base url.Values) (url.Values, bool) {
 		position[key] = entries
 	}
 	return position, len(position) != 0
+}
+
+func continuationURLPosition(raw, operation, path string, base url.Values) (url.Values, error) {
+	target, err := url.Parse(raw)
+	if err != nil || target.Scheme != "https" || target.Host != api.APIHost || target.User != nil || target.Fragment != "" || target.Path != "/"+path || target.EscapedPath() != "/"+path {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation URL")
+	}
+	values, err := url.ParseQuery(target.RawQuery)
+	if err != nil {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation query")
+	}
+	position, valid := continuationPosition(values, base)
+	if !valid {
+		return nil, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX continuation position")
+	}
+	return position, nil
 }

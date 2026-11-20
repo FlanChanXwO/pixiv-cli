@@ -187,8 +187,10 @@ canonical 数据动作：`search`、`detail`、`ranking`、`series`、`comment`�
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | 来自创作者、标签、帖子 ID 或受支持 FANBOX URL 的帖子。 |
 | `fanbox tags` | `pixiv fanbox tags CREATOR` | 创作者的精选标签。 |
 | `fanbox home` / `supporting` | `pixiv fanbox home\|supporting [--page N --limit N]` | 已认证的主页或支持中 feed。 |
-| `fanbox post` | `pixiv fanbox post POST_ID` | 一个帖子及其安全资源摘要。 |
-| `fanbox download` | `pixiv fanbox download SOURCE...` | 把帖子资源保存到配置的下载路径下。 |
+| `fanbox post` | `pixiv fanbox post POST_ID` | 一个帖子、正文（含文章段落）及安全资源引用。 |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | 读取帖子详情，把资源及私有 `post.json` 保存到配置的下载路径下。 |
+
+下载目录为 `fanbox/CREATOR/POST_ID/`。`post.json` 保留完整正文、文章块、附件元数据及帖子中的压缩包密码，采用私有文件权限，可能包含带签名的媒体地址。附件保留扩展名；名为 `post.json` 的附件会加上资源 ID 前缀。受限帖子保留元数据并返回错误。创作者列表遍历 FANBOX 提供的全部分页。
 
 **文件名：** 模板输出与 URL 派生扩展名中的跨平台非法字符都会规范化；ASCII 控制字符被替换，结尾的点/空格（Windows 拒绝）被去掉。Pixiv 缩略图成功时，资源 Content-Type 可替换含糊的 URL 扩展名（如 `.png`）以匹配实际字节；未知媒体类型保留 URL 扩展名。
 

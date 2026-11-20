@@ -61,7 +61,7 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 		if r.Header.Get("Cookie") != "FANBOXSESSID=session-canary" {
 			t.Error("request did not carry the session canary")
 		}
-		fmt.Fprint(w, `{"body":{"post":{"id":"p1","title":"private post","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"artist","body":{"images":[{"id":"img1","extension":"png","originalUrl":"https://downloads.fanbox.cc/image.png?signature=media-canary"}]}}}}`)
+		fmt.Fprint(w, `{"body":{"post":{"id":"p1","title":"private post","publishedDatetime":"2024-06-01T10:00:00Z","creatorId":"artist","body":{"text":"password: fixture-password","blocks":[{"type":"p","text":"paragraph-password"}],"images":[{"id":"img1","extension":"png","originalUrl":"https://downloads.fanbox.cc/image.png?signature=media-canary"}]}}}}`)
 	}))
 	defer api.Close()
 	httpClient := api.Client()
@@ -88,6 +88,8 @@ func TestToolOutputKeepsSignedURLAndCookiePrivate(t *testing.T) {
 	body, err := json.Marshal(result)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "requires_credentials")
+	require.Contains(t, string(body), "fixture-password")
+	require.Contains(t, string(body), "paragraph-password")
 	for _, secret := range []string{"session-canary", "media-canary", "https://downloads.fanbox.cc/image.png"} {
 		require.NotContains(t, string(body), secret)
 	}

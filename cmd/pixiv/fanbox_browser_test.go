@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -81,4 +82,46 @@ func assertAdditionalEscaping(t *testing.T, proxy string) {
 			require.Contains(t, stdout, `line\n\x1b[31m`)
 		})
 	}
+}
+
+func assertFanboxDownload(t *testing.T, proxy string) {
+	t.Helper()
+	directory := t.TempDir()
+	t.Setenv("DOWNLOAD_PATH", directory)
+	_, stderr, code := runCLI(t, "fanbox", "download", "artist", "--proxy", proxy)
+	require.Zero(t, code, stderr)
+	base := filepath.Join(directory, "fanbox", "artist", "101")
+	data, err := os.ReadFile(filepath.Join(base, "bundle.zip"))
+	require.NoError(t, err)
+	require.Equal(t, "fixture-archive", string(data))
+	image, err := os.ReadFile(filepath.Join(base, "photo.jpg"))
+	require.NoError(t, err)
+	require.Equal(t, "fixture-image", string(image))
+	metadata, err := os.ReadFile(filepath.Join(base, "post.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(metadata), "fixture-secret")
+	require.Contains(t, string(metadata), "paragraph password")
+	attachment, err := os.ReadFile(filepath.Join(base, "metadata_post.json"))
+	require.NoError(t, err)
+	require.Equal(t, "fixture-archive", string(attachment))
+	info, err := os.Stat(filepath.Join(base, "post.json"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	assertFanboxDownloadConflict(t, proxy)
+	for _, format := range []string{"--json", "--ndjson"} {
+		stdout, stderr, code := runCLI(t, "fanbox", "post", "101", format, "--proxy", proxy)
+		require.Zero(t, code, stderr)
+		var post map[string]any
+		require.NoError(t, json.Unmarshal([]byte(stdout), &post))
+		require.Contains(t, stdout, "fixture-secret")
+		require.Contains(t, stdout, "paragraph password")
+		require.NotContains(t, stdout, "downloads.fanbox.cc")
+	}
+}
+
+func assertFanboxDownloadConflict(t *testing.T, proxy string) {
+	t.Helper()
+	_, stderr, code := runCLI(t, "fanbox", "download", "102", "--proxy", proxy)
+	require.Equal(t, 1, code)
+	require.Contains(t, stderr, "resolve to the same download path")
 }

@@ -37,6 +37,9 @@ func (r *CreatorRef) Posts(ctx context.Context, request PostsRequest) (sdk.Page[
 		base.Set(api.ParamTag, tag)
 		path = api.PathPostListTagged
 	}
+	if path == api.PathPostListCreator {
+		return r.client.creatorPosts(ctx, operation, base, request.Cursor)
+	}
 	return r.client.postList(ctx, operation, path, base, request.Cursor)
 }
 
@@ -64,33 +67,41 @@ func (c *Client) postList(ctx context.Context, operation, path string, base url.
 	if token.IsZero() && path != api.PathPostListTagged {
 		query.Set(api.ParamLimit, strconv.Itoa(api.PostListPageLimit))
 	}
-	body, err := c.getBody(ctx, operation, path, query)
+	items, continuation, err := c.readPosts(ctx, operation, path, query)
 	if err != nil {
 		return sdk.Page[*Post]{}, err
 	}
-	var page postPageWire
-	if json.Unmarshal(body, &page) != nil {
-		return sdk.Page[*Post]{}, newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX post list")
-	}
-	source := page.Posts
-	if source == nil && (path == api.PathPostListHome || path == api.PathPostListSupporting) {
-		source = page.Items
-	}
-	if source == nil {
-		return sdk.Page[*Post]{}, newError(operation, sdk.MalformedUpstreamResponse, "missing FANBOX post list")
-	}
-	items := make([]*Post, len(source))
-	for i, entry := range source {
-		items[i], err = c.mapPost(operation, entry)
-		if err != nil {
-			return sdk.Page[*Post]{}, err
-		}
-	}
-	next, err := nextCursor(page.continuation(), operation, path, query, binding)
+	next, err := nextCursor(continuation, operation, path, query, binding)
 	if err != nil {
 		return sdk.Page[*Post]{}, err
 	}
 	return sdk.NewPage(items, next, func(ctx context.Context) (sdk.Page[*Post], error) {
 		return c.postList(ctx, operation, path, base, next)
 	}), nil
+}
+
+func (c *Client) readPosts(ctx context.Context, operation, path string, query url.Values) ([]*Post, string, error) {
+	body, err := c.getBody(ctx, operation, path, query)
+	if err != nil {
+		return nil, "", err
+	}
+	var page postPageWire
+	if json.Unmarshal(body, &page) != nil {
+		return nil, "", newError(operation, sdk.MalformedUpstreamResponse, "invalid FANBOX post list")
+	}
+	source := page.Posts
+	if source == nil && (path == api.PathPostListHome || path == api.PathPostListSupporting) {
+		source = page.Items
+	}
+	if source == nil {
+		return nil, "", newError(operation, sdk.MalformedUpstreamResponse, "missing FANBOX post list")
+	}
+	items := make([]*Post, len(source))
+	for i, entry := range source {
+		items[i], err = c.mapPost(operation, entry)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	return items, page.continuation(), nil
 }
