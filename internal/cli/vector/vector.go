@@ -103,11 +103,13 @@ func clearCommand(env environment.Env, store config.Store) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := store.Current()
+			var c config.Config
+			c, err = store.Current()
 			if err != nil {
 				return err
 			}
-			db, err := vectorindex.Open(cmd.Context(), root)
+			var db *vectorindex.Store
+			db, err = vectorindex.Open(cmd.Context(), root)
 			if err != nil {
 				return err
 			}
