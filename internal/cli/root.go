@@ -333,6 +333,19 @@ func (a *app) openVectorPixiv(ctx context.Context, request environment.PixivRequ
 }
 
 func (a *app) searchVector(ctx context.Context, input vectorindex.SearchInput, source string, request environment.PixivRequest) (result vectorindex.SearchResponse, err error) {
+	return a.searchVectorResolved(ctx, input, source, request, nil)
+}
+
+func (a *app) searchVectorResolved(ctx context.Context, input vectorindex.SearchInput, source string, request environment.PixivRequest, resolve func(context.Context) (int64, error)) (result vectorindex.SearchResponse, err error) {
+	code := "model_unavailable"
+	defer func() {
+		if err != nil {
+			var classified *vectorindex.SearchError
+			if !errors.As(err, &classified) && reversesearch.CodeOf(err) == reversesearch.CodeUnknown {
+				err = &vectorindex.SearchError{Code: code, Cause: err}
+			}
+		}
+	}()
 	choices := 0
 	for _, present := range []bool{strings.TrimSpace(input.Query) != "", source != "", len(input.Image) > 0} {
 		if present {
@@ -340,14 +353,14 @@ func (a *app) searchVector(ctx context.Context, input vectorindex.SearchInput, s
 		}
 	}
 	if choices != 1 {
-		return result, errors.New("provide exactly one text query or image")
+		return result, &vectorindex.SearchError{Code: "invalid_request", Cause: errors.New("provide exactly one text query or image")}
 	}
 	c, err := (config.Store{Files: secretfile.ConfigFiles{}}).Current()
 	if err != nil {
 		return result, err
 	}
 	if c.Vector.Model == "" {
-		return result, errors.New("vector search is not set up; run \"pixiv vector setup\"")
+		return result, &vectorindex.SearchError{Code: "not_set_up", Cause: errors.New("vector search is not set up; run \"pixiv vector setup\"")}
 	}
 	proxy := c.Network.HTTPSProxy
 	if request.HTTPSProxyOverride != nil {
@@ -377,15 +390,24 @@ func (a *app) searchVector(ctx context.Context, input vectorindex.SearchInput, s
 	if err != nil {
 		return result, err
 	}
+	code = "index_unavailable"
 	root, err := config.AppDataDir()
 	if err != nil {
 		return result, err
 	}
+	code = "model_unavailable"
 	model, err := vectormodel.Open(vectormodel.Options{Name: c.Vector.Model, BaseURL: c.Vector.BaseURL, APIKey: c.Vector.APIKey, Device: string(c.Vector.Device), Directory: vectorindex.Directory(root)}, client)
 	if err != nil {
 		return result, err
 	}
 	defer func() { err = errors.Join(err, model.Close()) }()
+	code = "sync_failed"
+	if resolve != nil {
+		request.UserID, err = resolve(ctx)
+		if err != nil {
+			return result, &vectorindex.SearchError{Code: "sync_failed", Cause: err}
+		}
+	}
 	accountID, err := a.selectedPixiv(ctx, request.UserID)
 	if err != nil && sdk.ReasonOf(err) != sdk.Unauthorized {
 		return result, err
@@ -660,7 +682,13 @@ func (a *app) runPixivMCP(ctx context.Context, request mcp.Request) error {
 		PixivAccounts: a.pixivAccounts,
 		OpenFanbox:    a.openFanbox,
 		ReverseSearch: reverseSearch,
-		CloseState:    a.closeState,
+		VectorSearch: func(ctx context.Context, input vectorindex.SearchInput, source string, resolve func(context.Context) (pixivmcpserver.Account, error)) (vectorindex.SearchResponse, error) {
+			return a.searchVectorResolved(ctx, input, source, environment.PixivRequest{HTTPSProxyOverride: request.HTTPSProxyOverride}, func(ctx context.Context) (int64, error) {
+				account, err := resolve(ctx)
+				return account.UserID, err
+			})
+		},
+		CloseState: a.closeState,
 	}.Run(ctx, request)
 }
 

@@ -20,6 +20,7 @@ import (
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
@@ -47,6 +48,8 @@ type Runtime struct {
 	OpenFanbox func(context.Context, *string) (*lifecycle.Lease[*fanbox.Client], error)
 	// ReverseSearch 是启动时固定配置的反向搜图端口。
 	ReverseSearch pixivmcpserver.ReverseSearchPorts
+	// VectorSearch 每次调用读取向量配置，再按需解析本次账号。
+	VectorSearch func(context.Context, vectorindex.SearchInput, string, func(context.Context) (pixivmcpserver.Account, error)) (vectorindex.SearchResponse, error)
 	// CloseState 登记 MCP 打开的反向搜图 client。
 	CloseState *lifecycle.CloseState
 }
@@ -79,6 +82,7 @@ func (r Runtime) sdkPorts() (pixivmcpserver.SDKPorts, fanboxmcpserver.SDKPorts) 
 			return r.ExecutePixiv(ctx, pixivRequest(account), attempt)
 		},
 		ReverseSearch: r.ReverseSearch,
+		VectorSearch:  r.VectorSearch,
 	}
 	fanboxPorts := fanboxmcpserver.SDKPorts{
 		Logger: r.Logger(),

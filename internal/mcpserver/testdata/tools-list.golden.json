@@ -7330,5 +7330,159 @@
       ],
       "type": "object"
     }
+  },
+  {
+    "_meta": {
+      "openai/fileParams": [
+        "image"
+      ]
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Search the local artwork index with exactly one text query, server-side image source or host image. Catch-up saves local state and cloud models upload images/queries with possible usage charges. Run pixiv vector setup and pixiv vector sync in a terminal first. Results can include private/R18 snapshots and are shared across accounts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "query"
+          ]
+        },
+        {
+          "required": [
+            "source"
+          ]
+        },
+        {
+          "required": [
+            "image"
+          ]
+        }
+      ],
+      "properties": {
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "download_url": {
+              "description": "HTTP(S) download URL supplied by the host.",
+              "type": "string"
+            },
+            "file_id": {
+              "description": "Host file identifier; not a download address.",
+              "type": "string"
+            },
+            "file_name": {
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "download_url",
+            "file_id"
+          ],
+          "type": "object"
+        },
+        "limit": {
+          "description": "Maximum logical results; 0 returns all; omit for one logical batch.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "page": {
+          "description": "1-based logical page; requires a positive limit.",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "Text description of the artwork to find; local models accept at most 64 tokens including EOS.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "description": "Readable regular file path, local file:// URI, or HTTP(S) image URL on the MCP server, not the connector device. The source is fetched/uploaded and is never returned.",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "pixiv_vector_search",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "enum": [
+            "not_set_up",
+            "invalid_request",
+            "invalid_source",
+            "source_not_regular_file",
+            "source_read_failed",
+            "source_http_status",
+            "snapshot_failed",
+            "text_too_long",
+            "unsupported_image",
+            "model_unavailable",
+            "index_unavailable",
+            "sync_failed",
+            "canceled",
+            "unknown"
+          ],
+          "type": "string"
+        },
+        "index": {
+          "additionalProperties": false,
+          "properties": {
+            "bookmarks_read": {
+              "type": "boolean"
+            },
+            "catch_up": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "pages": {
+              "type": "integer"
+            },
+            "pending": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "model",
+            "pages",
+            "pending",
+            "catch_up",
+            "bookmarks_read"
+          ],
+          "type": "object"
+        },
+        "pagination": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "records": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "records",
+        "pagination",
+        "index"
+      ],
+      "type": "object"
+    }
   }
 ]

@@ -126,7 +126,7 @@ func (m *localModel) textVector(ctx context.Context, text string) ([]float32, er
 	}
 	tokens := m.tokenizer.Encode(strings.ToLower(text))
 	if len(tokens)+1 > textLength {
-		return nil, fmt.Errorf("text query exceeds %d tokens including EOS", textLength)
+		return nil, fmt.Errorf("%w: maximum %d tokens including EOS", ErrTextTooLong, textLength)
 	}
 	ids := make([]int64, textLength)
 	for i, t := range tokens {
