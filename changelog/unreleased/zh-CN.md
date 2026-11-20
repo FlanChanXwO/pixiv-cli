@@ -24,3 +24,4 @@
 - Ugoira 转 GIF 时，全部帧所需内存超过 1 GiB 会在编码前报错，不再耗尽内存。
 - 取消 ascii2d 搜索后，不再无限等待无响应的 FlareSolverr 关闭会话；过大的 FlareSolverr 响应会被拒绝。
 - 拒绝在媒体主机上指定非默认端口的 Pixiv 媒体 URL。
+- `pixiv fanbox tags` 与 MCP tool `fanbox_creator_tags` 不再报 `missing FANBOX tag list`，可以读取 FANBOX 当前返回的标签列表。

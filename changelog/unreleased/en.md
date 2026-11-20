@@ -24,3 +24,4 @@
 - Ugoira GIF conversion now fails before encoding when its frames would need more than 1 GiB of memory, instead of exhausting it.
 - A canceled ascii2d search no longer waits indefinitely for an unresponsive FlareSolverr to close its session, and an oversized FlareSolverr response is rejected.
 - Pixiv media URLs that name a non-default port on a media host are rejected.
+- `pixiv fanbox tags` and the `fanbox_creator_tags` MCP tool no longer fail with `missing FANBOX tag list`; they read the tag list FANBOX currently returns.

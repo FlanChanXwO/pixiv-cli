@@ -76,11 +76,18 @@ func decodeTags(raw json.RawMessage) ([]tagWire, error) {
 	if json.Unmarshal(raw, &direct) == nil && direct != nil {
 		return direct, nil
 	}
+	// The live API answers with featuredTags; tags is the envelope older fixtures recorded.
 	var page struct {
-		Tags []tagWire `json:"tags"`
+		FeaturedTags []tagWire `json:"featuredTags"`
+		Tags         []tagWire `json:"tags"`
 	}
-	if json.Unmarshal(raw, &page) == nil && page.Tags != nil {
-		return page.Tags, nil
+	if json.Unmarshal(raw, &page) == nil {
+		if page.FeaturedTags != nil {
+			return page.FeaturedTags, nil
+		}
+		if page.Tags != nil {
+			return page.Tags, nil
+		}
 	}
 	return nil, newError("Creator.Tags", sdk.MalformedUpstreamResponse, "missing FANBOX tag list")
 }
