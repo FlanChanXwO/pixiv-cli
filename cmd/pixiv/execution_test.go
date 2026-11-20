@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
+	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
+	"github.com/FlanChanXwO/pixiv-cli/internal/i18n"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/stretchr/testify/require"
@@ -142,6 +145,24 @@ func TestErrorTextFailureOneLine(t *testing.T) {
 }
 
 type failedErrorOutput struct{ err error }
+
+func TestLocalizedInputErrorKeepsCause(t *testing.T) {
+	for _, tc := range []struct {
+		cause error
+		want  string
+	}{
+		{pagination.ErrLimitNegative, "limit 必须为零或正整数"},
+		{fmt.Errorf("unknown command %q for %q", `bad"command`, "pixiv nested"), `未知命令 "bad\"command"（命令路径："pixiv nested"）`},
+		{errors.New(`unknown command "bad" for "pixiv" with context`), `unknown command "bad" for "pixiv" with context`},
+	} {
+		err := fmt.Errorf("execute: %w", tc.cause)
+		before := err.Error()
+		require.Equal(t, "execute: "+tc.want, environment.ErrorText(err, i18n.Chinese))
+		require.Equal(t, before, environment.ErrorText(err, i18n.English))
+		require.Equal(t, before, err.Error())
+		require.ErrorIs(t, err, tc.cause)
+	}
+}
 
 func (f failedErrorOutput) Write([]byte) (int, error) { return 0, f.err }
 

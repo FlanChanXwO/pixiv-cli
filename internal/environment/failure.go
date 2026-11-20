@@ -79,6 +79,9 @@ func ErrorText(err error, language i18n.Locale) (text string) {
 	if message, ok := flagErrorText(err, language); ok {
 		return message
 	}
+	if message, ok := commandErrorText(err, language); ok {
+		return message
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return language.Text("error.timeout")
 	}
@@ -115,4 +118,21 @@ func ErrorText(err error, language i18n.Locale) (text string) {
 		return fmt.Sprintf(language.Text("format.upstream_returned_http_check_service_availability_and_account"), httpStatus, http.StatusText(httpStatus))
 	}
 	return language.ErrorText(err)
+}
+
+// commandErrorText 按 Cobra 的固定格式翻译未知命令；Cobra 未导出对应错误类型。
+func commandErrorText(err error, locale i18n.Locale) (string, bool) {
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		line, detail, found := strings.Cut(current.Error(), "\n")
+		var command, path string
+		if _, scanErr := fmt.Sscanf(line, "unknown command %q for %q", &command, &path); scanErr != nil || line != fmt.Sprintf("unknown command %q for %q", command, path) {
+			continue
+		}
+		message := fmt.Sprintf(locale.Text("error.unknown_command"), command, path)
+		if found {
+			message += "\n" + strings.Replace(detail, "\nDid you mean this?\n", "\n"+locale.Text("error.command_suggestions")+"\n", 1)
+		}
+		return strings.Replace(locale.ErrorText(err), current.Error(), message, 1), true
+	}
+	return "", false
 }

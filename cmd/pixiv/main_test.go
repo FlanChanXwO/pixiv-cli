@@ -55,6 +55,28 @@ func TestInterfaceLanguageKeepsMachineOutput(t *testing.T) {
 	}
 }
 
+func TestInterfaceInputDiagnostics(t *testing.T) {
+	isolatedHome(t)
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"does-not-exist"}, `未知命令 "does-not-exist"（命令路径："pixiv"）`},
+		{[]string{"rankign"}, `你可能想输入：\n\tranking`},
+		{[]string{"search", "cat", "--limit", "-1"}, "limit 必须为零或正整数"},
+		{[]string{"search", "cat", "--page", "0"}, "page 必须为正整数"},
+		{[]string{"search", "cat", "--page", "2"}, "--page 需要正整数 --limit"},
+		{[]string{"search", "cat", "--limit", fmt.Sprint(int(^uint(0) >> 1)), "--page", "3"}, "page 和 limit 导致逻辑结果偏移量溢出"},
+		{[]string{"fanbox", "posts", "artist", "--limit", "-1"}, "limit 必须为零或正整数"},
+	} {
+		stdout, stderr, code := runCLI(t, tc.args...)
+		if code != 1 || stdout != "" || !strings.Contains(stderr, tc.want) {
+			t.Fatalf("%v: code=%d stdout=%s stderr=%s", tc.args, code, stdout, stderr)
+		}
+	}
+}
+
 const versionSmokeConfig = "[update]\ncheck_enabled = false\n"
 
 // TestPixivBinaryPackagedSmoke 验证平台 workflow 解包后的实际二进制，而不是重新构建一个开发二进制。
