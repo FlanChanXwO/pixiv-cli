@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -140,4 +142,20 @@ func TestRepeatedContinuation(t *testing.T) {
 			require.Equal(t, sdk.MalformedUpstreamResponse, sdk.ReasonOf(err))
 		})
 	}
+}
+
+// A response may reach EOF after cancellation without a transport read error.
+type identityCanceledEOFTransport struct{ cancel context.CancelFunc }
+
+func (r identityCanceledEOFTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Body: cancelAfterReadBody{io.NopCloser(strings.NewReader("canceled response")), r.cancel}, Header: make(http.Header)}, nil
+}
+
+func TestCreatorIdentityCanceledEOF(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	client, err := fanbox.New("session-fixture", fanbox.Options{HTTPClient: &http.Client{Transport: identityCanceledEOFTransport{cancel}}})
+	require.NoError(t, err)
+	_, err = client.Creators(ctx, fanbox.CreatorsRequest{})
+	require.ErrorIs(t, err, context.Canceled)
 }
