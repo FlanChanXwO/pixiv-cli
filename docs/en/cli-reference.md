@@ -187,8 +187,10 @@ Canonical data actions: `search`, `detail`, `ranking`, `series`, `comment`, `boo
 | `fanbox posts` | `pixiv fanbox posts SOURCE [--page N --limit N]` | Posts from a creator, tag, post ID or supported FANBOX URL. |
 | `fanbox tags` | `pixiv fanbox tags CREATOR` | Featured tags of a creator. |
 | `fanbox home` / `supporting` | `pixiv fanbox home\|supporting [--page N --limit N]` | Authenticated home or supporting feed. |
-| `fanbox post` | `pixiv fanbox post POST_ID` | One post and its safe asset summary. |
-| `fanbox download` | `pixiv fanbox download SOURCE...` | Saves post assets below the configured download path. |
+| `fanbox post` | `pixiv fanbox post POST_ID` | One post, its text (including article paragraphs), and safe asset references. |
+| `fanbox download` | `pixiv fanbox download SOURCE...` | Fetches post details and saves assets plus private `post.json` below the configured download path. |
+
+Downloads use `fanbox/CREATOR/POST_ID/`. `post.json` preserves the complete post body, article blocks, attachment metadata and any archive password present in the post; it has private file permissions and may contain signed media URLs. Attachments keep their extension. A reserved attachment name `post.json` is prefixed with its asset ID. Restricted posts retain metadata and return an error. Creator listings traverse all pages returned by FANBOX.
 
 **Filenames:** cross-platform-invalid characters are normalized in both the template output and the URL-derived extension; ASCII control characters are replaced and trailing dots/spaces (rejected by Windows) removed. For Pixiv thumbnails, a successful resource Content-Type may replace an ambiguous URL extension (e.g. `.png`) to match the bytes; unknown media types keep the URL extension.
 

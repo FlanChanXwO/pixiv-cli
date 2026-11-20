@@ -5,7 +5,10 @@
 package download
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -17,10 +20,18 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
 	"github.com/FlanChanXwO/pixiv-cli/internal/fanbox/report"
 	"github.com/FlanChanXwO/pixiv-cli/internal/pagination"
+	"github.com/FlanChanXwO/pixiv-cli/internal/storage/atomicfile"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/fanbox"
 	"github.com/spf13/cobra"
 )
+
+const postMetadataFilename = "post.json"
+
+type savedAsset struct {
+	id   string
+	file os.FileInfo
+}
 
 type commandRunner struct {
 	env          environment.Env
@@ -52,7 +63,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	}
 	baseDir := filepath.Join(downloadPath, "fanbox")
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		seen := make(map[string]struct{})
+		seen := make(map[string]savedAsset)
 		for _, source := range args {
 			fetch, err := browse.PostsFetch(cmd.Context(), client, source)
 			if err != nil {
@@ -76,9 +87,13 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post *fanbox.Post, seen map[string]struct{}) error {
-	if post.Body == nil {
-		return nil
+func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post *fanbox.Post, seen map[string]savedAsset) error {
+	if post.Body == nil && !post.IsRestricted {
+		detail, err := post.Get(ctx)
+		if err != nil {
+			return report.Wrap(err, "Post")
+		}
+		post = detail
 	}
 	// 每段路径都来自上游不可信内容（creator id、post id、asset name），必须单独
 	// 清理并在 join 后校验最终绝对路径仍位于 baseDir 之内，杜绝 ../ 逃逸。
@@ -94,22 +109,57 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	metadata, err := json.MarshalIndent(post, "", "  ")
+	if err != nil {
+		return err
+	}
+	if _, err := atomicfile.AtomicWrite(ctx, filepath.Join(dir, postMetadataFilename), bytes.NewReader(metadata)); err != nil {
+		return err
+	}
+	if post.IsRestricted {
+		return fmt.Errorf("post %s is restricted; metadata saved to %s", post.ID, dir)
+	}
+	if post.Body == nil {
+		return fmt.Errorf("post %s has no body in its detail response", post.ID)
+	}
 	save := func(id, name, locator string, write func(context.Context, string) error) error {
 		name = safePathSegment(assetFilename(id, name, locator))
 		if name == "" {
 			return fmt.Errorf("asset %s in post %s has no usable filename", id, post.ID)
 		}
+		if strings.EqualFold(name, postMetadataFilename) {
+			name = safePathSegment(id) + "_" + name
+		}
 		path := filepath.Join(dir, name)
 		if !pathInsideBase(path, baseDir) {
 			return fmt.Errorf("asset %s in post %s resolves outside the download directory", id, post.ID)
 		}
-		if _, exists := seen[path]; exists {
+		if previous, exists := seen[path]; exists {
+			if previous.id != id {
+				return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
+			}
 			return nil
+		}
+		if current, err := os.Stat(path); err == nil {
+			for _, previous := range seen {
+				if os.SameFile(current, previous.file) {
+					if previous.id != id {
+						return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
+					}
+					return nil
+				}
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 		if err := write(ctx, path); err != nil {
 			return report.Wrap(err, "OpenResource")
 		}
-		seen[path] = struct{}{}
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		seen[path] = savedAsset{id: id, file: info}
 		return nil
 	}
 	for _, image := range post.Body.Images {
@@ -118,7 +168,7 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 		}
 	}
 	for _, file := range post.Body.Files {
-		if err := save(file.ID, file.Name, file.URL, file.Save); err != nil {
+		if err := save(file.ID, file.Filename(), file.URL, file.Save); err != nil {
 			return err
 		}
 	}

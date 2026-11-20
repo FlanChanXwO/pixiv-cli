@@ -367,7 +367,7 @@ flowchart LR
 | `fanbox_creator`、`fanbox_creators` | 单个创作者资料，或 `relation=supporting\|following` 创作者列表（默认 `supporting`）。 |
 | `fanbox_creator_tags` | 创作者使用的标签。 |
 | `fanbox_creator_posts` | 必填 `creator_id`；可选非空 `tag`、`page`、`limit`。无 tag → CreatorPosts；有 tag → TaggedPosts；显式空 tag 是错误。 |
-| `fanbox_post` | 一个帖子及其安全资源引用。 |
+| `fanbox_post` | 一个帖子、正文（含文章段落）及安全资源引用。 |
 | `fanbox_feed` | 必填 `source=home\|supporting`；可选 `page`、`limit`。保留各 feed 的 API、帖子结构与 FANBOX 认证。 |
 | `fanbox_resolve_url` | 本地把 URL 解析为类型化引用。 |
 | `fanbox_open_resource` | 打开 opaque `ref`；GET 交付字节 + 安全元数据，HEAD 只返回元数据。 |

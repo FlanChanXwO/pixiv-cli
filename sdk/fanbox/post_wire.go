@@ -129,14 +129,17 @@ func (c *Client) mapPostBody(operation string, raw json.RawMessage) (*PostBody, 
 }
 
 func bodyMedia(operation string, source postBodyWire, blocks []blockWire) ([]imageWire, []fileWire, error) {
-	if source.Images != nil {
-		return *source.Images, nil, nil
-	}
-	if source.Files != nil {
-		return nil, *source.Files, nil
-	}
 	var images []imageWire
 	var files []fileWire
+	if source.Images != nil {
+		images = *source.Images
+	}
+	if source.Files != nil {
+		files = *source.Files
+	}
+	if source.Images != nil || source.Files != nil {
+		return images, files, nil
+	}
 	seenImages, seenFiles := map[string]bool{}, map[string]bool{}
 	for _, block := range blocks {
 		if block.ImageID != nil && !seenImages[*block.ImageID] {

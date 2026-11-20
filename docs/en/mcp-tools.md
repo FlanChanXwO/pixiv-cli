@@ -367,7 +367,7 @@ Same server, schemas via `tools/list`, FANBOX-specific credentials.
 | `fanbox_creator`, `fanbox_creators` | One creator profile, or `relation=supporting\|following` creators (default `supporting`). |
 | `fanbox_creator_tags` | Tags used by a creator. |
 | `fanbox_creator_posts` | Required `creator_id`; optional non-empty `tag`, `page`, `limit`. No tag → CreatorPosts; tag → TaggedPosts; explicit empty tag is an error. |
-| `fanbox_post` | One post and its safe resource references. |
+| `fanbox_post` | One post, its body text (including article paragraphs), and safe resource references. |
 | `fanbox_feed` | Required `source=home\|supporting`; optional `page`, `limit`. Keeps each feed's API, post structure and FANBOX auth. |
 | `fanbox_resolve_url` | Local URL parsing into a typed reference. |
 | `fanbox_open_resource` | Opens an opaque `ref`; GET delivers bytes + safe metadata, HEAD metadata only. |

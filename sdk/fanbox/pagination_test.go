@@ -109,7 +109,7 @@ func TestCreatorIdentityCancellation(t *testing.T) {
 }
 
 func TestRepeatedContinuation(t *testing.T) {
-	for _, path := range []string{"/plan.listSupporting", "/creator.listFollowing", "/post.listCreator", "/post.listTagged", "/post.listHome", "/post.listSupporting"} {
+	for _, path := range []string{"/plan.listSupporting", "/creator.listFollowing", "/post.listTagged", "/post.listHome", "/post.listSupporting"} {
 		t.Run(path, func(t *testing.T) {
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/" {
