@@ -235,24 +235,23 @@ func (n *nativeRuntime) infer(ctx context.Context, session uintptr, inputName st
 }
 
 func (n *nativeRuntime) gpuOptions(options uintptr, path string) error {
-	encoded, unpin, err := nativePath(path)
+	// CreateEnv 复用进程环境；并行存活的模型共享已注册的 provider。
+	selected, err := n.gpuDevice()
 	if err != nil {
 		return err
 	}
-	defer unpin()
-	if err = n.check(n.registerEP(n.env, "WebGPU", uintptr(encoded))); err != nil {
-		return err
-	}
-	var devices unsafe.Pointer
-	var count uintptr
-	if err = n.check(n.getDevices(n.env, &devices, &count)); err != nil {
-		return err
-	}
-	var selected uintptr
-	for _, device := range unsafe.Slice((*uintptr)(devices), int(count)) {
-		if n.epName(device) == "WebGpuExecutionProvider" && n.hardwareType(n.epDevice(device)) == 1 {
-			selected = device
-			break
+	if selected == 0 {
+		encoded, unpin, err := nativePath(path)
+		if err != nil {
+			return err
+		}
+		defer unpin()
+		if err = n.check(n.registerEP(n.env, "WebGPU", uintptr(encoded))); err != nil {
+			return err
+		}
+		selected, err = n.gpuDevice()
+		if err != nil {
+			return err
 		}
 	}
 	if selected == 0 {
@@ -262,4 +261,18 @@ func (n *nativeRuntime) gpuOptions(options uintptr, path string) error {
 	pin.Pin(&selected)
 	defer pin.Unpin()
 	return n.check(n.appendDevices(options, n.env, uintptr(unsafe.Pointer(&selected)), 1, 0, 0, 0))
+}
+
+func (n *nativeRuntime) gpuDevice() (uintptr, error) {
+	var devices unsafe.Pointer
+	var count uintptr
+	if err := n.check(n.getDevices(n.env, &devices, &count)); err != nil {
+		return 0, err
+	}
+	for _, device := range unsafe.Slice((*uintptr)(devices), int(count)) {
+		if n.epName(device) == "WebGpuExecutionProvider" && n.hardwareType(n.epDevice(device)) == 1 {
+			return device, nil
+		}
+	}
+	return 0, nil
 }
