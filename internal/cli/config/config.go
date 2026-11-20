@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// New 构造 config 命令组，API key 与其他字符串使用相同的输入输出规则。
+// New 构造 config 命令组；向量服务 API key 的展示由配置存储脱敏。
 func New(env environment.Env, store config.Store) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "config", Short: "Manage global Pixiv CLI settings",

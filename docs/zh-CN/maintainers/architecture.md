@@ -211,6 +211,14 @@ flowchart LR
 - `ReadSessions` 在缓存复用前、轮换 client 发布前、每次内容请求前检查 revision 与创建时间。创建时间区分同一 UID 删除后重建的账号。发现凭据替换/删除时作废对应代际；仅元数据变化保留原代际。账号缓存通过这些读取保持一致，无文件系统 watcher。
 - Unix 账号目录/文件权限为 `0700`/`0600`；Windows 原子替换沿用共享存储 ACL 策略。普通 JSON、fmt、slog 中的凭据值保持脱敏，仅在文件编码和显式凭据流程展开。auth export 本地读取已保存凭据，保持 token 与配置原值。
 
+### `internal/pixiv/vectorindex`
+
+负责作品快照投影、私有收件箱追加/恢复和独立的可读写 SQLite 索引。SDK 的 `OnArtwork` 仅在 `internal/cli/root.go` 接线，读会话缓存键包含当前模型。命令与 MCP 共用该客户端装配路径；记录失败只发出警告，保留原内容操作的结果。
+
+索引包括作品、页面、向量、收藏成员关系和状态五张表。页面 URL 变化清除该页各模型的旧向量与失败标记；换模型保留彼此独立的向量。写入使用外部同步锁，读取沿用 SQLite 默认 busy handler、rollback journal 与调用方取消。`application_id` 和 `user_version` 拒绝其他应用与未知版本数据库，与旧账号库只读导入相互独立。
+
+`internal/cli/vector` 负责状态/清理的展示和确认；`config.Store.WriteVector` 一次原子替换私有配置文件，提交整个向量配置组。`vector.api_key` 在配置展示与诊断格式化时脱敏。
+
 ### `internal/config`
 
 | 存储 | 保存 |
@@ -224,7 +232,7 @@ flowchart LR
 
 - `environment.go` 显式赋值支持的变量；存在即生效，包括空字符串。小写 `https_proxy` 优先于 `HTTPS_PROXY`。公开列表见[环境变量](../cli-reference.md#环境变量)。
 - 服务代理与 User-Agent 指针区分缺失和显式空值。服务代理缺失时沿用全局路由，空值表示直连。FlareSolverr 组任一字段出现时，URL 须为非空值。
-- `values.go` 将 TOML 叶子路径映射到 `Config` 字段指针，并负责字段校验；`Keys()` 提供 CLI 帮助列表。`config get/set/unset` 接受这些路径，包括服务和默认账号设置。`get` 直接输出生效值（含 API key）；`set` 接受值参数或 stdin，并校验目标字段。
+- `values.go` 将 TOML 叶子路径映射到 `Config` 字段指针，并负责字段校验；`Keys()` 提供 CLI 帮助列表。`config get/set/unset` 接受这些路径，包括服务和默认账号设置。`get` 输出生效值，其中 `vector.api_key` 脱敏；`set` 接受值参数或 stdin，并校验目标字段。
 - `document.go` 通过 `tomledit` 编辑目标值，保留该键的注释及其他键（含废弃键）；支持普通段、点分键与 inline table，写入前检查 TOML 语义与被编辑的 solver 组，保留逐项修复其他配置错误的能力。`unset` 在 section 清空后仍保留其注释。
 - `default.toml` 通过 `go:embed` 内嵌，首次创建时原样写出。英文注释包含可选服务、solver 与账号示例；模板解码测试与 `Default()` 对比。
 - 默认账号读写方法保留在此。独立读取方法只校验所选 UID，跳过无关设置的校验；`Config` 中的可选 UID 字段使用 `*int64`。`AccountPool` 仅含 `Enabled` 与 `Strategy`，可调度成员、冻结与调度标记保留在 `internal/account`。

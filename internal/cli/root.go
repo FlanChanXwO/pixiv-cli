@@ -37,6 +37,7 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/timeline"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/update"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/user"
+	"github.com/FlanChanXwO/pixiv-cli/internal/cli/vector"
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli/whoami"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
 	"github.com/FlanChanXwO/pixiv-cli/internal/environment"
@@ -45,6 +46,7 @@ import (
 	pixivmcpserver "github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/accounts"
 	"github.com/FlanChanXwO/pixiv-cli/internal/mcpserver/pixiv/mediaproxy"
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
 	"github.com/FlanChanXwO/pixiv-cli/internal/record"
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 	"github.com/FlanChanXwO/pixiv-cli/internal/selfupdate"
@@ -148,6 +150,7 @@ func (a *app) pixivCommands(env environment.Env) []*cobra.Command {
 		timeline.New(env, a.executePixiv),
 		mypixiv.New(env, a.executePixiv),
 		user.New(env, a.executePixiv, func() *cobra.Command { return follow.New(env, a.executePixiv) }),
+		vector.New(env, config.Store{Files: secretfile.ConfigFiles{}}),
 		bookmark.New(env, a.executePixiv),
 		follow.New(env, a.executePixiv),
 	}
@@ -504,7 +507,21 @@ func (a *app) pixivSettings(request environment.PixivRequest) (pixiv.Options, st
 	if err != nil {
 		return pixiv.Options{}, "", err
 	}
-	return pixiv.Options{HTTPClient: httpClient, RequestInterval: interval}, fmt.Sprintf("%q/%d/%q", proxy, interval, ""), nil
+	options := pixiv.Options{HTTPClient: httpClient, RequestInterval: interval}
+	if runtime.Vector.Model != "" {
+		root, err := config.AppDataDir()
+		if err != nil {
+			httpClient.CloseIdleConnections()
+			return pixiv.Options{}, "", err
+		}
+		recorder := vectorindex.Recorder{Directory: root}
+		options.OnArtwork = func(ctx context.Context, artwork *pixiv.Artwork) {
+			if err := recorder.Append(ctx, artwork); err != nil {
+				slog.WarnContext(ctx, "Could not record artwork for vector search", "reason", err)
+			}
+		}
+	}
+	return options, fmt.Sprintf("%q/%d/%q", proxy, interval, runtime.Vector.Model), nil
 }
 
 func (a *app) fanboxOptions() (fanbox.Options, error) {

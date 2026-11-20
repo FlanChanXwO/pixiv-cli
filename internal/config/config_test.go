@@ -1,6 +1,8 @@
 package config_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -88,4 +90,30 @@ func TestTypeMismatchNamesKeyWithoutValue(t *testing.T) {
 	_, err = store.Current()
 	require.ErrorContains(t, err, "config.toml line 3")
 	require.NotContains(t, err.Error(), "SECRET_TOKEN")
+}
+
+func TestVectorKeyPrivacyAndAtomicGroup(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	store := config.Store{Files: secretfile.ConfigFiles{}}
+	require.NoError(t, store.WriteVector(&config.Vector{Model: "fixture", Device: config.VectorCPU, APIKey: "private-embedding-key"}))
+	got, _, err := store.Get(config.VectorAPIKey)
+	require.NoError(t, err)
+	require.Equal(t, "<redacted>", got)
+	c, err := store.Current()
+	require.NoError(t, err)
+	require.Equal(t, "private-embedding-key", c.Vector.APIKey)
+	require.NotContains(t, fmt.Sprintf("%#v", c), "private-embedding-key")
+	raw, err := json.Marshal(c.Vector)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "private-embedding-key")
+	require.Error(t, store.WriteVector(&config.Vector{Model: "changed", Device: "invalid"}))
+	c, err = store.Current()
+	require.NoError(t, err)
+	require.Equal(t, "fixture", c.Vector.Model)
+	require.NoError(t, store.WriteVector(nil))
+	c, err = store.Current()
+	require.NoError(t, err)
+	require.Empty(t, c.Vector.Model)
 }

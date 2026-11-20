@@ -3,9 +3,12 @@
 // [Config] 保存一次读取的有效值，[Default] 提供默认值；[Store] 通过文件端口读写配置。
 package config
 
+import "fmt"
+
 // Config 按 TOML 分节保存配置；可选指针区分缺失与显式空值。
 type Config struct {
-	MCP struct {
+	Vector Vector `toml:"vector"`
+	MCP    struct {
 		GalleryAnimationTempCapacityMiB int64 `toml:"gallery_animation_temp_capacity_mib"`
 		GalleryCacheCapacityMiB         int64 `toml:"gallery_cache_capacity_mib"`
 	} `toml:"mcp"`
@@ -127,4 +130,34 @@ const (
 type AccountPoolConfig struct {
 	Enabled  bool                `toml:"enabled"`
 	Strategy AccountPoolStrategy `toml:"strategy"`
+}
+
+// Vector 保存模型选择与云端鉴权；Model 为空时关闭记录和搜索。
+type Vector struct {
+	Model   string       `toml:"model"`
+	Device  VectorDevice `toml:"device"`
+	APIKey  string       `toml:"api_key" json:"-"`
+	BaseURL string       `toml:"base_url"`
+}
+
+// VectorDevice 选择本地图片推理设备；空值与 CPU 相同。
+type VectorDevice string
+
+// VectorCPU 与 VectorGPU 是显式设备选项。
+const (
+	VectorCPU VectorDevice = "cpu"
+	VectorGPU VectorDevice = "gpu"
+)
+
+// VectorModelKey、VectorDeviceKey、VectorAPIKey 与 VectorBaseURL 是公开 TOML 路径。
+const (
+	VectorModelKey  = "vector.model"
+	VectorDeviceKey = "vector.device"
+	VectorAPIKey    = "vector.api_key"
+	VectorBaseURL   = "vector.base_url"
+)
+
+// Format 在诊断输出中隐藏云端 API key。
+func (v Vector) Format(state fmt.State, _ rune) {
+	fmt.Fprintf(state, "config.Vector{Model:%q, Device:%q, BaseURL:%q, APIKey:<redacted>}", v.Model, v.Device, v.BaseURL)
 }

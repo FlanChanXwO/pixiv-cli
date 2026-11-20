@@ -543,3 +543,18 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 - [架构](maintainers/architecture.md)：包职责与运行时流程。
 - [开发](maintainers/development.md)：环境、测试、构建、发布门禁。
 - [Agent skill](../../skills/pixiv-cli/SKILL.md)：Agent 安全驱动已安装 CLI 的说明。
+
+## 向量索引
+
+`pixiv config set vector.model MODEL` 开启可见 Pixiv 作品的被动记录，保存在 `~/.pixiv-cli/vector/`，包含私密收藏与 R18 元数据。漫画记录第一页，其他作品记录全部页。快照省略随账号变化的收藏、屏蔽、可见性与关注标记。
+
+| 命令 | 行为 |
+| --- | --- |
+| `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
+| `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除其他模型的向量、全部记录和向量，或整个向量目录及配置 |
+
+清理需交互确认，非终端必须带 `--yes`。删除索引后浏览记录无法恢复，收藏可以再次同步。清理和同步共用非阻塞跨进程锁，记录追加另用可取消的写锁；两把锁均位于可删除目录之外。
+
+`[vector]` 有四个 TOML 键：`model`（空值关闭记录）、`device`（空值/`cpu`/`gpu`）、`api_key`、`base_url`。默认均为空，没有环境变量绑定。已保存的 key 通过 `config get vector.api_key` 展示为 `<redacted>`。`config unset vector.model` 暂停记录并保留文件。
+
+私有 `inbox.ndjson` 暂存记录；中断的 `inbox.merging` 会在下次合并时恢复。坏行原始字节保留到私有 `inbox.rejected.ndjson`，另外报告行号与数量。中断后恢复可能再次保留同一坏行。Unix 目录/文件权限为 `0700`/`0600`。SQLite 索引快照由本机各账号共享。

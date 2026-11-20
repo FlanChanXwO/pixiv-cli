@@ -211,6 +211,14 @@ flowchart LR
 - `ReadSessions` checks revision and creation time before cache reuse, before publishing a rotated client and before each content request. Detected replacement/removal invalidates that generation; metadata-only changes keep it. The creation time distinguishes a deleted and recreated UID. Account cache coherence uses these reads, with no filesystem watcher.
 - Unix account directories/files use `0700`/`0600`; Windows atomic replacement follows the shared storage ACL policy. Credential values remain redacted in ordinary JSON, fmt and slog; only file encoding and explicit credential flows expand them. Auth export reads stored credentials locally, without token refresh or config changes.
 
+### `internal/pixiv/vectorindex`
+
+Owns passive artwork projection, private inbox append/recovery, and a separate read/write SQLite index. The SDK's `OnArtwork` callback is connected only in `internal/cli/root.go`; read-session cache identity includes the configured model. Commands and MCP obtain clients through the same composition boundary. Recorder failures produce a warning and preserve the content operation's outcome.
+
+The index has artwork, page, embedding, bookmark-membership and state tables. Page URL changes invalidate all old vectors/failures for that page; model changes keep existing embeddings separate. Writers use the external synchronization lock; readers use SQLite's default busy handler, rollback journal, and caller cancellation. `application_id` and `user_version` reject foreign or unknown databases. This is independent of the legacy account-database import.
+
+`internal/cli/vector` owns status/clear presentation and confirmation. `config.Store.WriteVector` commits the complete vector group in one private atomic file replacement. `vector.api_key` is redacted by config display and diagnostic formatting.
+
 ### `internal/config`
 
 | Store | Holds |
@@ -224,7 +232,7 @@ flowchart LR
 
 - `environment.go` assigns the supported variables explicitly. Presence selects a value, including an empty string; lowercase `https_proxy` precedes `HTTPS_PROXY`. The public list is in [Environment variables](../cli-reference.md#environment-variables).
 - Service proxy and User-Agent pointers distinguish absence from an explicit empty value. An absent service proxy inherits the global route; an empty one selects direct access. A FlareSolverr group requires a non-empty URL when either field is configured.
-- `values.go` maps TOML leaf paths to `Config` field pointers and owns field validation. `Keys()` supplies the CLI help list. `config get/set/unset` accepts these paths, including service and default-account settings. `get` prints the effective value directly, including API keys; `set` accepts a value argument or stdin and validates the target field.
+- `values.go` maps TOML leaf paths to `Config` field pointers and owns field validation. `Keys()` supplies the CLI help list. `config get/set/unset` accepts these paths, including service and default-account settings. `get` prints effective values; `vector.api_key` is redacted; `set` accepts a value argument or stdin and validates the target field.
 - `document.go` uses `tomledit` to edit the target value, preserving its comments and other keys, including obsolete keys. It handles ordinary sections, dotted keys and inline tables, then checks TOML semantics and the edited solver group before writing. Unrelated invalid settings can still be repaired individually. `unset` retains section comments even when a section becomes empty.
 - `default.toml` is embedded with `go:embed` and written unchanged on first creation. Its English comments include optional service/solver/account examples. The template-decoding test compares it with `Default()`.
 - Default-account read/write methods remain here. Standalone readers validate the selected UID without validating unrelated settings; `Config` represents the optional UID fields as `*int64`. `AccountPool` contains only `Enabled` and `Strategy`; schedulable membership, freeze state and the scheduling marker stay with `internal/account`.
