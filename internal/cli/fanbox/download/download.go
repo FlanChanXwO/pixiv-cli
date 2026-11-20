@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -26,6 +27,11 @@ import (
 )
 
 const postMetadataFilename = "post.json"
+
+type savedAsset struct {
+	id   string
+	file os.FileInfo
+}
 
 type commandRunner struct {
 	env          environment.Env
@@ -57,7 +63,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	}
 	baseDir := filepath.Join(downloadPath, "fanbox")
 	return fanboxcli.UseClient(cmd, a.open, func(client *fanbox.Client) error {
-		seen := make(map[string]string)
+		seen := make(map[string]savedAsset)
 		for _, source := range args {
 			fetch, err := browse.PostsFetch(cmd.Context(), client, source)
 			if err != nil {
@@ -81,7 +87,7 @@ func (a commandRunner) run(cmd *cobra.Command, args []string) error {
 	})
 }
 
-func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post *fanbox.Post, seen map[string]string) error {
+func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post *fanbox.Post, seen map[string]savedAsset) error {
 	if post.Body == nil && !post.IsRestricted {
 		detail, err := post.Get(ctx)
 		if err != nil {
@@ -129,15 +135,31 @@ func (a commandRunner) savePostAssets(ctx context.Context, baseDir string, post 
 			return fmt.Errorf("asset %s in post %s resolves outside the download directory", id, post.ID)
 		}
 		if previous, exists := seen[path]; exists {
-			if previous != id {
-				return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous, id, post.ID)
+			if previous.id != id {
+				return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
 			}
 			return nil
+		}
+		if current, err := os.Stat(path); err == nil {
+			for _, previous := range seen {
+				if os.SameFile(current, previous.file) {
+					if previous.id != id {
+						return fmt.Errorf("assets %s and %s in post %s resolve to the same download path", previous.id, id, post.ID)
+					}
+					return nil
+				}
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 		if err := write(ctx, path); err != nil {
 			return report.Wrap(err, "OpenResource")
 		}
-		seen[path] = id
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		seen[path] = savedAsset{id: id, file: info}
 		return nil
 	}
 	for _, image := range post.Body.Images {

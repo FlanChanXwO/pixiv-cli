@@ -111,6 +111,7 @@ func assertFanboxDownload(t *testing.T, proxy string) {
 		require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 	assertFanboxDownloadConflict(t, proxy)
+	assertFanboxCaseConflict(t, proxy)
 	for _, format := range []string{"--json", "--ndjson"} {
 		stdout, stderr, code := runCLI(t, "fanbox", "post", "101", format, "--proxy", proxy)
 		require.Zero(t, code, stderr)
@@ -127,4 +128,20 @@ func assertFanboxDownloadConflict(t *testing.T, proxy string) {
 	_, stderr, code := runCLI(t, "fanbox", "download", "102", "--proxy", proxy)
 	require.Equal(t, 1, code)
 	require.Contains(t, stderr, "resolve to the same download path")
+}
+
+func assertFanboxCaseConflict(t *testing.T, proxy string) {
+	t.Helper()
+	_, stderr, code := runCLI(t, "fanbox", "download", "103", "--proxy", proxy)
+	base := filepath.Join(os.Getenv("DOWNLOAD_PATH"), "fanbox", "artist", "103")
+	lower, err := os.Stat(filepath.Join(base, "same.zip"))
+	require.NoError(t, err)
+	upper, err := os.Stat(filepath.Join(base, "SAME.zip"))
+	require.NoError(t, err)
+	if os.SameFile(lower, upper) {
+		require.Equal(t, 1, code)
+		require.Contains(t, stderr, "resolve to the same download path")
+	} else {
+		require.Zero(t, code, stderr)
+	}
 }

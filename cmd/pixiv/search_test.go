@@ -112,8 +112,12 @@ func pixivHandler(w http.ResponseWriter, r *http.Request) {
 	case "/post.paginateCreator":
 		fmt.Fprint(w, `{"body":{"pageUrls":["https://api.fanbox.cc/post.listCreator?creatorId=artist&limit=10"]}}`)
 	case "/post.info":
-		if r.URL.Query().Get("postId") == "102" {
-			fmt.Fprint(w, `{"body":{"post":{"id":"102","creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z","body":{"files":[{"id":"first","name":"same","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"second","name":"same.zip","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"metadata","name":"post","extension":"json","url":"https://downloads.fanbox.cc/files/bundle.zip"}]}}}}`)
+		if id := r.URL.Query().Get("postId"); id == "102" || id == "103" {
+			name := "same.zip"
+			if id == "103" {
+				name = "SAME.zip"
+			}
+			fmt.Fprintf(w, `{"body":{"post":{"id":%q,"creatorId":"artist","publishedDatetime":"2024-05-01T00:00:00Z","body":{"files":[{"id":"first","name":"same","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"second","name":%q,"extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"metadata","name":"post","extension":"json","url":"https://downloads.fanbox.cc/files/bundle.zip"}]}}}}`, id, name)
 			return
 		}
 		fmt.Fprint(w, `{"body":{"post":{"id":"101","creatorId":"artist","title":"fixture","publishedDatetime":"2024-05-01T00:00:00Z","body":{"text":"password: fixture-secret","blocks":[{"type":"p","text":"paragraph password"}],"images":[{"id":"photo","extension":"png","originalUrl":"https://downloads.fanbox.cc/images/202.jpg"}],"files":[{"id":"archive","name":"bundle","extension":"zip","url":"https://downloads.fanbox.cc/files/bundle.zip"},{"id":"metadata","name":"post","extension":"json","url":"https://downloads.fanbox.cc/files/bundle.zip"}]}}}}`)
