@@ -1,4 +1,4 @@
-// Package vector 提供向量索引的配置、状态和清理命令。
+// Package vector 提供向量索引的配置、同步、状态和清理命令。
 //
 // [New] 构造命令树；模型与索引操作由各自领域包负责。
 package vector
@@ -16,11 +16,11 @@ import (
 )
 
 // New 构造 vector 命令组，配置存储由组合根注入。
-func New(env environment.Env, store config.Store) *cobra.Command {
+func New(env environment.Env, store config.Store, open OpenClient) *cobra.Command {
 	cmd := &cobra.Command{Use: "vector", Short: "Search artwork by image content", RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
 	environment.Bind(cmd, environment.Execution{})
 	env.BindNoInput(cmd)
-	cmd.AddCommand(statusCommand(env, store), clearCommand(env, store))
+	cmd.AddCommand(setupCommand(env, store), syncCommand(env, store, open), statusCommand(env, store), clearCommand(env, store))
 	return cmd
 }
 
@@ -35,7 +35,11 @@ func statusCommand(env environment.Env, store config.Store) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		result, err := vectorindex.ReadStatus(cmd.Context(), root, c.Vector.Model)
+		identity, err := configuredModel(c.Vector)
+		if err != nil {
+			return err
+		}
+		result, err := vectorindex.ReadStatus(cmd.Context(), root, identity)
 		if err != nil {
 			return err
 		}
@@ -114,7 +118,11 @@ func clearCommand(env environment.Env, store config.Store) *cobra.Command {
 				return err
 			}
 			defer func() { err = errors.Join(err, db.Close()) }()
-			return db.ClearUnused(cmd.Context(), c.Vector.Model)
+			identity, identityErr := configuredModel(c.Vector)
+			if identityErr != nil {
+				return identityErr
+			}
+			return db.ClearUnused(cmd.Context(), identity)
 		}
 		if all {
 			if err = store.WriteVector(nil); err != nil {

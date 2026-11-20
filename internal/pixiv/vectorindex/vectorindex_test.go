@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +14,52 @@ import (
 	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/vectorindex"
+	"github.com/FlanChanXwO/pixiv-cli/internal/vectormodel"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCloudCredentialsStayPrivate(t *testing.T) {
+	const key = "fixture-private-vector-key"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, key, r.Header.Get("x-goog-api-key"))
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, key)
+	}))
+	defer server.Close()
+	options := vectormodel.Options{Name: "fixture-model", BaseURL: server.URL + "/v1", APIKey: key}
+	model, err := vectormodel.Open(options, server.Client())
+	require.NoError(t, err)
+	defer model.Close()
+	_, err = model.Text(t.Context(), "controlled text")
+	require.Equal(t, "upstream_error", vectorindex.ErrorCode(err))
+	for _, value := range []any{options, model, *model, err} {
+		require.NotContains(t, fmt.Sprintf("%v %+v %#v", value, value, value), key)
+		body, marshalErr := json.Marshal(value)
+		require.NoError(t, marshalErr)
+		require.NotContains(t, string(body), key)
+	}
+}
+
+func TestCloudRejectsCredentialRedirect(t *testing.T) {
+	calls := 0
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls++; fmt.Fprint(w, `{"embedding":{"values":[3,4]}}`) }))
+	defer target.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	model, err := vectormodel.Open(vectormodel.Options{Name: "fixture-model", BaseURL: server.URL, APIKey: "fixture-key"}, server.Client())
+	require.NoError(t, err)
+	defer model.Close()
+	_, err = model.Text(t.Context(), "controlled text")
+	require.Error(t, err)
+	require.Zero(t, calls)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = model.Text(ctx, "controlled text")
+	require.ErrorIs(t, err, context.Canceled)
+}
 
 func TestInboxPersistenceAndURLInvalidation(t *testing.T) {
 	ctx := t.Context()

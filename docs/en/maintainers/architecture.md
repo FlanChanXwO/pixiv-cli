@@ -217,7 +217,13 @@ Owns passive artwork projection, private inbox append/recovery, and a separate r
 
 The index has artwork, page, embedding, bookmark-membership and state tables. Page URL changes invalidate all old vectors/failures for that page; model changes keep existing embeddings separate. Writers use the external synchronization lock; readers use SQLite's default busy handler, rollback journal, and caller cancellation. `application_id` and `user_version` reject foreign or unknown databases. This is independent of the legacy account-database import.
 
-`internal/cli/vector` owns status/clear presentation and confirmation. `config.Store.WriteVector` commits the complete vector group in one private atomic file replacement. `vector.api_key` is redacted by config display and diagnostic formatting.
+`internal/cli/vector` owns setup/sync/status/clear presentation and confirmation. `config.Store.WriteVector` commits the complete vector group in one private atomic file replacement. `vector.api_key` is redacted by config display and diagnostic formatting.
+
+Bookmark synchronization receives a fixed-account opener from the composition root, without `OnArtwork` or account-pool replay. Artwork snapshots commit before the batch membership/cursor transaction; errors retain the previous continuation. Completed pages commit independently.
+
+### `internal/vectormodel`
+
+Owns canonical cloud service/model identity, Gemini `embedContent`, vector validation/normalization and controlled multimodal probes. It has no Pixiv, CLI or configuration dependency. `vectorindex.Embedder` is the consumer-owned model boundary; the CLI constructs the model with the global/command proxy. Cloud errors expose status/classification and cancellation, with no response body or credentials. HTTP redirects are disabled for the custom API-key header.
 
 ### `internal/config`
 

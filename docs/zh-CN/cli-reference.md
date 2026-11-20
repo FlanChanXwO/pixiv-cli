@@ -546,10 +546,12 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 
 ## 向量索引
 
-`pixiv config set vector.model MODEL` 开启可见 Pixiv 作品的被动记录，保存在 `~/.pixiv-cli/vector/`，包含私密收藏与 R18 元数据。漫画记录第一页，其他作品记录全部页。快照省略随账号变化的收藏、屏蔽、可见性与关注标记。
+执行 `pixiv vector setup --model gemini-embedding-2-preview` 启用云端向量索引，用 `--base-url URL` 指定兼容 Gemini 的服务。setup 先用固定文字和 PNG 试算，成功后才原子保存配置。启用后，可见作品元数据（包含私密收藏与 R18）记录到 `~/.pixiv-cli/vector/`。漫画记录第一页，其他作品记录全部页。快照省略随账号变化的收藏、屏蔽、可见性与关注标记。
 
 | 命令 | 行为 |
 | --- | --- |
+| `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认上传范围，试算文字与图片，再保存云端配置 |
+| `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | 续读当前账号的公开/私密收藏，合并记录并计算待算页面 |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除其他模型的向量、全部记录和向量，或整个向量目录及配置 |
 
@@ -558,3 +560,9 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 `[vector]` 有四个 TOML 键：`model`（空值关闭记录）、`device`（空值/`cpu`/`gpu`）、`api_key`、`base_url`。默认均为空，没有环境变量绑定。已保存的 key 通过 `config get vector.api_key` 展示为 `<redacted>`。`config unset vector.model` 暂停记录并保留文件。
 
 私有 `inbox.ndjson` 暂存记录；中断的 `inbox.merging` 会在下次合并时恢复。坏行原始字节保留到私有 `inbox.rejected.ndjson`，另外报告行号与数量。中断后恢复可能再次保留同一坏行。Unix 目录/文件权限为 `0700`/`0600`。SQLite 索引快照由本机各账号共享。
+
+非终端 setup 必须带 `--yes`。API key 通过终端隐藏输入或完整 stdin 读取，仅在规范化服务地址相同时复用旧 key。除回环地址外要求 HTTPS；末尾 `/v1` 规范化为服务根地址。请求使用 Gemini `embedContent`，服务地址、接口格式和模型 ID 共同区分向量空间。拒绝重定向，保证 key 只发送给指定服务。
+
+云端索引会上传作品缩略图（含私密收藏与 R18）及查询内容，并可能按量计费。setup 在确认前展示目标服务和待算页数。模型请求使用全局代理或本次命令覆盖值。
+
+sync 固定使用当前账号，分别保存各账号、各可见性的收藏成员关系与续读位置。检查开头时读到整批已知收藏即停止；连续取消并重新收藏整批旧作品可能遮住后面的新收藏。页面逐个提交，Ctrl+C 保留已完成结果。优先下载派生的 1200 像素图片，派生失败或 404 时读原图。原图 404 标记页面不可用；图片被服务拒绝后，受控试算通过才标记为单页失败。认证、403、429、服务或网络错误会停止本次运行，不自动重试。文本/JSON 摘要保留中止原因和部分进度，中止时退出码为 1。

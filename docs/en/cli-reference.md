@@ -546,10 +546,12 @@ On Unix, `SIGINT` (Ctrl+C) and `SIGTERM` cancel the server and wait for in-fligh
 
 ## Vector index
 
-`pixiv config set vector.model MODEL` enables passive recording of visible Pixiv artworks, including private bookmarks and R18 metadata, under `~/.pixiv-cli/vector/`. Manga contributes its first page; other works contribute all pages. Snapshots omit account-dependent bookmark, mute, visibility and follow flags.
+Run `pixiv vector setup --model gemini-embedding-2-preview` to enable cloud vector indexing. Use `--base-url URL` for a Gemini-compatible service. Setup verifies a fixed text and PNG before atomically saving configuration. Once enabled, visible artwork metadata, including private bookmarks and R18, is recorded under `~/.pixiv-cli/vector/`. Manga contributes its first page; other works contribute all pages. Snapshots omit account-dependent bookmark, mute, visibility and follow flags.
 
 | Command | Behavior |
 | --- | --- |
+| `pixiv vector setup --model NAME [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm uploads, probe text/image compatibility, then save cloud configuration |
+| `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | Resume public/private bookmarks for the selected account, merge recordings and embed pending pages |
 | `pixiv vector status [--json]` | Offline counts, inbox size, models, bookmark state and disk bytes |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | Remove other models' vectors, all records/vectors, or the entire vector directory and configuration |
 
@@ -558,3 +560,9 @@ Clear requires confirmation or `--yes` outside a terminal. Browsing history is l
 `[vector]` has four TOML keys: `model` (empty disables recording), `device` (empty/`cpu`/`gpu`), `api_key`, and `base_url`. All default to empty, with no environment bindings. `config get vector.api_key` prints `<redacted>` for a saved key. `config unset vector.model` pauses recording while preserving existing files.
 
 Records accumulate in private `inbox.ndjson`; merging resumes an interrupted `inbox.merging`. Malformed original lines are retained in private `inbox.rejected.ndjson`, with line numbers and counts reported separately. Recovery after an interrupted merge may retain the same rejected line again. The SQLite index uses `0700` directories and `0600` files on Unix. Index snapshots are shared across local accounts.
+
+Setup requires `--yes` outside a terminal. The API key is read with hidden terminal input or as the complete stdin value. A saved key is reused only for the same canonical service address. HTTPS is required except for loopback; a terminal `/v1` is normalized to the service root. Requests use Gemini `embedContent`; service URL, API format and model ID define separate vector spaces. Redirects are rejected to keep the API key at that service.
+
+Cloud indexing uploads artwork thumbnails, including private bookmarks and R18, plus query content, and may incur usage charges. Setup displays the target service and pending-page count before confirmation. Models use the global proxy or the command override.
+
+Sync uses the selected account directly, keeps per-account/per-visibility bookmark membership and resumable cursors, and stops checking the head after a whole known batch. A batch of canceled and re-added old bookmarks can hide later new ones. Pages commit separately; Ctrl+C preserves completed work. Derived 1200px images fall back to the original on unavailable derivation or HTTP 404. Original 404 marks a page unavailable. A rejected image is marked failed only after a controlled probe succeeds; authentication, 403, 429, server and transport failures stop the run. There is no automatic retry. Text/JSON summaries include the stop reason and partial counts; a stopped run exits 1.
