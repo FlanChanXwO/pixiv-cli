@@ -24,15 +24,16 @@ func Install(ctx context.Context, options Options, client *http.Client, progress
 	if !IsLocal(options.Name) {
 		return errors.New("install requires a built-in local model")
 	}
-	for _, group := range []struct {
-		directory string
-		assets    []asset
-	}{{runtimeDir, platform.assets}, {modelDir, spec.assets}} {
-		if err = installGroup(ctx, client, group.directory, group.assets, progress); err != nil {
+	if err = installGroup(ctx, client, runtimeDir, platform.assets, progress); err != nil {
+		return err
+	}
+	if options.Device == "gpu" {
+		gpu, dir := gpuPath(options.Directory)
+		if err = installGroup(ctx, client, dir, gpu.assets, progress); err != nil {
 			return err
 		}
 	}
-	return nil
+	return installGroup(ctx, client, modelDir, spec.assets, progress)
 }
 
 func installGroup(ctx context.Context, client *http.Client, directory string, assets []asset, progress func(string) error) error {
@@ -293,14 +294,18 @@ func (r *rangeArchive) ReadAt(p []byte, offset int64) (n int, err error) {
 }
 
 // ClearUnused 删除当前配置之外的已安装模型及运行库；调用方持有同步锁。
-func ClearUnused(directory, name string) error {
-	var keepModel, keepRuntime string
+func ClearUnused(directory, name, device string) error {
+	var keepModel, keepRuntime, keepGPU string
 	if IsLocal(name) {
 		_, _, modelDir, runtimeDir, err := localPaths(directory, name)
 		if err != nil {
 			return err
 		}
 		keepModel, keepRuntime = filepath.Base(modelDir), filepath.Base(runtimeDir)
+		if device == "gpu" {
+			_, gpu := gpuPath(directory)
+			keepGPU = filepath.Base(gpu)
+		}
 	}
 	for _, group := range []struct{ folder, keep string }{{"models", keepModel}, {"runtime", keepRuntime}} {
 		parent := filepath.Join(directory, group.folder)
@@ -312,7 +317,7 @@ func ClearUnused(directory, name string) error {
 			return err
 		}
 		for _, entry := range entries {
-			if group.keep != "" && (entry.Name() == group.keep || entry.Name() == group.keep+".partial") {
+			if (group.keep != "" && (entry.Name() == group.keep || entry.Name() == group.keep+".partial")) || (group.folder == "runtime" && keepGPU != "" && (entry.Name() == keepGPU || entry.Name() == keepGPU+".partial")) {
 				continue
 			}
 			if err = os.RemoveAll(filepath.Join(parent, entry.Name())); err != nil {

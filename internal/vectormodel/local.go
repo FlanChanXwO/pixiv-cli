@@ -14,11 +14,12 @@ import (
 	"github.com/eliben/go-sentencepiece"
 )
 
-var textGate = make(chan struct{}, 1)
+var inferenceGate = make(chan struct{}, 1)
 
 type localModel struct {
 	mu           sync.Mutex
 	directory    string
+	plugin       string
 	spec         modelSpec
 	native       *nativeRuntime
 	vision, text uintptr
@@ -41,8 +42,8 @@ func localPaths(directory, name string) (modelSpec, nativeSpec, string, string, 
 }
 
 func openLocal(options Options) (*localModel, error) {
-	if options.Device != "" && options.Device != "cpu" {
-		return nil, errors.New("GPU models are not available yet; use vector setup with CPU")
+	if options.Device != "" && options.Device != "cpu" && options.Device != "gpu" {
+		return nil, errors.New("local vector device must be cpu or gpu")
 	}
 	spec, platform, modelDir, runtimeDir, err := localPaths(options.Directory, options.Name)
 	if err != nil {
@@ -57,14 +58,28 @@ func openLocal(options Options) (*localModel, error) {
 			return nil, errors.New("local vector asset directory is invalid; run vector setup")
 		}
 	}
+	plugin := ""
+	if options.Device == "gpu" {
+		gpu, dir := gpuPath(options.Directory)
+		plugin = filepath.Join(dir, gpu.library)
+		if _, err := os.Stat(plugin); err != nil {
+			return nil, gpuError(err)
+		}
+	}
 	native, err := openNative(filepath.Join(runtimeDir, platform.library))
 	if err != nil {
 		return nil, err
 	}
-	return &localModel{directory: modelDir, spec: spec, native: native}, nil
+	return &localModel{directory: modelDir, spec: spec, native: native, plugin: plugin}, nil
 }
 
 func (m *localModel) image(ctx context.Context, data []byte) ([]float32, error) {
+	select {
+	case inferenceGate <- struct{}{}:
+		defer func() { <-inferenceGate }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -75,18 +90,25 @@ func (m *localModel) image(ctx context.Context, data []byte) ([]float32, error) 
 		return nil, err
 	}
 	if m.vision == 0 {
-		m.vision, err = m.native.session(ctx, filepath.Join(m.directory, "onnx", "vision_model.onnx"))
+		m.vision, err = m.native.session(ctx, filepath.Join(m.directory, "onnx", "vision_model.onnx"), m.plugin)
 		if err != nil {
+			if m.plugin != "" {
+				err = gpuError(err)
+			}
 			return nil, err
 		}
 	}
-	return m.native.infer(ctx, m.vision, "pixel_values", unsafe.Pointer(&pixels[0]), len(pixels)*4, []int64{1, 3, int64(m.spec.size), int64(m.spec.size)}, nativeFloat)
+	vector, err := m.native.infer(ctx, m.vision, "pixel_values", unsafe.Pointer(&pixels[0]), len(pixels)*4, []int64{1, 3, int64(m.spec.size), int64(m.spec.size)}, nativeFloat)
+	if err != nil && m.plugin != "" && ctx.Err() == nil {
+		err = gpuError(err)
+	}
+	return vector, err
 }
 
 func (m *localModel) textVector(ctx context.Context, text string) ([]float32, error) {
 	select {
-	case textGate <- struct{}{}:
-		defer func() { <-textGate }()
+	case inferenceGate <- struct{}{}:
+		defer func() { <-inferenceGate }()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -112,7 +134,7 @@ func (m *localModel) textVector(ctx context.Context, text string) ([]float32, er
 	}
 	ids[len(tokens)] = textEOS
 	if m.text == 0 {
-		m.text, err = m.native.session(ctx, filepath.Join(m.directory, "onnx", "text_model.onnx"))
+		m.text, err = m.native.session(ctx, filepath.Join(m.directory, "onnx", "text_model.onnx"), "")
 		if err != nil {
 			return nil, err
 		}
@@ -135,4 +157,13 @@ func (m *localModel) close() error {
 	}
 	m.native.releaseEnv(m.native.env)
 	return nil
+}
+
+func gpuPath(directory string) (nativeSpec, string) {
+	spec := gpuPlatforms[runtime.GOOS+"/"+runtime.GOARCH]
+	return spec, filepath.Join(directory, "runtime", "webgpu-"+gpuVersion+"-"+spec.platform)
+}
+
+func gpuError(err error) error {
+	return fmt.Errorf("GPU unavailable; run \"pixiv vector setup --device cpu\": %w", err)
 }

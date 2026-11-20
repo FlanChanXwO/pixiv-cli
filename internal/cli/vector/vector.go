@@ -124,7 +124,7 @@ func clearCommand(env environment.Env, store config.Store) *cobra.Command {
 			} else if !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
-			return vectormodel.ClearUnused(path, c.Vector.Model)
+			return vectormodel.ClearUnused(path, c.Vector.Model, string(c.Vector.Device))
 		}
 		if all {
 			if err = store.WriteVector(nil); err != nil {

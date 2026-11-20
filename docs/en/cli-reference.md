@@ -550,13 +550,15 @@ Run `pixiv vector setup` for local CPU vector indexing (default `siglip2-base-51
 
 | Command | Behavior |
 | --- | --- |
-| `pixiv vector setup [--model NAME] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm recording/downloads or uploads, probe text/image compatibility, then save configuration |
+| `pixiv vector setup [--model NAME] [--device cpu\|gpu] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm recording/downloads or uploads, probe text/image compatibility, then save configuration |
 | `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | Resume public/private bookmarks for the selected account, merge recordings and embed pending pages |
 | `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | Search the local index by text or an explicitly selected image |
 | `pixiv vector status [--json]` | Offline counts, inbox size, models, bookmark state and disk bytes |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | Remove unused models/runtimes/vectors, all records/vectors, or the entire vector directory and configuration |
 
 Clear requires confirmation or `--yes` outside a terminal. Browsing history is lost after index removal; bookmarks can be synchronized again. Clearing and synchronization share a nonblocking process lock; the inbox has a separate cancelable writer lock. Both lock files live outside the removable directory.
+
+Use `setup --device cpu|gpu` for local models (default CPU); cloud models reject explicit `--device`. GPU setup installs WebGPU 0.6.0, runs the fixed image on CPU/GPU and requires cosine ≥ 0.999 before saving `vector.device`. Image inference uses the selected GPU; text remains CPU. Runtime GPU failures report an error with `pixiv vector setup --device cpu`; device changes keep the same vector identity. `clear --unused` removes the GPU plugin when CPU/cloud is selected. Windows installs the plugin, dynamic DXC shader compiler and `D3D12/D3D12Core.dll` Agility SDK runtime together; debug SDK layers are omitted. macOS ARM64 has actual GPU evidence; Linux/Windows GPU execution remains unverified.
 
 `[vector]` has four TOML keys: `model` (empty disables recording), `device` (empty/`cpu`/`gpu`), `api_key`, and `base_url`. All default to empty, with no environment bindings. `config get vector.api_key` prints `<redacted>` for a saved key. `config unset vector.model` pauses recording while preserving existing files.
 

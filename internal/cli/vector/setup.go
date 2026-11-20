@@ -15,15 +15,22 @@ import (
 )
 
 func setupCommand(env environment.Env, store config.Store) *cobra.Command {
-	var model, base string
+	var model, base, device string
 	var yes bool
 	var proxy environment.ProxyOptions
-	cmd := &cobra.Command{Use: "setup", Short: "Install, probe and enable an embedding model", Args: env.ExactArgs(0, "pixiv vector setup [--model NAME] [--yes]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
+	cmd := &cobra.Command{Use: "setup", Short: "Install, probe and enable an embedding model", Args: env.ExactArgs(0, "pixiv vector setup [--model NAME] [--device cpu|gpu] [--yes]"), RunE: func(cmd *cobra.Command, _ []string) (err error) {
 		c, err := store.Current()
 		if err != nil {
 			return err
 		}
 		local := vectormodel.IsLocal(model)
+		if local {
+			if device != "cpu" && device != "gpu" {
+				return env.WrapUsage(errors.New("--device must be cpu or gpu"))
+			}
+		} else if cmd.Flags().Changed("device") {
+			return env.WrapUsage(errors.New("--device applies to local models"))
+		}
 		if local {
 			if cmd.Flags().Changed("base-url") {
 				return env.WrapUsage(errors.New("--base-url applies to cloud models"))
@@ -59,7 +66,7 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 			return err
 		}
 		if local {
-			_, err = fmt.Fprintf(env.Err, "%s: tokenizer.model, onnx/vision_model.onnx and onnx/text_model.onnx (about 1.5 GB from Hugging Face), plus ONNX Runtime from NuGet.\nInstall directory: %s\nQueries are processed locally.\n", model, vectorindex.Directory(root))
+			_, err = fmt.Fprintf(env.Err, "%s: tokenizer.model, onnx/vision_model.onnx and onnx/text_model.onnx (about 1.5 GB from Hugging Face), plus ONNX Runtime from NuGet (GPU also installs the WebGPU plugin).\nInstall directory: %s\nQueries are processed locally.\n", model, vectorindex.Directory(root))
 		} else {
 			_, err = fmt.Fprintf(env.Err, "Artwork thumbnails (including private bookmarks and R18) and queries will be uploaded to %s and may incur usage charges.\n", base)
 		}
@@ -98,11 +105,11 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 		}
 		defer client.CloseIdleConnections()
 		options := vectormodel.Options{Name: model, BaseURL: base, APIKey: key, Directory: vectorindex.Directory(root)}
-		device := "cloud"
+		activeDevice := "cloud"
 		selected := config.VectorDevice("")
 		if local {
-			device = "cpu"
-			selected = config.VectorCPU
+			activeDevice = device
+			selected = config.VectorDevice(device)
 			options.Device = device
 			if err = vectormodel.Install(cmd.Context(), options, client, func(message string) error { _, err := fmt.Fprintln(env.Err, message); return err }); err != nil {
 				return err
@@ -116,13 +123,23 @@ func setupCommand(env environment.Env, store config.Store) *cobra.Command {
 		if _, err = embedder.Probe(cmd.Context()); err != nil {
 			return err
 		}
+		if local && device == "gpu" {
+			score, probeErr := embedder.ProbeGPU(cmd.Context())
+			if probeErr != nil {
+				return probeErr
+			}
+			if _, err = fmt.Fprintf(env.Err, "CPU/GPU probe cosine: %.6f\n", score); err != nil {
+				return err
+			}
+		}
 		if err = store.WriteVector(&config.Vector{Model: model, Device: selected, BaseURL: base, APIKey: key}); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(env.Out, "Vector search is ready (model %s, %s).\n", model, device)
+		_, err = fmt.Fprintf(env.Out, "Vector search is ready (model %s, %s).\n", model, activeDevice)
 		return err
 	}}
 	cmd.Flags().StringVar(&model, "model", vectormodel.DefaultModel, "built-in local model or cloud multimodal model ID")
+	cmd.Flags().StringVar(&device, "device", "cpu", "local inference device: cpu or gpu")
 	cmd.Flags().StringVar(&base, "base-url", "", "Gemini-compatible service URL")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation")
 	env.BindProxyFlags(cmd, &proxy)

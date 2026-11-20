@@ -225,7 +225,7 @@ Bookmark synchronization receives a fixed-account opener from the composition ro
 
 Owns canonical cloud service/model identity, Gemini `embedContent`, vector validation/normalization and controlled multimodal probes. It has no Pixiv, CLI or configuration dependency. `vectorindex.Embedder` is the consumer-owned model boundary; the CLI constructs the model with the global/command proxy. Cloud errors expose status/classification and cancellation, with no response body or credentials. HTTP redirects are disabled for the custom API-key header.
 
-Local inference owns a pinned asset catalog, resumable integrity-checked Hugging Face/NuGet installation, calibrated image preprocessing and SentencePiece tokenization. Minimal purego bindings dynamically load ONNX Runtime, pin input memory and terminate active inference on cancellation. Image/text sessions load lazily and release with the model; text inference is serialized within the process. Linux binaries depend on glibc because purego initializes its runtime bridge at process startup.
+Local inference owns a pinned asset catalog, resumable integrity-checked Hugging Face/NuGet installation, calibrated image preprocessing and SentencePiece tokenization. Minimal purego bindings dynamically load ONNX Runtime, pin input memory and terminate active inference on cancellation. Image/text sessions load lazily and release with the model; local inference is serialized within the process. WebGPU registers the pinned provider, explicitly selects a GPU hardware device and keeps text sessions on CPU. Setup compares GPU/CPU output before saving the device. Linux binaries depend on glibc because purego initializes its runtime bridge at process startup.
 
 ### `internal/config`
 
