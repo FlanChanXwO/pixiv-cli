@@ -785,5 +785,21 @@
   "error.flag_value_required": "flag needs an argument: --%s",
   "error.flag_invalid_value": "invalid argument %q for %q flag: %s",
   "error.flag_invalid_syntax": "bad flag syntax: %s",
-  "error.vector_operation_canceled": "canceled"
+  "error.vector_operation_canceled": "canceled",
+  "help.vector_add": "Refresh and embed one or more artworks",
+  "flag.vector_restrict": "bookmark visibility to scan: public, private, all",
+  "flag.vector_reconcile": "fully scan selected bookmarks and reconcile removed memberships",
+  "error.vector_restrict": "restrict must be one of public, private, all",
+  "error.vector_initial_sync_required": "The vector index is empty and the initial bookmark scan is incomplete; run pixiv vector sync",
+  "error.vector_artwork_unavailable": "artwork %d is unavailable; no index entry was created",
+  "error.vector_input_line": "vector add input line %d: %w",
+  "error.vector_image_load_w": "load query image: %w",
+  "error.vector_add_input_required": "provide artwork IDs, URLs, or artwork NDJSON on stdin",
+  "output.vector_scan_summary": "Recorded: %d; list pages: %d; unavailable bookmarks: %d; removed memberships: %d\n",
+  "output.vector_scan_state": "%s bookmarks: %s (%s)\n",
+  "vector.scan_initial": "initial scan",
+  "vector.scan_head": "head check",
+  "vector.scan_reconcile": "full reconciliation",
+  "vector.scan_complete": "complete",
+  "vector.scan_incomplete": "incomplete; resume with vector sync"
 }

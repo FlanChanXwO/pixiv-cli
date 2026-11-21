@@ -61,6 +61,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const vectorRequestInterval = 200 * time.Millisecond
+
 type app struct {
 	language       i18n.Locale
 	in             io.Reader
@@ -323,6 +325,7 @@ func (a *app) openVectorPixiv(ctx context.Context, request environment.PixivRequ
 		return 0, nil, nil, err
 	}
 	options.OnArtwork = nil
+	options.RequestInterval = max(vectorRequestInterval, options.RequestInterval)
 	userID, err := a.selectedPixiv(ctx, request.UserID)
 	if err != nil {
 		options.HTTPClient.CloseIdleConnections()
@@ -375,18 +378,9 @@ func (a *app) searchVectorResolved(ctx context.Context, input vectorindex.Search
 	}
 	defer client.CloseIdleConnections()
 	if source != "" {
-		snapshot, loadErr := reversesearch.NewSourceLoader(client).Load(ctx, source)
-		if loadErr != nil {
-			return result, loadErr
-		}
-		defer func() { err = errors.Join(err, snapshot.Close()) }()
-		reader, readErr := snapshot.Open(ctx)
-		if readErr != nil {
-			return result, readErr
-		}
-		input.Image, err = io.ReadAll(reader)
-		if err = errors.Join(err, reader.Close()); err != nil {
-			return result, err
+		input.Image, err = vectorindex.LoadImage(ctx, client, source)
+		if err != nil {
+			return result, i18n.Errorf("error.vector_image_load_w", err)
 		}
 	}
 	identity, err := vectormodel.Identifier(c.Vector.Model, c.Vector.BaseURL)

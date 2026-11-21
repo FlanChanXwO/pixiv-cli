@@ -61,7 +61,7 @@ func vectorSearchOutputSchema() map[string]any {
 		"index": map[string]any{"type": "object", "required": []string{"model", "pages", "pending", "catch_up", "bookmarks_read"}, "properties": map[string]any{
 			"model": map[string]any{"type": "string"}, "pages": map[string]any{"type": "integer"}, "pending": map[string]any{"type": "integer"}, "catch_up": map[string]any{"type": "string"}, "bookmarks_read": map[string]any{"type": "boolean"}, "error": map[string]any{"type": "string"},
 		}, "additionalProperties": false},
-		"error": map[string]any{"type": "string", "enum": []string{"not_set_up", "invalid_request", "invalid_source", "source_not_regular_file", "source_read_failed", "source_http_status", "snapshot_failed", "text_too_long", "unsupported_image", "model_unavailable", "index_unavailable", "sync_failed", "canceled", "unknown"}},
+		"error": map[string]any{"type": "string", "enum": []string{"not_set_up", "initial_sync_required", "invalid_request", "invalid_source", "source_not_regular_file", "source_read_failed", "source_http_status", "snapshot_failed", "text_too_long", "unsupported_image", "model_unavailable", "index_unavailable", "sync_failed", "canceled", "unknown"}},
 	}, []string{"records", "pagination", "index"})
 }
 
@@ -117,7 +117,11 @@ func (t pixivTools) vectorSearchHandler(ctx context.Context, input vectorSearchI
 
 func vectorSearchFailure(code string) (*mcp.CallToolResult, vectorSearchOutput) {
 	out := vectorSearchOutput{SearchResponse: vectorindex.SearchResponse{Records: []record.Record{}}, Error: code}
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Vector search failed (" + code + ")."}}}, out
+	message := "Vector search failed (" + code + ")."
+	if code == "initial_sync_required" {
+		message += " The index is empty and the initial bookmark scan is incomplete; run pixiv vector sync."
+	}
+	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: message}}}, out
 }
 
 func vectorSearchErrorCode(ctx context.Context, err error) string {

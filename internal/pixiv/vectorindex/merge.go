@@ -115,10 +115,6 @@ func validEntry(value entry) bool {
 }
 
 func (s *Store) put(ctx context.Context, value entry) (err error) {
-	body, err := json.Marshal(value.Record)
-	if err != nil {
-		return err
-	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return err
@@ -129,6 +125,17 @@ func (s *Store) put(ctx context.Context, value entry) (err error) {
 			err = errors.Join(err, rollback)
 		}
 	}()
+	if err = putEntry(ctx, tx, value); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func putEntry(ctx context.Context, tx *sql.Tx, value entry) error {
+	body, err := json.Marshal(value.Record)
+	if err != nil {
+		return err
+	}
 	id := value.Record.ID()
 	var recorded string
 	err = tx.QueryRowContext(ctx, `SELECT recorded_at FROM artwork WHERE id=?`, id).Scan(&recorded)
@@ -158,5 +165,5 @@ func (s *Store) put(ctx context.Context, value entry) (err error) {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }

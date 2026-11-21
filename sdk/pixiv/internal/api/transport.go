@@ -14,27 +14,50 @@ type pacingTransport struct {
 	interval time.Duration
 	mu       sync.Mutex
 	last     time.Time
+	cooldown time.Time
 }
 
 // RoundTrip waits for the shared interval or request cancellation before sending.
 func (p *pacingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	p.mu.Lock()
-	wait := p.interval - time.Since(p.last)
-	if wait > 0 {
+	for {
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		p.mu.Lock()
+		next := p.last.Add(p.interval)
+		if p.cooldown.After(next) {
+			next = p.cooldown
+		}
+		wait := time.Until(next)
+		if wait <= 0 {
+			p.last = time.Now()
+			p.mu.Unlock()
+			break
+		}
+		// Release the mutex so in-flight responses can extend the shared cooldown.
+		p.mu.Unlock()
 		slog.LogAttrs(req.Context(), slog.LevelDebug, "Request pacing waited",
 			slog.String(AttrSDKOperation, ""), slog.Duration(AttrWait, wait))
 		timer := time.NewTimer(wait)
 		select {
 		case <-req.Context().Done():
 			timer.Stop()
-			p.mu.Unlock()
 			return nil, req.Context().Err()
 		case <-timer.C:
 		}
 	}
-	p.last = time.Now()
-	p.mu.Unlock()
-	return p.inner.RoundTrip(req)
+	resp, err := p.inner.RoundTrip(req)
+	if err == nil && resp.StatusCode == http.StatusTooManyRequests {
+		if wait, ok := ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now()); ok {
+			p.mu.Lock()
+			until := time.Now().Add(wait)
+			if until.After(p.cooldown) {
+				p.cooldown = until
+			}
+			p.mu.Unlock()
+		}
+	}
+	return resp, err
 }
 
 // CloseIdleConnections releases idle sockets through the wrapped transport.

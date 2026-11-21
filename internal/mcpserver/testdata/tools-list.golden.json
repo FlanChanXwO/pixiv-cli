@@ -7418,6 +7418,7 @@
         "error": {
           "enum": [
             "not_set_up",
+            "initial_sync_required",
             "invalid_request",
             "invalid_source",
             "source_not_regular_file",

@@ -152,6 +152,9 @@ func Search(ctx context.Context, root string, input SearchInput, options SearchO
 	if counts.Pages == 0 && syncErr != nil {
 		return result, &SearchError{Code: "sync_failed", Cause: syncErr}
 	}
+	if counts.Pages == 0 && !result.Index.BookmarksRead {
+		return result, &SearchError{Code: "initial_sync_required", Cause: i18n.Errorf("error.vector_initial_sync_required")}
+	}
 	code = "model_unavailable"
 	var vector []float32
 	if len(input.Image) > 0 {
