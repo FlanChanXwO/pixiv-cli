@@ -44,4 +44,4 @@
 
 **完整变更：** [v1.3.0...v1.4.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.3.0...v1.4.0)
 
-<!-- internal: [#283](https://github.com/FlanChanXwO/pixiv-cli/pull/283) -->
+<!-- internal: [#283](https://github.com/FlanChanXwO/pixiv-cli/pull/283) [#304](https://github.com/FlanChanXwO/pixiv-cli/pull/304) -->
