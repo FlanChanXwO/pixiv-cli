@@ -53,6 +53,10 @@ func statusCommand(env environment.Env, store config.Store) *cobra.Command {
 			state = env.Text("state.enabled")
 		}
 		_, err = fmt.Fprintf(env.Out, env.Text("output.vector_search_model_index_artworks_pages_embedded_pending"), state, result.Model, c.Vector.Device, result.Index.Artworks, result.Index.Pages, result.Index.Pending, result.Index.Unavailable, result.Index.Failed, result.Recorded, result.Bookmarks, result.Disk, result.Models)
+		if len(result.Ranges) > 0 {
+			_, rangeErr := fmt.Fprintf(env.Out, env.Text("output.vector_range_checkpoints"), len(result.Ranges))
+			err = errors.Join(err, rangeErr)
+		}
 		return err
 	}}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "flag.print_json")

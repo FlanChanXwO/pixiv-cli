@@ -37,8 +37,19 @@ func writeCommand(env environment.Env, store config.Store, open OpenClient, add 
 	var options environment.Options
 	var restrict, rating, contentType string
 	var reconcile bool
+	var selection vectorindex.Range
 	var input *environment.State
 	cmd := &cobra.Command{Use: "sync", Short: "help.synchronize_bookmarks_and_embed_pending_pages", Args: env.ExactArgs(0, "pixiv vector sync [--json]"), RunE: func(cmd *cobra.Command, args []string) (err error) {
+		var window *vectorindex.Range
+		if !add && (cmd.Flags().Changed("offset") || cmd.Flags().Changed("limit") || cmd.Flags().Changed("tail")) {
+			if err := selection.Validate(); err != nil {
+				return env.WrapUsage(err)
+			}
+			if reconcile || cmd.Flags().Changed("tail") && (selection.Tail <= 0 || cmd.Flags().Changed("offset") || cmd.Flags().Changed("limit")) {
+				return env.WrapUsage(i18n.Errorf("error.vector_range"))
+			}
+			window = &selection
+		}
 		filter, err := searchfilter.NormalizeFilter(rating, contentType)
 		if err != nil {
 			return env.WrapUsage(err)
@@ -96,13 +107,18 @@ func writeCommand(env environment.Env, store config.Store, open OpenClient, add 
 			return err
 		}
 		var progress func(int, int) error
+		var scanProgress func(string, vectorindex.RangeProgress) error
 		if file, ok := env.Err.(interface{ Fd() uintptr }); ok && term.IsTerminal(int(file.Fd())) {
 			progress = func(done, total int) error {
 				_, err := fmt.Fprintf(env.Err, env.Text("output.embedding_pages"), done, total)
 				return err
 			}
+			scanProgress = func(scope string, p vectorindex.RangeProgress) error {
+				_, err := fmt.Fprintf(env.Err, env.Text("output.vector_range_scanning"), env.Text("gallery."+scope), p.Scanned, p.Selected)
+				return err
+			}
 		}
-		syncOptions := vectorindex.SyncOptions{Model: identity, Embedder: model, ProbeImage: fixture, OpenClient: func(ctx context.Context) (int64, *pixiv.Client, func() error, error) { return open(ctx, request) }, Progress: progress, Restrict: restrict, Filter: filter, Reconcile: reconcile}
+		syncOptions := vectorindex.SyncOptions{Model: identity, Embedder: model, ProbeImage: fixture, OpenClient: func(ctx context.Context) (int64, *pixiv.Client, func() error, error) { return open(ctx, request) }, Progress: progress, ScanProgress: scanProgress, Restrict: restrict, Filter: filter, Reconcile: reconcile, Range: window}
 		var report vectorindex.SyncReport
 		var runErr error
 		if add {
@@ -143,6 +159,9 @@ func writeCommand(env environment.Env, store config.Store, open OpenClient, add 
 		cmd.Flags().StringVar(&contentType, "content-type", "all", "flag.artwork_subtype_all_illust_and_ugoira_illust_manga")
 		cmd.Flags().StringVar(&rating, "rating", "all", "flag.local_rating_filter_sfw_r18_r18g_mature_all")
 		cmd.Flags().BoolVar(&reconcile, "reconcile", false, "flag.vector_reconcile")
+		cmd.Flags().IntVar(&selection.Offset, "offset", 0, "flag.vector_offset")
+		cmd.Flags().IntVar(&selection.Limit, "limit", 0, "flag.vector_limit")
+		cmd.Flags().IntVar(&selection.Tail, "tail", 0, "flag.vector_tail")
 		env.BindNoInput(cmd)
 	}
 	environment.Bind(cmd, environment.Normal())
@@ -153,6 +172,14 @@ func writeSyncReport(env environment.Env, r vectorindex.SyncReport) error {
 	_, err := fmt.Fprintf(env.Out, env.Text("output.bookmarks_checked_new_merged_recorded_artworks_skipped_records"), r.Bookmarks.Checked, r.Bookmarks.New, r.Merged, r.SkippedRecords, r.Embedded, r.Unavailable, r.Failed, r.Index.Artworks, r.Index.Pages, r.Index.Pending, r.Model)
 	_, summaryErr := fmt.Fprintf(env.Out, env.Text("output.vector_scan_summary"), r.Recorded, r.Bookmarks.Pages, r.Bookmarks.Unavailable, r.Bookmarks.Removed)
 	err = errors.Join(err, summaryErr)
+	if r.Range != nil {
+		for _, scope := range []string{"public", "private"} {
+			if progress, ok := r.Range.Scans[scope]; ok {
+				_, rangeErr := fmt.Fprintf(env.Out, env.Text("output.vector_range_summary"), env.Text("gallery."+scope), env.Text("vector.range_"+string(progress.Phase)), progress.Scanned, progress.Selected, progress.Matched, progress.ReusedPages)
+				err = errors.Join(err, rangeErr)
+			}
+		}
+	}
 	for _, scope := range []string{"public", "private"} {
 		if scan, ok := r.Bookmarks.Scans[scope]; ok {
 			state := "vector.scan_incomplete"

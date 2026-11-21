@@ -557,7 +557,7 @@ Run `pixiv vector setup` for local CPU vector indexing (default `siglip2-base-51
 | Command | Behavior |
 | --- | --- |
 | `pixiv vector setup [--model NAME] [--device cpu\|gpu] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | Confirm recording/downloads or uploads, probe text/image compatibility, then save configuration |
-| `pixiv vector sync [--restrict public\|private\|all] [--content-type TYPE] [--rating RATING] [--reconcile] [--json] [--proxy URL\|--no-proxy]` | Resume selected bookmarks, merge recordings and embed pending pages; all filters default to `all` |
+| `pixiv vector sync [--restrict public\|private\|all] [--content-type TYPE] [--rating RATING] [--offset N --limit N \| --tail N] [--reconcile] [--json] [--proxy URL\|--no-proxy]` | Resume selected bookmarks, merge recordings and embed pending pages; all filters default to `all` |
 | `pixiv vector add [ID_OR_URL...] [--json] [--proxy URL\|--no-proxy]` | Refresh and embed specific artworks; omitted targets read artwork NDJSON from stdin |
 | `pixiv vector search [INPUT] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | Automatically recognize text, a local image or an HTTP(S) image URL |
 | `pixiv vector status [--json]` | Offline counts, inbox size, models, bookmark state and disk bytes |
@@ -576,6 +576,14 @@ Setup requires `--yes` outside a terminal. For cloud models, the API key is read
 Cloud indexing uploads artwork thumbnails, including private bookmarks and R18, plus query content, and may incur usage charges. Setup displays the target service and pending-page count before confirmation. Models use the global proxy or the command override.
 
 `vector sync` uses the selected account directly. By default it scans both public and private bookmarks and embeds all pending pages in the shared index. The first scan traverses each list; subsequent runs check its head until a whole page contains known memberships. `--restrict` selects visibility. `--content-type` accepts `all`, `illust-and-ugoira`, `illust`, `manga` or `ugoira`; `--rating` accepts `all`, `sfw`, `r18`, `r18g` or `mature`, matching artwork search. Effective filters restrict calculation to matching bookmarks of this account and the selected visibility. Metadata and memberships for all valid items in the selected lists are still saved; later unfiltered sync/search can embed skipped pages.
+
+Use `--limit 100` for the first 100 works, `--offset 500 --limit 10` for positions 501–510, or `--tail 10` for the last 10. Public/private lists count independently: the default `--restrict all --limit 100` selects up to 200 works. Positions follow the upstream list order and count returned unavailable works and works with existing vectors. Select positions before applying type/rating filters, so fewer works may match. One artwork occupies one position; the existing image-page policy still applies.
+
+An explicit range flag selects range synchronization. Offset defaults to 0; limit 0 or an omitted limit means through the end. Tail must be positive and excludes explicit offset/limit flags; range flags exclude `--reconcile`. Out-of-bounds selections succeed empty; short lists contribute their remaining works. Positioning follows sequential cursors from the head. Tail traverses each selected list completely, retaining only its final N positions on disk and promoting them after that list ends. Only valid selected works update shared snapshots/memberships, and only selected matching pages are calculated; other pending work stays available for later ordinary sync/search.
+
+Range checkpoints are isolated by account, selected visibility, normalized range, filters and model. Page commits persist candidates, positions and cursors together. Repeat the same command after interruption to resume scanning or embedding; a completed visibility remains complete while another resumes. Invalid cursors restart the affected list and reuse valid vectors. After success, temporary candidates/checkpoints are removed; the next invocation selects the current range anew. Range completion leaves ordinary initial/head/reconcile checkpoints and existing memberships intact. Collection edits during scanning affect the observed sequence.
+
+Terminal stderr shows scanned/selected artwork counts while positioning. JSON adds `range: {offset, limit, tail, scans}`; each visibility has cumulative `phase` (`scanning`, `embedding`, `complete`), `scanned`, `selected`, `matched` and `reused_pages`. Range progress is separate from `bookmarks.scans`, which reports ordinary scan progress; range runs leave that map empty. `index` remains the shared index total, and `embedded` counts pages computed in this invocation. `vector status --json` exposes unfinished range checkpoints under `ranges`.
 
 Public and private lists each have one worker sharing an account client. Each list follows its upstream cursor sequentially. After at most 100 list pages combined, the command embeds pending pages serially and continues with the next batch. One coordinator commits each page's metadata, memberships and checkpoint atomically. Initial scans, head checks and reconciliation have separate per-account/per-visibility checkpoints; Ctrl+C preserves committed work. Invalid cursors restart that phase while reusing valid vectors. Older indexes migrate transactionally, preserving existing records, vectors and usable checkpoints.
 
@@ -597,6 +605,9 @@ Text uses ranked artwork rows. Piped output defaults to canonical NDJSON records
 pixiv vector sync
 pixiv vector sync --restrict private --rating sfw
 pixiv vector sync --reconcile
+pixiv vector sync --restrict public --limit 100
+pixiv vector sync --restrict private --offset 500 --limit 10
+pixiv vector sync --tail 10
 pixiv vector add 123456 https://www.pixiv.net/artworks/234567
 pixiv vector search "a rainy city"
 pixiv vector search ./reference.png --limit 5 --ndjson | pixiv detail

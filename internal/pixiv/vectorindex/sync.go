@@ -31,24 +31,28 @@ type ClientOpener func(context.Context) (accountID int64, client *pixiv.Client, 
 
 // SyncOptions 指定当前向量身份、模型和不带记录回调的账号 client。
 type SyncOptions struct {
-	Model      string
-	Embedder   Embedder
-	OpenClient ClientOpener
-	ProbeImage []byte
-	Progress   func(done, total int) error
+	Model        string
+	Embedder     Embedder
+	OpenClient   ClientOpener
+	ProbeImage   []byte
+	Progress     func(done, total int) error
+	ScanProgress func(scope string, progress RangeProgress) error // 每页持久化后由协调者调用。
 	// Restrict 选择收藏范围；有效筛选同时限制计算，零值计算共享索引全部待算页。
-	Restrict  string
-	Filter    searchfilter.Filter
-	Reconcile bool
-	accountID int64
-	artworkID string
-	headOnly  bool
-	deadline  time.Time
+	Restrict     string
+	Filter       searchfilter.Filter
+	Reconcile    bool
+	Range        *Range // nil 沿用普通同步；非 nil 仅计算选区内的待算页。
+	accountID    int64
+	artworkID    string
+	headOnly     bool
+	deadline     time.Time
+	selectionKey string
 }
 
 // SyncReport 保留已持久化的进度；Stopped 非空时调用方仍须返回原错误。
 type SyncReport struct {
-	Model     string `json:"model"`
+	Range     *RangeReport `json:"range,omitempty"`
+	Model     string       `json:"model"`
 	Bookmarks struct {
 		Checked     int                         `json:"checked"`
 		New         int                         `json:"new"`
@@ -80,7 +84,11 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 	defer func() {
 		report.Bookmarks.Scans = make(map[string]BookmarkProgress)
 		for _, scan := range scans {
-			report.Bookmarks.Scans[string(scan.scope)] = BookmarkProgress{string(scan.phase), scan.state.Complete}
+			if scan.selection != nil {
+				report.Range.Scans[string(scan.scope)] = scan.selection.Progress
+			} else {
+				report.Bookmarks.Scans[string(scan.scope)] = BookmarkProgress{string(scan.phase), scan.state.Complete}
+			}
 		}
 		var countErr error
 		report.Index, countErr = s.Counts(context.WithoutCancel(ctx), options.Model)
@@ -108,12 +116,20 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 		}
 	}()
 	options.accountID = accountID
-	scans, err = s.prepareScans(ctx, accountID, options)
+	if options.Range != nil {
+		report.Range = &RangeReport{Range: *options.Range, Scans: map[string]RangeProgress{}}
+		scans, err = s.prepareRangeScans(ctx, accountID, options)
+		if err == nil {
+			options.selectionKey = scans[0].selection.Key
+		}
+	} else {
+		scans, err = s.prepareScans(ctx, accountID, options)
+	}
 	if err != nil {
 		return report, err
 	}
 	for {
-		if err = s.scanBatch(ctx, client, accountID, scans, options.deadline, &report); err != nil {
+		if err = s.scanBatch(ctx, client, accountID, scans, options, &report); err != nil {
 			return report, err
 		}
 		complete := true
@@ -125,8 +141,20 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 				return report, err
 			}
 		}
+		if options.Range != nil && options.Range.Tail > 0 {
+			for _, scan := range scans {
+				if err = s.promoteTail(ctx, accountID, scan, options, &report); err != nil {
+					return report, err
+				}
+			}
+		}
 		if err = s.embedPages(ctx, client, options, &report); err != nil {
 			return report, err
+		}
+		if options.Range != nil {
+			if err = s.finishRangeBatch(ctx, scans, complete); err != nil {
+				return report, err
+			}
 		}
 		if complete {
 			return report, nil
@@ -187,7 +215,7 @@ type pendingPage struct {
 }
 
 func (s *Store) pendingPages(ctx context.Context, options SyncOptions) (pages []pendingPage, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at,a.record FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL AND (?='' OR p.artwork_id=?) AND (?=0 OR EXISTS(SELECT 1 FROM bookmark b WHERE b.account_id=? AND b.artwork_id=a.id AND b.restrict IN ('public','private') AND (? IN ('','all') OR b.restrict=?)))`, options.Model, options.artworkID, options.artworkID, options.scoped(), options.accountID, options.Restrict, options.Restrict)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at,a.record FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL AND (?='' OR p.artwork_id=?) AND (?=0 OR EXISTS(SELECT 1 FROM bookmark b WHERE b.account_id=? AND b.artwork_id=a.id AND b.restrict IN ('public','private') AND (? IN ('','all') OR b.restrict=?))) AND (?='' OR EXISTS(SELECT 1 FROM sync_selection c WHERE c.task=? AND c.artwork_id=p.artwork_id AND c.matched=1))`, options.Model, options.artworkID, options.artworkID, options.scoped(), options.accountID, options.Restrict, options.Restrict, options.selectionKey, options.selectionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +246,7 @@ func (s *Store) pendingPages(ctx context.Context, options SyncOptions) (pages []
 }
 
 func (o SyncOptions) scoped() bool {
-	return o.Restrict != "" && o.Restrict != "all" || o.Filter.Rating != "" && o.Filter.Rating != searchfilter.RatingAll || o.Filter.ContentType != "" && o.Filter.ContentType != searchfilter.ContentTypeAll
+	return o.Range != nil || o.Restrict != "" && o.Restrict != "all" || o.Filter.Rating != "" && o.Filter.Rating != searchfilter.RatingAll || o.Filter.ContentType != "" && o.Filter.ContentType != searchfilter.ContentTypeAll
 }
 
 func (s *Store) embedPages(ctx context.Context, client *pixiv.Client, options SyncOptions, report *SyncReport) error {
