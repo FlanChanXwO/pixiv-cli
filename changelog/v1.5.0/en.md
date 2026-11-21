@@ -11,3 +11,5 @@
 - Resume a range sync by repeating the same command after interruption. Completed visibility scopes and valid vectors are reused; ordinary sync checkpoints and work outside the selection remain available. Terminal output shows range progress, sync JSON adds `range`, and `vector status --json` exposes unfinished tasks under `ranges`. ([#305](https://github.com/FlanChanXwO/pixiv-cli/pull/305))
 
 **Full Changelog:** [v1.4.0...v1.5.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.4.0...v1.5.0)
+
+<!-- internal: [#306](https://github.com/FlanChanXwO/pixiv-cli/pull/306) -->

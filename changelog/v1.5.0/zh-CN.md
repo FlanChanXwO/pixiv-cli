@@ -11,3 +11,5 @@
 - 范围同步中断后重跑相同命令即可续跑，复用已完成的可见性范围和有效向量，并保留普通同步断点及选区外的待算任务。终端显示范围进度，sync JSON 新增 `range`，`vector status --json` 通过 `ranges` 展示未完成任务。 ([#305](https://github.com/FlanChanXwO/pixiv-cli/pull/305))
 
 **完整变更：** [v1.4.0...v1.5.0](https://github.com/FlanChanXwO/pixiv-cli/compare/v1.4.0...v1.5.0)
+
+<!-- internal: [#306](https://github.com/FlanChanXwO/pixiv-cli/pull/306) -->
