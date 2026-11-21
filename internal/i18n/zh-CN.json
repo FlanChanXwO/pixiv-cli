@@ -785,5 +785,21 @@
   "error.flag_value_required": "选项需要一个参数：--%s",
   "error.flag_invalid_value": "参数 %q 对选项 %q 无效：%s",
   "error.flag_invalid_syntax": "选项语法错误：%s",
-  "error.vector_operation_canceled": "已取消"
+  "error.vector_operation_canceled": "已取消",
+  "help.vector_add": "刷新并入库一个或多个作品",
+  "flag.vector_restrict": "扫描的收藏可见性：public、private、all",
+  "flag.vector_reconcile": "完整扫描所选收藏范围并清理已移除的收藏关系",
+  "error.vector_restrict": "restrict 必须为 public、private 或 all",
+  "error.vector_initial_sync_required": "向量索引为空且首次收藏扫描尚未完成；请执行 pixiv vector sync",
+  "error.vector_artwork_unavailable": "作品 %d 已失效或无法访问；未创建索引记录",
+  "error.vector_input_line": "vector add 输入第 %d 行：%w",
+  "error.vector_image_load_w": "加载查询图片失败：%w",
+  "error.vector_add_input_required": "请提供作品 ID、URL 或通过标准输入提供作品 NDJSON",
+  "output.vector_scan_summary": "已记录：%d；列表页：%d；不可用收藏：%d；已移除收藏关系：%d\n",
+  "output.vector_scan_state": "%s收藏：%s（%s）\n",
+  "vector.scan_initial": "首次扫描",
+  "vector.scan_head": "头部检查",
+  "vector.scan_reconcile": "完整对账",
+  "vector.scan_complete": "已完成",
+  "vector.scan_incomplete": "尚未完成；可继续执行 vector sync"
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
 	"github.com/FlanChanXwO/pixiv-cli/sdk"
 	"github.com/FlanChanXwO/pixiv-cli/sdk/pixiv"
 )
@@ -34,18 +36,29 @@ type SyncOptions struct {
 	OpenClient ClientOpener
 	ProbeImage []byte
 	Progress   func(done, total int) error
-	headOnly   bool
-	deadline   time.Time
+	// Restrict 选择收藏范围；有效筛选同时限制计算，零值计算共享索引全部待算页。
+	Restrict  string
+	Filter    searchfilter.Filter
+	Reconcile bool
+	accountID int64
+	artworkID string
+	headOnly  bool
+	deadline  time.Time
 }
 
 // SyncReport 保留已持久化的进度；Stopped 非空时调用方仍须返回原错误。
 type SyncReport struct {
 	Model     string `json:"model"`
 	Bookmarks struct {
-		Checked int `json:"checked"`
-		New     int `json:"new"`
+		Checked     int                         `json:"checked"`
+		New         int                         `json:"new"`
+		Pages       int                         `json:"pages"`
+		Unavailable int                         `json:"unavailable"`
+		Removed     int                         `json:"removed"`
+		Scans       map[string]BookmarkProgress `json:"scans"`
 	} `json:"bookmarks"`
 	MergeReport
+	Recorded    int     `json:"recorded"`
 	Embedded    int     `json:"embedded"`
 	Unavailable int     `json:"unavailable"`
 	Failed      int     `json:"failed"`
@@ -54,10 +67,21 @@ type SyncReport struct {
 	timeLimit   bool
 }
 
-// Sync 合并记录、续读收藏并逐页提交结果；调用方须持有同步锁。
+// BookmarkProgress 描述所选收藏范围的扫描阶段与完成状态。
+type BookmarkProgress struct {
+	Phase    string `json:"phase"`
+	Complete bool   `json:"complete"`
+}
+
+// Sync 合并记录，并在每批收藏页提交后计算向量；调用方须持有同步锁。
 func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncReport, err error) {
 	report.Model = options.Model
+	var scans []*bookmarkScan
 	defer func() {
+		report.Bookmarks.Scans = make(map[string]BookmarkProgress)
+		for _, scan := range scans {
+			report.Bookmarks.Scans[string(scan.scope)] = BookmarkProgress{string(scan.phase), scan.state.Complete}
+		}
 		var countErr error
 		report.Index, countErr = s.Counts(context.WithoutCancel(ctx), options.Model)
 		err = errors.Join(err, countErr)
@@ -66,7 +90,6 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 			report.Stopped = &code
 		}
 	}()
-	// 1. 先恢复本地记录，账号不可用时仍保留已合并的数据。
 	report.MergeReport, err = s.Merge(ctx)
 	if err != nil {
 		return report, err
@@ -74,38 +97,54 @@ func (s *Store) Sync(ctx context.Context, options SyncOptions) (report SyncRepor
 	if options.headOnly {
 		options.deadline = time.Now().Add(catchUpBudget)
 	}
-	// 2. 固定账号并持有操作通道，公开与私密分别续读。
 	accountID, client, closeClient, err := options.OpenClient(ctx)
 	if err != nil {
 		return report, err
 	}
 	defer func() { err = errors.Join(err, closeClient()) }()
-	read, err := s.bookmarksRead(ctx, accountID)
+	defer func() {
+		if errors.Is(err, errTimeLimit) {
+			report.timeLimit, err = true, nil
+		}
+	}()
+	options.accountID = accountID
+	scans, err = s.prepareScans(ctx, accountID, options)
 	if err != nil {
 		return report, err
 	}
-	for _, scope := range []pixiv.Restrict{pixiv.RestrictPublic, pixiv.RestrictPrivate} {
-		if options.headOnly && !read {
-			break
-		}
-		if err = s.syncBookmarks(ctx, client, accountID, scope, options.deadline, &report); err != nil {
-			if errors.Is(err, errTimeLimit) {
-				report.timeLimit = true
-				return report, nil
-			}
+	for {
+		if err = s.scanBatch(ctx, client, accountID, scans, options.deadline, &report); err != nil {
 			return report, err
 		}
+		complete := true
+		for _, scan := range scans {
+			complete = complete && scan.state.Complete
+		}
+		if complete && options.Reconcile {
+			if err = s.finishReconcile(ctx, accountID, scans, &report); err != nil {
+				return report, err
+			}
+		}
+		if err = s.embedPages(ctx, client, options, &report); err != nil {
+			return report, err
+		}
+		if complete {
+			return report, nil
+		}
 	}
-	// 3. 逐页提交；一次失败保留此前的处理结果。
-	err = s.embedPages(ctx, client, options, &report)
-	if errors.Is(err, errTimeLimit) {
-		report.timeLimit, err = true, nil
-	}
-	return report, err
 }
+
+// embeddingError 保留模型错误链，区分云端模型与 Pixiv 的限流。
+type embeddingError struct{ error }
+
+func (e *embeddingError) Unwrap() error { return e.error }
 
 // ErrorCode 给同步摘要提供稳定原因，不包含图片地址或上游正文。
 func ErrorCode(err error) string {
+	var modelError *embeddingError
+	if errors.As(err, &modelError) && httpStatus(modelError.error) == http.StatusTooManyRequests {
+		return "embedding_rate_limited"
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return "canceled"
 	}
@@ -147,8 +186,8 @@ type pendingPage struct {
 	at    time.Time
 }
 
-func (s *Store) pendingPages(ctx context.Context, model string) (pages []pendingPage, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL`, model)
+func (s *Store) pendingPages(ctx context.Context, options SyncOptions) (pages []pendingPage, err error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at,a.record FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL AND (?='' OR p.artwork_id=?) AND (?=0 OR EXISTS(SELECT 1 FROM bookmark b WHERE b.account_id=? AND b.artwork_id=a.id AND (? IN ('','all') OR b.restrict=?)))`, options.Model, options.artworkID, options.artworkID, options.scoped(), options.accountID, options.Restrict, options.Restrict)
 	if err != nil {
 		return nil, err
 	}
@@ -156,24 +195,39 @@ func (s *Store) pendingPages(ctx context.Context, model string) (pages []pending
 	for rows.Next() {
 		var p pendingPage
 		var at string
-		if err = rows.Scan(&p.id, &p.index, &p.url, &at); err != nil {
+		var body []byte
+		if err = rows.Scan(&p.id, &p.index, &p.url, &at, &body); err != nil {
 			return nil, err
 		}
 		if p.at, err = time.Parse(time.RFC3339Nano, at); err != nil {
 			return nil, fmt.Errorf("invalid vector record timestamp: %w", err)
 		}
-		pages = append(pages, p)
+		var snapshot struct {
+			ContentType string `json:"content_type"`
+			XRestrict   int    `json:"x_restrict"`
+		}
+		if err = json.Unmarshal(body, &snapshot); err != nil {
+			return nil, err
+		}
+		if options.Filter.Matches(snapshot.XRestrict, snapshot.ContentType) {
+			pages = append(pages, p)
+		}
 	}
 	sort.SliceStable(pages, func(i, j int) bool { return pages[i].at.After(pages[j].at) })
 	return pages, rows.Err()
 }
 
+func (o SyncOptions) scoped() bool {
+	return o.Restrict != "" && o.Restrict != "all" || o.Filter.Rating != "" && o.Filter.Rating != searchfilter.RatingAll || o.Filter.ContentType != "" && o.Filter.ContentType != searchfilter.ContentTypeAll
+}
+
 func (s *Store) embedPages(ctx context.Context, client *pixiv.Client, options SyncOptions, report *SyncReport) error {
-	pages, err := s.pendingPages(ctx, options.Model)
+	pages, err := s.pendingPages(ctx, options)
 	if err != nil {
 		return err
 	}
 	probed := false
+	total := report.Embedded + report.Unavailable + report.Failed + len(pages)
 	for _, p := range pages {
 		if !options.deadline.IsZero() && !time.Now().Before(options.deadline) {
 			return errTimeLimit
@@ -195,12 +249,12 @@ func (s *Store) embedPages(ctx context.Context, client *pixiv.Client, options Sy
 			if httpStatus(embedErr) == http.StatusBadRequest {
 				if !probed {
 					if _, err = options.Embedder.Image(ctx, options.ProbeImage); err != nil {
-						return err
+						return &embeddingError{err}
 					}
 					probed = true
 				}
 			} else if embedErr != nil && !errors.Is(embedErr, image.ErrFormat) {
-				return embedErr
+				return &embeddingError{embedErr}
 			}
 			if embedErr != nil {
 				if _, err = s.db.ExecContext(ctx, `INSERT INTO embedding(artwork_id,page_index,model,failure) VALUES(?,?,?,'unsupported_image')`, p.id, p.index, options.Model); err != nil {
@@ -215,7 +269,7 @@ func (s *Store) embedPages(ctx context.Context, client *pixiv.Client, options Sy
 			}
 		}
 		if options.Progress != nil {
-			if err = options.Progress(report.Embedded+report.Unavailable+report.Failed, len(pages)); err != nil {
+			if err = options.Progress(report.Embedded+report.Unavailable+report.Failed, total); err != nil {
 				return err
 			}
 		}

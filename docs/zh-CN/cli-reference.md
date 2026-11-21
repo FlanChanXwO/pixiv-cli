@@ -557,8 +557,9 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 | 命令 | 行为 |
 | --- | --- |
 | `pixiv vector setup [--model NAME] [--device cpu\|gpu] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认记录、下载或上传范围，试算文字与图片后保存配置 |
-| `pixiv vector sync [--json] [--proxy URL\|--no-proxy]` | 续读当前账号的公开/私密收藏，合并记录并计算待算页面 |
-| `pixiv vector search [QUERY] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 按文字或显式指定的图片搜索本机索引 |
+| `pixiv vector sync [--restrict public\|private\|all] [--content-type TYPE] [--rating RATING] [--reconcile] [--json] [--proxy URL\|--no-proxy]` | 续读所选收藏范围，合并记录并计算待算页面；各筛选默认 `all` |
+| `pixiv vector add [ID_OR_URL...] [--json] [--proxy URL\|--no-proxy]` | 刷新指定作品并入库；省略目标时从 stdin 读取作品 NDJSON |
+| `pixiv vector search [INPUT] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 自动识别文字、本地图片或 HTTP(S) 图片 URL |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
 | `pixiv vector clear (--unused\|--index\|--all) [--yes]` | 删除不用的模型、运行库与向量，全部记录和向量，或整个向量目录及配置 |
 
@@ -574,17 +575,31 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 
 云端索引会上传作品缩略图（含私密收藏与 R18）及查询内容，并可能按量计费。setup 在确认前展示目标服务和待算页数。模型请求使用全局代理或本次命令覆盖值。
 
-sync 固定使用当前账号，分别保存各账号、各可见性的收藏成员关系与续读位置。检查开头时读到整批已知收藏即停止；连续取消并重新收藏整批旧作品可能遮住后面的新收藏。页面逐个提交，Ctrl+C 保留已完成结果。优先下载派生的 1200 像素图片，派生失败或 404 时读原图。原图 404 标记页面不可用；图片被服务拒绝后，受控试算通过才标记为单页失败。认证、403、429、服务或网络错误会停止本次运行，不自动重试。文本/JSON 摘要保留中止原因和部分进度，中止时退出码为 1。
+`vector sync` 固定使用当前账号。默认扫描公开和私密收藏，并计算共享索引中的全部待算页面。首次遍历完整列表，以后检查头部，遇到整页已知收藏关系后停止。`--restrict` 选择可见性。`--content-type` 接受 `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；`--rating` 接受 `all`、`sfw`、`r18`、`r18g`、`mature`，取值与作品搜索一致。有效筛选将本次计算限定为当前账号所选可见性中匹配的收藏；所选列表中全部有效作品的元数据和收藏关系仍完整记录，后续无筛选同步或搜索可以补算跳过的页面。
 
-搜索接受一条文字查询或一个 `--image` 来源。省略文字时读取完整 stdin。图片复用反向搜图的来源加载器，支持普通文件和 HTTP(S) URL；当前云端模型会收到查询内容。每个作品取最高分页面，按余弦分数降序、数值作品 ID 降序排序。分数属于当前模型空间。默认返回 30 条，`--limit 0` 返回全部，`--page` 要求显式正数 limit。
+公开、私密列表各用一个 worker，共享固定账号 client；单个列表按上游游标依次翻页。合计最多读取 100 个列表页后，串行计算待算向量，再继续下一批。一名协调者在同一事务中提交每页元数据、收藏关系与断点。首次扫描、头部检查、完整对账分别按账号及可见性保存断点，Ctrl+C 保留已提交结果。游标失效时重扫对应阶段，继续复用有效向量。旧索引通过事务迁移，保留记录、向量和可用断点。
 
-搜索先合并记录，再用最多 30 秒检查收藏开头与计算待算页；到时完成当前页或当前收藏批次后停止。当前账号的公开、私密收藏均已通过 `vector sync` 完整读过后，搜索才检查收藏开头。同步锁忙时直接使用已保存索引；`--no-sync` 跳过补算。已有向量可在未登录时搜索。索引覆盖本机多个账号，可能包含 R18 以及当前账号无法访问的作品。
+`--reconcile` 完整遍历所选列表，发现中段取消收藏、失效与公开／私密移动。所有所选列表完整成功后才清理旧关系；中断、认证失败和限流均保留尚未完成对账的关系。作品快照和向量继续供本机各账号搜索。快速头部检查可能遗漏中段变化，包括整页重新收藏的旧作品遮住新增作品；扫描期间的收藏变化通过后续完整对账收敛。
+
+Pixiv 请求在所有 worker 和批次间共享最小间隔，取 0.2 秒与用户配置中的较大值。HTTP 429 带有效 `Retry-After` 时共享冷却，沿用 SDK 的单次读取重试；再次 429 或等待时间无效／缺失时以 `rate_limited` 停止。云端向量服务 429 单独以 `embedding_rate_limited` 停止，保留此前进度。
+
+优先下载派生的 1200 像素图片，派生失败或 404 时读原图。原图 404 标记页面不可用；图片被服务拒绝后，受控试算通过才标记为单页失败。认证、403、服务或网络错误会停止本次运行。列表中的不可用作品跳过并计数。文本／JSON 摘要区分已记录作品、待计算和已入库页面、列表页、不可用收藏、已移除关系，以及各范围的扫描阶段与完成状态。中止时保留原因及部分进度，退出码为 1。
+
+`vector add` 对同次输入去重，逐项获取最新详情并立即入库，复用有效向量。首个输入、上游或模型错误会停止本次操作，保留此前有效结果。不存在或不可用的目标返回明确错误，保留索引原状，不创建占位作品、待算任务或完成标记。无位置参数时读取标准作品 NDJSON，例如 `pixiv search cat --limit 5 --ndjson | pixiv vector add`。
+
+搜索接受一个输入，自动识别文字、本地图片或 HTTP(S) 图片 URL；省略时读取完整 stdin。图片在推理前解码并校验实际内容。普通查询与非图片文件同名时保留文字含义；显式路径、图片文件名和 URL 加载或内容校验失败时报告错误。保留 `--image` 显式入口，图片支持 JPEG/PNG/GIF。标签名、角色名和外观描述均作为普通文字查询，按图片向量相似度排序。当前云端模型会收到查询内容。每个作品取最高分页面，按余弦分数降序、数值作品 ID 降序排序。分数属于当前模型空间。默认返回 30 条，`--limit 0` 返回全部，`--page` 要求显式正数 limit。
+
+搜索先合并记录，再用最多 30 秒检查收藏开头与计算待算页；到时完成在途列表页或当前计算页后停止。当前账号的公开、私密收藏均已通过 `vector sync` 完整读过后，搜索才检查收藏开头。同步锁忙时直接使用已保存索引；`--no-sync` 跳过补算。当前模型索引为空且首次收藏扫描尚未完成时，提示执行 `pixiv vector sync`。已有向量可在未登录时搜索。索引覆盖本机多个账号，可能包含 R18 以及当前账号无法访问的作品。
 
 文本输出带排名的作品行。输出到管道默认使用规范 NDJSON Record，附加 `match: {score, page_index}`（页面从零开始），可以接 `pixiv detail` 或 `pixiv download`。`--json` 返回 `records`、标准 `pagination` 与 `index`；后者包含 `model`、已算 `pages`、`pending`、`bookmarks_read` 和 `catch_up`（`complete`、`time_limit`、`busy`、`skipped`、`stopped`），中止时附固定原因代码 `error`。存在待算页时 stderr 提示。补算失败后搜索成功仍退出 0；当前模型没有向量时返回补算原错误。查询、取消与索引错误以非零码退出。快照可能过时，可将记录接到 `pixiv detail` 更新。
 
 ```bash
-pixiv vector search "雨中的城市" --no-sync --json
-pixiv vector search --image ./reference.png --limit 5 --ndjson | pixiv detail
+pixiv vector sync
+pixiv vector sync --restrict private --rating sfw
+pixiv vector sync --reconcile
+pixiv vector add 123456 https://www.pixiv.net/artworks/234567
+pixiv vector search "雨中的城市"
+pixiv vector search ./reference.png --limit 5 --ndjson | pixiv detail
 ```
 
 本地模型使用固定 Hugging Face revision 的 FP32 图片/文字 ONNX 与 SentencePiece 分词器，每个模型约 1.5 GB；ONNX Runtime 1.32.0 来自官方 NuGet。安装支持按字节区间续传，核对固定 SHA-256，所有文件成功后才发布带版本目录；已完成目录直接复用。setup 用文字与受控 PNG 试算后保存，失败保留旧配置和可续传文件。本地 setup 不接受 `--base-url`。图片支持 JPEG/PNG/GIF；文字先转小写，添加 EOS 并右侧补齐至 64 个词元，超长报错并保留原输入。会话按需加载、操作结束释放，原生库保留至进程退出。

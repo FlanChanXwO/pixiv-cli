@@ -29,7 +29,7 @@ const (
 	syncLockName  = "vector-sync"
 	inboxLockName = "vector-inbox"
 	applicationID = 0x50585649
-	schemaVersion = 1
+	schemaVersion = 2
 )
 
 // Store 持有向量索引；写入方须先取得 [TrySyncLock]，读取方可并行打开。
@@ -71,7 +71,7 @@ func Open(ctx context.Context, root string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) initialize(ctx context.Context) error {
+func (s *Store) initialize(ctx context.Context) (err error) {
 	var id, version, tables int
 	if err := s.db.QueryRowContext(ctx, `PRAGMA application_id`).Scan(&id); err != nil {
 		return err
@@ -92,14 +92,37 @@ func (s *Store) initialize(ctx context.Context) error {
    CREATE TABLE embedding(artwork_id TEXT NOT NULL, page_index INTEGER NOT NULL, model TEXT NOT NULL, vector BLOB, failure TEXT NOT NULL DEFAULT '', PRIMARY KEY(artwork_id,page_index,model), FOREIGN KEY(artwork_id,page_index) REFERENCES page(artwork_id,page_index) ON DELETE CASCADE);
    CREATE TABLE bookmark(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, artwork_id TEXT NOT NULL, PRIMARY KEY(account_id,restrict,artwork_id));
    CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+   CREATE TABLE scan_seen(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, phase TEXT NOT NULL, artwork_id TEXT NOT NULL, was_known INTEGER NOT NULL, PRIMARY KEY(account_id,restrict,phase,artwork_id));
    PRAGMA application_id=%d; PRAGMA user_version=%d; COMMIT;`, applicationID, schemaVersion))
 		if err != nil {
 			return err
 		}
-	} else if id != applicationID || version != schemaVersion {
+	} else if id != applicationID || version < 1 || version > schemaVersion {
 		return i18n.Errorf("error.unsupported_vector_index_application_d_version_d", id, version)
 	}
-	_, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
+	if id == applicationID && version == 1 {
+		// 事务同时更新结构和版本；失败时原记录、向量和旧进度保持可用。
+		var tx *sql.Tx
+		tx, err = s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if rollback := tx.Rollback(); !errors.Is(rollback, sql.ErrTxDone) {
+				err = errors.Join(err, rollback)
+			}
+		}()
+		if _, err = tx.ExecContext(ctx, `CREATE TABLE scan_seen(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, phase TEXT NOT NULL, artwork_id TEXT NOT NULL, was_known INTEGER NOT NULL, PRIMARY KEY(account_id,restrict,phase,artwork_id))`); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", schemaVersion)); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
 	return err
 }
 

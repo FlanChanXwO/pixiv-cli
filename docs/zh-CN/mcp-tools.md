@@ -182,7 +182,7 @@ flowchart LR
 
 调用会写本机索引；云端模型会上传缩略图与查询并可能计费。注解为 `readOnlyHint=false`、`destructiveHint=false`、`idempotentHint=false`、`openWorldHint=true`。setup、sync 与清理均通过 CLI 执行。
 
-失败保留结构化输出，设置 `isError=true` 与 `error`：`not_set_up`、`invalid_request`、反向搜图的来源错误代码、`text_too_long`、`unsupported_image`、`model_unavailable`、`index_unavailable`、`sync_failed`、`canceled` 或 `unknown`。零向量且补算失败时返回错误；已有索引可用时继续搜索，并在 `index` 保留补算错误。输出与日志隐藏输入、临时路径、key 与上游响应正文。
+失败保留结构化输出，设置 `isError=true` 与 `error`：`not_set_up`、`initial_sync_required`、`invalid_request`、反向搜图的来源错误代码、`text_too_long`、`unsupported_image`、`model_unavailable`、`index_unavailable`、`sync_failed`、`canceled` 或 `unknown`。索引为空且首次收藏扫描未完成时返回 `initial_sync_required` 并提示执行 `pixiv vector sync`。零向量且补算失败时返回错误；已有索引可用时继续搜索，并在 `index` 保留补算错误。输出与日志隐藏输入、临时路径、key 与上游响应正文。
 
 ## 反向搜图
 

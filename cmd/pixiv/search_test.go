@@ -41,7 +41,7 @@ func TestSearchOutputContract(t *testing.T) {
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
 
-	server := httptest.NewUnstartedServer(http.HandlerFunc(pixivHandler))
+	server := httptest.NewUnstartedServer(http.HandlerFunc(pixivVectorHandler))
 	server.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}}
 	server.StartTLS()
 	t.Cleanup(server.Close)
@@ -59,6 +59,7 @@ func TestSearchOutputContract(t *testing.T) {
 	assertFanboxPropagatesWriteError(t, proxy.URL)
 	assertAdditionalEscaping(t, proxy.URL)
 	assertFanboxDownload(t, proxy.URL)
+	assertVectorAddPipeline(t, proxy.URL)
 }
 
 func assertSearchOutput(t *testing.T, proxyURL string) {

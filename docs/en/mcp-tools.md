@@ -182,7 +182,7 @@ The output is `{records, pagination, index}`. Resource-free artwork snapshots in
 
 Calls may write the index and upload thumbnails/queries to the configured cloud model with usage charges. Annotations are `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=true`. Setup, sync and clearing are CLI operations.
 
-Failures preserve structured output with `isError=true` and an `error` code: `not_set_up`, `invalid_request`, source error codes from reverse image search, `text_too_long`, `unsupported_image`, `model_unavailable`, `index_unavailable`, `sync_failed`, `canceled` or `unknown`. Zero vectors plus a catch-up failure returns an error; a usable older index can still return results with the catch-up error in `index`. Inputs, temporary paths, keys and upstream response bodies stay out of results and logs.
+Failures preserve structured output with `isError=true` and an `error` code: `not_set_up`, `initial_sync_required`, `invalid_request`, source error codes from reverse image search, `text_too_long`, `unsupported_image`, `model_unavailable`, `index_unavailable`, `sync_failed`, `canceled` or `unknown`. An empty index with an incomplete initial scan returns `initial_sync_required` and asks you to run `pixiv vector sync`. Zero vectors plus a catch-up failure returns an error; a usable older index can still return results with the catch-up error in `index`. Inputs, temporary paths, keys and upstream response bodies stay out of results and logs.
 
 ## Reverse image search
 

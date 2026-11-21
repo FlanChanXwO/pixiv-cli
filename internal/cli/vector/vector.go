@@ -1,4 +1,4 @@
-// Package vector 提供向量索引的配置、同步、搜索、状态和清理命令。
+// Package vector 提供向量索引的配置、同步、添加、搜索、状态和清理命令。
 //
 // [New] 构造命令树；模型与索引操作由各自领域包负责。
 package vector
@@ -22,7 +22,7 @@ func New(env environment.Env, store config.Store, open OpenClient, search Search
 	cmd := &cobra.Command{Use: "vector", Short: "help.search_artwork_by_image_content", RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
 	environment.Bind(cmd, environment.Execution{})
 	env.BindNoInput(cmd)
-	cmd.AddCommand(setupCommand(env, store), syncCommand(env, store, open), searchCommand(env, search), statusCommand(env, store), clearCommand(env, store))
+	cmd.AddCommand(setupCommand(env, store), syncCommand(env, store, open), addCommand(env, store, open), searchCommand(env, search), statusCommand(env, store), clearCommand(env, store))
 	return cmd
 }
 

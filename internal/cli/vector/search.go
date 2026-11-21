@@ -24,14 +24,14 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 	var source string
 	var noSync, ndjson bool
 	var limit, page int
-	cmd := &cobra.Command{Use: "search [QUERY]", Short: "help.search_the_local_artwork_vector_index", Args: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "search [INPUT]", Short: "help.search_the_local_artwork_vector_index", Args: func(cmd *cobra.Command, args []string) error {
 		if cmd.Flags().Changed("image") {
 			if strings.TrimSpace(source) == "" {
 				return env.WrapUsage(i18n.Errorf("error.image_requires_a_source"))
 			}
 			return env.ExactArgs(0, "pixiv vector search --image PATH_OR_URL")(cmd, args)
 		}
-		if err := env.ExactArgs(1, "pixiv vector search QUERY")(cmd, args); err != nil {
+		if err := env.ExactArgs(1, "pixiv vector search INPUT")(cmd, args); err != nil {
 			return err
 		}
 		if strings.TrimSpace(args[0]) == "" {
@@ -41,7 +41,15 @@ func searchCommand(env environment.Env, search SearchFunc) *cobra.Command {
 	}, RunE: func(cmd *cobra.Command, args []string) error {
 		input := vectorindex.SearchInput{NoSync: noSync}
 		if len(args) > 0 {
-			input.Query = args[0]
+			isImage, err := vectorindex.ImageSource(args[0])
+			if err != nil {
+				return i18n.Errorf("error.vector_image_load_w", err)
+			}
+			if isImage {
+				source = args[0]
+			} else {
+				input.Query = args[0]
+			}
 		}
 		if cmd.Flags().Changed("limit") {
 			input.Limit = &limit
