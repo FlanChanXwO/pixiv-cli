@@ -2,9 +2,11 @@ package main_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/cli"
 	"github.com/FlanChanXwO/pixiv-cli/internal/config"
@@ -123,4 +126,50 @@ func assertVectorAddPipeline(t *testing.T, proxy string) {
 	require.Zero(t, code, stderr)
 	require.Contains(t, stdout, `"recorded": 1`)
 	require.Contains(t, stdout, `"embedded": 0`)
+	assertVectorInputCancellation(t, proxy, input)
+}
+
+func assertVectorInputCancellation(t *testing.T, proxy, record string) {
+	t.Helper()
+	reader, writer := io.Pipe()
+	defer writer.Close()
+	source := &waitingInput{PipeReader: reader, waiting: make(chan struct{})}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan int, 1)
+	go func() {
+		done <- cli.Run(ctx, []string{"pixiv", "vector", "add", "--json", "--proxy", proxy}, source, io.Discard, io.Discard)
+	}()
+	_, err := io.WriteString(writer, record)
+	require.NoError(t, err)
+	select {
+	case <-source.waiting:
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not request the next record")
+	}
+	cancel()
+	select {
+	case code := <-done:
+		require.NotZero(t, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation did not release the input")
+	}
+	release, acquired, err := vectorindex.TrySyncLock(filepath.Join(os.Getenv("HOME"), config.AppDataDirName))
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.NoError(t, release())
+}
+
+type waitingInput struct {
+	*io.PipeReader
+	waiting chan struct{}
+	reads   int
+}
+
+func (r *waitingInput) Read(p []byte) (int, error) {
+	r.reads++
+	if r.reads == 2 {
+		close(r.waiting)
+	}
+	return r.PipeReader.Read(p)
 }

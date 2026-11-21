@@ -106,6 +106,18 @@ func writeCommand(env environment.Env, store config.Store, open OpenClient, add 
 		var report vectorindex.SyncReport
 		var runErr error
 		if add {
+			if len(args) == 0 {
+				if source, ok := env.In.(io.Closer); ok {
+					// 取消时关闭输入，唤醒等待下一行的读取并释放同步锁。
+					closed := make(chan error, 1)
+					stop := context.AfterFunc(cmd.Context(), func() { closed <- source.Close() })
+					defer func() {
+						if !stop() {
+							err = errors.Join(err, <-closed)
+						}
+					}()
+				}
+			}
 			report, runErr = db.Add(cmd.Context(), artworkInputs(cmd.Context(), args, input.Reader(env.In)), syncOptions)
 		} else {
 			report, runErr = db.Sync(cmd.Context(), syncOptions)
@@ -177,6 +189,10 @@ func artworkInputs(ctx context.Context, args []string, input io.Reader) iter.Seq
 		count := 0
 		for line := 1; ; line++ {
 			body, err := reader.ReadBytes('\n')
+			if ctx.Err() != nil {
+				yield(0, errors.Join(ctx.Err(), err))
+				return
+			}
 			if err != nil && !errors.Is(err, io.EOF) {
 				yield(0, err)
 				return

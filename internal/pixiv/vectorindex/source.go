@@ -18,6 +18,13 @@ import (
 	"github.com/FlanChanXwO/pixiv-cli/internal/reversesearch"
 )
 
+// 与动图帧读取采用相同的 512 MiB 源数据／解码工作区预算；JPEG 按每像素 24 字节估算。
+const (
+	maxQueryImageBytes  = 512 * 1024 * 1024
+	maxQueryImagePixels = maxQueryImageBytes / 24
+	queryImageBlockEdge = 32
+)
+
 // ImageSource 识别 URL、显式图片路径和实际图片文件；普通同名文件保留文字含义。
 func ImageSource(value string) (bool, error) {
 	lower := strings.ToLower(value)
@@ -47,11 +54,15 @@ func ImageSource(value string) (bool, error) {
 	if err != nil {
 		return false, reversesearch.NewError(reversesearch.CodeSourceReadFailed, "could not read image source", err)
 	}
-	_, _, err = image.Decode(file)
+	config, _, decodeErr := image.DecodeConfig(io.LimitReader(file, maxQueryImageBytes))
+	err = decodeErr
+	if err == nil {
+		err = queryImageSize(config, info.Size())
+	}
 	if closeErr := file.Close(); closeErr != nil {
 		return false, reversesearch.NewError(reversesearch.CodeSourceReadFailed, "could not close image source", errors.Join(err, closeErr))
 	}
-	if err != nil && explicit {
+	if err != nil && (explicit || decodeErr == nil) {
 		return false, reversesearch.NewError(reversesearch.CodeInvalidSource, "image source has invalid or unsupported image content", err)
 	}
 	return err == nil, nil
@@ -108,6 +119,9 @@ func LoadImage(ctx context.Context, client *http.Client, source string) (data []
 		if !info.Mode().IsRegular() {
 			return nil, reversesearch.NewError(reversesearch.CodeSourceNotRegularFile, "image source must be a regular file", nil)
 		}
+		if info.Size() > maxQueryImageBytes {
+			return nil, reversesearch.NewError(reversesearch.CodeInvalidSource, "query image exceeds the 512 MiB source limit", nil)
+		}
 		file, err := os.Open(source)
 		if err != nil {
 			return nil, reversesearch.NewError(reversesearch.CodeSourceReadFailed, "could not read image source", err)
@@ -122,15 +136,40 @@ func LoadImage(ctx context.Context, client *http.Client, source string) (data []
 		}
 	}
 	defer func() { err = errors.Join(err, input.Close()) }()
-	data, err = io.ReadAll(input)
+	data, err = io.ReadAll(io.LimitReader(input, maxQueryImageBytes+1))
 	if err != nil {
 		return nil, reversesearch.NewError(reversesearch.CodeSourceReadFailed, "could not read image source", err)
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
+	if len(data) > maxQueryImageBytes {
+		return nil, reversesearch.NewError(reversesearch.CodeInvalidSource, "query image exceeds the 512 MiB source limit", nil)
+	}
+	config, _, decodeErr := image.DecodeConfig(bytes.NewReader(data))
+	if decodeErr != nil {
+		return nil, reversesearch.NewError(reversesearch.CodeInvalidSource, "image source has invalid or unsupported image content", decodeErr)
+	}
+	if err = queryImageSize(config, int64(len(data))); err != nil {
+		return nil, reversesearch.NewError(reversesearch.CodeInvalidSource, "query image exceeds the image allocation budget", err)
+	}
 	if _, _, err = image.Decode(bytes.NewReader(data)); err != nil {
 		return nil, reversesearch.NewError(reversesearch.CodeInvalidSource, "image source has invalid or unsupported image content", err)
 	}
 	return data, nil
+}
+
+func queryImageSize(config image.Config, sourceBytes int64) error {
+	if sourceBytes > maxQueryImageBytes {
+		return errors.New("query image exceeds the 512 MiB source limit")
+	}
+	if config.Width <= 0 || config.Height <= 0 {
+		return errors.New("query image dimensions must be positive")
+	}
+	w := (uint64(config.Width) + queryImageBlockEdge - 1) / queryImageBlockEdge * queryImageBlockEdge
+	h := (uint64(config.Height) + queryImageBlockEdge - 1) / queryImageBlockEdge * queryImageBlockEdge
+	if w > maxQueryImagePixels/h {
+		return errors.New("query image exceeds the 512 MiB decoded allocation budget")
+	}
+	return nil
 }

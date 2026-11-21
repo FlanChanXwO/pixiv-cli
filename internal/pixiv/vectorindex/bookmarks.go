@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -151,29 +152,29 @@ func (s *Store) commitBookmarkPage(ctx context.Context, id int64, scan *bookmark
 			err = errors.Join(err, rollback)
 		}
 	}()
-	allKnown, added, recorded, unavailable := true, 0, 0, 0
+	allKnown, added, recorded, unavailable := len(page.Items) > 0, 0, 0, 0
 	for _, a := range page.Items {
+		artworkID := strconv.FormatInt(a.ID, 10)
+		var known bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM bookmark WHERE account_id=? AND restrict=? AND artwork_id=?) AND NOT EXISTS(SELECT 1 FROM scan_seen WHERE account_id=? AND restrict=? AND phase IN ('head','reconcile') AND artwork_id=? AND was_known=0)`, id, string(scan.scope), artworkID, id, string(scan.scope), artworkID).Scan(&known); err != nil {
+			return err
+		}
+		allKnown = allKnown && known
+		if scan.phase != scanInitial {
+			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO scan_seen VALUES(?,?,?,?,?)`, id, string(scan.scope), string(scan.phase), artworkID, known); err != nil {
+				return err
+			}
+		}
 		value, ok, err := project(a, time.Now().UTC())
 		if err != nil {
 			return err
 		}
 		if !ok {
 			unavailable++
-			allKnown = false
 			continue
 		}
-		var known bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM bookmark WHERE account_id=? AND restrict=? AND artwork_id=?) AND NOT EXISTS(SELECT 1 FROM scan_seen WHERE account_id=? AND restrict=? AND phase=? AND artwork_id=? AND was_known=0)`, id, string(scan.scope), value.Record.ID(), id, string(scan.scope), string(scan.phase), value.Record.ID()).Scan(&known); err != nil {
-			return err
-		}
-		allKnown = allKnown && known
 		if err = putEntry(ctx, tx, value); err != nil {
 			return err
-		}
-		if scan.phase != scanInitial {
-			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO scan_seen VALUES(?,?,?,?,?)`, id, string(scan.scope), string(scan.phase), value.Record.ID(), known); err != nil {
-				return err
-			}
 		}
 		result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO bookmark VALUES(?,?,?)`, id, string(scan.scope), value.Record.ID())
 		if err != nil {

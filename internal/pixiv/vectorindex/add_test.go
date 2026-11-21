@@ -2,8 +2,10 @@ package vectorindex_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"iter"
+	"path/filepath"
 	"testing"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/pixiv/searchfilter"
@@ -90,4 +92,67 @@ func TestAddCanceledInputPreservesCompletedResult(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, report.Index.Artworks)
 	require.Equal(t, 1, report.Index.Pages)
+}
+
+func TestHeadDoesNotStopAtIncompleteReconcileMembership(t *testing.T) {
+	f, options := newBookmarkFixture(t)
+	store, err := vectorindex.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	defer store.Close()
+	options.Restrict = "public"
+	f.lists = map[string][]int{"public": {1}}
+	_, err = store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	f.lists["public"], f.fail, f.failOffset = []int{3, 2, 1}, true, 1
+	options.Reconcile = true
+	_, err = store.Sync(t.Context(), options)
+	require.Error(t, err)
+	f.fail, options.Reconcile = false, false
+	report, err := store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 3, report.Index.Artworks)
+}
+
+func TestReconcileKeepsReturnedUnavailableMembership(t *testing.T) {
+	f, options := newBookmarkFixture(t)
+	store, err := vectorindex.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	defer store.Close()
+	options.Restrict = "public"
+	f.lists = map[string][]int{"public": {1, 2}}
+	_, err = store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	f.invisible, options.Reconcile = 1, true
+	report, err := store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 1, report.Bookmarks.Unavailable)
+	require.Zero(t, report.Bookmarks.Removed)
+	options.Reconcile = false
+	report, err = store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 1, report.Bookmarks.Pages)
+}
+
+func TestInvalidHeadCursorRetainsUnconfirmedPrefix(t *testing.T) {
+	f, options := newBookmarkFixture(t)
+	root := t.TempDir()
+	store, err := vectorindex.Open(t.Context(), root)
+	require.NoError(t, err)
+	defer store.Close()
+	options.Restrict = "public"
+	f.lists = map[string][]int{"public": {1}}
+	_, err = store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	f.lists["public"], f.fail, f.failOffset = []int{3, 2, 1}, true, 1
+	_, err = store.Sync(t.Context(), options)
+	require.Error(t, err)
+	db, err := sql.Open("sqlite3", filepath.Join(vectorindex.Directory(root), "index.db"))
+	require.NoError(t, err)
+	_, err = db.Exec(`UPDATE state SET value='{"cursor":"!invalid!","complete":false}' WHERE key='bookmarks/11/public/head'`)
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	f.fail = false
+	report, err := store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 3, report.Index.Artworks)
 }

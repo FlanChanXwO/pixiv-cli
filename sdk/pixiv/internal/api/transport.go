@@ -34,6 +34,7 @@ func (p *pacingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			p.mu.Unlock()
 			break
 		}
+		// Release the mutex so in-flight responses can extend the shared cooldown.
 		p.mu.Unlock()
 		slog.LogAttrs(req.Context(), slog.LevelDebug, "Request pacing waited",
 			slog.String(AttrSDKOperation, ""), slog.Duration(AttrWait, wait))

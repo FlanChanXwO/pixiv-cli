@@ -103,26 +103,10 @@ func TestBookmarkHeadResumesAfterInterruption(t *testing.T) {
 	require.Equal(t, 5, report.Index.Artworks)
 }
 
-func TestBookmarkBatchesComputeBeforeContinuing(t *testing.T) {
-	f, options := newBookmarkFixture(t)
-	store, err := vectorindex.Open(t.Context(), t.TempDir())
-	require.NoError(t, err)
-	defer store.Close()
-	f.lists = map[string][]int{"private": {300}}
-	for id := 1; id <= 101; id++ {
-		f.lists["public"] = append(f.lists["public"], id)
-	}
-	report, err := store.Sync(t.Context(), options)
-	require.NoError(t, err)
-	require.Equal(t, 100, f.firstEmbedding)
-	require.Equal(t, 102, report.Bookmarks.Pages)
-	require.Equal(t, 102, report.Index.Pages)
-	require.True(t, report.Bookmarks.Scans["public"].Complete)
-	require.True(t, report.Bookmarks.Scans["private"].Complete)
-}
-
 type bookmarkFixture struct {
 	lists          map[string][]int
+	emptyHead      bool
+	invisible      int
 	fail           bool
 	failOffset     int
 	calls          []string
@@ -156,7 +140,15 @@ func (f *bookmarkFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if offset+1 < len(values) {
 			next = strconv.Quote(fmt.Sprintf("https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=11&restrict=%s&max_bookmark_id=%d", scope, offset+1))
 		}
-		fmt.Fprintf(w, `{"illusts":[%s],"next_url":%s}`, fixtureArtwork(values[offset]), next)
+		if f.emptyHead && offset == 0 {
+			fmt.Fprintf(w, `{"illusts":[],"next_url":%s}`, next)
+			return
+		}
+		body := fixtureArtwork(values[offset])
+		if values[offset] == f.invisible {
+			body = strings.TrimSuffix(body, "}") + `,"visible":false}`
+		}
+		fmt.Fprintf(w, `{"illusts":[%s],"next_url":%s}`, body, next)
 	case strings.Contains(r.URL.Path, "illust/detail"):
 		id, _ := strconv.Atoi(r.URL.Query().Get("illust_id"))
 		if id == 404 {

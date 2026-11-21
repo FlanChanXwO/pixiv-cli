@@ -69,6 +69,7 @@ func TestPacingSharesCooldownAndCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 	client, _ := api.NewHTTPClient(server.Client(), 30*time.Millisecond)
+	started := time.Now()
 	response, err := client.Get(server.URL + "/limited")
 	require.NoError(t, err)
 	require.NoError(t, response.Body.Close())
@@ -92,7 +93,7 @@ func TestPacingSharesCooldownAndCancellation(t *testing.T) {
 	workers.Wait()
 	require.Len(t, starts, 3)
 	require.GreaterOrEqual(t, starts[1].Sub(starts[0]), time.Second)
-	require.GreaterOrEqual(t, starts[2].Sub(starts[1]), 25*time.Millisecond)
+	require.GreaterOrEqual(t, starts[2].Sub(started), time.Second+30*time.Millisecond)
 }
 
 func TestReadRateLimitRetriesOnce(t *testing.T) {

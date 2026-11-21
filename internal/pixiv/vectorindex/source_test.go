@@ -1,6 +1,8 @@
 package vectorindex_test
 
 import (
+	"encoding/binary"
+	"hash/crc32"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -45,4 +47,26 @@ func TestQueryImageDetectionAndContentValidation(t *testing.T) {
 	require.Error(t, err)
 	_, err = vectorindex.LoadImage(t.Context(), server.Client(), "./cat")
 	require.Error(t, err)
+}
+
+func TestImageAllocationBudgetRejectsBeforeDecode(t *testing.T) {
+	t.Chdir(t.TempDir())
+	picture, err := vectormodel.ProbeImage()
+	require.NoError(t, err)
+	binary.BigEndian.PutUint32(picture[16:20], 100000)
+	binary.BigEndian.PutUint32(picture[20:24], 100000)
+	binary.BigEndian.PutUint32(picture[29:33], crc32.ChecksumIEEE(picture[12:29]))
+	require.NoError(t, os.WriteFile("picture", picture, 0600))
+	_, err = vectorindex.ImageSource("picture")
+	require.Error(t, err)
+	_, err = vectorindex.LoadImage(t.Context(), http.DefaultClient, "picture")
+	require.ErrorContains(t, err, "allocation budget")
+	picture, err = vectormodel.ProbeImage()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile("oversized.png", picture, 0600))
+	require.NoError(t, os.Truncate("oversized.png", 512*1024*1024+1))
+	_, err = vectorindex.ImageSource("oversized.png")
+	require.Error(t, err)
+	_, err = vectorindex.LoadImage(t.Context(), http.DefaultClient, "oversized.png")
+	require.ErrorContains(t, err, "source limit")
 }

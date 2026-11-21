@@ -139,3 +139,37 @@ func (m *limitedEmbedder) Image(ctx context.Context, data []byte) ([]float32, er
 	}
 	return m.Embedder.Image(ctx, data)
 }
+
+func TestBookmarkBatchesComputeBeforeContinuing(t *testing.T) {
+	f, options := newBookmarkFixture(t)
+	store, err := vectorindex.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	defer store.Close()
+	f.lists = map[string][]int{"private": {300}}
+	for id := 1; id <= 101; id++ {
+		f.lists["public"] = append(f.lists["public"], id)
+	}
+	report, err := store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 100, f.firstEmbedding)
+	require.Equal(t, 102, report.Bookmarks.Pages)
+	require.Equal(t, 102, report.Index.Pages)
+	require.True(t, report.Bookmarks.Scans["public"].Complete)
+	require.True(t, report.Bookmarks.Scans["private"].Complete)
+}
+
+func TestHeadFollowsEmptyPageContinuation(t *testing.T) {
+	f, options := newBookmarkFixture(t)
+	store, err := vectorindex.Open(t.Context(), t.TempDir())
+	require.NoError(t, err)
+	defer store.Close()
+	options.Restrict = "public"
+	f.lists = map[string][]int{"public": {1, 2}}
+	_, err = store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	f.lists["public"], f.emptyHead = []int{0, 3, 1, 2}, true
+	report, err := store.Sync(t.Context(), options)
+	require.NoError(t, err)
+	require.Equal(t, 3, report.Index.Artworks)
+	require.True(t, report.Bookmarks.Scans["public"].Complete)
+}

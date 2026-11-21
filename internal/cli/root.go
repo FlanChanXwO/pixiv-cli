@@ -61,6 +61,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const vectorRequestInterval = 200 * time.Millisecond
+
 type app struct {
 	language       i18n.Locale
 	in             io.Reader
@@ -323,7 +325,7 @@ func (a *app) openVectorPixiv(ctx context.Context, request environment.PixivRequ
 		return 0, nil, nil, err
 	}
 	options.OnArtwork = nil
-	options.RequestInterval = max(200*time.Millisecond, options.RequestInterval)
+	options.RequestInterval = max(vectorRequestInterval, options.RequestInterval)
 	userID, err := a.selectedPixiv(ctx, request.UserID)
 	if err != nil {
 		options.HTTPClient.CloseIdleConnections()

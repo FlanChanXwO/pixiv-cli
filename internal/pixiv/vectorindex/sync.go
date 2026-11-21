@@ -187,7 +187,7 @@ type pendingPage struct {
 }
 
 func (s *Store) pendingPages(ctx context.Context, options SyncOptions) (pages []pendingPage, err error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at,a.record FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL AND (?='' OR p.artwork_id=?) AND (?=0 OR EXISTS(SELECT 1 FROM bookmark b WHERE b.account_id=? AND b.artwork_id=a.id AND (? IN ('','all') OR b.restrict=?)))`, options.Model, options.artworkID, options.artworkID, options.scoped(), options.accountID, options.Restrict, options.Restrict)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.artwork_id,p.page_index,p.url,a.recorded_at,a.record FROM page p JOIN artwork a ON a.id=p.artwork_id LEFT JOIN embedding e ON e.artwork_id=p.artwork_id AND e.page_index=p.page_index AND e.model=? WHERE p.unavailable='' AND e.model IS NULL AND (?='' OR p.artwork_id=?) AND (?=0 OR EXISTS(SELECT 1 FROM bookmark b WHERE b.account_id=? AND b.artwork_id=a.id AND b.restrict IN ('public','private') AND (? IN ('','all') OR b.restrict=?)))`, options.Model, options.artworkID, options.artworkID, options.scoped(), options.accountID, options.Restrict, options.Restrict)
 	if err != nil {
 		return nil, err
 	}
