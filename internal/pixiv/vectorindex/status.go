@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/FlanChanXwO/pixiv-cli/internal/storage/filelock"
 )
@@ -29,6 +30,7 @@ type Status struct {
 	Recorded  int               `json:"recorded"`
 	Models    map[string]int    `json:"models"`
 	Bookmarks map[string]string `json:"bookmarks"`
+	Ranges    map[string]string `json:"ranges,omitempty"`
 	Disk      map[string]int64  `json:"disk"`
 }
 
@@ -70,7 +72,14 @@ func ReadStatus(ctx context.Context, root, model string) (result Status, err err
 			if err := rows.Scan(&key, &value); err != nil {
 				return result, errors.Join(err, rows.Close())
 			}
-			result.Bookmarks[key] = value
+			if strings.HasPrefix(key, rangePrefix) {
+				if result.Ranges == nil {
+					result.Ranges = map[string]string{}
+				}
+				result.Ranges[key] = value
+			} else {
+				result.Bookmarks[key] = value
+			}
 		}
 		if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 			return result, err

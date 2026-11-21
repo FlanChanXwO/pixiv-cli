@@ -91,6 +91,20 @@ func TestVectorSyncFiltersValidateBeforeModelLoading(t *testing.T) {
 	}
 }
 
+func TestVectorSyncRangeValidation(t *testing.T) {
+	isolatedHome(t)
+	for _, args := range [][]string{{"--offset", "-1"}, {"--limit", "-1"}, {"--tail", "0"}, {"--tail", "2", "--offset", "0"}, {"--limit", "1", "--reconcile"}} {
+		stdout, stderr, code := runCLI(t, append([]string{"vector", "sync"}, args...)...)
+		require.Equal(t, 2, code, stderr)
+		require.Empty(t, stdout)
+		require.Contains(t, stderr, "range")
+		require.NotContains(t, stderr, "unknown flag")
+	}
+	_, stderr, code := runCLI(t, "vector", "sync", "--limit", "0")
+	require.NotZero(t, code)
+	require.Contains(t, stderr, "not set up")
+}
+
 func TestVectorAddRejectsInvalidNDJSONWithoutPlaceholder(t *testing.T) {
 	home := isolatedHome(t)
 	seedPixivAccount(t, home, "fixture", false)
@@ -103,6 +117,10 @@ func TestVectorAddRejectsInvalidNDJSONWithoutPlaceholder(t *testing.T) {
 }
 
 func pixivVectorHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/v1/user/bookmarks/illust" {
+		fmt.Fprint(w, `{"illusts":[{"id":202,"type":"illust","page_count":1,"create_date":"2024-05-01T10:00:00+09:00","user":{"id":7},"meta_single_page":{"original_image_url":"https://i.pximg.net/images/202.jpg"}}],"next_url":null}`)
+		return
+	}
 	if r.URL.Path == "/v1beta/models/fixture:embedContent" {
 		fmt.Fprint(w, `{"embedding":{"values":[1,0]}}`)
 		return
@@ -126,6 +144,11 @@ func assertVectorAddPipeline(t *testing.T, proxy string) {
 	require.Zero(t, code, stderr)
 	require.Contains(t, stdout, `"recorded": 1`)
 	require.Contains(t, stdout, `"embedded": 0`)
+	stdout, stderr, code = runCLI(t, "vector", "sync", "--restrict", "private", "--offset", "0", "--limit", "1", "--json", "--proxy", proxy)
+	require.Zero(t, code, stderr)
+	require.Contains(t, stdout, `"range": {`)
+	require.Contains(t, stdout, `"selected": 1`)
+	require.Contains(t, stdout, `"reused_pages": 1`)
 	assertVectorInputCancellation(t, proxy, input)
 }
 

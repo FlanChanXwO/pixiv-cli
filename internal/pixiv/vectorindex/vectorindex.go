@@ -29,7 +29,7 @@ const (
 	syncLockName  = "vector-sync"
 	inboxLockName = "vector-inbox"
 	applicationID = 0x50585649
-	schemaVersion = 2
+	schemaVersion = 3
 )
 
 // Store 持有向量索引；写入方须先取得 [TrySyncLock]，读取方可并行打开。
@@ -93,6 +93,8 @@ func (s *Store) initialize(ctx context.Context) (err error) {
    CREATE TABLE bookmark(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, artwork_id TEXT NOT NULL, PRIMARY KEY(account_id,restrict,artwork_id));
    CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT NOT NULL);
    CREATE TABLE scan_seen(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, phase TEXT NOT NULL, artwork_id TEXT NOT NULL, was_known INTEGER NOT NULL, PRIMARY KEY(account_id,restrict,phase,artwork_id));
+   CREATE TABLE sync_selection(task TEXT NOT NULL, restrict TEXT NOT NULL, position INTEGER NOT NULL, artwork_id TEXT NOT NULL, snapshot BLOB, matched INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(task,restrict,position));
+   CREATE INDEX sync_selection_artwork ON sync_selection(task,artwork_id) WHERE matched=1;
    PRAGMA application_id=%d; PRAGMA user_version=%d; COMMIT;`, applicationID, schemaVersion))
 		if err != nil {
 			return err
@@ -100,7 +102,7 @@ func (s *Store) initialize(ctx context.Context) (err error) {
 	} else if id != applicationID || version < 1 || version > schemaVersion {
 		return i18n.Errorf("error.unsupported_vector_index_application_d_version_d", id, version)
 	}
-	if id == applicationID && version == 1 {
+	if id == applicationID && version < schemaVersion {
 		// 事务同时更新结构和版本；失败时原记录、向量和旧进度保持可用。
 		var tx *sql.Tx
 		tx, err = s.db.BeginTx(ctx, nil)
@@ -112,7 +114,12 @@ func (s *Store) initialize(ctx context.Context) (err error) {
 				err = errors.Join(err, rollback)
 			}
 		}()
-		if _, err = tx.ExecContext(ctx, `CREATE TABLE scan_seen(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, phase TEXT NOT NULL, artwork_id TEXT NOT NULL, was_known INTEGER NOT NULL, PRIMARY KEY(account_id,restrict,phase,artwork_id))`); err != nil {
+		if version == 1 {
+			if _, err = tx.ExecContext(ctx, `CREATE TABLE scan_seen(account_id INTEGER NOT NULL, restrict TEXT NOT NULL, phase TEXT NOT NULL, artwork_id TEXT NOT NULL, was_known INTEGER NOT NULL, PRIMARY KEY(account_id,restrict,phase,artwork_id))`); err != nil {
+				return err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `CREATE TABLE sync_selection(task TEXT NOT NULL, restrict TEXT NOT NULL, position INTEGER NOT NULL, artwork_id TEXT NOT NULL, snapshot BLOB, matched INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(task,restrict,position)); CREATE INDEX sync_selection_artwork ON sync_selection(task,artwork_id) WHERE matched=1;`); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=%d", schemaVersion)); err != nil {

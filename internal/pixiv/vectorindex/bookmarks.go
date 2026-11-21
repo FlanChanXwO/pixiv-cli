@@ -32,6 +32,7 @@ type bookmarkState struct {
 }
 
 type bookmarkScan struct {
+	selection *rangeScan
 	scope     pixiv.Restrict
 	phase     scanPhase
 	state     bookmarkState
@@ -116,6 +117,9 @@ func (s *Store) prepareScans(ctx context.Context, id int64, options SyncOptions)
 }
 
 func (s *Store) restartScan(ctx context.Context, id int64, scan *bookmarkScan) (err error) {
+	if scan.selection != nil {
+		return s.restartRange(ctx, scan)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -217,7 +221,7 @@ type bookmarkResult struct {
 }
 
 // scanBatch 的工作协程只读取上游；协调者串行提交页面后才派发该列表的下一页。
-func (s *Store) scanBatch(ctx context.Context, client *pixiv.Client, id int64, scans []*bookmarkScan, deadline time.Time, report *SyncReport) error {
+func (s *Store) scanBatch(ctx context.Context, client *pixiv.Client, id int64, scans []*bookmarkScan, options SyncOptions, report *SyncReport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { cancel(); workers.Wait() }()
@@ -241,7 +245,7 @@ func (s *Store) scanBatch(ctx context.Context, client *pixiv.Client, id int64, s
 	sent, active := 0, 0
 	budgetReached := false
 	dispatch := func(scan *bookmarkScan) error {
-		if !deadline.IsZero() && !time.Now().Before(deadline) {
+		if !options.deadline.IsZero() && !time.Now().Before(options.deadline) {
 			budgetReached = true
 			return nil
 		}
@@ -277,8 +281,16 @@ func (s *Store) scanBatch(ctx context.Context, client *pixiv.Client, id int64, s
 				} else {
 					return result.err
 				}
-			} else if err := s.commitBookmarkPage(ctx, id, scan, result.page, report); err != nil {
-				return err
+			} else {
+				var err error
+				if scan.selection != nil {
+					err = s.commitRangePage(ctx, id, scan, result.page, options, report)
+				} else {
+					err = s.commitBookmarkPage(ctx, id, scan, result.page, report)
+				}
+				if err != nil {
+					return err
+				}
 			}
 			if !scan.state.Complete && sent < bookmarkBatchPages {
 				if err := dispatch(scan); err != nil {

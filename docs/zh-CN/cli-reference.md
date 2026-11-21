@@ -557,7 +557,7 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 | 命令 | 行为 |
 | --- | --- |
 | `pixiv vector setup [--model NAME] [--device cpu\|gpu] [--base-url URL] [--yes] [--proxy URL\|--no-proxy]` | 确认记录、下载或上传范围，试算文字与图片后保存配置 |
-| `pixiv vector sync [--restrict public\|private\|all] [--content-type TYPE] [--rating RATING] [--reconcile] [--json] [--proxy URL\|--no-proxy]` | 续读所选收藏范围，合并记录并计算待算页面；各筛选默认 `all` |
+| `pixiv vector sync [--restrict public\|private\|all] [--content-type TYPE] [--rating RATING] [--offset N --limit N \| --tail N] [--reconcile] [--json] [--proxy URL\|--no-proxy]` | 续读所选收藏范围，合并记录并计算待算页面；各筛选默认 `all` |
 | `pixiv vector add [ID_OR_URL...] [--json] [--proxy URL\|--no-proxy]` | 刷新指定作品并入库；省略目标时从 stdin 读取作品 NDJSON |
 | `pixiv vector search [INPUT] [--image PATH_OR_URL] [--limit N] [--page N] [--no-sync] [--json|--ndjson]` | 自动识别文字、本地图片或 HTTP(S) 图片 URL |
 | `pixiv vector status [--json]` | 离线查看数量、待合并记录、模型、收藏状态与磁盘字节数 |
@@ -576,6 +576,14 @@ Unix 上 `SIGINT`（Ctrl+C）与 `SIGTERM` 会取消 server，并等待进行中
 云端索引会上传作品缩略图（含私密收藏与 R18）及查询内容，并可能按量计费。setup 在确认前展示目标服务和待算页数。模型请求使用全局代理或本次命令覆盖值。
 
 `vector sync` 固定使用当前账号。默认扫描公开和私密收藏，并计算共享索引中的全部待算页面。首次遍历完整列表，以后检查头部，遇到整页已知收藏关系后停止。`--restrict` 选择可见性。`--content-type` 接受 `all`、`illust-and-ugoira`、`illust`、`manga`、`ugoira`；`--rating` 接受 `all`、`sfw`、`r18`、`r18g`、`mature`，取值与作品搜索一致。有效筛选将本次计算限定为当前账号所选可见性中匹配的收藏；所选列表中全部有效作品的元数据和收藏关系仍完整记录，后续无筛选同步或搜索可以补算跳过的页面。
+
+使用 `--limit 100` 选前 100 个作品，`--offset 500 --limit 10` 选第 501–510 个，`--tail 10` 选最后 10 个。公开／私密分别计数：默认 `--restrict all --limit 100` 最多选取 200 个。按上游列表顺序计数，已返回的不可用作品和已有向量作品均占位置；先选位置再应用类型／分级筛选，实际匹配数可能更少。一部作品占一个位置，图片页策略沿用现状。
+
+显式指定任一范围参数即进入范围同步。offset 默认 0；limit 为 0 或省略时处理到末尾。tail 必须为正数，与显式 offset／limit 互斥；范围参数与 `--reconcile` 互斥。越界返回成功的空选区，数量不足时处理实际剩余作品。定位从列表开头顺序翻页；尾部扫描遍历所选列表，在磁盘上保留最后 N 个位置，每份列表结束后才将最终选区写入共享索引。仅选区内有效作品更新元数据和收藏关系，仅计算选区内匹配筛选的页面；其他待算任务留给后续普通同步或搜索。
+
+范围断点按账号、所选可见性、规范化范围、筛选和模型隔离，候选、位置与游标逐页事务提交。中断后重跑相同命令续读或继续计算，一份列表完成后另一份可独立续跑。游标失效时重扫受影响的列表并复用有效向量。成功后清理临时候选和断点，下次重新选取当前列表范围。范围完成保持普通首次／头部／对账断点和已有收藏关系；扫描期间修改收藏会影响实际读取的位置序列。
+
+终端 stderr 在定位时显示已扫描／选取作品数。JSON 新增 `range: {offset, limit, tail, scans}`，每种可见性包含累计阶段 `phase`（`scanning`、`embedding`、`complete`）、`scanned`、`selected`、`matched`、`reused_pages`。范围进度与普通扫描的 `bookmarks.scans` 分开，范围任务的后者为空。`index` 仍是共享索引总量，`embedded` 为本次实际计算页数。`vector status --json` 的 `ranges` 展示未完成的范围断点。
 
 公开、私密列表各用一个 worker，共享固定账号 client；单个列表按上游游标依次翻页。合计最多读取 100 个列表页后，串行计算待算向量，再继续下一批。一名协调者在同一事务中提交每页元数据、收藏关系与断点。首次扫描、头部检查、完整对账分别按账号及可见性保存断点，Ctrl+C 保留已提交结果。游标失效时重扫对应阶段，继续复用有效向量。旧索引通过事务迁移，保留记录、向量和可用断点。
 
@@ -597,6 +605,9 @@ Pixiv 请求在所有 worker 和批次间共享最小间隔，取 0.2 秒与用�
 pixiv vector sync
 pixiv vector sync --restrict private --rating sfw
 pixiv vector sync --reconcile
+pixiv vector sync --restrict public --limit 100
+pixiv vector sync --restrict private --offset 500 --limit 10
+pixiv vector sync --tail 10
 pixiv vector add 123456 https://www.pixiv.net/artworks/234567
 pixiv vector search "雨中的城市"
 pixiv vector search ./reference.png --limit 5 --ndjson | pixiv detail

@@ -28,7 +28,7 @@ func TestIndexMigrationPreservesProgress(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(vectorindex.Directory(root), "index.db"))
 	require.NoError(t, err)
 	defer db.Close()
-	_, err = db.Exec(`DROP TABLE IF EXISTS scan_seen; PRAGMA user_version=1;
+	_, err = db.Exec(`DROP TABLE IF EXISTS scan_seen; DROP TABLE sync_selection; PRAGMA user_version=1;
 INSERT INTO state VALUES('bookmarks/11/private','{"complete":true}');
 INSERT INTO artwork VALUES('23','{}','2026-11-20T00:00:00Z');
 INSERT INTO page VALUES('23',0,'https://i.pximg.net/23.png','');
@@ -39,7 +39,7 @@ INSERT INTO embedding VALUES('23',0,'fixture',zeroblob(8),'')`)
 	defer store.Close()
 	var version int
 	require.NoError(t, db.QueryRow(`PRAGMA user_version`).Scan(&version))
-	require.Equal(t, 2, version)
+	require.Equal(t, 3, version)
 	counts, err := store.Counts(t.Context(), "fixture")
 	require.NoError(t, err)
 	require.Equal(t, 1, counts.Pages)
@@ -109,6 +109,8 @@ type bookmarkFixture struct {
 	invisible      int
 	fail           bool
 	failOffset     int
+	failScope      string
+	pageSize       int
 	calls          []string
 	firstEmbedding int
 	mutex          sync.Mutex
@@ -127,7 +129,7 @@ func (f *bookmarkFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		scope := r.URL.Query().Get("restrict")
 		offset, _ := strconv.Atoi(r.URL.Query().Get("max_bookmark_id"))
 		f.calls = append(f.calls, fmt.Sprintf("%s:%d", scope, offset))
-		if f.fail && offset == f.failOffset {
+		if f.fail && offset == f.failOffset && (f.failScope == "" || f.failScope == scope) {
 			w.WriteHeader(429)
 			return
 		}
@@ -136,19 +138,24 @@ func (f *bookmarkFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, `{"illusts":[],"next_url":null}`)
 			return
 		}
+		end := min(len(values), offset+max(1, f.pageSize))
 		next := "null"
-		if offset+1 < len(values) {
-			next = strconv.Quote(fmt.Sprintf("https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=11&restrict=%s&max_bookmark_id=%d", scope, offset+1))
+		if end < len(values) {
+			next = strconv.Quote(fmt.Sprintf("https://app-api.pixiv.net/v1/user/bookmarks/illust?user_id=11&restrict=%s&max_bookmark_id=%d", scope, end))
 		}
 		if f.emptyHead && offset == 0 {
 			fmt.Fprintf(w, `{"illusts":[],"next_url":%s}`, next)
 			return
 		}
-		body := fixtureArtwork(values[offset])
-		if values[offset] == f.invisible {
-			body = strings.TrimSuffix(body, "}") + `,"visible":false}`
+		var bodies []string
+		for _, id := range values[offset:end] {
+			body := fixtureArtwork(id)
+			if id == f.invisible {
+				body = strings.TrimSuffix(body, "}") + `,"visible":false}`
+			}
+			bodies = append(bodies, body)
 		}
-		fmt.Fprintf(w, `{"illusts":[%s],"next_url":%s}`, body, next)
+		fmt.Fprintf(w, `{"illusts":[%s],"next_url":%s}`, strings.Join(bodies, ","), next)
 	case strings.Contains(r.URL.Path, "illust/detail"):
 		id, _ := strconv.Atoi(r.URL.Query().Get("illust_id"))
 		if id == 404 {
