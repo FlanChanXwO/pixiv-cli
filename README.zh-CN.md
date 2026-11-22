@@ -164,6 +164,10 @@ pixiv mcp --port 1270 --base-url https://mcp.example.com   # 位于 HTTPS 反向
 
 [查看全部贡献者](https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors)
 
+## 社区
+
+感谢 [LINUX DO](https://linux.do/) 社区提供开放、友善的技术交流平台。
+
 ## 许可证
 
 [MIT](LICENSE) © FlanChanXwO。Release 压缩包只包含可执行文件。

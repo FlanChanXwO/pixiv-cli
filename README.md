@@ -164,6 +164,10 @@ Thank you to everyone who helps improve pixiv-cli.
 
 [View all contributors](https://github.com/FlanChanXwO/pixiv-cli/graphs/contributors)
 
+## Community
+
+Thanks to the [LINUX DO](https://linux.do/) community for providing an open and friendly platform for technical exchange.
+
 ## License
 
 [MIT](LICENSE) © FlanChanXwO. Release archives contain only the executable.
